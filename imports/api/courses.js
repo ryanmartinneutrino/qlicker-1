@@ -723,9 +723,24 @@ Meteor.methods({
 
     //profHasCoursePermission(courseId)
 
+
     Meteor.users.update({ _id: studentUserId }, {
       $pull: { 'profile.courses': courseId }
     })
+
+    let course = Courses.findOne(courseId)
+    let categories = course.groupCategories ? course.groupCategories : []
+
+    categories.forEach((cat, i) => {
+      cat.groups.forEach((group, i) => {
+        if(groups.students.includes(studentUserId)){
+          //TODO: Remove student from groups!
+        }
+      });
+
+    });
+
+
     return Courses.update({ _id: courseId }, {
       $pull: { students: studentUserId }
     })
