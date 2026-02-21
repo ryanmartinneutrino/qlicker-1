@@ -8,5 +8,6 @@ Dockerfile
 logs.txt
 private/
 
-packages/server/dist/
-packages/shared/dist/
+# New stack build artifacts
+packages/*/dist/
+packages/server/.env
