@@ -1,6 +1,9 @@
 {
   "name": "qlicker",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "doc": "jsdoc imports/* docs/README.md -d docs/.jsdocs -t node_modules/docdash/",
     "start": "meteor --settings settings.json",
@@ -13,7 +16,12 @@
     "test:unit-coverage": "node_modules/.bin/spacejam test --driver-package practicalmeteor:mocha --port 4099 --coverage 'out_lcovonly out_coverage out_html' --xunit-out $CIRCLE_TEST_REPORTS/unit-results.xml",
     "test:app-coverage": "node_modules/.bin/spacejam test --full-app --driver-package practicalmeteor:mocha --port 4099 --coverage 'out_lcovonly out_coverage out_html in_coverage' --xunit-out $CIRCLE_TEST_REPORTS/full-app-results.xml",
     "test:unit-no-coverage": "node_modules/.bin/spacejam test --driver-package practicalmeteor:mocha --port 4099",
-    "test:all": "npm run test:unit-watch && npm run test:app-watch"
+    "test:all": "npm run test:unit-watch && npm run test:app-watch",
+    "dev:server": "npm run dev --workspace=packages/server",
+    "dev:client": "npm run dev --workspace=packages/client",
+    "dev": "npm run dev:server & npm run dev:client",
+    "build": "npm run build --workspaces",
+    "start:new": "npm run start --workspace=packages/server"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",
