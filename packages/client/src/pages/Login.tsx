@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 
@@ -14,6 +14,7 @@ export function isEmailLoginAllowed(allowEmailRoute: boolean, ssoEnabled: boolea
 
 export default function Login({ allowEmail }: { allowEmail?: boolean }) {
   const { login } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +52,7 @@ export default function Login({ allowEmail }: { allowEmail?: boolean }) {
     setLoading(true)
     try {
       await login(email.trim(), password)
-      window.location.assign('/')
+      navigate('/')
     } catch (err) {
       setError((err as Error).message || 'Login failed.')
     } finally {
@@ -102,7 +103,7 @@ export default function Login({ allowEmail }: { allowEmail?: boolean }) {
 
           <div className="ql-login-meta">
             {allowEmailLogin ? (
-              <Link to="/reset/token">Forgot your password?</Link>
+              <Link to="/reset">Forgot your password?</Link>
             ) : (
               <Link to="/login/email">Have an email based account?</Link>
             )}

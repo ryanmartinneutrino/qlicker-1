@@ -44,6 +44,7 @@ export default function App() {
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/login/email" element={<Login allowEmail />} />
+            <Route path="/reset" element={<ResetPassword />} />
             <Route path="/reset/:token" element={<ResetPassword />} />
 
             {/* Authenticated routes — migrated from imports/startup/client/routes.jsx */}
