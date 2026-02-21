@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   # MongoDB replica set (required for Change Streams)
   mongo1:
