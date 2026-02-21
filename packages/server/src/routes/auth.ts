@@ -10,6 +10,19 @@ import { UserRole } from '@qlicker/shared'
 
 const router = Router()
 
+/** GET /api/auth/login-options — public login settings for UI parity */
+router.get('/login-options', async (_req, res, next) => {
+  try {
+    const settings = await getSettings().findOne({})
+    res.json({
+      ssoEnabled: Boolean(settings?.SSO_enabled),
+      ssoInstitution: settings?.SSO_institutionName || null,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/auth/login — email/password login */
 router.post('/login', authLimiter, (req, res, next) => {
   passport.authenticate('local', (err: Error | null, user: User | false, info: { message: string } | undefined) => {
