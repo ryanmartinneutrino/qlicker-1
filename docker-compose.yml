@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  # MongoDB replica set (required for Change Streams)
+  mongo1:
+    image: mongo:7
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo1:
+        condition: service_healthy
+    restart: "no"
+    command: >
+      mongosh --host mongo1:27017 --eval
+      "try { rs.status() } catch(e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo1:27017' }] }) }"
+
+  # New Express + Socket.IO backend
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.new
+      target: server
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MONGO_URL=mongodb://mongo1:27017/qlicker?replicaSet=rs0
+      - ROOT_URL=${ROOT_URL:-http://localhost:3000}
+      - SESSION_SECRET=${SESSION_SECRET:-change-me}
+    ports:
+      - "3001:3001"
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # React 18 + Vite frontend (served as static files by nginx in production)
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.new
+      target: client-serve
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  mongo1_data:
