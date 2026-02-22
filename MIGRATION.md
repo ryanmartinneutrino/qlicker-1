@@ -143,14 +143,74 @@ mongosh --eval "rs.initiate()"
 
 ---
 
+## React Component Migration Status
+
+### Pages (`packages/client/src/pages/`)
+
+All pages have been ported from `imports/ui/pages/` to modern React 18 functional components with TypeScript and hooks.
+
+| Page | Original (Meteor) | New (React 18) | Status |
+|------|-------------------|----------------|--------|
+| Login | `LoginBox.jsx` + `login.jsx` | `Login.tsx` | ✅ Login + signup, SSO, role-based redirect |
+| Home | `home.jsx` | `Home.tsx` | ✅ Redirects to role-based dashboard |
+| Profile | `profile.jsx` | `Profile.tsx` | ✅ Name/SN editing, email verification, password change |
+| Student Dashboard | `student_dashboard.jsx` | `Student.tsx` | ✅ Enrollment form, active/inactive courses |
+| Professor Dashboard | `professor_dashboard.jsx` | `Professor.tsx` | ✅ Create course, manage courses |
+| Admin Dashboard | `admin_dashboard.jsx` | `Admin.tsx` | ✅ Tabbed: users (CRUD), settings (stub), SSO/images/video (stub) |
+| Manage Courses | `manage_courses.jsx` | `ManageCourses.tsx` | ✅ Active/inactive toggle, delete, create |
+| Course Detail | `course.jsx` + `manage_course.jsx` | `Course.tsx` | ✅ Role-based view (instructor vs student), sessions, quizzes |
+| Session | `session.jsx` | `Session.tsx` | ✅ Question navigation, answer options display |
+| Run Session | `run_session.jsx` | `RunSession.tsx` | ✅ Status controls, question navigation |
+| Manage Session | `manage_session.jsx` | `ManageSession.tsx` | ✅ Edit name/description, quiz settings |
+| Grade Session | `grade_session.jsx` | `GradeSession.tsx` | ✅ Grades table with points |
+| Course Grades | `course_grades.jsx` | `CourseGrades.tsx` | ✅ Course-wide grades table |
+| Questions Library | `questions_library.jsx` | `QuestionsLibrary.tsx` | ✅ Question list with type badges |
+| Session Results | `results.jsx` | `SessionResults.tsx` | ✅ Per-question response statistics |
+| Replay Session | `replay_session.jsx` | `ReplaySession.tsx` | ✅ Session replay with correct answers |
+| Results Overview | `results_overview.jsx` | `ResultsOverview.tsx` | ✅ Course list with grade links |
+| Course Groups | `manage_course_groups.jsx` | `ManageCourseGroups.tsx` | ✅ Group category management |
+| Reset Password | `reset_password.jsx` | `ResetPassword.tsx` | ✅ Forgot password + token-based reset |
+
+### Shared Components (`packages/client/src/components/`)
+
+| Component | Original (Meteor) | New (React 18) | Status |
+|-----------|-------------------|----------------|--------|
+| CourseListItem | `CourseListItem.jsx` + `ListItem.jsx` | `CourseListItem.tsx` | ✅ Ported |
+| SessionListItem | `SessionListItem.jsx` | `SessionListItem.tsx` | ✅ Ported (simplified) |
+| CreateCourseModal | `modals/CreateCourseModal.jsx` | `CreateCourseModal.tsx` | ✅ Ported |
+
+### Pattern Replacements
+
+| Meteor Pattern | New Pattern | Status |
+|----------------|-------------|--------|
+| `withTracker` HOC | `useRealtimeCollection` hook | ✅ Hook ready, used where needed |
+| `Meteor.call()` | `apiClient` / `useApi` hook | ✅ All API calls migrated |
+| `Meteor.loginWithPassword()` | `useAuth().login()` | ✅ |
+| `Accounts.createUser()` | `useAuth().register()` | ✅ |
+| `Meteor.loginWithSaml()` | Redirect to `/api/auth/saml` | ✅ |
+| `Router.go()` | `useNavigate()` / `Link` | ✅ |
+| Class components | Functional components + hooks | ✅ |
+| JavaScript | TypeScript | ✅ |
+
+### CSS / Styling
+
+- [x] Comprehensive CSS ported from original SCSS to `packages/client/src/styles/index.css`
+- [x] Original class names preserved (`.ql-card`, `.ql-header-bar`, `.ql-login-box`, etc.)
+- [x] Responsive grid system (`.container`, `.row`, `.col-md-*`)
+- [x] Session status colors (hidden/visible/running/done/submitted)
+- [x] Modal overlay styles
+- [x] Admin toolbar styles
+
+---
+
 ## Feature Parity Checklist
 
 ### Authentication
 - [x] Email/password login (bcrypt compatible with Meteor hashes)
 - [x] SAML SSO login
-- [x] Registration
-- [ ] Email verification (TODO: migrate from Meteor Accounts)
-- [ ] Password reset emails (TODO)
+- [x] Registration (with signup form in Login page)
+- [x] Password reset (forgot password + token-based reset UI)
+- [ ] Email verification flow (TODO: backend endpoint)
 
 ### Courses
 - [x] Create/edit/delete courses
@@ -169,7 +229,7 @@ mongosh --eval "rs.initiate()"
 - [x] Create/edit/delete questions
 - [x] MC, TF, SA, MS, NU question types
 - [x] Session options (hidden, stats, correct, points, attempts)
-- [ ] Question library features (TODO)
+- [x] Question library UI
 
 ### Responses
 - [x] Submit responses
@@ -192,8 +252,26 @@ mongosh --eval "rs.initiate()"
 - [x] Multer integration (stub)
 - [ ] S3 upload (TODO: wire up `@aws-sdk/client-s3`)
 - [ ] Azure Blob upload (TODO: wire up `@azure/storage-blob`)
+- [ ] Profile image upload UI (TODO: port DragAndDropArea)
 
 ### Admin
 - [x] User management (list, role change, delete)
 - [x] Settings management
 - [ ] SSO configuration UI (TODO)
+- [ ] Image settings UI (TODO)
+- [ ] Video chat settings UI (TODO)
+
+---
+
+## Next Steps
+
+1. **Remaining modals**: Port `EnrollCourseModal`, `ChangeEmailModal`, `ChangePasswordModal`, `CreateSessionModal`, `CreateQuestionModal`, and other modals from `imports/ui/modals/`
+2. **Advanced components**: Port `QuestionDisplay`, `QuestionEditItem`, `ResponseDisplay`, `ResponseList`, `GradeView`, `CleanTable`, `CleanGradeTable`, `Histogram`, `AnswerDistribution`
+3. **Profile image upload**: Port `DragAndDropArea` and image upload/resize logic
+4. **Quiz extensions**: Port quiz extension logic and `QuizExtensionsModal`
+5. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor)
+6. **Video chat**: Port `VideoChat` and `JitsiWindow` components
+7. **Content sanitization**: Add DOMPurify for `dangerouslySetInnerHTML` in question content rendering
+8. **Admin sub-panels**: Implement `ManageMainSettings`, `ManageSSO`, `ManageImages`, `ManageJitsi`
+9. **Email verification**: Implement backend endpoint for email verification
+10. **Full test coverage**: Add component tests for all ported pages
