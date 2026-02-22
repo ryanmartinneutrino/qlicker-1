@@ -1,13 +1,434 @@
+/* ==========================================================================
+   Qlicker – Comprehensive Stylesheet
+   Ported from original SCSS sources to plain CSS.
+   ========================================================================== */
+
+/* ---------- Variables (as reference, applied inline below) -----------------
+   Blue (brand):       #30B0E7
+   Dark blue:          #268DB9
+   Darker blue:        #185A76
+   Light blue:         #AADFF5
+   Lighter blue:       #E4F4FC
+   Main text:          #212121
+   Background:         #F3F3F4
+   Grey:               #F2F2F2
+   Darker grey:        #a8a8a8
+   Inactive:           #989898
+   Disabled:           #676A6C
+   Red:                #ff0000
+   Dark green:         #00b200
+   Light green:        #cbeab4
+   Light red:          #fce3e3
+   Orange:             #ffb649
+   Correct:            #5ACE5F
+   Incorrect:          #F74E4E
+   Neutral:            #DDDDDD
+   Header bar blue:    #2c3e50  (used in ported login header)
+   Primary button:     #0d6efd (Bootstrap 5 blue, used in ported buttons)
+   Page background:    #f4f6f8 (used in ported layout)
+
+   Session status colours (ported dashboard):
+     hidden:    #999
+     visible:   #3498db
+     running:   #27ae60
+     done:      #e74c3c
+     submitted: #f39c12
+   -------------------------------------------------------------------------- */
+
+/* ==========================================================================
+   1. Base / Reset
+   ========================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: 200;
+  font-size: 12px;
   background: #f4f6f8;
-  color: #333;
+  color: #212121;
 }
+
+h1 { font-size: 3em; }
+
+h1, h2, h3 {
+  padding: 10px;
+  margin-bottom: 0;
+  margin-top: 10px;
+  background-color: #30B0E7;
+  color: white;
+}
+
+p { margin-bottom: 0; }
 
 a {
   color: #0d6efd;
 }
+
+code {
+  font-size: 80%;
+}
+
+.clear { clear: both; }
+
+.uppercase {
+  text-transform: uppercase;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.center-text {
+  text-align: center;
+}
+
+.m-margin-top {
+  margin-top: 10px;
+}
+
+.spacer1 {
+  height: 10px;
+}
+
+.correct-color { color: #5ACE5F; }
+.incorrect-color { color: #F74E4E; }
+
+.body-white { background-color: #fff; }
+.body-grey { background-color: #F3F3F4; }
+
+.ql-title {
+  font-weight: 700;
+  font-size: 120%;
+}
+
+/* ==========================================================================
+   2. Grid System (simple Bootstrap-compatible)
+   ========================================================================== */
+
+.container {
+  width: 100%;
+  max-width: 1170px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -15px;
+  margin-right: -15px;
+}
+
+.row > [class*="col-"] {
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+.col-xs-1  { flex: 0 0 8.333%;  max-width: 8.333%; }
+.col-xs-2  { flex: 0 0 16.667%; max-width: 16.667%; }
+.col-xs-3  { flex: 0 0 25%;     max-width: 25%; }
+.col-xs-4  { flex: 0 0 33.333%; max-width: 33.333%; }
+.col-xs-5  { flex: 0 0 41.667%; max-width: 41.667%; }
+.col-xs-6  { flex: 0 0 50%;     max-width: 50%; }
+.col-xs-7  { flex: 0 0 58.333%; max-width: 58.333%; }
+.col-xs-8  { flex: 0 0 66.667%; max-width: 66.667%; }
+.col-xs-9  { flex: 0 0 75%;     max-width: 75%; }
+.col-xs-10 { flex: 0 0 83.333%; max-width: 83.333%; }
+.col-xs-11 { flex: 0 0 91.667%; max-width: 91.667%; }
+.col-xs-12 { flex: 0 0 100%;    max-width: 100%; }
+
+@media (min-width: 768px) {
+  .col-sm-1  { flex: 0 0 8.333%;  max-width: 8.333%; }
+  .col-sm-2  { flex: 0 0 16.667%; max-width: 16.667%; }
+  .col-sm-3  { flex: 0 0 25%;     max-width: 25%; }
+  .col-sm-4  { flex: 0 0 33.333%; max-width: 33.333%; }
+  .col-sm-5  { flex: 0 0 41.667%; max-width: 41.667%; }
+  .col-sm-6  { flex: 0 0 50%;     max-width: 50%; }
+  .col-sm-7  { flex: 0 0 58.333%; max-width: 58.333%; }
+  .col-sm-8  { flex: 0 0 66.667%; max-width: 66.667%; }
+  .col-sm-9  { flex: 0 0 75%;     max-width: 75%; }
+  .col-sm-10 { flex: 0 0 83.333%; max-width: 83.333%; }
+  .col-sm-11 { flex: 0 0 91.667%; max-width: 91.667%; }
+  .col-sm-12 { flex: 0 0 100%;    max-width: 100%; }
+}
+
+@media (min-width: 992px) {
+  .col-md-1  { flex: 0 0 8.333%;  max-width: 8.333%; }
+  .col-md-2  { flex: 0 0 16.667%; max-width: 16.667%; }
+  .col-md-3  { flex: 0 0 25%;     max-width: 25%; }
+  .col-md-4  { flex: 0 0 33.333%; max-width: 33.333%; }
+  .col-md-5  { flex: 0 0 41.667%; max-width: 41.667%; }
+  .col-md-6  { flex: 0 0 50%;     max-width: 50%; }
+  .col-md-7  { flex: 0 0 58.333%; max-width: 58.333%; }
+  .col-md-8  { flex: 0 0 66.667%; max-width: 66.667%; }
+  .col-md-9  { flex: 0 0 75%;     max-width: 75%; }
+  .col-md-10 { flex: 0 0 83.333%; max-width: 83.333%; }
+  .col-md-11 { flex: 0 0 91.667%; max-width: 91.667%; }
+  .col-md-12 { flex: 0 0 100%;    max-width: 100%; }
+}
+
+@media (min-width: 1200px) {
+  .col-lg-1  { flex: 0 0 8.333%;  max-width: 8.333%; }
+  .col-lg-2  { flex: 0 0 16.667%; max-width: 16.667%; }
+  .col-lg-3  { flex: 0 0 25%;     max-width: 25%; }
+  .col-lg-4  { flex: 0 0 33.333%; max-width: 33.333%; }
+  .col-lg-5  { flex: 0 0 41.667%; max-width: 41.667%; }
+  .col-lg-6  { flex: 0 0 50%;     max-width: 50%; }
+  .col-lg-7  { flex: 0 0 58.333%; max-width: 58.333%; }
+  .col-lg-8  { flex: 0 0 66.667%; max-width: 66.667%; }
+  .col-lg-9  { flex: 0 0 75%;     max-width: 75%; }
+  .col-lg-10 { flex: 0 0 83.333%; max-width: 83.333%; }
+  .col-lg-11 { flex: 0 0 91.667%; max-width: 91.667%; }
+  .col-lg-12 { flex: 0 0 100%;    max-width: 100%; }
+}
+
+/* ==========================================================================
+   3. Form Controls
+   ========================================================================== */
+
+input[type=text],
+input[type=email],
+input[type=password],
+textarea.form-control,
+.form-control {
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  padding: 8px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #30B0E7;
+  box-shadow: 0 0 0 2px rgba(48, 176, 231, 0.15);
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 600;
+}
+
+.input-group {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.input-group .form-control {
+  display: inline-block;
+  width: 48%;
+}
+
+.input-group .form-control:last-child {
+  float: right;
+}
+
+/* ==========================================================================
+   4. Buttons
+   ========================================================================== */
+
+.btn {
+  display: inline-block;
+  border: 1px solid #ccc;
+  color: #666;
+  border-radius: 3px;
+  background: white;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  line-height: 1.42857;
+  vertical-align: middle;
+}
+
+.btn:hover {
+  border-color: #30B0E7;
+  color: #30B0E7;
+  background: white;
+}
+
+.btn:active, .btn:focus {
+  border-color: #30B0E7;
+  color: #30B0E7;
+  outline: none;
+}
+
+.btn.btn-primary {
+  background: #30B0E7;
+  color: white;
+  border-color: #30B0E7;
+}
+
+.btn.btn-primary:hover {
+  background-color: #268DB9;
+  border-color: #268DB9;
+  color: white;
+}
+
+.btn.btn-primary:active,
+.btn.btn-primary:focus {
+  border-color: #268DB9;
+  color: white;
+}
+
+.btn.btn-primary:disabled {
+  background: #676A6C;
+  border-color: #676A6C;
+  cursor: not-allowed;
+}
+
+.btn.btn-primary:disabled:hover {
+  background: #676A6C;
+  border-color: #676A6C;
+}
+
+.btn.btn-secondary {
+  background: #F2F2F2;
+  color: #212121;
+}
+
+.btn.btn-secondary:hover {
+  background-color: #e2e2e2;
+  border-color: #e2e2e2;
+}
+
+.btn.btn-secondary:active,
+.btn.btn-secondary:focus {
+  border-color: #e2e2e2;
+}
+
+.btn.btn-default {
+  background: #F2F2F2;
+  color: #212121;
+  border-color: #ccc;
+}
+
+.btn.btn-default:hover {
+  background-color: #e2e2e2;
+  border-color: #e2e2e2;
+}
+
+.btn.btn-danger {
+  background: #e74c3c;
+  color: white;
+  border-color: #e74c3c;
+}
+
+.btn.btn-danger:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+.btn.btn-success {
+  background: #27ae60;
+  color: white;
+  border-color: #27ae60;
+}
+
+.btn.btn-success:hover {
+  background: #219a52;
+  border-color: #219a52;
+}
+
+.btn-block {
+  display: block;
+  width: 100%;
+}
+
+.btn-group {
+  display: inline-flex;
+}
+
+.btn-group .btn {
+  border-radius: 0;
+}
+
+.btn-group .btn:first-child {
+  border-top-left-radius: 3px;
+  border-bottom-left-radius: 3px;
+}
+
+.btn-group .btn:last-child {
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+  border-right-width: 1px;
+}
+
+.btn-group .btn.btn-primary {
+  border-left-color: #268DB9;
+}
+
+/* ==========================================================================
+   5. Header Bar & Card (common pattern)
+   ========================================================================== */
+
+.ql-header-bar {
+  padding: 10px;
+  background: #30B0E7;
+  text-align: center;
+  color: white;
+}
+
+.ql-header-bar h4 {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: white;
+  font-size: 1.1rem;
+}
+
+.ql-card {
+  margin-top: 15px;
+  margin-bottom: 15px;
+  background: white;
+}
+
+.ql-card .ql-card-content {
+  padding: 15px;
+}
+
+.ql-card .ql-card-content label {
+  padding-right: 3px;
+}
+
+.ql-card-fixed {
+  margin-top: 15px;
+  margin-bottom: 15px;
+  background: white;
+  position: fixed;
+  width: 24%;
+}
+
+.ql-card-fixed .ql-card-content {
+  padding: 15px;
+}
+
+.ql-card-fixed .ql-card-content label {
+  padding-right: 3px;
+}
+
+/* ==========================================================================
+   6. Login Page
+   ========================================================================== */
 
 .ql-login-page {
   min-height: 100vh;
@@ -17,55 +438,45 @@ a {
   padding: 24px;
 }
 
-.ql-login-card {
+.ql-login-page .login-container {
+  margin-top: 20px;
+}
+
+.ql-login-box {
+  text-align: center;
+  color: #888;
+  background: white;
+  box-shadow: 0 0 7px 0 rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 420px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   overflow: hidden;
+  border-radius: 4px;
 }
 
-.ql-login-header {
-  background: #2c3e50;
-  color: #fff;
-  margin: 0;
-  padding: 16px 20px;
-  font-size: 1.1rem;
+.ql-login-box .inputs-container {
+  padding: 35px;
+  padding-bottom: 45px;
 }
 
-.ql-login-content {
-  padding: 20px;
-}
-
-.ql-login-input {
+.ql-login-box .inputs-container .input-group {
+  margin-top: 20px;
+  margin-bottom: 20px;
   width: 100%;
-  box-sizing: border-box;
-  padding: 10px 12px;
+}
+
+.ql-login-box .inputs-container .input-group .form-control {
+  display: inline-block;
+  width: 48%;
+}
+
+.ql-login-box .inputs-container .input-group .form-control:last-child {
+  float: right;
+}
+
+.ql-login-box-error-msg {
   margin-bottom: 12px;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
-  font-size: 0.95rem;
-}
-
-.ql-login-btn {
-  width: 100%;
-  border: 0;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  margin-bottom: 10px;
-}
-
-.ql-login-btn-primary {
-  background: #0d6efd;
-  color: #fff;
-}
-
-.ql-login-btn-secondary {
-  background: #e9ecef;
-  color: #212529;
+  color: #e74c3c;
+  font-size: 0.9rem;
 }
 
 .ql-login-meta {
@@ -74,8 +485,1216 @@ a {
   font-size: 0.9rem;
 }
 
-.ql-login-error {
-  margin-bottom: 12px;
-  color: #b42318;
-  font-size: 0.9rem;
+.bottom-account-message {
+  font-size: 90%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.ql-switch-form-button {
+  margin-top: 5px;
+}
+
+/* Admin login box */
+.ql-admin-login-box {
+  text-align: center;
+  color: #888;
+  box-shadow: 0 0 7px 0 rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.ql-admin-login-box .inputs-container {
+  padding: 10px;
+  padding-bottom: 20px;
+}
+
+.ql-admin-login-box .inputs-container .input-group {
+  margin-top: 10px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.ql-admin-login-box .inputs-container .input-group .form-control {
+  display: inline-block;
+  width: 48%;
+}
+
+.ql-admin-login-box .inputs-container .input-group .form-control:last-child {
+  float: right;
+}
+
+.ql-admin-login-box .bottom-account-message,
+.ql-admin-login-box .top-account-message {
+  font-size: 90%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+/* Outside header (pre-login branding) */
+.ql-outside-header {
+  width: 100%;
+  background: #676A6C;
+  padding: 5px;
+  margin-top: -50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 80%;
+}
+
+.ql-outside-header .ql-wordmark {
+  color: white;
+}
+
+.ql-wordmark {
+  text-decoration: none;
+  display: inline-block;
+  color: black;
+}
+
+.ql-wordmark h1 {
+  margin: 0;
+}
+
+/* ==========================================================================
+   7. List Items (common pattern from mixin)
+   ========================================================================== */
+
+.ql-list-item {
+  padding: 16px;
+  background: white;
+  font-size: 120%;
+  border-bottom: 1px solid #ddd;
+  position: relative;
+}
+
+.ql-list-item.click {
+  cursor: pointer;
+}
+
+.ql-list-item:hover {
+  background: #efefef;
+}
+
+.ql-list-item .title {
+  font-weight: bold;
+}
+
+.ql-list-item .details {
+  float: right;
+}
+
+.ql-list-item .btn-group.dropdown {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 25px;
+  cursor: pointer;
+}
+
+.ql-list-item .controls {
+  z-index: 10;
+}
+
+.ql-list-item .controls .dropdown-toggle {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  justify-content: center;
+  z-index: 10;
+}
+
+.ql-list-item .controls .dropdown-toggle:hover {
+  background: #ddd;
+}
+
+.ql-list-item .controls .dropdown-menu {
+  z-index: 20;
+}
+
+.list-item-selected {
+  font-weight: bold;
+}
+
+/* ==========================================================================
+   8. Course List
+   ========================================================================== */
+
+.ql-courselist {
+  margin-top: 20px;
+  list-style: none;
+  padding: 0;
+}
+
+.ql-courselist .ql-list-item:last-child {
+  border-bottom: none;
+}
+
+.ql-course-list-item {
+  padding: 16px;
+  background: white;
+  font-size: 120%;
+  border-bottom: 1px solid #ddd;
+  position: relative;
+  cursor: pointer;
+}
+
+.ql-course-list-item:hover {
+  background: #efefef;
+}
+
+.ql-course-code {
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.ql-course-name {
+  margin-left: 12px;
+}
+
+.ql-course-semester {
+  margin-left: 12px;
+  text-transform: uppercase;
+}
+
+.ql-enrollment-code {
+  text-transform: uppercase;
+  font-size: 130%;
+  font-weight: bold;
+}
+
+/* Student course component */
+.ql-student-course-component {
+  margin-bottom: 20px;
+}
+
+.ql-student-course-component .ql-course-list-item-inactive {
+  background: #e2e2e2;
+  border: none;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.ql-student-course-component .ql-course-list-item-inactive:hover {
+  background: #dcdcdc;
+}
+
+.ql-student-course-component .ql-course-list-item {
+  background: #30B0E7;
+  color: white;
+  border: none;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.ql-student-course-component .ql-course-list-item:hover {
+  background: #268DB9;
+}
+
+.ql-student-course-component .ql-session-list-item {
+  border: none;
+  position: relative;
+}
+
+.ql-student-course-component .ql-session-list-item .row {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+.ql-student-course-component .ql-session-list-item::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 0);
+  height: 1px;
+  width: 100%;
+  border-bottom: 1px solid #ddd;
+}
+
+.ql-student-course-component .ql-session-list-item:last-child::before {
+  border: none;
+}
+
+/* ==========================================================================
+   9. Session List
+   ========================================================================== */
+
+.ql-session-list-item {
+  padding: 16px;
+  background: white;
+  font-size: 120%;
+  border-bottom: 1px solid #ddd;
+  position: relative;
+  cursor: pointer;
+}
+
+.ql-session-list-item:hover {
+  background: #efefef;
+}
+
+.ql-session-list-item .row {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.ql-session-list-item .row > div {
+  display: flex;
+  align-items: baseline;
+  flex-direction: column;
+}
+
+.ql-session-list-item .row > div:first-child {
+  align-items: center;
+}
+
+.ql-session-name {
+  font-weight: bold;
+}
+
+.ql-session-list-item .active-time {
+  font-size: 90%;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.ql-session-list-item .tags {
+  display: inline-block;
+  font-size: 90%;
+}
+
+.ql-session-list-item .tags .ql-label {
+  margin-right: 4px;
+}
+
+.ql-session-list-item .completion {
+  font-size: 90%;
+}
+
+/* Session status badge */
+.ql-session-status {
+  color: white;
+  padding: 4px 12px;
+  border-radius: 2px;
+  min-width: 70px;
+  max-width: 100px;
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+  margin-left: 5px;
+  margin-right: 8px;
+}
+
+/* Status colours – ported palette */
+.ql-session-status.ql-hidden {
+  border: 1px solid #999;
+  color: #999;
+  background: transparent;
+}
+
+.ql-session-status.ql-visible {
+  border: 1px solid #3498db;
+  color: #3498db;
+  background: transparent;
+}
+
+.ql-session-status.ql-running {
+  border: 1px solid #27ae60;
+  color: #27ae60;
+  background: transparent;
+}
+
+.ql-session-status.ql-done {
+  border: 1px solid #e74c3c;
+  color: #e74c3c;
+  background: transparent;
+}
+
+.ql-session-status.ql-submitted {
+  border: 1px solid #f39c12;
+  color: #f39c12;
+  background: transparent;
+}
+
+/* ==========================================================================
+   10. Session list within .ql-session-list
+   ========================================================================== */
+
+.ql-session-list .ql-list-item:last-child {
+  border-bottom: none;
+}
+
+/* ==========================================================================
+   11. Modal
+   ========================================================================== */
+
+.ql-modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(30, 30, 30, 0.8);
+  overflow: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding-top: 50px;
+  z-index: 98;
+}
+
+.ql-modal {
+  background: white;
+  margin-top: auto;
+  top: -20px;
+  margin-bottom: auto;
+  position: relative;
+  z-index: 99;
+  width: 60%;
+  max-width: 700px;
+  border-radius: 3px;
+}
+
+.ql-modal .ql-modal-header {
+  margin-bottom: 8px;
+  text-align: center;
+  border-top-right-radius: 3px;
+  border-top-left-radius: 3px;
+}
+
+.ql-modal .ql-modal-header .ql-header-text {
+  margin: 0;
+  display: inline-block;
+}
+
+.ql-modal .ql-modal-header .ql-header-button {
+  margin-left: 10px;
+  margin-bottom: 2px;
+  display: inline-block;
+}
+
+.ql-modal .text {
+  font-size: 120%;
+  margin-bottom: 10px;
+}
+
+.ql-modal .ql-buttongroup {
+  margin-top: 20px;
+  width: 100%;
+  text-align: center;
+}
+
+.ql-modal .ql-buttongroup > * {
+  margin-left: 5px;
+  margin-right: 5px;
+}
+
+@media (max-width: 480px) {
+  .ql-modal-container .ql-modal {
+    width: 95%;
+  }
+}
+
+/* Create / Enroll course modals */
+.ql-modal-createcourse .uppercase {
+  text-transform: uppercase;
+}
+
+.ql-modal-enrollcourse input[type=text] {
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+   12. Profile Page
+   ========================================================================== */
+
+.ql-profile-page .ql-profile-card {
+  background: white;
+}
+
+.ql-profile-page .ql-profile-card .ql-profile-image-container {
+  position: relative;
+  width: 250px;
+  margin: auto;
+  margin-top: 10px;
+  margin-bottom: 20px;
+}
+
+.ql-profile-page .ql-profile-card .ql-profile-image-container .ql-profile-image {
+  width: 250px;
+  height: 250px;
+}
+
+.ql-profile-page .ql-profile-card .ql-profile-image-container .ql-image-upload-new-button {
+  position: absolute;
+  bottom: 45px;
+  height: 45px;
+  left: 0;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.1);
+  color: white;
+  padding: 10px;
+  font-size: 130%;
+  text-align: center;
+}
+
+.ql-profile-page .ql-profile-card .ql-profile-image-container .ql-image-upload-new-button:hover {
+  background: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+/* Profile card component */
+.ql-profile-card {
+  display: inline-block;
+  position: relative;
+}
+
+.ql-profile-card h3 {
+  margin-bottom: 0;
+}
+
+.ql-profile-card .ql-profile-name-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.ql-profile-card .ql-profile-name-container .ql-profile-name-little-button {
+  margin: auto;
+  padding: 5px;
+  color: #30B0E7;
+  cursor: pointer;
+}
+
+.ql-profile-card .ql-profile-name-container .ql-profile-name-little-button:hover {
+  color: #185A76;
+}
+
+.ql-profile-card .ql-profile-name-container .ql-profile-name {
+  font-size: 2em;
+}
+
+.ql-profile-card .ql-profile-sn-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.ql-profile-card .ql-profile-sn-container .ql-profile-sn-little-button {
+  margin: auto;
+  padding-left: 5px;
+  color: #30B0E7;
+  cursor: pointer;
+}
+
+.ql-profile-card .ql-profile-sn-container .ql-profile-sn-little-button:hover {
+  color: #185A76;
+}
+
+.ql-profile-card .ql-profile-sn-container .ql-profile-sn {
+  font-size: 1em;
+}
+
+.ql-profile-card .ql-profile-card-expanded {
+  display: none;
+  position: absolute;
+  top: 25px;
+  left: 0;
+  width: 200px;
+}
+
+.ql-profile-card .ql-profile-card-expanded.show {
+  display: inline-block;
+}
+
+/* Profile image */
+.ql-profile-image {
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  display: inline-block;
+}
+
+/* Profile image drop area */
+.ql-profile-image-droparea.dropzone {
+  margin-bottom: 10px;
+  border-radius: 4px;
+  border: 2px dashed rgba(0, 0, 0, 0.3);
+  background: transparent;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   13. Dashboard Pages
+   ========================================================================== */
+
+/* Student */
+.ql-student-page {
+  padding-top: 10px;
+}
+
+.ql-student-page .form-flex {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+}
+
+.ql-student-page .ql-courselist {
+  margin-top: 20px;
+}
+
+/* Professor */
+.ql-professor-page .ql-courselist {
+  list-style: none;
+  margin-top: 20px;
+}
+
+.ql-professor-page .ql-courselist .ql-list-item:last-child {
+  border-bottom: none;
+}
+
+/* Admin */
+.ql-admin-page {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+}
+
+.ql-admin-settings {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.ql-admin-tab {
+  padding-left: 10px;
+}
+
+.ql-admin-tab .ql-admin-tab-col {
+  min-width: 400px;
+}
+
+.ql-admin-tab .btn {
+  margin: 5px;
+}
+
+.ql-admin-tab .ql-card-content > div {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.ql-admin-tab .ql-card-content .Select-input {
+  min-width: 200px;
+}
+
+/* ==========================================================================
+   14. Admin Toolbar
+   ========================================================================== */
+
+.ql-admin-toolbar {
+  height: 80px;
+  font-size: 1.5em;
+  background: #F8F8F8;
+  padding: 4px;
+  padding-left: 8px;
+  border-bottom: 2px solid #ccc;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+}
+
+.ql-admin-toolbar .divider {
+  border-left: 1px solid #d7d7d7;
+  width: 0;
+  margin-left: 8px;
+  margin-right: 8px;
+}
+
+.ql-admin-toolbar .button {
+  padding: 8px 12px;
+  display: inline-block;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 2px;
+  color: #212121;
+  text-decoration: none;
+}
+
+.ql-admin-toolbar .button:hover {
+  background: #d7d7d7;
+  color: #212121;
+  text-decoration: none;
+}
+
+.ql-admin-toolbar .title {
+  font-weight: bold;
+  font-size: 120%;
+  padding-left: 10px;
+  padding-right: 8px;
+}
+
+/* Admin user table */
+.ql-admin-user-table-container .ql-admin-user-search {
+  display: flex;
+}
+
+.ql-admin-user-table-container .ql-admin-user-search .select-container {
+  min-width: 250px;
+}
+
+.ql-admin-user-table-container .ql-admin-user-search input {
+  min-width: 250px;
+}
+
+.ql-admin-user-table-container .ql-admin-user-table {
+  max-height: 800px;
+  overflow-y: auto;
+}
+
+/* Admin form box */
+.ql-admin-form-box {
+  text-align: center;
+  color: #888;
+  box-shadow: 0 0 7px 0 rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+.ql-admin-form-box .certificate {
+  padding: 10px;
+  margin-bottom: 20px;
+  min-height: 300px;
+}
+
+.ql-admin-form-box .inputs-container {
+  padding: 10px;
+  padding-bottom: 20px;
+}
+
+.ql-admin-form-box .inputs-container .input-group {
+  margin-top: 10px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.ql-admin-form-box .inputs-container .input-group .form-control {
+  display: inline-block;
+  width: 48%;
+}
+
+.ql-admin-form-box .inputs-container .input-group .form-control:last-child {
+  float: right;
+}
+
+.ql-admin-form-box .bottom-account-message,
+.ql-admin-form-box .top-account-message {
+  font-size: 90%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+/* ==========================================================================
+   15. Labels & Badges
+   ========================================================================== */
+
+.ql-label {
+  background: transparent;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-weight: normal;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.ql-label.ql-label-info {
+  border: 1px solid #30B0E7;
+  color: #30B0E7;
+}
+
+.ql-label.ql-label-correct {
+  border: 1px solid #5ACE5F;
+  color: #5ACE5F;
+}
+
+.ql-label.ql-label-incorrect {
+  border: 1px solid #F74E4E;
+  color: #F74E4E;
+}
+
+.presentation-badge {
+  display: inline-block;
+  text-align: center;
+  border-radius: 5px;
+  padding: 3px 0;
+  width: 65px;
+  color: #fff;
+}
+
+.active-badge {
+  background-color: #30B0E7;
+}
+
+.inactive-badge {
+  background-color: #989898;
+}
+
+/* ==========================================================================
+   16. Progress Bar
+   ========================================================================== */
+
+.ql-progress {
+  height: 10px;
+  border-radius: 2px;
+  width: 100%;
+  position: relative;
+  background: #ddd;
+}
+
+.ql-progress .ql-progress-bar {
+  border-radius: 2px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: #30B0E7;
+  height: 10px;
+}
+
+/* ==========================================================================
+   17. Course Details
+   ========================================================================== */
+
+.ql-course h3 {
+  margin-top: 10px;
+}
+
+.ql-course .ql-course-details .ql-course-code {
+  font-weight: bold;
+}
+
+.ql-course .ql-course-sessions .ql-session-list {
+  border: 1px solid black;
+}
+
+/* Manage course */
+.ql-manage-course .ql-card {
+  margin-top: 0;
+}
+
+.ql-manage-course .ql-course-details .ql-course-code {
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.ql-manage-course .ql-course-details .ql-enrollment-code {
+  font-size: 130%;
+  font-weight: bold;
+}
+
+.ql-manage-course .session-button-group,
+.ql-manage-course .details-button-group {
+  margin-bottom: 10px;
+}
+
+.ql-manage-course .ql-course-classlist-container .ql-course-classlist-search input {
+  width: 100%;
+}
+
+.ql-manage-course .ql-course-classlist-container .ql-course-classlist {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ql-manage-course .ql-course-classlist-container .ql-course-classlist .ql-student-list-item {
+  border: 0;
+  border-top: 1px solid #ddd;
+}
+
+.ql-manage-course .ql-session-list .ql-list-item:last-child {
+  border-bottom: none;
+}
+
+.ql-manage-course .submit-question-button {
+  margin: 10px 0;
+}
+
+.ql-manage-course .show-more-item {
+  text-decoration: none;
+}
+
+.ql-manage-course .show-more-item > div.ql-list-item {
+  text-align: center;
+  border-top: 1px solid #ccc;
+  border-bottom: none;
+}
+
+/* ==========================================================================
+   18. Student List Item
+   ========================================================================== */
+
+.ql-student-list-item {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.ql-student-list-item .ql-profile-image {
+  width: 35px;
+  height: 35px;
+}
+
+.ql-student-list-item .student-details {
+  margin-left: 14px;
+  display: inline-block;
+}
+
+.ql-student-list-item .student-details:hover {
+  cursor: pointer;
+}
+
+.ql-student-list-item .student-details .student-name {
+  font-weight: bold;
+  display: block;
+}
+
+.ql-student-list-item .student-details .student-email {
+  display: block;
+}
+
+/* ==========================================================================
+   19. Page Container & Child Container
+   ========================================================================== */
+
+.page {
+  padding-top: 20px;
+}
+
+.ql-child-container > .container {
+  padding-top: 20px;
+}
+
+.ql-page-container .ql-top-bar {
+  background: #eee;
+}
+
+.ql-page-container .ql-top-bar .ql-button-bar {
+  float: right;
+  text-decoration: none;
+  width: 50%;
+}
+
+.ql-page-container .ql-top-bar .ql-button-bar a {
+  display: inline-block;
+  margin-left: 5px;
+  margin-right: 5px;
+  text-decoration: none;
+  color: black;
+}
+
+.ql-page-container .ql-top-bar .ql-button-bar a:hover {
+  font-weight: bold;
+}
+
+/* ==========================================================================
+   20. Navbar (from bootstrap-style)
+   ========================================================================== */
+
+.navbar-toggle {
+  border: none;
+  z-index: 10;
+}
+
+.dropdown-backdrop {
+  position: static;
+}
+
+.nav-profile {
+  width: 35px;
+  height: 35px;
+  margin-right: 10px;
+}
+
+/* ==========================================================================
+   21. Content Sections
+   ========================================================================== */
+
+.content-section {
+  background-color: #fff;
+  box-shadow: 0 0 7px rgba(201, 201, 201, 0.30);
+  padding: 30px;
+  margin: 5px 30px 60px 30px;
+}
+
+.content-section-title {
+  margin: 60px 30px 0 30px;
+  font-size: 25px;
+  padding: 10px 15px;
+}
+
+.flexbox-section {
+  display: flex;
+}
+
+/* ==========================================================================
+   22. Loading Spinner
+   ========================================================================== */
+
+.ql-subs-loading {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+  font-size: 140%;
+  padding: 40px;
+  text-align: center;
+}
+
+@keyframes colorPulse {
+  0%   { background-color: rgba(150, 150, 150, 0.8); }
+  100% { background-color: rgba(30, 30, 30, 0.8); }
+}
+
+@keyframes fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+#page-loading-spinner {
+  animation: colorPulse 1s infinite alternate, fadein 1s;
+  position: fixed;
+  top: 80px;
+  left: 48%;
+  width: 100px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 20px;
+  background: rgba(100, 100, 100, 0.6);
+  color: white;
+  font-size: 120%;
+  font-weight: bold;
+  box-shadow: 4px 4px 34px -8px rgba(0, 0, 0, 0.46);
+  z-index: 99;
+}
+
+/* Blinking animation */
+.ql-blinking {
+  animation: blinkingContent 1.5s cubic-bezier(0.36, 0.38, 0.62, 0.6) infinite;
+  color: #30B0E7;
+}
+
+@keyframes blinkingContent {
+  0%   { background-color: #E4F4FC; }
+  50%  { opacity: 0.6; }
+  100% { background-color: #E4F4FC; }
+}
+
+.ql-back-light-green {
+  background-color: #cbeab4;
+}
+
+/* ==========================================================================
+   23. Misc Utilities
+   ========================================================================== */
+
+.ql-header-text-input {
+  font-size: 2em;
+  border: none;
+}
+
+.ql-label-input-horiz {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.ql-label-input-horiz * {
+  padding-right: 10px;
+}
+
+.ql-label-input-horiz .ql-label-input-horiz-number {
+  min-width: 100px;
+}
+
+.ql-answer-distribution {
+  display: inline-block;
+  float: left;
+  background: white;
+  border: 1px solid #ccc;
+}
+
+select.ql-unstyled-select {
+  border-radius: 2px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: transparent;
+  height: 34px;
+}
+
+/* ==========================================================================
+   24. Session Display
+   ========================================================================== */
+
+.ql-session-display {
+  margin-top: 5px;
+}
+
+.ql-session-display-histogram {
+  margin: auto;
+  width: 300px;
+}
+
+.ql-session-display-mobile {
+  margin-bottom: 10px;
+}
+
+.ql-session-display-mobile .ql-session-display-mobile-infobar {
+  padding: 5px;
+  font-size: 120%;
+}
+
+.ql-session-display-mobile .ql-session-display-mobile-buttons {
+  padding: 5px;
+}
+
+.ql-session-display-mobile .ql-session-display-mobile-buttons .btn-group .btn {
+  height: 40px;
+}
+
+/* ==========================================================================
+   25. Manage Session (toolbar)
+   ========================================================================== */
+
+.ql-manage-session .ql-session-toolbar {
+  width: 100%;
+  top: 50px;
+  left: 0;
+  position: sticky;
+  margin-top: 1px;
+  background: #F8F8F8;
+  padding: 4px 4px 4px 8px;
+  border-bottom: 2px solid #ccc;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  z-index: 9;
+}
+
+.ql-manage-session .ql-session-toolbar .divider {
+  border-left: 1px solid #d7d7d7;
+  width: 0;
+  margin-left: 8px;
+  margin-right: 8px;
+}
+
+.ql-manage-session .ql-session-toolbar .toolbar-button {
+  padding: 8px 12px;
+  display: inline-block;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 2px;
+  color: #212121;
+}
+
+.ql-manage-session .ql-session-toolbar .toolbar-button:hover {
+  background: #d7d7d7;
+  color: #212121;
+  text-decoration: none;
+}
+
+.ql-manage-session .ql-session-toolbar .session-title {
+  font-weight: bold;
+  font-size: 120%;
+  padding-left: 10px;
+  padding-right: 8px;
+}
+
+.ql-manage-session .ql-session-toolbar .status-select {
+  width: 120px;
+  display: inline-block;
+}
+
+.ql-manage-session .ql-session-toolbar-container {
+  position: sticky;
+  top: 50px;
+  z-index: 9;
+}
+
+.ql-manage-session .ql-session-toolbar-container > .ql-session-toolbar {
+  position: unset;
+}
+
+/* Session child container */
+.ql-manage-session .ql-session-child-container {
+  background: white;
+  border: 1px solid #ddd;
+  padding: 18px;
+  width: 100%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.ql-manage-session .ql-session-child-container:first-child {
+  margin-top: 0;
+}
+
+.ql-manage-session .ql-session-child-container .ql-header-text-input {
+  width: 100%;
+}
+
+.ql-manage-session .ql-session-child-container.new-question-item {
+  text-align: center;
+  cursor: pointer;
+  font-size: 140%;
+  border: 1px dashed #ccc;
+  background: transparent;
+}
+
+.ql-manage-session .ql-session-child-container.new-question-item:hover {
+  border-color: #30B0E7;
+  color: #30B0E7;
+}
+
+/* ==========================================================================
+   26. Responsive Overrides
+   ========================================================================== */
+
+@media (max-width: 480px) {
+  .ql-child-container > .container.ql-session-display {
+    padding-top: 0;
+  }
+
+  .ql-student-course-component .ql-session-list-item .row {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .ql-manage-session .ql-session-toolbar {
+    top: 50px;
+  }
+
+  .ql-manage-session .ql-row-container .ql-sidebar-container {
+    display: none;
+  }
+
+  .ql-manage-session .ql-row-container .ql-main-content {
+    margin-left: 0;
+  }
+
+  .ql-manage-session .ql-session-toolbar-container {
+    top: 50px;
+  }
 }
