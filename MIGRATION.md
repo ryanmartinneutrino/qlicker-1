@@ -291,13 +291,14 @@ docker compose up -d
 npm run test:migration-smoke
 ```
 
-If smoke fails, fix baseline on `master` first before opening new agent branches.
+If smoke fails, fix baseline on `master` first before opening new agent branches. The smoke script now fails fast with a clear preflight error if the Express server is not reachable.
 
 ### Current Migration State (for resuming work)
 - Enrollment and auth compatibility work has been migrated to Express routes and React pages:
   - Student enrollment by code (including code normalization and profile course linkage)
   - Forgot/reset password API routes
   - Enroll course modal parity in student dashboard
+- Grade read visibility for students now matches Meteor publications (`visibleToStudents` enforced for student grade reads).
 - Editor hardening started:
   - Expanded toolbar capabilities
   - Safer link handling

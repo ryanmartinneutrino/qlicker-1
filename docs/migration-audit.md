@@ -14,9 +14,11 @@
 - Collection names are unchanged and map 1:1 with Meteor collections.
 - New inserts in auth/courses/sessions/questions/responses/images/settings routes generate string `_id` values via `generateStringId`.
 - Password hashes remain compatible via `services.password.bcrypt`.
+- Grade visibility now mirrors Meteor publications for student reads (`visibleToStudents: true` required on student grade queries).
 
 ## Remaining risk areas (pre-cutover)
 - Advanced question/session components (`QuestionDisplay`, `QuestionEditItem`, rich text editor) still simplified relative to Meteor behavior.
 - Image upload storage backends (S3/Azure) still stubbed.
 - Video/Jitsi and quiz-extension behavior still require end-to-end parity validation.
 - Full integration test pass against a live Mongo replica-set + seeded users required before cutover.
+- `npm run test:migration-smoke` currently depends on a running server + seeded DB. It now fails fast with a clear preflight message when the server is unreachable.
