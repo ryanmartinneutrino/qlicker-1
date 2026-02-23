@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import { getSettings } from '../collections/settings'
 import { requireAuth, requireAdmin } from '../auth/middleware'
 import { settingsSchema } from '@qlicker/shared'
@@ -31,7 +32,7 @@ router.put('/', requireAuth, requireAdmin, async (req, res, next) => {
     const col = getSettings()
     const existing = await col.findOne({})
     if (!existing) {
-      await col.insertOne({ ...parsed.data } as Parameters<typeof col.insertOne>[0])
+      await col.insertOne({ _id: generateStringId('settings'), ...parsed.data } as Parameters<typeof col.insertOne>[0])
     } else {
       await col.updateOne(
         { _id: existing._id } as Parameters<typeof col.updateOne>[0],

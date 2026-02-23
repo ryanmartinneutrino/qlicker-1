@@ -41,6 +41,24 @@ meteor
 To run tests locally
 `npm run test:unit-watch` or `npm run test:app-watch`
 
+
+## New Framework Migration (React + Express)
+
+For the migrated stack (`docker-compose.yml` + `Dockerfile.new`):
+
+```bash
+docker compose up -d mongo1 mongo-init
+./seed-mock-db.sh
+```
+
+Seeded users:
+- `prof@gmail.com`
+- `student1@gmail.com`
+- `student2@gmail.com`
+- `admin@gmail.com`
+
+All seeded users use password `12345678`.
+
 ## Development and Contributing
 
 This application is built using the meteor web framework. Meteor is a node.js web framework that allows for tight integrator of server and client side javascript. It integrates with mongodb to provide seamless data model integration using pub-sub to automatically render changes on the client side. React was chosen over blaze and angular as the frontend user interface library. 

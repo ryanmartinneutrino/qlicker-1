@@ -4,6 +4,7 @@ import type { Course as CourseType, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { SessionListItem } from '../components/SessionListItem'
+import { CreateSessionModal } from '../components/modals/CreateSessionModal'
 
 export default function Course() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -14,6 +15,7 @@ export default function Course() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [creatingSessionType, setCreatingSessionType] = useState<'interactive' | 'quiz' | null>(null)
 
   useEffect(() => {
     if (!courseId) return
@@ -72,20 +74,7 @@ export default function Course() {
           </div>
 
           <h2>Interactive Sessions</h2>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              apiClient
-                .post<Session>('/sessions', { courseId, name: 'New Session', quiz: false })
-                .then((s) => {
-                  setSessions((prev) => [...prev, s])
-                  navigate(`/course/${courseId}/session/edit/${s._id}`)
-                })
-                .catch((err) => setError((err as Error).message))
-            }}
-          >
-            Create Session
-          </button>
+          <button className="btn btn-primary" onClick={() => setCreatingSessionType('interactive')}>Create Session</button>
           {interactiveSessions.map((s) => (
             <SessionListItem
               key={s._id}
@@ -102,20 +91,7 @@ export default function Course() {
           ))}
 
           <h2>Quizzes</h2>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              apiClient
-                .post<Session>('/sessions', { courseId, name: 'New Quiz', quiz: true })
-                .then((s) => {
-                  setSessions((prev) => [...prev, s])
-                  navigate(`/course/${courseId}/session/edit/${s._id}`)
-                })
-                .catch((err) => setError((err as Error).message))
-            }}
-          >
-            Create Quiz
-          </button>
+          <button className="btn btn-primary" onClick={() => setCreatingSessionType('quiz')}>Create Quiz</button>
           {quizSessions.map((s) => (
             <SessionListItem
               key={s._id}
@@ -130,6 +106,19 @@ export default function Course() {
               ]}
             />
           ))}
+
+
+          {creatingSessionType && (
+            <CreateSessionModal
+              courseId={courseId!}
+              done={() => setCreatingSessionType(null)}
+              onCreated={(created) => {
+                const normalized = creatingSessionType === 'quiz' ? { ...created, quiz: true } : { ...created, quiz: false }
+                setSessions((prev) => [...prev, normalized])
+                navigate(`/course/${courseId}/session/edit/${created._id}`)
+              }}
+            />
+          )}
         </div>
       ) : (
         <div className="container">

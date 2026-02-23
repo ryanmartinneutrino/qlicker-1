@@ -30,6 +30,10 @@ Each component in `imports/ui/` needs to be migrated following these steps:
 | `ProfileCard.jsx` | `components/ProfileCard.tsx` |
 | `QuizSession.jsx` | `components/QuizSession.tsx` |
 | All modals (`imports/ui/modals/`) | `components/modals/` |
+| `modals/CreateSessionModal.jsx` | `components/modals/CreateSessionModal.tsx` |
+| `modals/CreateQuestionModal.jsx` | `components/modals/CreateQuestionModal.tsx` |
+| `modals/ChangeEmailModal.jsx` | `components/modals/ChangeEmailModal.tsx` |
+| `modals/ChangePasswordModal.jsx` | `components/modals/ChangePasswordModal.tsx` |
 
 ## Key Pattern Changes
 
@@ -54,3 +58,4 @@ function MyComponent({ sessionId }: { sessionId: string }) {
   // ...
 }
 ```
+

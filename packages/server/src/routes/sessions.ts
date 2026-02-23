@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import { getSessions } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
 import { requireAuth, requireInstructor } from '../auth/middleware'
@@ -42,16 +43,17 @@ router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const sessions = getSessions()
-    const doc = { ...parsed.data, createdAt: new Date() }
-    const result = await sessions.insertOne(doc as Parameters<typeof sessions.insertOne>[0])
-    const created = await sessions.findOne({ _id: result.insertedId } as Parameters<typeof sessions.findOne>[0])
+    const doc = {
+      _id: generateStringId('session'), ...parsed.data, createdAt: new Date() }
+    await sessions.insertOne(doc as Parameters<typeof sessions.insertOne>[0])
+    const created = await sessions.findOne({ _id: doc._id } as Parameters<typeof sessions.findOne>[0])
 
     // Add session to course
     if (parsed.data.courseId) {
       const courses = getCourses()
       await courses.updateOne(
         { _id: parsed.data.courseId } as Parameters<typeof courses.updateOne>[0],
-        { $addToSet: { sessions: result.insertedId.toString() } }
+        { $addToSet: { sessions: doc._id } }
       )
     }
 

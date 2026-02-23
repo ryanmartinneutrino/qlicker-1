@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import passport from 'passport'
 import bcrypt from 'bcrypt'
 import { getUsers } from '../collections/users'
@@ -77,7 +78,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
     }
 
     const hash = await bcrypt.hash(password, 10)
-    const newUser: Omit<User, '_id'> = {
+    const newUser: User = {
+      _id: generateStringId('user'),
       emails: [{ address: email, verified: false }],
       profile: {
         firstname,
@@ -88,8 +90,8 @@ router.post('/register', authLimiter, async (req, res, next) => {
       createdAt: new Date(),
     }
 
-    const result = await users.insertOne(newUser as User)
-    const created = await users.findOne({ _id: result.insertedId.toString() } as Parameters<typeof users.findOne>[0])
+    await users.insertOne(newUser as User)
+    const created = await users.findOne({ _id: newUser._id } as Parameters<typeof users.findOne>[0])
     if (!created) return res.status(500).json({ error: 'User creation failed.' })
 
     req.logIn(created, (err) => {

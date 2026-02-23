@@ -1698,3 +1698,18 @@ select.ql-unstyled-select {
     top: 50px;
   }
 }
+
+.ql-admin-courses-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e5e5e5;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fff;
+}
+
+.ql-admin-course-checkbox {
+  display: block;
+  font-weight: 400;
+  margin-bottom: 6px;
+}

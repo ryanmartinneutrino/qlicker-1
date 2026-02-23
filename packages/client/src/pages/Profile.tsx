@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiClient } from '../api/client'
+import { ChangeEmailModal } from '../components/modals/ChangeEmailModal'
+import { ChangePasswordModal } from '../components/modals/ChangePasswordModal'
 
 export default function Profile() {
   const { user, loading } = useAuth()
@@ -13,10 +15,10 @@ export default function Profile() {
   const [studentNumber, setStudentNumber] = useState('')
 
   const [showResendLink, setShowResendLink] = useState(true)
+  const [changingEmail, setChangingEmail] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
 
-  if (loading || !user) {
-    return <div className="ql-subs-loading">Loading…</div>
-  }
+  if (loading || !user) return <div className="ql-subs-loading">Loading…</div>
 
   const email = user.emails?.[0]?.address ?? ''
   const emailVerified = user.emails?.[0]?.verified ?? false
@@ -38,7 +40,6 @@ export default function Profile() {
         firstname: firstName,
         lastname: lastName,
       })
-      // Reload to reflect changes
       window.location.reload()
     } catch (err) {
       alert('Error: ' + (err instanceof Error ? err.message : 'Could not save name'))
@@ -70,28 +71,6 @@ export default function Profile() {
     }
   }
 
-  const handleChangeEmail = async () => {
-    const newEmail = window.prompt('Enter new email address:')
-    if (!newEmail) return
-    try {
-      await apiClient.put(`/users/${user._id}/profile`, { email: newEmail })
-      window.location.reload()
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Could not change email'))
-    }
-  }
-
-  const handleChangePassword = async () => {
-    const newPassword = window.prompt('Enter new password:')
-    if (!newPassword) return
-    try {
-      await apiClient.put(`/users/${user._id}/password`, { password: newPassword })
-      alert('Password updated')
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Could not change password'))
-    }
-  }
-
   const spanVerified = emailVerified
     ? <span className="label label-success">Verified</span>
     : <span className="label label-warning">Un-verified</span>
@@ -118,7 +97,6 @@ export default function Profile() {
             </div>
 
             <div className="ql-card-content">
-              {/* Profile image placeholder */}
               <div className="ql-profile-image-container">
                 <div
                   className="ql-profile-image"
@@ -128,20 +106,18 @@ export default function Profile() {
                 </div>
               </div>
 
-              {/* Change email / password buttons */}
               {!isSSOSession && (
                 <div className="btn-group btn-group-justified" role="group">
-                  <a href="#" className="btn btn-default" onClick={(e) => { e.preventDefault(); handleChangeEmail() }}>
+                  <a href="#" className="btn btn-default" onClick={(e) => { e.preventDefault(); setChangingEmail(true) }}>
                     Change Email
                   </a>
-                  <a href="#" className="btn btn-default" onClick={(e) => { e.preventDefault(); handleChangePassword() }}>
+                  <a href="#" className="btn btn-default" onClick={(e) => { e.preventDefault(); setChangingPassword(true) }}>
                     Change Password
                   </a>
                 </div>
               )}
               <br />
 
-              {/* Name editing */}
               <div>
                 {changingName ? (
                   <div className="ql-profile-name-container">
@@ -160,7 +136,6 @@ export default function Profile() {
                 )}
               </div>
 
-              {/* Student number editing */}
               <div>
                 {changingSN ? (
                   <div className="ql-profile-sn-container">
@@ -178,7 +153,6 @@ export default function Profile() {
                 )}
               </div>
 
-              {/* Email and role display */}
               <div className="ql-profile-container">
                 Email: {email} - {spanVerified}<br />
                 Role: {user.profile.roles[0]}
@@ -188,6 +162,20 @@ export default function Profile() {
         </div>
         <div className="col-md-4" />
       </div>
+
+      {changingEmail && (
+        <ChangeEmailModal
+          userId={user._id!}
+          oldEmail={email}
+          done={() => setChangingEmail(false)}
+        />
+      )}
+      {changingPassword && (
+        <ChangePasswordModal
+          userId={user._id!}
+          done={() => setChangingPassword(false)}
+        />
+      )}
     </div>
   )
 }
