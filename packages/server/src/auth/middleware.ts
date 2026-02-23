@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express'
 import { getCourses } from '../collections/courses'
+import { getSessions } from '../collections/sessions'
+import { getGrades } from '../collections/grades'
 import type { User } from '@qlicker/shared'
 import { UserRole } from '@qlicker/shared'
 
@@ -48,7 +50,6 @@ export async function requireInstructor(
   next: NextFunction
 ): Promise<void> {
   const user = req.user as User | undefined
-  const courseId = req.params.courseId || req.body.courseId
 
   if (!user) {
     res.status(401).json({ error: 'Authentication required.' })
@@ -60,12 +61,26 @@ export async function requireInstructor(
     return
   }
 
-  if (!courseId) {
-    res.status(400).json({ error: 'courseId required.' })
-    return
-  }
-
   try {
+    let courseId = req.params.courseId || req.body?.courseId
+    if (!courseId && req.params.sessionId) {
+      const session = await getSessions().findOne(
+        { _id: req.params.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0]
+      )
+      courseId = session?.courseId
+    }
+    if (!courseId && req.params.gradeId) {
+      const grade = await getGrades().findOne(
+        { _id: req.params.gradeId } as Parameters<ReturnType<typeof getGrades>['findOne']>[0]
+      )
+      courseId = grade?.courseId
+    }
+
+    if (!courseId) {
+      res.status(400).json({ error: 'courseId required.' })
+      return
+    }
+
     const courses = getCourses()
     const course = await courses.findOne({ _id: courseId } as Parameters<typeof courses.findOne>[0])
     if (!course) {
