@@ -38,7 +38,7 @@ router.get('/:questionId', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
-    const parsed = questionSchema.omit({ _id: true, createdAt: true }).safeParse(req.body)
+    const parsed = questionSchema.omit({ _id: true, createdAt: true, creator: true }).safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const questions = getQuestions()
