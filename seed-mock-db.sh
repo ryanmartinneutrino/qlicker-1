@@ -34,7 +34,12 @@ async function main() {
   const db = client.db()
 
   const users = db.collection('users')
-  const courses = db.collection('courses')
+const courses = db.collection('courses')
+const sessions = db.collection('sessions')
+const questions = db.collection('questions')
+const responses = db.collection('responses')
+const grades = db.collection('grades')
+const settings = db.collection('settings')
 
   const passwordHash = await bcrypt.hash('12345678', 10)
 
@@ -117,7 +122,203 @@ async function main() {
     await users.updateOne({ _id: uid }, { $addToSet: { 'profile.courses': courseId } })
   }
 
-  console.log('Done. Seeded users and Migration Test Course with enrollment code MIGRATE123')
+  const sessionIds = {
+    interactive: makeId('session'),
+    quiz: makeId('session'),
+  }
+  const questionIds = {
+    q1: makeId('question'),
+    q2: makeId('question'),
+    q3: makeId('question'),
+  }
+
+  await sessions.deleteMany({ courseId })
+  await questions.deleteMany({ courseId })
+  await responses.deleteMany({ questionId: { $in: Object.values(questionIds) } })
+  await grades.deleteMany({ courseId })
+
+  await sessions.insertMany([
+    {
+      _id: sessionIds.interactive,
+      name: 'Interactive Demo Session',
+      description: 'Realtime session for migration smoke tests',
+      courseId,
+      status: 'running',
+      quiz: false,
+      createdAt: new Date(),
+      questions: [questionIds.q1, questionIds.q2],
+      currentQuestion: questionIds.q1,
+      joined: studentIds,
+    },
+    {
+      _id: sessionIds.quiz,
+      name: 'Quiz Demo Session',
+      description: 'Quiz lifecycle + extension smoke test',
+      courseId,
+      status: 'visible',
+      quiz: true,
+      quizStart: new Date(Date.now() - 30 * 60 * 1000),
+      quizEnd: new Date(Date.now() + 30 * 60 * 1000),
+      quizExtensions: [{ userId: studentIds[0], quizEnd: new Date(Date.now() + 90 * 60 * 1000) }],
+      createdAt: new Date(),
+      questions: [questionIds.q3],
+      submittedQuiz: [],
+    },
+  ])
+
+  await courses.updateOne(
+    { _id: courseId },
+    { $set: { sessions: [sessionIds.interactive, sessionIds.quiz] } }
+  )
+
+  await questions.insertMany([
+    {
+      _id: questionIds.q1,
+      plainText: 'What is 2 + 2?',
+      type: 0,
+      content: 'What is 2 + 2?',
+      options: [
+        { plainText: '3', answer: '3', correct: false },
+        { plainText: '4', answer: '4', correct: true },
+      ],
+      creator: profId,
+      owner: profId,
+      sessionId: sessionIds.interactive,
+      courseId,
+      public: false,
+      approved: true,
+      createdAt: new Date(),
+      tags: [],
+      sessionOptions: {
+        hidden: false,
+        stats: true,
+        correct: true,
+        points: 1,
+        maxAttempts: 1,
+        attemptWeights: [1],
+        attempts: [{ number: 1, closed: false }],
+      },
+      solution: '4',
+      solution_plainText: '4',
+    },
+    {
+      _id: questionIds.q2,
+      plainText: 'Name one JavaScript runtime',
+      type: 3,
+      content: 'Name one JavaScript runtime',
+      options: [],
+      creator: profId,
+      owner: profId,
+      sessionId: sessionIds.interactive,
+      courseId,
+      public: false,
+      approved: true,
+      createdAt: new Date(),
+      tags: [],
+      solution: 'Node.js',
+      solution_plainText: 'Node.js',
+    },
+    {
+      _id: questionIds.q3,
+      plainText: 'The Earth is round.',
+      type: 2,
+      content: 'The Earth is round.',
+      options: [
+        { plainText: 'True', answer: 'True', correct: true },
+        { plainText: 'False', answer: 'False', correct: false },
+      ],
+      creator: profId,
+      owner: profId,
+      sessionId: sessionIds.quiz,
+      courseId,
+      public: false,
+      approved: true,
+      createdAt: new Date(),
+      tags: [],
+      solution: 'True',
+      solution_plainText: 'True',
+    },
+  ])
+
+  await responses.insertMany([
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q1,
+      studentUserId: studentIds[0],
+      answer: '4',
+      correct: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q1,
+      studentUserId: studentIds[1],
+      answer: '3',
+      correct: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q2,
+      studentUserId: studentIds[0],
+      answer: 'Node.js',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ])
+
+  await grades.insertMany([
+    {
+      _id: makeId('grade'),
+      userId: studentIds[0],
+      courseId,
+      sessionId: sessionIds.interactive,
+      name: 'Interactive Demo Session',
+      marks: [{ questionId: questionIds.q1, points: 1, outOf: 1, automatic: true }],
+      points: 1,
+      outOf: 1,
+      visibleToStudents: true,
+    },
+    {
+      _id: makeId('grade'),
+      userId: studentIds[1],
+      courseId,
+      sessionId: sessionIds.interactive,
+      name: 'Interactive Demo Session',
+      marks: [{ questionId: questionIds.q1, points: 0, outOf: 1, automatic: true }],
+      points: 0,
+      outOf: 1,
+      visibleToStudents: true,
+    },
+  ])
+
+  const existingSettings = await settings.findOne({})
+  const settingsDoc = {
+    restrictDomain: false,
+    allowedDomains: [],
+    maxImageSize: 10,
+    maxImageWidth: 1200,
+    email: 'admin@qlicker.local',
+    requireVerified: false,
+    storageType: 'Local',
+    Jitsi_Enabled: true,
+    Jitsi_Domain: 'meet.jit.si',
+    Jitsi_EnabledCourses: [courseId],
+    Jitsi_WhiteboardDomain: '',
+    Jitsi_EtherpadDomain: '',
+  }
+  if (existingSettings) {
+    await settings.updateOne({ _id: existingSettings._id }, { $set: settingsDoc })
+  } else {
+    await settings.insertOne({ _id: makeId('settings'), ...settingsDoc })
+  }
+
+  console.log('Done. Seeded users, course, sessions, questions, responses, grades, and settings for migration parity checks.')
   await client.close()
 }
 

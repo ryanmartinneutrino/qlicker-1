@@ -222,7 +222,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] Session status management (hidden/visible/running/done)
 - [x] Quiz mode
 - [x] Quiz submission
-- [ ] Quiz extensions (TODO)
+- [x] Quiz extensions (session-level extension rows editable in `ManageSession`)
 
 ### Questions
 - [x] Create/edit/delete questions
@@ -248,10 +248,10 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] Grade change streams
 
 ### File uploads
-- [x] Multer integration (stub)
-- [ ] S3 upload (TODO: wire up `@aws-sdk/client-s3`)
-- [ ] Azure Blob upload (TODO: wire up `@azure/storage-blob`)
-- [ ] Profile image upload UI (TODO: port DragAndDropArea)
+- [x] Multer integration
+- [x] S3 upload adapter (`@aws-sdk/client-s3`)
+- [x] Azure Blob upload adapter (`@azure/storage-blob`)
+- [x] Profile image upload UI wired to `/api/images` and `users.profile.profileImage`
 
 ### Admin
 - [x] User management (list, role change, delete)
@@ -271,15 +271,11 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
 1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
-2. **Advanced components**: Port `QuestionDisplay`, `QuestionEditItem`, `ResponseDisplay`, `ResponseList`, `GradeView`, `CleanTable`, `CleanGradeTable`, `Histogram`, `AnswerDistribution`
-3. **Profile image upload**: Port `DragAndDropArea` and image upload/resize logic
-4. **Quiz extensions**: Port quiz extension logic and `QuizExtensionsModal`
-5. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor)
-6. **Video chat**: Port `VideoChat` and `JitsiWindow` components
-7. **Content sanitization**: Add DOMPurify for `dangerouslySetInnerHTML` in question content rendering
-8. **Email verification**: Implement backend endpoint for email verification
-9. **Full test coverage**: Add component tests for all ported pages
-10. **Operational scripts**: Expand seeded test-data scripts for sessions/questions/responses scenarios
+2. **Advanced components**: Port richer `QuestionDisplay` parity features (`AnswerDistribution`, `Histogram`, `ShortAnswerList`) and remaining grading tables
+3. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor) end-to-end
+4. **Content sanitization**: Add DOMPurify for `dangerouslySetInnerHTML` in question content rendering
+5. **Email verification delivery**: Keep compatibility endpoint and add full SMTP delivery flow
+6. **Full test coverage**: Add component tests for all ported pages
 
 
 ## Mock Data Seeding for Migration Testing
@@ -298,3 +294,15 @@ By default it connects to `mongodb://localhost:27017/qlicker?replicaSet=rs0` and
 - `admin@gmail.com` (role: admin)
 
 All accounts are created with password `12345678` using Meteor-compatible bcrypt storage in `services.password.bcrypt`, and all users are linked to a single professor-owned course (`Migration Test Course`).
+
+The seeding script now also creates:
+- interactive and quiz sessions (including `quizExtensions`)
+- multiple questions across MC/TF/SA
+- responses and grades
+- baseline admin settings for image storage and Jitsi
+
+For parity smoke checks against the migrated Express API:
+
+```bash
+npm run test:migration-smoke
+```

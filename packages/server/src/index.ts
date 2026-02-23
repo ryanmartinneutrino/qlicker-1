@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import session from 'express-session'
 import passport from 'passport'
+import fs from 'fs'
 import { createServer } from 'http'
 import { Server as SocketIOServer } from 'socket.io'
 import MongoStore from 'connect-mongo'
@@ -23,6 +24,7 @@ import gradesRouter from './routes/grades'
 import imagesRouter from './routes/images'
 import settingsRouter from './routes/settings'
 import usersRouter from './routes/users'
+import { resolveUploadsDir } from './utils/image-storage'
 
 const PORT = process.env.PORT ? (parseInt(process.env.PORT, 10) || 3001) : 3001
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/qlicker'
@@ -42,6 +44,9 @@ async function main() {
   app.use(cors({ origin: ROOT_URL, credentials: true }))
   app.use(express.json({ limit: '10mb' }))
   app.use(express.urlencoded({ extended: true }))
+  const uploadsDir = resolveUploadsDir()
+  fs.mkdirSync(uploadsDir, { recursive: true })
+  app.use('/uploads', express.static(uploadsDir))
 
   // 4. Session
   app.use(

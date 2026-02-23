@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Question, SessionOptions } from '@qlicker/shared'
+import type { Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
+import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
 
 const QUESTION_TYPES: Record<number, string> = {
   0: 'Multiple Choice',
@@ -12,35 +13,7 @@ const QUESTION_TYPES: Record<number, string> = {
   4: 'Numerical',
 }
 
-const defaultSessionOptions: SessionOptions = {
-  hidden: false,
-  stats: false,
-  correct: false,
-  points: 1,
-  maxAttempts: 1,
-  attemptWeights: [1],
-  attempts: [{ number: 1, closed: false }],
-}
-
-function makeDefaultQuestion(courseId: string, creatorId: string): Omit<Question, '_id' | 'createdAt'> {
-  return {
-    plainText: '',
-    type: 3,
-    content: '',
-    options: [],
-    toleranceNumerical: 0,
-    correctNumerical: 0,
-    creator: creatorId,
-    owner: creatorId,
-    courseId,
-    public: false,
-    solution: '',
-    solution_plainText: '',
-    approved: false,
-    tags: [],
-    sessionOptions: defaultSessionOptions,
-  }
-}
+const DEFAULT_OPTIONS = [{ plainText: '' }, { plainText: '' }]
 
 export default function QuestionsLibrary() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -50,40 +23,32 @@ export default function QuestionsLibrary() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [newQuestionText, setNewQuestionText] = useState('')
+  const [creatingQuestion, setCreatingQuestion] = useState(false)
 
-  const loadQuestions = async () => {
+  useEffect(() => {
     if (!courseId) return
     setLoading(true)
     setError(null)
-    try {
-      const result = await apiClient.get<Question[]>(`/questions?courseId=${courseId}`)
-      setQuestions(result)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadQuestions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    apiClient
+      .get<Question[]>(`/questions?courseId=${courseId}`)
+      .then(setQuestions)
+      .catch((err) => setError((err as Error).message))
+      .finally(() => setLoading(false))
   }, [courseId])
 
-  const handleCreate = async () => {
-    if (!courseId || !user?._id) return
-    try {
-      const payload = makeDefaultQuestion(courseId, user._id)
-      payload.plainText = newQuestionText.trim() || 'New Question'
-      payload.content = payload.plainText
-      const created = await apiClient.post<Question>('/questions', payload)
-      setQuestions((prev) => [created, ...prev])
-      setNewQuestionText('')
-      setEditingId(created._id || null)
-    } catch (err) {
-      alert((err as Error).message)
-    }
+  const patchQuestion = (questionId: string, partial: Partial<Question>) => {
+    setQuestions((prev) => prev.map((q) => (q._id === questionId ? { ...q, ...partial } : q)))
+  }
+
+  const patchOption = (questionId: string, index: number, plainText: string) => {
+    setQuestions((prev) =>
+      prev.map((q) => {
+        if (q._id !== questionId) return q
+        const options = [...(q.options || DEFAULT_OPTIONS)]
+        options[index] = { ...options[index], plainText, answer: plainText, content: plainText }
+        return { ...q, options }
+      })
+    )
   }
 
   const handleDelete = async (questionId: string) => {
@@ -99,11 +64,24 @@ export default function QuestionsLibrary() {
 
   const handleSaveQuestion = async (question: Question) => {
     try {
-      const updated = await apiClient.put<Question>(`/questions/${question._id}`, {
+      const payload: Partial<Question> = {
         plainText: question.plainText,
+        content: question.content || question.plainText,
         type: question.type,
         public: question.public,
-      })
+        solution: question.solution || '',
+        solution_plainText: question.solution_plainText || question.solution || '',
+        options:
+          question.type <= 2
+            ? (question.options || DEFAULT_OPTIONS).map((option) => ({
+                ...option,
+                plainText: option.plainText || option.answer || '',
+                answer: option.answer || option.plainText || '',
+                content: option.content || option.plainText || option.answer || '',
+              }))
+            : [],
+      }
+      const updated = await apiClient.put<Question>(`/questions/${question._id}`, payload)
       setQuestions((prev) => prev.map((q) => (q._id === updated._id ? { ...q, ...updated } : q)))
       setEditingId(null)
     } catch (err) {
@@ -125,14 +103,7 @@ export default function QuestionsLibrary() {
           <Link className="btn btn-secondary" to={`/course/${courseId}`}>
             Back to Course
           </Link>
-          <input
-            className="form-control"
-            style={{ maxWidth: 420 }}
-            value={newQuestionText}
-            onChange={(e) => setNewQuestionText(e.target.value)}
-            placeholder="Question text"
-          />
-          <button className="btn btn-primary" onClick={handleCreate}>
+          <button className="btn btn-primary" onClick={() => setCreatingQuestion(true)}>
             Create Question
           </button>
         </div>
@@ -155,6 +126,7 @@ export default function QuestionsLibrary() {
           <div>
             {questions.map((q, i) => {
               const isEditing = editingId === q._id
+              const options = q.options && q.options.length > 0 ? q.options : DEFAULT_OPTIONS
               return (
                 <div
                   key={q._id}
@@ -169,27 +141,47 @@ export default function QuestionsLibrary() {
                       <input
                         className="form-control"
                         value={q.plainText}
-                        onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, plainText: e.target.value } : p)))}
+                        onChange={(e) => patchQuestion(q._id || '', { plainText: e.target.value, content: e.target.value })}
                       />
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <select
-                          className="form-control"
-                          style={{ maxWidth: 220 }}
-                          value={q.type}
-                          onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, type: Number(e.target.value) } : p)))}
-                        >
-                          {Object.entries(QUESTION_TYPES).map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
+                      <select
+                        className="form-control"
+                        style={{ maxWidth: 260 }}
+                        value={q.type}
+                        onChange={(e) => patchQuestion(q._id || '', { type: Number(e.target.value) })}
+                      >
+                        {Object.entries(QUESTION_TYPES).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                      {q.type <= 2 && (
+                        <div style={{ display: 'grid', gap: '0.4rem' }}>
+                          {options.map((option, optionIndex) => (
+                            <input
+                              key={optionIndex}
+                              className="form-control"
+                              placeholder={`Option ${optionIndex + 1}`}
+                              value={option.plainText || option.answer || ''}
+                              onChange={(e) => patchOption(q._id || '', optionIndex, e.target.value)}
+                            />
                           ))}
-                        </select>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={Boolean(q.public)}
-                            onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, public: e.target.checked } : p)))}
-                          />
-                          {' '}Public
-                        </label>
+                        </div>
+                      )}
+                      <textarea
+                        className="form-control"
+                        rows={3}
+                        placeholder="Solution (optional)"
+                        value={q.solution || ''}
+                        onChange={(e) => patchQuestion(q._id || '', { solution: e.target.value, solution_plainText: e.target.value })}
+                      />
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(q.public)}
+                          onChange={(e) => patchQuestion(q._id || '', { public: e.target.checked })}
+                        />
+                        {' '}Public
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <button className="btn btn-primary btn-sm" onClick={() => handleSaveQuestion(q)}>Save</button>
                         <button className="btn btn-default btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
                       </div>

@@ -8,11 +8,39 @@ import { sessionSchema } from '@qlicker/shared'
 
 const router = Router()
 
+function parseOptionalDate(value: unknown): Date | null | undefined {
+  if (value === undefined) return undefined
+  if (value === null) return null
+  if (value instanceof Date) return value
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed
+  }
+  return undefined
+}
+
+function normalizeSessionPayload(body: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...body }
+  if ('date' in normalized) normalized.date = parseOptionalDate(normalized.date)
+  if ('quizStart' in normalized) normalized.quizStart = parseOptionalDate(normalized.quizStart)
+  if ('quizEnd' in normalized) normalized.quizEnd = parseOptionalDate(normalized.quizEnd)
+  if (Array.isArray(normalized.quizExtensions)) {
+    normalized.quizExtensions = normalized.quizExtensions.map((extension) => {
+      const entry = extension as Record<string, unknown>
+      return {
+        ...entry,
+        quizStart: parseOptionalDate(entry.quizStart),
+        quizEnd: parseOptionalDate(entry.quizEnd),
+      }
+    })
+  }
+  return normalized
+}
+
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { courseId } = req.query as { courseId?: string }
-    const user = req.user as User
     const sessions = getSessions()
     const query: Record<string, unknown> = {}
     if (courseId) query.courseId = courseId
@@ -38,8 +66,7 @@ router.get('/:sessionId', requireAuth, async (req, res, next) => {
 /** POST /api/sessions — create session */
 router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const user = req.user as User
-    const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(req.body)
+    const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalizeSessionPayload(req.body))
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const sessions = getSessions()
@@ -67,7 +94,7 @@ router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
 router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const sessions = getSessions()
-    const parsed = sessionSchema.partial().safeParse(req.body)
+    const parsed = sessionSchema.partial().safeParse(normalizeSessionPayload(req.body))
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     await sessions.updateOne(
@@ -105,7 +132,8 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: { status } }
     )
-    res.json({ success: true, status })
+    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    res.json(updated)
   } catch (err) {
     next(err)
   }

@@ -54,4 +54,16 @@ export const apiClient = {
   post: <T>(path: string, body: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  upload: async <T>(path: string, formData: FormData) => {
+    const token = await getCsrfToken()
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'x-csrf-token': token },
+      body: formData,
+    })
+    const json = await res.json()
+    if (!res.ok) throw new Error((json as { error?: string }).error || `Request failed: ${res.status}`)
+    return json as T
+  },
 }

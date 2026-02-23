@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { Session } from '@qlicker/shared'
+import type { QuizExtension, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 
 export default function ManageSession() {
@@ -13,6 +13,7 @@ export default function ManageSession() {
   const [quiz, setQuiz] = useState(false)
   const [quizStart, setQuizStart] = useState('')
   const [quizEnd, setQuizEnd] = useState('')
+  const [quizExtensions, setQuizExtensions] = useState<Array<QuizExtension & { quizStartInput: string; quizEndInput: string }>>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,6 +31,13 @@ export default function ManageSession() {
         setQuiz(!!s.quiz)
         setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '')
         setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '')
+        setQuizExtensions(
+          (s.quizExtensions || []).map((entry) => ({
+            ...entry,
+            quizStartInput: entry.quizStart ? new Date(entry.quizStart).toISOString().slice(0, 16) : '',
+            quizEndInput: entry.quizEnd ? new Date(entry.quizEnd).toISOString().slice(0, 16) : '',
+          }))
+        )
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
@@ -48,6 +56,15 @@ export default function ManageSession() {
         quiz,
         quizStart: quizStart ? new Date(quizStart) : undefined,
         quizEnd: quizEnd ? new Date(quizEnd) : undefined,
+        quizExtensions: quiz
+          ? quizExtensions
+              .filter((entry) => entry.userId.trim())
+              .map((entry) => ({
+                userId: entry.userId.trim(),
+                quizStart: entry.quizStartInput ? new Date(entry.quizStartInput) : null,
+                quizEnd: entry.quizEndInput ? new Date(entry.quizEndInput) : null,
+              }))
+          : [],
       }
       const updated = await apiClient.put<Session>(`/sessions/${sessionId}`, body)
       setSession(updated)
@@ -61,6 +78,18 @@ export default function ManageSession() {
 
   if (loading) return <div className="page">Loading...</div>
   if (!session) return <div className="page">Session not found</div>
+
+  const addExtensionRow = () => {
+    setQuizExtensions((prev) => [...prev, { userId: '', quizStart: null, quizEnd: null, quizStartInput: '', quizEndInput: '' }])
+  }
+
+  const updateExtension = (index: number, key: 'userId' | 'quizStartInput' | 'quizEndInput', value: string) => {
+    setQuizExtensions((prev) => prev.map((entry, i) => (i === index ? { ...entry, [key]: value } : entry)))
+  }
+
+  const removeExtension = (index: number) => {
+    setQuizExtensions((prev) => prev.filter((_, i) => i !== index))
+  }
 
   return (
     <div className="page">
@@ -125,6 +154,35 @@ export default function ManageSession() {
                   value={quizEnd}
                   onChange={(e) => setQuizEnd(e.target.value)}
                 />
+              </div>
+              <div className="form-group">
+                <label>Quiz Extensions</label>
+                {quizExtensions.map((entry, index) => (
+                  <div key={index} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                      className="form-control"
+                      placeholder="Student userId"
+                      value={entry.userId}
+                      onChange={(e) => updateExtension(index, 'userId', e.target.value)}
+                    />
+                    <input
+                      type="datetime-local"
+                      className="form-control"
+                      value={entry.quizStartInput}
+                      onChange={(e) => updateExtension(index, 'quizStartInput', e.target.value)}
+                    />
+                    <input
+                      type="datetime-local"
+                      className="form-control"
+                      value={entry.quizEndInput}
+                      onChange={(e) => updateExtension(index, 'quizEndInput', e.target.value)}
+                    />
+                    <button type="button" className="btn btn-default" onClick={() => removeExtension(index)}>Remove</button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-default btn-sm" onClick={addExtensionRow}>
+                  Add Extension
+                </button>
               </div>
             </>
           )}
