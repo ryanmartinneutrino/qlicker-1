@@ -274,7 +274,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
 1. **Remaining modals**: Port additional specialized modals from `imports/ui/modals/` (`EnrollCourseModal` is now migrated)
-2. **Advanced components**: Complete rich `QuestionDisplay` parity behavior (`components/QuestionDisplay.tsx` and `components/ResponseDisplay.tsx` base ports are now available) and remaining grading UX refinements (`AnswerDistribution`, `Histogram`, `ShortAnswerList` are already available in `SessionResults`)
+2. **Advanced components**: Port richer `QuestionDisplay` parity features and remaining grading tables (`AnswerDistribution`, `Histogram`, `ShortAnswerList` are now available in `SessionResults`)
 3. **Rich text editor hardening**: Expand toolbar parity and add regression tests around HTML/plain-text conversions
 4. **Full test coverage**: Add component tests for all ported pages
 
