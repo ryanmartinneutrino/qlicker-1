@@ -30,6 +30,10 @@ const PORT = process.env.PORT ? (parseInt(process.env.PORT, 10) || 3001) : 3001
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/qlicker'
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-prod'
 const ROOT_URL = process.env.ROOT_URL || `http://localhost:${PORT}`
+const COOKIE_SECURE =
+  process.env.COOKIE_SECURE === 'true' ||
+  (process.env.NODE_ENV === 'production' && ROOT_URL.startsWith('https://'))
+const CSRF_COOKIE_NAME = COOKIE_SECURE ? '__Host-qlicker.x-csrf-token' : 'qlicker.x-csrf-token'
 
 async function main() {
   // 1. Connect to MongoDB
@@ -56,7 +60,7 @@ async function main() {
       saveUninitialized: false,
       store: MongoStore.create({ mongoUrl: MONGO_URL }),
       cookie: {
-        secure: process.env.NODE_ENV === 'production',
+        secure: COOKIE_SECURE,
         httpOnly: true,
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -72,10 +76,11 @@ async function main() {
   // 6. CSRF protection (double-submit cookie pattern)
   const { generateToken, doubleCsrfProtection } = doubleCsrf({
     getSecret: () => SESSION_SECRET,
-    cookieName: '__Host-qlicker.x-csrf-token',
+    cookieName: CSRF_COOKIE_NAME,
     cookieOptions: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: COOKIE_SECURE,
       sameSite: 'strict',
+      path: '/',
     },
   })
   // Expose CSRF token endpoint (GET /api/csrf-token) — clients must fetch this
