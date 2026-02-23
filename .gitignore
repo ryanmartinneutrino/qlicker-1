@@ -11,3 +11,5 @@ private/
 # New stack build artifacts
 packages/*/dist/
 packages/server/.env
+
+.agent-worktrees/

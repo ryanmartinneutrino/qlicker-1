@@ -272,6 +272,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 ### Conflict status
 - `packages/client/src/pages/Profile.tsx`: conflict-free and aligned to modal-based flows
 - `packages/client/src/pages/QuestionsLibrary.tsx`: conflict-free with modal create + inline edit/delete flow
+- Merge-conflict hotspots (`MIGRATION.md`, `Profile.tsx`, `QuestionsLibrary.tsx`) were normalized to reduce repeated future conflicts
 
 ### Database compatibility checks
 - Collection names are unchanged and map 1:1 with Meteor collections.
@@ -299,6 +300,26 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 8. **Email verification**: Implement backend endpoint for email verification
 9. **Full test coverage**: Add component tests for all ported pages
 10. **Operational scripts**: Expand seeded test-data scripts for sessions/questions/responses scenarios
+
+
+## Multi-Agent Execution Plan
+
+A multi-agent execution pack is included in this repository:
+
+- `agent-plans/README.md`
+- `agent-plans/agent-01-questions-editor.md`
+- `agent-plans/agent-02-quiz-session-parity.md`
+- `agent-plans/agent-03-profile-image-upload.md`
+- `agent-plans/agent-04-video-chat-parity.md`
+- `agent-plans/agent-05-integration-parity-tests.md`
+
+Local branch/worktree launcher:
+
+```bash
+./launch-migration-agents.sh
+```
+
+This creates per-agent branches and worktrees under `.agent-worktrees/` so tasks can proceed in parallel with minimal merge contention.
 
 
 ## Mock Data Seeding for Migration Testing
