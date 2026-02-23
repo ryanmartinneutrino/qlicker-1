@@ -2,7 +2,9 @@ import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import multer from 'multer'
 import { getImages } from '../collections/images'
-import { requireAuth, requireAdmin } from '../auth/middleware'
+import { getSettings } from '../collections/settings'
+import { requireAuth } from '../auth/middleware'
+import { deleteStoredImage, storeImage } from '../utils/image-storage'
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -26,11 +28,16 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' })
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ error: 'Only image uploads are allowed.' })
+    }
 
-    // TODO: Integrate with S3/Azure based on Settings.storageType.
-    // For now, return a stub URL — replace with actual upload logic.
-    const uid = `${Date.now()}-${req.file.originalname}`
-    const url = `/uploads/${uid}`
+    const settings = await getSettings().findOne({})
+    const maxImageSizeMb = settings?.maxImageSize ?? 10
+    if (req.file.size > maxImageSizeMb * 1024 * 1024) {
+      return res.status(400).json({ error: `Image exceeds ${maxImageSizeMb}MB limit.` })
+    }
+    const { uid, url } = await storeImage(req.file, settings)
 
     const images = getImages()
     const doc = { _id: generateStringId('image'), url, UID: uid }
@@ -46,6 +53,11 @@ router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
 router.delete('/:imageId', requireAuth, async (req, res, next) => {
   try {
     const images = getImages()
+    const existing = await images.findOne({ _id: req.params.imageId } as Parameters<typeof images.findOne>[0])
+    if (existing) {
+      const settings = await getSettings().findOne({})
+      await deleteStoredImage(existing.UID, settings)
+    }
     await images.deleteOne({ _id: req.params.imageId } as Parameters<typeof images.deleteOne>[0])
     res.json({ success: true })
   } catch (err) {

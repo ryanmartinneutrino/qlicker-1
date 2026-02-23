@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import { getCourses } from '../collections/courses'
+import { getSettings } from '../collections/settings'
 import { requireAuth, requireInstructor, requireProfOrAdmin } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
 import { courseSchema } from '@qlicker/shared'
@@ -127,6 +128,88 @@ router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, 
       { $pull: { students: req.params.studentId } }
     )
     res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/courses/:courseId/video-chat-config */
+router.get('/:courseId/video-chat-config', requireAuth, async (req, res, next) => {
+  try {
+    const courses = getCourses()
+    const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const settings = await getSettings().findOne({})
+    const enabledCourseIds = new Set(settings?.Jitsi_EnabledCourses || [])
+    res.json({
+      enabled: Boolean(settings?.Jitsi_Enabled) && enabledCourseIds.has(req.params.courseId),
+      domain: settings?.Jitsi_Domain || '',
+      whiteboardDomain: settings?.Jitsi_WhiteboardDomain || '',
+      etherpadDomain: settings?.Jitsi_EtherpadDomain || '',
+      courseVideoChatOptions: course.videoChatOptions || null,
+      groupCategories: course.groupCategories || [],
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/video-chat/toggle */
+router.post('/:courseId/video-chat/toggle', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const courses = getCourses()
+    const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const enabled = Boolean(req.body?.enabled)
+    if (enabled) {
+      const current = course.videoChatOptions || { urlId: generateStringId('video') }
+      await courses.updateOne(
+        { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+        { $set: { videoChatOptions: { ...current, joined: current.joined || [] } } }
+      )
+    } else {
+      await courses.updateOne(
+        { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+        { $unset: { videoChatOptions: '' } }
+      )
+    }
+
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/video-chat/join */
+router.post('/:courseId/video-chat/join', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const courses = getCourses()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $addToSet: { 'videoChatOptions.joined': user._id } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/video-chat/leave */
+router.post('/:courseId/video-chat/leave', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const courses = getCourses()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $pull: { 'videoChatOptions.joined': user._id } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
   } catch (err) {
     next(err)
   }

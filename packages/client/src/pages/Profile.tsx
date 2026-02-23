@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiClient } from '../api/client'
 import { ChangeEmailModal } from '../components/modals/ChangeEmailModal'
@@ -6,6 +6,7 @@ import { ChangePasswordModal } from '../components/modals/ChangePasswordModal'
 
 export default function Profile() {
   const { user, loading } = useAuth()
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [changingName, setChangingName] = useState(false)
   const [firstName, setFirstName] = useState('')
@@ -17,6 +18,7 @@ export default function Profile() {
   const [showResendLink, setShowResendLink] = useState(true)
   const [changingEmail, setChangingEmail] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   if (loading || !user) return <div className="ql-subs-loading">Loading…</div>
 
@@ -68,6 +70,26 @@ export default function Profile() {
       setShowResendLink(false)
     } catch {
       alert('Error sending verification email')
+    }
+  }
+
+  const handleUploadImage = async (file: File) => {
+    if (!file || !user._id) return
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const image = await apiClient.upload<{ _id: string; url: string; UID: string }>('/images', formData)
+      await apiClient.put(`/users/${user._id}/profile`, {
+        profileImage: image.url,
+        profileThumbnail: image.url,
+      })
+      window.location.reload()
+    } catch (err) {
+      alert('Error: ' + (err instanceof Error ? err.message : 'Could not upload image'))
+    } finally {
+      setUploadingImage(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -128,6 +150,23 @@ export default function Profile() {
                 >
                   &nbsp;
                 </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void handleUploadImage(file)
+                  }}
+                />
+                <button
+                  className="ql-image-upload-new-button btn btn-default btn-sm"
+                  disabled={uploadingImage}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadingImage ? 'Uploading...' : 'Upload New'}
+                </button>
               </div>
 
               {!isSSOSession && (

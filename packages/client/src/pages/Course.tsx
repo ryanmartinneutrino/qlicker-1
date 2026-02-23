@@ -70,6 +70,8 @@ export default function Course() {
               <Link className="btn btn-secondary" to={`/course/${courseId}/grades`}>Grades</Link>
               {' '}
               <Link className="btn btn-secondary" to={`/course/${courseId}/groups`}>Groups</Link>
+              {' '}
+              <Link className="btn btn-secondary" to={`/course/${courseId}/video`}>Video Chat</Link>
             </div>
           </div>
 
@@ -122,6 +124,9 @@ export default function Course() {
         </div>
       ) : (
         <div className="container">
+          <Link className="btn btn-secondary" to={`/course/${courseId}/video`} style={{ marginBottom: '1rem' }}>
+            Video Chat
+          </Link>
           <h2>Interactive Sessions</h2>
           {interactiveSessions.map((s) => (
             <SessionListItem
