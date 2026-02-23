@@ -1,1 +1,242 @@
-export { default } from '../pages_impl/QuestionsLibraryPage'
+import { useEffect, useState } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import type { Question, SessionOptions } from '@qlicker/shared'
+import { apiClient } from '../api/client'
+import { useAuth } from '../hooks/useAuth'
+
+const QUESTION_TYPES: Record<number, string> = {
+  0: 'Multiple Choice',
+  1: 'Multi-Select',
+  2: 'True/False',
+  3: 'Short Answer',
+  4: 'Numerical',
+}
+
+const defaultSessionOptions: SessionOptions = {
+  hidden: false,
+  stats: false,
+  correct: false,
+  points: 1,
+  maxAttempts: 1,
+  attemptWeights: [1],
+  attempts: [{ number: 1, closed: false }],
+}
+
+function makeDefaultQuestion(courseId: string, creatorId: string): Omit<Question, '_id' | 'createdAt'> {
+  return {
+    plainText: '',
+    type: 3,
+    content: '',
+    options: [],
+    toleranceNumerical: 0,
+    correctNumerical: 0,
+    creator: creatorId,
+    owner: creatorId,
+    courseId,
+    public: false,
+    solution: '',
+    solution_plainText: '',
+    approved: false,
+    tags: [],
+    sessionOptions: defaultSessionOptions,
+  }
+}
+
+export default function QuestionsLibrary() {
+  const { courseId } = useParams<{ courseId: string }>()
+  const { user } = useAuth()
+
+  const [questions, setQuestions] = useState<Question[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [newQuestionText, setNewQuestionText] = useState('')
+
+  const loadQuestions = async () => {
+    if (!courseId) return
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await apiClient.get<Question[]>(`/questions?courseId=${courseId}`)
+      setQuestions(result)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadQuestions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId])
+
+  const handleCreate = async () => {
+    if (!courseId || !user?._id) return
+    try {
+      const payload = makeDefaultQuestion(courseId, user._id)
+      payload.plainText = newQuestionText.trim() || 'New Question'
+      payload.content = payload.plainText
+      const created = await apiClient.post<Question>('/questions', payload)
+      setQuestions((prev) => [created, ...prev])
+      setNewQuestionText('')
+      setEditingId(created._id || null)
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  const handleDelete = async (questionId: string) => {
+    if (!window.confirm('Delete this question?')) return
+    try {
+      await apiClient.delete(`/questions/${questionId}`)
+      setQuestions((prev) => prev.filter((q) => q._id !== questionId))
+      if (editingId === questionId) setEditingId(null)
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  const handleSaveQuestion = async (question: Question) => {
+    try {
+      const updated = await apiClient.put<Question>(`/questions/${question._id}`, {
+        plainText: question.plainText,
+        type: question.type,
+        public: question.public,
+      })
+      setQuestions((prev) => prev.map((q) => (q._id === updated._id ? { ...q, ...updated } : q)))
+      setEditingId(null)
+    } catch (err) {
+      alert((err as Error).message)
+    }
+  }
+
+  if (loading) return <div className="page">Loading...</div>
+  if (error) return <div className="page">Error: {error}</div>
+
+  return (
+    <div className="page">
+      <div className="ql-header-bar">
+        <h1>Question Library</h1>
+      </div>
+
+      <div className="container">
+        <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <Link className="btn btn-secondary" to={`/course/${courseId}`}>
+            Back to Course
+          </Link>
+          <input
+            className="form-control"
+            style={{ maxWidth: 420 }}
+            value={newQuestionText}
+            onChange={(e) => setNewQuestionText(e.target.value)}
+            placeholder="Question text"
+          />
+          <button className="btn btn-primary" onClick={handleCreate}>
+            Create Question
+          </button>
+        </div>
+
+        {creatingQuestion && user?._id && (
+          <CreateQuestionModal
+            courseId={courseId!}
+            userId={user._id}
+            done={() => setCreatingQuestion(false)}
+            onCreated={(created) => {
+              setQuestions((prev) => [created, ...prev])
+              setEditingId(created._id || null)
+            }}
+          />
+        )}
+
+        {questions.length === 0 ? (
+          <p>No questions in this course library.</p>
+        ) : (
+          <div>
+            {questions.map((q, i) => {
+              const isEditing = editingId === q._id
+              return (
+                <div
+                  key={q._id}
+                  className="ql-list-item"
+                  style={{
+                    padding: '0.75rem',
+                    borderBottom: '1px solid #eee',
+                  }}
+                >
+                  {isEditing ? (
+                    <div style={{ display: 'grid', gap: '0.5rem' }}>
+                      <input
+                        className="form-control"
+                        value={q.plainText}
+                        onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, plainText: e.target.value } : p)))}
+                      />
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <select
+                          className="form-control"
+                          style={{ maxWidth: 220 }}
+                          value={q.type}
+                          onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, type: Number(e.target.value) } : p)))}
+                        >
+                          {Object.entries(QUESTION_TYPES).map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(q.public)}
+                            onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, public: e.target.checked } : p)))}
+                          />
+                          {' '}Public
+                        </label>
+                        <button className="btn btn-primary btn-sm" onClick={() => handleSaveQuestion(q)}>Save</button>
+                        <button className="btn btn-default btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                      <div>
+                        <strong>Q{i + 1}.</strong>{' '}
+                        {q.plainText
+                          ? q.plainText.substring(0, 120) + (q.plainText.length > 120 ? '...' : '')
+                          : 'Untitled Question'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            backgroundColor: '#f0f0f0',
+                            borderRadius: '4px',
+                            fontSize: '0.85em',
+                          }}
+                        >
+                          {QUESTION_TYPES[q.type] ?? `Type ${q.type}`}
+                        </span>
+                        {q.public && (
+                          <span
+                            style={{
+                              padding: '0.25rem 0.5rem',
+                              backgroundColor: '#30B0E7',
+                              color: '#fff',
+                              borderRadius: '4px',
+                              fontSize: '0.85em',
+                            }}
+                          >
+                            Public
+                          </span>
+                        )}
+                        <button className="btn btn-default btn-sm" onClick={() => setEditingId(q._id || null)}>Edit</button>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(q._id || '')}>Delete</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
