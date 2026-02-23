@@ -69,6 +69,7 @@ router.post('/', requireAuth, requireProfOrAdmin, async (req, res, next) => {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const courses = getCourses()
+    const users = getUsers()
     const userId = user._id ?? ''
     let docId = ''
     let inserted = false
@@ -98,12 +99,10 @@ router.post('/', requireAuth, requireProfOrAdmin, async (req, res, next) => {
 
     if (!inserted) return res.status(500).json({ error: 'Unable to create course. Please retry.' })
 
-    const users = getUsers()
     await users.updateOne(
       { _id: userId } as Parameters<typeof users.updateOne>[0],
       { $addToSet: { 'profile.courses': docId } }
     )
-
     const created = await courses.findOne({ _id: docId } as Parameters<typeof courses.findOne>[0])
     res.status(201).json(created)
   } catch (err) {

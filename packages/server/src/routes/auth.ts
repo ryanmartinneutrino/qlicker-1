@@ -132,7 +132,6 @@ router.post('/forgot-password', authLimiter, async (req, res, next) => {
       if (process.env.NODE_ENV !== 'production') {
         debugResetToken = token
         const resetBase = process.env.CLIENT_URL || 'http://localhost:3000'
-        // Useful for local migration testing where outbound email is not configured.
         console.log(`[auth] password reset link for ${email}: ${resetBase}/reset-password/${token}`)
       }
     }
