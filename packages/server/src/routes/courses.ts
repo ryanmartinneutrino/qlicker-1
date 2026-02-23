@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import { getCourses } from '../collections/courses'
 import { requireAuth, requireInstructor, requireProfOrAdmin } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
@@ -48,13 +49,14 @@ router.post('/', requireAuth, requireProfOrAdmin, async (req, res, next) => {
 
     const courses = getCourses()
     const doc = {
+      _id: generateStringId('course'),
       ...parsed.data,
       owner: user._id ?? '',
       instructors: [user._id ?? ''],
       createdAt: new Date(),
     }
-    const result = await courses.insertOne(doc as Parameters<typeof courses.insertOne>[0])
-    const created = await courses.findOne({ _id: result.insertedId } as Parameters<typeof courses.findOne>[0])
+    await courses.insertOne(doc as Parameters<typeof courses.insertOne>[0])
+    const created = await courses.findOne({ _id: doc._id } as Parameters<typeof courses.findOne>[0])
     res.status(201).json(created)
   } catch (err) {
     next(err)

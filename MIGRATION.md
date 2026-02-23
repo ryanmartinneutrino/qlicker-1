@@ -69,8 +69,7 @@ Both stacks connect to the **same MongoDB database** using the same collection n
 
 ### Critical: `_id` format
 Meteor uses string `_id` values (not MongoDB `ObjectId`). The new stack preserves this by
-using plain string queries. When inserting new documents, use `new ObjectId().toString()` or
-let MongoDB auto-generate string IDs consistently.
+using plain string queries. New server inserts now generate string `_id` values explicitly (see `packages/server/src/utils/id.ts`) so new records remain Meteor-compatible and no `ObjectId` values are introduced by the migrated stack.
 
 ---
 
@@ -210,7 +209,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] SAML SSO login
 - [x] Registration (with signup form in Login page)
 - [x] Password reset (forgot password + token-based reset UI)
-- [ ] Email verification flow (TODO: backend endpoint)
+- [x] Email verification request endpoint compatibility (`POST /api/users/verify-email`); SMTP delivery still pending
 
 ### Courses
 - [x] Create/edit/delete courses
@@ -263,7 +262,13 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 
 ---
 
+
 ## Next Steps
+
+
+### Coordination Notes
+- Detailed migration audit snapshot: `docs/migration-audit.md`
+- Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
 1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
 2. **Advanced components**: Port `QuestionDisplay`, `QuestionEditItem`, `ResponseDisplay`, `ResponseList`, `GradeView`, `CleanTable`, `CleanGradeTable`, `Histogram`, `AnswerDistribution`

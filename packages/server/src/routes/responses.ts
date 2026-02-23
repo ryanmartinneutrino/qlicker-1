@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import { getResponses } from '../collections/responses'
 import { getQuestions } from '../collections/questions'
 import { getSessions } from '../collections/sessions'
@@ -88,8 +89,9 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
       return res.json(updated)
     }
 
-    const result = await responses.insertOne({ ...parsed.data, createdAt: new Date() } as Parameters<typeof responses.insertOne>[0])
-    const created = await responses.findOne({ _id: result.insertedId } as Parameters<typeof responses.findOne>[0])
+    const doc = { _id: generateStringId('response'), ...parsed.data, createdAt: new Date() }
+    await responses.insertOne(doc as Parameters<typeof responses.insertOne>[0])
+    const created = await responses.findOne({ _id: doc._id } as Parameters<typeof responses.findOne>[0])
     res.status(201).json(created)
   } catch (err) {
     next(err)

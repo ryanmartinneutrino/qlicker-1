@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import multer from 'multer'
 import { getImages } from '../collections/images'
 import { requireAuth, requireAdmin } from '../auth/middleware'
@@ -32,8 +33,9 @@ router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
     const url = `/uploads/${uid}`
 
     const images = getImages()
-    const result = await images.insertOne({ url, UID: uid })
-    const created = await images.findOne({ _id: result.insertedId } as Parameters<typeof images.findOne>[0])
+    const doc = { _id: generateStringId('image'), url, UID: uid }
+    await images.insertOne(doc)
+    const created = await images.findOne({ _id: doc._id } as Parameters<typeof images.findOne>[0])
     res.status(201).json(created)
   } catch (err) {
     next(err)

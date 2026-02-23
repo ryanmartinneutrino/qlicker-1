@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { generateStringId } from '../utils/id'
 import { getQuestions } from '../collections/questions'
 import { requireAuth, requireInstructor } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
@@ -43,12 +44,13 @@ router.post('/', requireAuth, async (req, res, next) => {
 
     const questions = getQuestions()
     const doc = {
+      _id: generateStringId('question'),
       ...parsed.data,
       creator: user._id ?? '',
       createdAt: new Date(),
     }
-    const result = await questions.insertOne(doc as Parameters<typeof questions.insertOne>[0])
-    const created = await questions.findOne({ _id: result.insertedId } as Parameters<typeof questions.findOne>[0])
+    await questions.insertOne(doc as Parameters<typeof questions.insertOne>[0])
+    const created = await questions.findOne({ _id: doc._id } as Parameters<typeof questions.findOne>[0])
     res.status(201).json(created)
   } catch (err) {
     next(err)
