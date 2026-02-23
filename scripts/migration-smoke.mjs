@@ -105,6 +105,11 @@ async function run() {
     throw new Error('Video config endpoint missing expected shape.')
   }
 
+  const verifyResponse = await student.request('POST', '/users/verify-email', {})
+  if (!Object.prototype.hasOwnProperty.call(verifyResponse, 'success')) {
+    throw new Error('Verify-email endpoint missing expected response shape.')
+  }
+
   console.log('Migration smoke checks passed.')
 }
 

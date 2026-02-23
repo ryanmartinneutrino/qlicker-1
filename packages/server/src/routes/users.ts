@@ -1,11 +1,25 @@
 import { Router } from 'express'
 import bcrypt from 'bcrypt'
+import { randomBytes, timingSafeEqual } from 'crypto'
 import { getUsers } from '../collections/users'
 import { requireAuth, requireAdmin } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
-import { userSchema } from '@qlicker/shared'
+import { sendVerificationEmail } from '../utils/email-delivery'
 
 const router = Router()
+const VERIFY_TTL_MS = 24 * 60 * 60 * 1000
+
+function buildVerifyUrl(token: string): string {
+  const root = process.env.ROOT_URL || 'http://localhost:3001'
+  return `${root.replace(/\/$/, '')}/api/users/verify-email/${token}`
+}
+
+function tokenEquals(a: string, b: string): boolean {
+  const left = Buffer.from(a)
+  const right = Buffer.from(b)
+  if (left.length !== right.length) return false
+  return timingSafeEqual(left, right)
+}
 
 /** GET /api/users — list all users (admin only) */
 router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
@@ -13,6 +27,44 @@ router.get('/', requireAuth, requireAdmin, async (req, res, next) => {
     const users = getUsers()
     const result = await users.find({}).project({ 'services.password': 0 }).toArray()
     res.json(result)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/users/verify-email/:token — verification link target */
+router.get('/verify-email/:token', async (req, res, next) => {
+  try {
+    const users = getUsers()
+    const token = req.params.token
+    const candidates = await users.find({ 'services.emailVerification.token': { $exists: true } }).toArray()
+    const matched = candidates.find((candidate) => {
+      const candidateToken = candidate.services?.emailVerification?.token
+      return candidateToken ? tokenEquals(candidateToken, token) : false
+    })
+
+    if (!matched) {
+      return res.status(404).send('<h1>Invalid verification link</h1>')
+    }
+
+    const expiresAt = matched.services?.emailVerification?.expiresAt
+    if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
+      return res.status(410).send('<h1>This verification link has expired</h1>')
+    }
+
+    const emails = (matched.emails || []).map((entry, index) => ({
+      ...entry,
+      verified: index === 0 ? true : entry.verified,
+    }))
+    await users.updateOne(
+      { _id: matched._id } as Parameters<typeof users.updateOne>[0],
+      {
+        $set: { emails },
+        $unset: { 'services.emailVerification': '' },
+      }
+    )
+
+    res.send('<h1>Email verified successfully</h1><p>You may return to Qlicker.</p>')
   } catch (err) {
     next(err)
   }
@@ -38,11 +90,46 @@ router.get('/:userId', requireAuth, async (req, res, next) => {
   }
 })
 
+/** POST /api/users/verify-email — create token + attempt SMTP delivery */
+router.post('/verify-email', requireAuth, async (req, res, next) => {
+  try {
+    const currentUser = req.user as User
+    const users = getUsers()
+    const user = await users.findOne({ _id: currentUser._id } as Parameters<typeof users.findOne>[0])
+    if (!user) return res.status(404).json({ error: 'User not found.' })
 
-/** POST /api/users/verify-email — compatibility stub for migration */
-router.post('/verify-email', requireAuth, async (_req, res) => {
-  // Email transport flow is not fully migrated yet; keep endpoint for UI parity.
-  res.json({ success: true })
+    const email = user.emails?.[0]?.address
+    const verified = user.emails?.[0]?.verified
+    if (!email) return res.status(400).json({ error: 'No email set on account.' })
+    if (verified) return res.json({ success: true, alreadyVerified: true })
+
+    const token = randomBytes(24).toString('hex')
+    const expiresAt = new Date(Date.now() + VERIFY_TTL_MS)
+    const requestedAt = new Date()
+    await users.updateOne(
+      { _id: user._id } as Parameters<typeof users.updateOne>[0],
+      {
+        $set: {
+          'services.emailVerification': {
+            token,
+            expiresAt,
+            requestedAt,
+          },
+        },
+      }
+    )
+
+    const verifyUrl = buildVerifyUrl(token)
+    const delivered = await sendVerificationEmail({
+      to: email,
+      verifyUrl,
+      from: process.env.EMAIL_FROM || 'no-reply@qlicker.local',
+    })
+
+    res.json({ success: true, delivered })
+  } catch (err) {
+    next(err)
+  }
 })
 
 /** PUT /api/users/:userId/email — change own email */

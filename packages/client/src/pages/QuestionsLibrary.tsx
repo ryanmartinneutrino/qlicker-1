@@ -5,6 +5,7 @@ import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
+import { Editor } from '../components/Editor'
 
 const QUESTION_TYPES: Record<number, string> = {
   0: 'Multiple Choice',
@@ -137,10 +138,10 @@ export default function QuestionsLibrary() {
                 >
                   {isEditing ? (
                     <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <input
-                        className="form-control"
-                        value={q.plainText}
-                        onChange={(e) => patchQuestion(q._id || '', { plainText: e.target.value, content: e.target.value })}
+                      <Editor
+                        value={q.content || q.plainText || ''}
+                        minHeight={110}
+                        onChange={(html, plain) => patchQuestion(q._id || '', { content: html, plainText: plain })}
                       />
                       <select
                         className="form-control"
@@ -165,12 +166,11 @@ export default function QuestionsLibrary() {
                           ))}
                         </div>
                       )}
-                      <textarea
-                        className="form-control"
-                        rows={3}
-                        placeholder="Solution (optional)"
+                      <Editor
                         value={q.solution || ''}
-                        onChange={(e) => patchQuestion(q._id || '', { solution: e.target.value, solution_plainText: e.target.value })}
+                        minHeight={80}
+                        placeholder="Solution (optional)"
+                        onChange={(html, plain) => patchQuestion(q._id || '', { solution: html, solution_plainText: plain })}
                       />
                       <label>
                         <input
