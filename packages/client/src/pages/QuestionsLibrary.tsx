@@ -13,7 +13,6 @@ const QUESTION_TYPES: Record<number, string> = {
   4: 'Numerical',
 }
 
-
 export default function QuestionsLibrary() {
   const { courseId } = useParams<{ courseId: string }>()
   const { user } = useAuth()
@@ -24,25 +23,20 @@ export default function QuestionsLibrary() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creatingQuestion, setCreatingQuestion] = useState(false)
 
-  const loadQuestions = async () => {
+  useEffect(() => {
     if (!courseId) return
     setLoading(true)
     setError(null)
-    try {
-      const result = await apiClient.get<Question[]>(`/questions?courseId=${courseId}`)
-      setQuestions(result)
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadQuestions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    apiClient
+      .get<Question[]>(`/questions?courseId=${courseId}`)
+      .then(setQuestions)
+      .catch((err) => setError((err as Error).message))
+      .finally(() => setLoading(false))
   }, [courseId])
 
+  const patchLocalQuestion = (questionId: string, partial: Partial<Question>) => {
+    setQuestions((prev) => prev.map((q) => (q._id === questionId ? { ...q, ...partial } : q)))
+  }
 
   const handleDelete = async (questionId: string) => {
     if (!window.confirm('Delete this question?')) return
@@ -120,14 +114,14 @@ export default function QuestionsLibrary() {
                       <input
                         className="form-control"
                         value={q.plainText}
-                        onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, plainText: e.target.value } : p)))}
+                        onChange={(e) => patchLocalQuestion(q._id || '', { plainText: e.target.value })}
                       />
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                         <select
                           className="form-control"
                           style={{ maxWidth: 220 }}
                           value={q.type}
-                          onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, type: Number(e.target.value) } : p)))}
+                          onChange={(e) => patchLocalQuestion(q._id || '', { type: Number(e.target.value) })}
                         >
                           {Object.entries(QUESTION_TYPES).map(([value, label]) => (
                             <option key={value} value={value}>{label}</option>
@@ -137,7 +131,7 @@ export default function QuestionsLibrary() {
                           <input
                             type="checkbox"
                             checked={Boolean(q.public)}
-                            onChange={(e) => setQuestions((prev) => prev.map((p) => (p._id === q._id ? { ...p, public: e.target.checked } : p)))}
+                            onChange={(e) => patchLocalQuestion(q._id || '', { public: e.target.checked })}
                           />
                           {' '}Public
                         </label>
