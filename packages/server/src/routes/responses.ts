@@ -8,6 +8,7 @@ import { requireAuth } from '../auth/middleware'
 import { responseLimiter } from '../middleware/rate-limit'
 import type { User } from '@qlicker/shared'
 import { responseSchema } from '@qlicker/shared'
+import { gradeResponse } from '../utils/grading'
 
 const router = Router()
 
@@ -73,6 +74,18 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const responses = getResponses()
+    const question = await getQuestions().findOne({
+      _id: parsed.data.questionId,
+    } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
+    if (!question) return res.status(404).json({ error: 'Question not found.' })
+
+    let sessionId = question.sessionId
+    let courseId = question.courseId
+    if (sessionId && !courseId) {
+      const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
+      courseId = session?.courseId
+    }
+
     // Upsert: one response per (questionId, studentUserId, attempt)
     const filter = {
       questionId: parsed.data.questionId,
@@ -81,15 +94,37 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
     }
     const existing = await responses.findOne(filter as Parameters<typeof responses.findOne>[0])
     if (existing) {
+      const responseDoc = { ...existing, ...parsed.data }
+      const { responseUpdate } = await gradeResponse({
+        responseDoc,
+        questionId: parsed.data.questionId,
+        studentUserId: parsed.data.studentUserId,
+        attempt: parsed.data.attempt,
+        sessionId,
+        courseId,
+      })
+      const setPayload: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() }
+      if (responseUpdate.correct !== undefined) {
+        setPayload.correct = responseUpdate.correct
+      }
       await responses.updateOne(
         filter as Parameters<typeof responses.updateOne>[0],
-        { $set: { ...parsed.data, updatedAt: new Date() } }
+        { $set: setPayload }
       )
       const updated = await responses.findOne(filter as Parameters<typeof responses.findOne>[0])
       return res.json(updated)
     }
 
-    const doc = { _id: generateStringId('response'), ...parsed.data, createdAt: new Date() }
+    const baseDoc = { _id: generateStringId('response'), ...parsed.data, createdAt: new Date() }
+    const { responseUpdate } = await gradeResponse({
+      responseDoc: baseDoc,
+      questionId: parsed.data.questionId,
+      studentUserId: parsed.data.studentUserId,
+      attempt: parsed.data.attempt,
+      sessionId,
+      courseId,
+    })
+    const doc = responseUpdate.correct === undefined ? baseDoc : { ...baseDoc, correct: responseUpdate.correct }
     await responses.insertOne(doc as Parameters<typeof responses.insertOne>[0])
     const created = await responses.findOne({ _id: doc._id } as Parameters<typeof responses.findOne>[0])
     res.status(201).json(created)
@@ -111,9 +146,35 @@ router.put('/:responseId', requireAuth, responseLimiter, async (req, res, next) 
     const parsed = responseSchema.partial().safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
+    const merged = { ...existing, ...parsed.data }
+    const questionId = (merged.questionId || existing.questionId) as string
+    const studentUserId = (merged.studentUserId || existing.studentUserId) as string
+    const attempt = Number(merged.attempt ?? existing.attempt ?? 1)
+    const question = await getQuestions().findOne({ _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
+    let sessionId = question?.sessionId
+    let courseId = question?.courseId
+    if (sessionId && !courseId) {
+      const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
+      courseId = session?.courseId
+    }
+    const { responseUpdate } = question
+      ? await gradeResponse({
+          responseDoc: merged as typeof existing,
+          questionId,
+          studentUserId,
+          attempt,
+          sessionId,
+          courseId,
+        })
+      : { responseUpdate: {} }
+    const setPayload: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() }
+    if (responseUpdate.correct !== undefined) {
+      setPayload.correct = responseUpdate.correct
+    }
+
     await responses.updateOne(
       { _id: req.params.responseId } as Parameters<typeof responses.updateOne>[0],
-      { $set: { ...parsed.data, updatedAt: new Date() } }
+      { $set: setPayload }
     )
     const updated = await responses.findOne({ _id: req.params.responseId } as Parameters<typeof responses.findOne>[0])
     res.json(updated)

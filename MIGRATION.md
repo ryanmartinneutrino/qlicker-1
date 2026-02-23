@@ -239,7 +239,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] Read grades (role-aware)
 - [x] Update grades (instructor only)
 - [x] Toggle visibility to students
-- [ ] Auto-grade calculation (TODO)
+- [x] Auto-grade calculation (objective question types + persisted marks/aggregates)
 
 ### Real-time
 - [x] Response change streams
