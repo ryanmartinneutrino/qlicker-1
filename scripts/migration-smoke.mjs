@@ -84,6 +84,8 @@ async function run() {
 
   const q1 = questions.find((q) => q.type === 0)
   if (!q1) throw new Error('Expected one MC question in seeded dataset.')
+  const beforeGrades = await student.request('GET', `/grades?courseId=${course._id}`)
+  const beforePoints = beforeGrades.reduce((sum, grade) => sum + Number(grade.points || 0), 0)
   await student.request('POST', '/responses', {
     attempt: 1,
     questionId: q1._id,
@@ -92,6 +94,8 @@ async function run() {
 
   const studentGrades = await student.request('GET', `/grades?courseId=${course._id}`)
   if (studentGrades.length === 0) throw new Error('Student should have at least one grade row.')
+  const afterPoints = studentGrades.reduce((sum, grade) => sum + Number(grade.points || 0), 0)
+  if (afterPoints < beforePoints) throw new Error('Auto-grading should not reduce total points for a correct answer submission.')
 
   const users = await admin.request('GET', '/users')
   if (users.length < 3) throw new Error('Admin should be able to list users.')
