@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import passport from 'passport'
 import bcrypt from 'bcrypt'
+import crypto from 'crypto'
 import { getUsers } from '../collections/users'
 import { getSettings } from '../collections/settings'
 import { requireAuth } from '../auth/middleware'
@@ -98,6 +99,74 @@ router.post('/register', authLimiter, async (req, res, next) => {
       if (err) return next(err)
       return res.status(201).json({ user: sanitizeUser(created) })
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/auth/forgot-password */
+router.post('/forgot-password', authLimiter, async (req, res, next) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase()
+    if (!email) return res.status(400).json({ error: 'Email is required.' })
+
+    const users = getUsers()
+    const user = await users.findOne({ 'emails.address': email } as Parameters<typeof users.findOne>[0])
+    let debugResetToken: string | undefined
+    if (user?._id) {
+      const token = crypto.randomBytes(24).toString('hex')
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+      await users.updateOne(
+        { _id: user._id } as Parameters<typeof users.updateOne>[0],
+        {
+          $set: {
+            'services.password.reset': {
+              token,
+              expiresAt,
+              requestedAt: new Date(),
+            },
+          },
+        }
+      )
+
+      if (process.env.NODE_ENV !== 'production') {
+        debugResetToken = token
+        const resetBase = process.env.CLIENT_URL || 'http://localhost:3000'
+        // Useful for local migration testing where outbound email is not configured.
+        console.log(`[auth] password reset link for ${email}: ${resetBase}/reset-password/${token}`)
+      }
+    }
+
+    res.json({ success: true, debugResetToken })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/auth/reset-password */
+router.post('/reset-password', authLimiter, async (req, res, next) => {
+  try {
+    const token = String(req.body?.token || '').trim()
+    const password = String(req.body?.password || '')
+    if (!token || !password) return res.status(400).json({ error: 'Token and password are required.' })
+
+    const users = getUsers()
+    const user = await users.findOne({
+      'services.password.reset.token': token,
+      'services.password.reset.expiresAt': { $gt: new Date() },
+    } as Parameters<typeof users.findOne>[0])
+    if (!user?._id) return res.status(400).json({ error: 'Invalid or expired reset token.' })
+
+    const hash = await bcrypt.hash(password, 10)
+    await users.updateOne(
+      { _id: user._id } as Parameters<typeof users.updateOne>[0],
+      {
+        $set: { 'services.password.bcrypt': hash },
+        $unset: { 'services.password.reset': '' },
+      }
+    )
+
+    res.json({ success: true })
   } catch (err) {
     next(err)
   }

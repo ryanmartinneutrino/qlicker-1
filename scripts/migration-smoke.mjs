@@ -70,6 +70,20 @@ async function run() {
   const questions = await prof.request('GET', `/questions?courseId=${course._id}`)
   if (questions.length < 3) throw new Error('Expected seeded questions to exist.')
 
+  const createdCourse = await prof.request('POST', '/courses', {
+    name: `Smoke Course ${Date.now()}`,
+    deptCode: 'CISC',
+    courseNumber: '101',
+    section: '001',
+    semester: 'Fall 2026',
+  })
+  if (!createdCourse._id || !createdCourse.enrollmentCode) {
+    throw new Error('Create-course response missing _id or enrollmentCode.')
+  }
+  if (createdCourse.deptCode !== 'cisc' || createdCourse.courseNumber !== '101' || createdCourse.semester !== 'fall 2026') {
+    throw new Error('Create-course normalization did not match expected legacy behavior.')
+  }
+
   const quizSession = sessions.find((s) => s.quiz)
   if (!quizSession) throw new Error('Seeded quiz session not found.')
   await prof.request('PUT', `/sessions/${quizSession._id}`, {
@@ -108,6 +122,26 @@ async function run() {
   const verifyResponse = await student.request('POST', '/users/verify-email', {})
   if (!Object.prototype.hasOwnProperty.call(verifyResponse, 'success')) {
     throw new Error('Verify-email endpoint missing expected response shape.')
+  }
+
+  const forgot = await admin.request('POST', '/auth/forgot-password', { email: 'student2@gmail.com' })
+  if (!forgot.success) throw new Error('Forgot-password endpoint did not report success.')
+  if (!forgot.debugResetToken) throw new Error('Forgot-password debug token missing in non-production mode.')
+  const reset = await admin.request('POST', '/auth/reset-password', {
+    token: forgot.debugResetToken,
+    password: '12345678',
+  })
+  if (!reset.success) throw new Error('Reset-password endpoint did not report success.')
+
+  const enrolledCourse = await student.request('POST', '/courses/enroll', {
+    enrollmentCode: createdCourse.enrollmentCode.toUpperCase(),
+  })
+  if (enrolledCourse._id !== createdCourse._id) {
+    throw new Error('Enrollment by code should return the enrolled course.')
+  }
+  const studentCourses = await student.request('GET', '/courses')
+  if (!studentCourses.some((c) => c._id === createdCourse._id)) {
+    throw new Error('Enrolled course was not visible in student course list.')
   }
 
   console.log('Migration smoke checks passed.')

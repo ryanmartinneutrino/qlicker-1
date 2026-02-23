@@ -2,11 +2,21 @@ import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import { getCourses } from '../collections/courses'
 import { getSettings } from '../collections/settings'
+import { getUsers } from '../collections/users'
 import { requireAuth, requireInstructor, requireProfOrAdmin } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
 import { courseSchema } from '@qlicker/shared'
 
 const router = Router()
+
+function generateEnrollmentCode(length = 6): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz'
+  let code = ''
+  for (let i = 0; i < length; i += 1) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
 
 /** GET /api/courses — list courses for the current user */
 router.get('/', requireAuth, async (req, res, next) => {
@@ -45,19 +55,56 @@ router.get('/:courseId', requireAuth, async (req, res, next) => {
 router.post('/', requireAuth, requireProfOrAdmin, async (req, res, next) => {
   try {
     const user = req.user as User
-    const parsed = courseSchema.omit({ _id: true, createdAt: true }).safeParse(req.body)
+    const parsed = courseSchema
+      .pick({
+        name: true,
+        deptCode: true,
+        courseNumber: true,
+        section: true,
+        semester: true,
+        requireVerified: true,
+        allowStudentQuestions: true,
+      })
+      .safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const courses = getCourses()
-    const doc = {
-      _id: generateStringId('course'),
-      ...parsed.data,
-      owner: user._id ?? '',
-      instructors: [user._id ?? ''],
-      createdAt: new Date(),
+    const userId = user._id ?? ''
+    let docId = ''
+    let inserted = false
+
+    for (let attempts = 0; attempts < 5 && !inserted; attempts += 1) {
+      docId = generateStringId('course')
+      const doc = {
+        _id: docId,
+        ...parsed.data,
+        deptCode: parsed.data.deptCode.toLowerCase(),
+        courseNumber: parsed.data.courseNumber.toLowerCase(),
+        semester: parsed.data.semester.toLowerCase(),
+        owner: userId,
+        enrollmentCode: generateEnrollmentCode(),
+        instructors: [userId],
+        students: [],
+        createdAt: new Date(),
+      }
+      try {
+        await courses.insertOne(doc as Parameters<typeof courses.insertOne>[0])
+        inserted = true
+      } catch (err) {
+        const maybeDup = err as { code?: number }
+        if (maybeDup.code !== 11000) throw err
+      }
     }
-    await courses.insertOne(doc as Parameters<typeof courses.insertOne>[0])
-    const created = await courses.findOne({ _id: doc._id } as Parameters<typeof courses.findOne>[0])
+
+    if (!inserted) return res.status(500).json({ error: 'Unable to create course. Please retry.' })
+
+    const users = getUsers()
+    await users.updateOne(
+      { _id: userId } as Parameters<typeof users.updateOne>[0],
+      { $addToSet: { 'profile.courses': docId } }
+    )
+
+    const created = await courses.findOne({ _id: docId } as Parameters<typeof courses.findOne>[0])
     res.status(201).json(created)
   } catch (err) {
     next(err)
@@ -97,23 +144,83 @@ router.delete('/:courseId', requireAuth, requireInstructor, async (req, res, nex
 router.post('/:courseId/enroll', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
-    const { enrollmentCode } = req.body as { enrollmentCode: string }
+    const rawCode = typeof req.body?.enrollmentCode === 'string' ? req.body.enrollmentCode : ''
+    const enrollmentCode = rawCode.trim().toLowerCase()
+    if (!enrollmentCode) return res.status(400).json({ error: 'Enrollment code is required.' })
     const courses = getCourses()
     const course = await courses.findOne({
       _id: req.params.courseId,
       enrollmentCode,
     } as Parameters<typeof courses.findOne>[0])
-    if (!course) return res.status(404).json({ error: 'Invalid enrollment code.' })
+    if (!course || course.inactive) return res.status(404).json({ error: "Couldn't enroll in course." })
 
-    if (course.students?.includes(user._id ?? '')) {
-      return res.status(409).json({ error: 'Already enrolled.' })
+    const userId = user._id ?? ''
+    const isInstructor = course.instructors?.includes(userId) ?? false
+    if (isInstructor) {
+      return res.status(409).json({ error: 'Already an instructor.' })
+    }
+
+    if (course.requireVerified) {
+      const hasVerified = (user.emails || []).some((email) => email.verified)
+      if (!hasVerified) {
+        return res.status(403).json({ error: 'Verified email required.' })
+      }
+    }
+
+    const users = getUsers()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $addToSet: { students: userId } }
+    )
+    await users.updateOne(
+      { _id: userId } as Parameters<typeof users.updateOne>[0],
+      { $addToSet: { 'profile.courses': req.params.courseId } }
+    )
+    res.json(await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/enroll — student self-enroll via enrollment code (legacy compatible) */
+router.post('/enroll', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const rawCode = typeof req.body?.enrollmentCode === 'string' ? req.body.enrollmentCode : ''
+    const enrollmentCode = rawCode.trim().toLowerCase()
+    if (!enrollmentCode) return res.status(400).json({ error: 'Enrollment code is required.' })
+
+    const courses = getCourses()
+    const users = getUsers()
+    const course = await courses.findOne({ enrollmentCode } as Parameters<typeof courses.findOne>[0])
+    if (!course || course.inactive) {
+      return res.status(404).json({ error: "Couldn't enroll in course." })
+    }
+
+    const userId = user._id ?? ''
+    const isInstructor = course.instructors?.includes(userId) ?? false
+    if (isInstructor) {
+      return res.status(409).json({ error: 'Already an instructor.' })
+    }
+
+    if (course.requireVerified) {
+      const hasVerified = (user.emails || []).some((email) => email.verified)
+      if (!hasVerified) {
+        return res.status(403).json({ error: 'Verified email required.' })
+      }
     }
 
     await courses.updateOne(
-      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $addToSet: { students: user._id } }
+      { _id: course._id } as Parameters<typeof courses.updateOne>[0],
+      { $addToSet: { students: userId } }
     )
-    res.json({ success: true })
+    await users.updateOne(
+      { _id: userId } as Parameters<typeof users.updateOne>[0],
+      { $addToSet: { 'profile.courses': course._id } }
+    )
+
+    const updated = await courses.findOne({ _id: course._id } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
   } catch (err) {
     next(err)
   }
