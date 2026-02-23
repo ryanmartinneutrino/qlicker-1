@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 interface EditorProps {
   value: string
@@ -7,14 +8,47 @@ interface EditorProps {
   onChange: (html: string, plainText: string) => void
 }
 
+export function normalizeEditorPlainText(input: string): string {
+  return input
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function sanitizeEditorLink(url: string): string | null {
+  const value = url.trim()
+  if (!value) return null
+  if (value.startsWith('/')) return value
+  const lower = value.toLowerCase()
+  if (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.startsWith('mailto:') ||
+    lower.startsWith('tel:')
+  ) {
+    return value
+  }
+  return null
+}
+
+export function extractEditorChange(root: HTMLElement): { html: string; plainText: string } {
+  const html = sanitizeHtml(root.innerHTML)
+  const plainText = normalizeEditorPlainText(root.innerText)
+  return { html, plainText }
+}
+
 export function Editor({ value, placeholder, minHeight = 120, onChange }: EditorProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const lastValueRef = useRef<string>(value)
+  type ToolbarAction = { label: string; command: string; value?: string }
   const toolbarActions = useMemo(
-    () => [
+    (): ToolbarAction[] => [
       { label: 'B', command: 'bold' },
       { label: 'I', command: 'italic' },
       { label: 'U', command: 'underline' },
+      { label: 'S', command: 'strikeThrough' },
+      { label: 'H3', command: 'formatBlock', value: 'h3' },
+      { label: 'P', command: 'formatBlock', value: 'p' },
       { label: 'UL', command: 'insertUnorderedList' },
       { label: 'OL', command: 'insertOrderedList' },
     ],
@@ -25,7 +59,7 @@ export function Editor({ value, placeholder, minHeight = 120, onChange }: Editor
     const root = rootRef.current
     if (!root) return
     if (value !== lastValueRef.current) {
-      root.innerHTML = value || ''
+      root.innerHTML = sanitizeHtml(value || '')
       lastValueRef.current = value || ''
     }
   }, [value])
@@ -33,20 +67,24 @@ export function Editor({ value, placeholder, minHeight = 120, onChange }: Editor
   const emitChange = () => {
     const root = rootRef.current
     if (!root) return
-    const html = root.innerHTML
-    const plainText = root.innerText
-      .replace(/\u00a0/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const { html, plainText } = extractEditorChange(root)
+    if (root.innerHTML !== html) root.innerHTML = html
     lastValueRef.current = html
     onChange(html, plainText)
   }
 
-  const applyCommand = (command: string) => {
+  const applyCommand = (command: string, value?: string) => {
     if (command === 'createLink') {
       const url = window.prompt('Enter URL')
       if (!url) return
-      document.execCommand('createLink', false, url)
+      const safeUrl = sanitizeEditorLink(url)
+      if (!safeUrl) {
+        window.alert('Please enter a valid link (http/https/mailto/tel or relative path).')
+        return
+      }
+      document.execCommand('createLink', false, safeUrl)
+    } else if (command === 'formatBlock' && value) {
+      document.execCommand(command, false, value)
     } else {
       document.execCommand(command, false)
     }
@@ -62,7 +100,7 @@ export function Editor({ value, placeholder, minHeight = 120, onChange }: Editor
             key={action.command}
             type="button"
             className="btn btn-default btn-sm"
-            onClick={() => applyCommand(action.command)}
+            onClick={() => applyCommand(action.command, action.value)}
           >
             {action.label}
           </button>
