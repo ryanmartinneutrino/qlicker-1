@@ -262,33 +262,13 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 
 ---
 
-## Migration Audit (Current Branch)
-
-### Build / TypeScript health
-- `packages/shared`: builds successfully
-- `packages/server`: builds successfully
-- `packages/client`: builds successfully
-
-### Conflict status
-- `packages/client/src/pages/Profile.tsx`: conflict-free and aligned to modal-based flows
-- `packages/client/src/pages/QuestionsLibrary.tsx`: conflict-free with modal create + inline edit/delete flow
-- Merge-conflict hotspots (`MIGRATION.md`, `Profile.tsx`, `QuestionsLibrary.tsx`) were normalized to reduce repeated future conflicts
-
-### Database compatibility checks
-- Collection names are unchanged and map 1:1 with Meteor collections.
-- New inserts in auth/courses/sessions/questions/responses/images/settings routes now generate **string `_id` values** via `generateStringId`, preserving Meteor interoperability.
-- Password hashes remain compatible via `services.password.bcrypt` (bcrypt compare unchanged).
-
-### Remaining risk areas (pre-cutover)
-- Advanced question/session components (`QuestionDisplay`, `QuestionEditItem`, rich text editor) are still simplified relative to Meteor behavior.
-- Image upload storage backends (S3/Azure) are still stubbed.
-- Video/Jitsi and quiz-extension behavior still need end-to-end parity validation.
-- Full integration test pass against a live Mongo replica-set + seeded users is still required before cutover.
-
-
----
 
 ## Next Steps
+
+
+### Coordination Notes
+- Detailed migration audit snapshot: `docs/migration-audit.md`
+- Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
 1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
 2. **Advanced components**: Port `QuestionDisplay`, `QuestionEditItem`, `ResponseDisplay`, `ResponseList`, `GradeView`, `CleanTable`, `CleanGradeTable`, `Histogram`, `AnswerDistribution`
@@ -300,26 +280,6 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 8. **Email verification**: Implement backend endpoint for email verification
 9. **Full test coverage**: Add component tests for all ported pages
 10. **Operational scripts**: Expand seeded test-data scripts for sessions/questions/responses scenarios
-
-
-## Multi-Agent Execution Plan
-
-A multi-agent execution pack is included in this repository:
-
-- `agent-plans/README.md`
-- `agent-plans/agent-01-questions-editor.md`
-- `agent-plans/agent-02-quiz-session-parity.md`
-- `agent-plans/agent-03-profile-image-upload.md`
-- `agent-plans/agent-04-video-chat-parity.md`
-- `agent-plans/agent-05-integration-parity-tests.md`
-
-Local branch/worktree launcher:
-
-```bash
-./launch-migration-agents.sh
-```
-
-This creates per-agent branches and worktrees under `.agent-worktrees/` so tasks can proceed in parallel with minimal merge contention.
 
 
 ## Mock Data Seeding for Migration Testing
