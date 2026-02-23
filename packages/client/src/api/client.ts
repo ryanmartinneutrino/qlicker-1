@@ -32,7 +32,7 @@ async function getCsrfToken(): Promise<string> {
   return csrfToken
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, payload?: unknown): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
@@ -47,12 +47,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     credentials: 'include',
     headers,
   }
-  if (body !== undefined) {
-    options.body = JSON.stringify(body)
+  if (payload !== undefined) {
+    options.body = JSON.stringify(payload)
   }
 
   const res = await fetch(`${BASE_URL}${path}`, options)
-  const body = await parseResponseBody(res)
+  const responseBody = await parseResponseBody(res)
 
   if (!res.ok) {
     // If CSRF token is stale, clear cache and retry once
@@ -69,15 +69,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       }
       return retryBody as T
     }
-    const message = typeof body === 'object' && body && 'error' in body
-      ? String((body as { error?: string }).error)
-      : typeof body === 'string'
-        ? `Request failed: ${res.status} (${body.slice(0, 120)})`
+    const message = typeof responseBody === 'object' && responseBody && 'error' in responseBody
+      ? String((responseBody as { error?: string }).error)
+      : typeof responseBody === 'string'
+        ? `Request failed: ${res.status} (${responseBody.slice(0, 120)})`
         : `Request failed: ${res.status}`
     throw new Error(message)
   }
 
-  return body as T
+  return responseBody as T
 }
 
 export const apiClient = {
