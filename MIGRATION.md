@@ -156,7 +156,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 | Profile | `profile.jsx` | `Profile.tsx` | ✅ Name/SN editing, email verification, password change |
 | Student Dashboard | `student_dashboard.jsx` | `Student.tsx` | ✅ Enrollment form, active/inactive courses |
 | Professor Dashboard | `professor_dashboard.jsx` | `Professor.tsx` | ✅ Create course, manage courses |
-| Admin Dashboard | `admin_dashboard.jsx` | `Admin.tsx` | ✅ Tabbed: users (CRUD), settings (stub), SSO/images/video (stub) |
+| Admin Dashboard | `admin_dashboard.jsx` | `Admin.tsx` | ✅ Tabbed: users (CRUD), main/image/SSO/video settings with save flows |
 | Manage Courses | `manage_courses.jsx` | `ManageCourses.tsx` | ✅ Active/inactive toggle, delete, create |
 | Course Detail | `course.jsx` + `manage_course.jsx` | `Course.tsx` | ✅ Role-based view (instructor vs student), sessions, quizzes |
 | Session | `session.jsx` | `Session.tsx` | ✅ Question navigation, answer options display |
@@ -164,7 +164,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 | Manage Session | `manage_session.jsx` | `ManageSession.tsx` | ✅ Edit name/description, quiz settings |
 | Grade Session | `grade_session.jsx` | `GradeSession.tsx` | ✅ Grades table with points |
 | Course Grades | `course_grades.jsx` | `CourseGrades.tsx` | ✅ Course-wide grades table |
-| Questions Library | `questions_library.jsx` | `QuestionsLibrary.tsx` | ✅ Question list with type badges |
+| Questions Library | `questions_library.jsx` | `QuestionsLibrary.tsx` | ✅ Question list + create/edit/delete basics |
 | Session Results | `results.jsx` | `SessionResults.tsx` | ✅ Per-question response statistics |
 | Replay Session | `replay_session.jsx` | `ReplaySession.tsx` | ✅ Session replay with correct answers |
 | Results Overview | `results_overview.jsx` | `ResultsOverview.tsx` | ✅ Course list with grade links |
@@ -184,7 +184,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 | Meteor Pattern | New Pattern | Status |
 |----------------|-------------|--------|
 | `withTracker` HOC | `useRealtimeCollection` hook | ✅ Hook ready, used where needed |
-| `Meteor.call()` | `apiClient` / `useApi` hook | ✅ All API calls migrated |
+| `Meteor.call()` | `apiClient` / `useApi` hook | ✅ All page-level API calls migrated |
 | `Meteor.loginWithPassword()` | `useAuth().login()` | ✅ |
 | `Accounts.createUser()` | `useAuth().register()` | ✅ |
 | `Meteor.loginWithSaml()` | Redirect to `/api/auth/saml` | ✅ |
@@ -257,9 +257,9 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 ### Admin
 - [x] User management (list, role change, delete)
 - [x] Settings management
-- [ ] SSO configuration UI (TODO)
-- [ ] Image settings UI (TODO)
-- [ ] Video chat settings UI (TODO)
+- [x] SSO configuration UI
+- [x] Image settings UI
+- [x] Video chat settings UI
 
 ---
 
@@ -272,6 +272,24 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 5. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor)
 6. **Video chat**: Port `VideoChat` and `JitsiWindow` components
 7. **Content sanitization**: Add DOMPurify for `dangerouslySetInnerHTML` in question content rendering
-8. **Admin sub-panels**: Implement `ManageMainSettings`, `ManageSSO`, `ManageImages`, `ManageJitsi`
-9. **Email verification**: Implement backend endpoint for email verification
-10. **Full test coverage**: Add component tests for all ported pages
+8. **Email verification**: Implement backend endpoint for email verification
+9. **Full test coverage**: Add component tests for all ported pages
+10. **Operational scripts**: Expand seeded test-data scripts for sessions/questions/responses scenarios
+
+
+## Mock Data Seeding for Migration Testing
+
+A helper script is available at the repository root to initialize a compatible mock dataset in MongoDB:
+
+```bash
+./seed-mock-db.sh
+```
+
+By default it connects to `mongodb://localhost:27017/qlicker?replicaSet=rs0` and upserts:
+
+- `prof@gmail.com` (role: professor)
+- `student1@gmail.com` (role: student)
+- `student2@gmail.com` (role: student)
+- `admin@gmail.com` (role: admin)
+
+All accounts are created with password `12345678` using Meteor-compatible bcrypt storage in `services.password.bcrypt`, and all users are linked to a single professor-owned course (`Migration Test Course`).

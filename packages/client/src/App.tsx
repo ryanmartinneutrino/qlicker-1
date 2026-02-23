@@ -4,7 +4,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { useAuth } from './hooks/useAuth'
 
-// Pages — stubs for now, migrate from imports/ui/pages/
+// Pages migrated from imports/ui/pages/ (Meteor) to React 18 + TypeScript
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Profile from './pages/Profile'

@@ -38,6 +38,47 @@ router.get('/:userId', requireAuth, async (req, res, next) => {
   }
 })
 
+
+/** POST /api/users/verify-email — compatibility stub for migration */
+router.post('/verify-email', requireAuth, async (_req, res) => {
+  // Email transport flow is not fully migrated yet; keep endpoint for UI parity.
+  res.json({ success: true })
+})
+
+/** PUT /api/users/:userId/email — change own email */
+router.put('/:userId/email', requireAuth, async (req, res, next) => {
+  try {
+    const currentUser = req.user as User
+    if (currentUser._id !== req.params.userId) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const { email } = req.body as { email?: string }
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email required.' })
+    }
+
+    const users = getUsers()
+    const duplicate = await users.findOne({ 'emails.address': email } as Parameters<typeof users.findOne>[0])
+    if (duplicate && duplicate._id !== req.params.userId) {
+      return res.status(409).json({ error: 'Email already in use.' })
+    }
+
+    await users.updateOne(
+      { _id: req.params.userId } as Parameters<typeof users.updateOne>[0],
+      { $set: { emails: [{ address: email, verified: false }] } }
+    )
+
+    const updated = await users.findOne(
+      { _id: req.params.userId } as Parameters<typeof users.findOne>[0],
+      { projection: { 'services.password': 0 } }
+    )
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** PUT /api/users/:userId/profile — update own profile */
 router.put('/:userId/profile', requireAuth, async (req, res, next) => {
   try {
@@ -102,8 +143,9 @@ router.put('/:userId/password', requireAuth, async (req, res, next) => {
     if (currentUser._id !== req.params.userId) {
       return res.status(403).json({ error: 'Forbidden.' })
     }
-    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string }
-    if (!newPassword || newPassword.length < 8) {
+    const { currentPassword, newPassword, password } = req.body as { currentPassword?: string; newPassword?: string; password?: string }
+    const targetPassword = newPassword || password
+    if (!targetPassword || targetPassword.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters.' })
     }
 
@@ -113,11 +155,11 @@ router.put('/:userId/password', requireAuth, async (req, res, next) => {
 
     const hash = user.services?.password?.bcrypt
     if (hash) {
-      const valid = await bcrypt.compare(currentPassword, hash)
+      const valid = await bcrypt.compare(currentPassword || '', hash)
       if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' })
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10)
+    const newHash = await bcrypt.hash(targetPassword, 10)
     await users.updateOne(
       { _id: req.params.userId } as Parameters<typeof users.updateOne>[0],
       { $set: { 'services.password.bcrypt': newHash } }
