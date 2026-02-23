@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Question } from '@qlicker/shared'
+import type { Question, QuestionOption } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
@@ -15,7 +15,7 @@ const QUESTION_TYPES: Record<number, string> = {
   4: 'Numerical',
 }
 
-const DEFAULT_OPTIONS = [{ plainText: '' }, { plainText: '' }]
+const DEFAULT_OPTIONS: QuestionOption[] = [{ plainText: '' }, { plainText: '' }]
 
 export default function QuestionsLibrary() {
   const { courseId } = useParams<{ courseId: string }>()

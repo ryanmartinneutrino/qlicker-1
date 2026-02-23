@@ -93,30 +93,6 @@ export default function Profile() {
     }
   }
 
-  const handleChangeEmail = async () => {
-    const newEmail = window.prompt('Enter new email address:')
-    if (!newEmail) return
-    try {
-      await apiClient.put(`/users/${user._id}/email`, { email: newEmail })
-      window.location.reload()
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Could not change email'))
-    }
-  }
-
-  const handleChangePassword = async () => {
-    const currentPassword = window.prompt('Enter current password:')
-    if (currentPassword === null) return
-    const newPassword = window.prompt('Enter new password (minimum 8 characters):')
-    if (!newPassword) return
-    try {
-      await apiClient.put(`/users/${user._id}/password`, { currentPassword, newPassword })
-      alert('Password updated')
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Could not change password'))
-    }
-  }
-
   const spanVerified = emailVerified
     ? <span className="label label-success">Verified</span>
     : <span className="label label-warning">Un-verified</span>
