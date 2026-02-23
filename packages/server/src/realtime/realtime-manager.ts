@@ -134,6 +134,24 @@ export function setupRealtime(io: SocketIOServer): void {
       unsubscribers.push(unsub)
     })
 
+    /** Subscribe to question updates within a course */
+    socket.on('subscribe:questions-course', async ({ courseId }: { courseId: string }) => {
+      if (!courseId) return
+      const unsub = streams['questions'].subscribe(`questions:course:${courseId}`, (event) => {
+        socket.emit('questions:change', event)
+      })
+      unsubscribers.push(unsub)
+    })
+
+    /** Subscribe to session updates within a course */
+    socket.on('subscribe:sessions', async ({ courseId }: { courseId: string }) => {
+      if (!courseId) return
+      const unsub = streams['sessions'].subscribe(`sessions:course:${courseId}`, (event) => {
+        socket.emit('sessions:change', event)
+      })
+      unsubscribers.push(unsub)
+    })
+
     /** Subscribe to grade updates for a user */
     socket.on('subscribe:grades', async ({ userId: targetUserId }: { userId: string }) => {
       const requestingUserId = getUserIdFromSocket(socket)

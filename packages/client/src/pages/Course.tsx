@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { Course as CourseType, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { SessionListItem } from '../components/SessionListItem'
 import { CreateSessionModal } from '../components/modals/CreateSessionModal'
+import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
 
 export default function Course() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -12,27 +13,33 @@ export default function Course() {
   const { user } = useAuth()
 
   const [course, setCourse] = useState<CourseType | null>(null)
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [courseLoading, setCourseLoading] = useState(true)
+  const [courseError, setCourseError] = useState<string | null>(null)
   const [creatingSessionType, setCreatingSessionType] = useState<'interactive' | 'quiz' | null>(null)
+  const {
+    data: sessions,
+    loading: sessionsLoading,
+    error: sessionsError,
+  } = useRealtimeCollection<Session>({
+    fetchPath: `/sessions?courseId=${courseId}`,
+    subscribeEvent: 'subscribe:sessions',
+    subscribePayload: { courseId: courseId || '' },
+    changeEvent: 'sessions:change',
+    enabled: Boolean(courseId),
+  })
 
   useEffect(() => {
     if (!courseId) return
-    setLoading(true)
-    Promise.all([
-      apiClient.get<CourseType>(`/courses/${courseId}`),
-      apiClient.get<Session[]>(`/sessions?courseId=${courseId}`),
-    ])
-      .then(([c, s]) => {
-        setCourse(c)
-        setSessions(s)
-      })
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false))
+    setCourseLoading(true)
+    apiClient
+      .get<CourseType>(`/courses/${courseId}`)
+      .then((c) => setCourse(c))
+      .catch((err) => setCourseError((err as Error).message))
+      .finally(() => setCourseLoading(false))
   }, [courseId])
 
-  if (loading) return <div className="page">Loading...</div>
+  const error = courseError || sessionsError
+  if (courseLoading || sessionsLoading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
   if (!course) return <div className="page">Course not found</div>
 
@@ -41,15 +48,14 @@ export default function Course() {
     ((course.instructors && course.instructors.includes(user._id ?? '')) ||
       user.profile?.roles?.includes('admin'))
 
-  const interactiveSessions = sessions.filter((s) => !s.quiz)
-  const quizSessions = sessions.filter((s) => s.quiz)
+  const interactiveSessions = useMemo(() => sessions.filter((s) => !s.quiz), [sessions])
+  const quizSessions = useMemo(() => sessions.filter((s) => s.quiz), [sessions])
 
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await apiClient.delete(`/sessions/${sessionId}`)
-      setSessions((prev) => prev.filter((s) => s._id !== sessionId))
     } catch (err) {
-      setError((err as Error).message)
+      setCourseError((err as Error).message)
     }
   }
 
@@ -115,8 +121,6 @@ export default function Course() {
               courseId={courseId!}
               done={() => setCreatingSessionType(null)}
               onCreated={(created) => {
-                const normalized = creatingSessionType === 'quiz' ? { ...created, quiz: true } : { ...created, quiz: false }
-                setSessions((prev) => [...prev, normalized])
                 navigate(`/course/${courseId}/session/edit/${created._id}`)
               }}
             />

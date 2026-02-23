@@ -2,30 +2,37 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { Session, Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
+import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 export default function RunSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
   const navigate = useNavigate()
 
   const [session, setSession] = useState<Session | null>(null)
-  const [questions, setQuestions] = useState<Question[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const {
+    data: questions,
+    loading: questionsLoading,
+    error: questionsError,
+  } = useRealtimeCollection<Question>({
+    fetchPath: `/questions?sessionId=${sessionId || ''}`,
+    subscribeEvent: 'subscribe:questions',
+    subscribePayload: { sessionId: sessionId || '' },
+    changeEvent: 'questions:change',
+    enabled: Boolean(sessionId),
+  })
 
   useEffect(() => {
     if (!sessionId) return
-    setLoading(true)
-    Promise.all([
-      apiClient.get<Session>(`/sessions/${sessionId}`),
-      apiClient.get<Question[]>(`/questions?sessionId=${sessionId}`),
-    ])
-      .then(([s, q]) => {
-        setSession(s)
-        setQuestions(q)
-      })
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false))
+    setSessionLoading(true)
+    apiClient
+      .get<Session>(`/sessions/${sessionId}`)
+      .then((s) => setSession(s))
+      .catch((err) => setSessionError((err as Error).message))
+      .finally(() => setSessionLoading(false))
   }, [sessionId])
 
   const updateStatus = async (status: string) => {
@@ -34,11 +41,12 @@ export default function RunSession() {
       const updated = await apiClient.put<Session>(`/sessions/${sessionId}/status`, { status })
       setSession(updated)
     } catch (err) {
-      setError((err as Error).message)
+      setSessionError((err as Error).message)
     }
   }
 
-  if (loading) return <div className="page">Loading...</div>
+  const error = sessionError || questionsError
+  if (sessionLoading || questionsLoading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
   if (!session) return <div className="page">Session not found</div>
 
@@ -96,7 +104,7 @@ export default function RunSession() {
                     <div
                       className="ql-question-content"
                       dangerouslySetInnerHTML={{
-                        __html: currentQuestion.content || currentQuestion.plainText || '',
+                        __html: sanitizeHtml(currentQuestion.content || currentQuestion.plainText || ''),
                       }}
                     />
                     {currentQuestion.options && currentQuestion.options.length > 0 && (

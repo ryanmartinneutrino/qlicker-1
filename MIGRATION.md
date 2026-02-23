@@ -229,6 +229,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] MC, TF, SA, MS, NU question types
 - [x] Session options (hidden, stats, correct, points, attempts)
 - [x] Question library UI
+- [x] Content sanitization for rendered question/solution HTML in React pages
 
 ### Responses
 - [x] Submit responses
@@ -271,11 +272,10 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
 1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
-2. **Advanced components**: Port richer `QuestionDisplay` parity features (`AnswerDistribution`, `Histogram`, `ShortAnswerList`) and remaining grading tables
+2. **Advanced components**: Port richer `QuestionDisplay` parity features and remaining grading tables (`AnswerDistribution`, `Histogram`, `ShortAnswerList` are now available in `SessionResults`)
 3. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor) end-to-end
-4. **Content sanitization**: Add DOMPurify for `dangerouslySetInnerHTML` in question content rendering
-5. **Email verification delivery**: Keep compatibility endpoint and add full SMTP delivery flow
-6. **Full test coverage**: Add component tests for all ported pages
+4. **Email verification delivery**: Keep compatibility endpoint and add full SMTP delivery flow
+5. **Full test coverage**: Add component tests for all ported pages
 
 
 ## Mock Data Seeding for Migration Testing
