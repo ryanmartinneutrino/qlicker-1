@@ -273,10 +273,102 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - Detailed migration audit snapshot: `docs/migration-audit.md`
 - Multi-agent parallel execution plan: `agent-plans/README.md` and `launch-migration-agents.sh`
 
-1. **Remaining modals**: Port additional specialized modals from `imports/ui/modals/` (`EnrollCourseModal` is now migrated)
-2. **Advanced components**: Port richer `QuestionDisplay` parity features and remaining grading tables (`AnswerDistribution`, `Histogram`, `ShortAnswerList` are now available in `SessionResults`)
-3. **Rich text editor hardening**: Expand toolbar parity and add regression tests around HTML/plain-text conversions
-4. **Full test coverage**: Add component tests for all ported pages
+### Handoff Checklist (new machine)
+Run this first before any parallel work:
+
+```bash
+git fetch --all --prune
+git checkout master
+git pull --ff-only origin master
+```
+
+Then verify the current parity baseline:
+
+```bash
+docker compose build
+docker compose up -d
+./seed-mock-db.sh
+npm run test:migration-smoke
+```
+
+If smoke fails, fix baseline on `master` first before opening new agent branches.
+
+### Current Migration State (for resuming work)
+- Enrollment and auth compatibility work has been migrated to Express routes and React pages:
+  - Student enrollment by code (including code normalization and profile course linkage)
+  - Forgot/reset password API routes
+  - Enroll course modal parity in student dashboard
+- Editor hardening started:
+  - Expanded toolbar capabilities
+  - Safer link handling
+  - Initial conversion/sanitization regression tests
+- Remaining gaps are mainly deep UI parity (`QuestionDisplay`/grading behavior) and broad automated coverage.
+
+### Parallel Agent Plan (recommended)
+Use 5 agents in parallel with one focused lane each. Keep each PR small enough to rebase quickly.
+
+#### Agent 1 — Question/Response UI parity
+- Scope:
+  - Port richer `QuestionDisplay` behavior from `imports/ui/QuestionDisplay.jsx`
+  - Port `ResponseDisplay`/grading interaction parity from `imports/ui/ResponseDisplay.jsx`
+  - Replace simplified inline question rendering in `Session.tsx`, `RunSession.tsx`, `ReplaySession.tsx`, `GradeSession.tsx` with shared components
+- Acceptance:
+  - MC/TF/SA/MS/NU interactions match Meteor behavior
+  - Quiz/editable attempt behavior matches legacy flows
+  - No regression in sanitized HTML rendering
+
+#### Agent 2 — Session/quiz behavior parity
+- Scope:
+  - Validate/patch quiz attempt limits, closed attempts, extension windows, and submission semantics
+  - Confirm server logic in `packages/server/src/routes/sessions.ts`, `responses.ts`, `grades.ts` mirrors legacy method behavior
+- Acceptance:
+  - End-to-end quiz flow for professor and student passes against seeded data
+  - Grade updates and visibility toggles align with Meteor behavior
+
+#### Agent 3 — Modals and specialized workflow parity
+- Scope:
+  - Port remaining specialized modals from `imports/ui/modals/` beyond core account/session/question creation and enroll flows
+  - Ensure keyboard/cancel/submit UX parity for modal stack
+- Acceptance:
+  - Missing modal list in `imports/ui/modals/` has React equivalents or explicit deprecation notes
+  - No dead modal routes/actions in React pages
+
+#### Agent 4 — Realtime and performance hardening
+- Scope:
+  - Audit socket subscriptions and fan-out paths for high-concurrency safety
+  - Add indexing/perf fixes where query hotspots appear (`courses`, `sessions`, `responses`, `grades`)
+  - Verify no per-client Mongo Change Stream creation
+- Acceptance:
+  - Load-test sanity checks documented
+  - Observable update latency remains acceptable under concurrent activity
+
+#### Agent 5 — Coverage and migration regression suite
+- Scope:
+  - Expand `scripts/migration-smoke.mjs` for critical parity paths
+  - Add client component tests (Vitest) for migrated pages/components
+  - Add server route tests for auth/courses/sessions/responses/grades parity edge cases
+- Acceptance:
+  - Smoke suite covers login, enroll, course create/edit, question lifecycle, response submission, grading visibility, reset password
+  - Tests run in CI/local Docker environment with reproducible commands
+
+### Agent Execution Protocol
+1. Run `./launch-migration-agents.sh`.
+2. Assign one lane above per agent/worktree.
+3. Each agent rebases onto latest `origin/master` before coding and before opening PR.
+4. Each PR must include:
+   - Updated `MIGRATION.md` status bullets for the lane
+   - Commands used to validate changes
+   - Explicit list of Meteor behaviors matched
+5. Merge order:
+   - Agent 5 test harness PR first if it only adds tests/helpers.
+   - Then independent UI/server lanes.
+   - Rebase dependent lanes after each merge to avoid conflict piles.
+
+### Remaining Priorities
+1. **Advanced components**: Finish rich `QuestionDisplay`/`ResponseDisplay` parity and wire all session/grade pages to shared components.
+2. **Editor hardening**: Complete toolbar parity and broaden conversion/security regression tests.
+3. **Full test coverage**: Add route + component tests for all migrated critical paths.
+4. **Performance validation**: Prove reactive behavior under concurrent load with documented benchmark run.
 
 
 ## Mock Data Seeding for Migration Testing
