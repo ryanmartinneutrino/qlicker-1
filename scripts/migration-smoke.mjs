@@ -52,6 +52,17 @@ class ApiSession {
 }
 
 async function run() {
+  try {
+    const health = await fetch(`${baseUrl}/health`)
+    if (!health.ok) {
+      throw new Error(`health check status ${health.status}`)
+    }
+  } catch (err) {
+    throw new Error(
+      `Cannot reach ${baseUrl}. Start the Express server first (for example: npm run dev:server).`
+    )
+  }
+
   const prof = new ApiSession()
   const student = new ApiSession()
   const admin = new ApiSession()

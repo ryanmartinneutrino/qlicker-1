@@ -20,8 +20,9 @@ router.get('/', requireAuth, async (req, res, next) => {
     if (userId && isInstructor) {
       query.userId = userId
     } else if (!isInstructor) {
-      // Students can only see their own grades
+      // Meteor parity: students can only see their own visible grades.
       query.userId = user._id
+      query.visibleToStudents = true
     }
 
     const result = await grades.find(query).toArray()
@@ -40,7 +41,7 @@ router.get('/:gradeId', requireAuth, async (req, res, next) => {
     if (!grade) return res.status(404).json({ error: 'Grade not found.' })
 
     const isInstructor = user.profile.roles.includes('professor') || user.profile.roles.includes('admin')
-    if (!isInstructor && grade.userId !== user._id) {
+    if (!isInstructor && (grade.userId !== user._id || !grade.visibleToStudents)) {
       return res.status(403).json({ error: 'Forbidden.' })
     }
     res.json(grade)
