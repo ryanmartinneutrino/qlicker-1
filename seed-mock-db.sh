@@ -8,13 +8,25 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+RUNNER=(node)
+if ! node -e "require('mongodb'); require('bcrypt')" >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1 && docker compose ps server >/dev/null 2>&1; then
+    echo "Local Node modules missing; seeding via running 'server' container."
+    RUNNER=(docker compose exec -T server node)
+  else
+    echo "Missing local modules (mongodb/bcrypt), and docker compose server is not available." >&2
+    echo "Either run 'npm install' locally, or start containers with 'docker compose up -d'." >&2
+    exit 1
+  fi
+fi
+
 if [[ -n "$MONGO_URL" ]]; then
   echo "Seeding mock users/course (preferred MONGO_URL=${MONGO_URL})"
 else
   echo "Seeding mock users/course (auto-detecting Mongo URL for local/docker)"
 fi
 
-MONGO_URL="$MONGO_URL" node <<'NODE'
+MONGO_URL="$MONGO_URL" "${RUNNER[@]}" <<'NODE'
 const { MongoClient } = require('mongodb')
 const bcrypt = require('bcrypt')
 const crypto = require('crypto')
