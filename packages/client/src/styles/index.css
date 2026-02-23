@@ -1713,3 +1713,9 @@ select.ql-unstyled-select {
   font-weight: 400;
   margin-bottom: 6px;
 }
+
+[contenteditable="true"][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #999;
+  pointer-events: none;
+}

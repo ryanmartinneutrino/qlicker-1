@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../../api/client'
-import type { Question, SessionOptions } from '@qlicker/shared'
+import type { Question, QuestionOption, SessionOptions } from '@qlicker/shared'
+import { Editor } from '../Editor'
 
 const defaultSessionOptions: SessionOptions = {
   hidden: false,
@@ -19,12 +20,83 @@ interface CreateQuestionModalProps {
   done: () => void
 }
 
+const defaultMcOptions: QuestionOption[] = [
+  { plainText: 'Option A', content: 'Option A', answer: 'Option A', correct: true },
+  { plainText: 'Option B', content: 'Option B', answer: 'Option B', correct: false },
+]
+
+const trueFalseOptions: QuestionOption[] = [
+  { plainText: 'True', content: 'True', answer: 'True', correct: true },
+  { plainText: 'False', content: 'False', answer: 'False', correct: false },
+]
+
 export function CreateQuestionModal({ courseId, userId, onCreated, done }: CreateQuestionModalProps) {
   const [plainText, setPlainText] = useState('')
+  const [content, setContent] = useState('')
+  const [solution, setSolution] = useState('')
+  const [solutionPlain, setSolutionPlain] = useState('')
   const [type, setType] = useState(3)
+  const [options, setOptions] = useState<QuestionOption[]>([])
+  const [correctNumerical, setCorrectNumerical] = useState(0)
+  const [toleranceNumerical, setToleranceNumerical] = useState(0)
   const [isPublic, setIsPublic] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const isChoiceType = type === 0 || type === 1 || type === 2
+
+  useEffect(() => {
+    if (type === 2) {
+      setOptions(trueFalseOptions)
+      return
+    }
+    if ((type === 0 || type === 1) && options.length < 2) {
+      setOptions(defaultMcOptions)
+      return
+    }
+    if (!isChoiceType) {
+      setOptions([])
+    }
+  }, [type, isChoiceType, options.length])
+
+  const sanitizedOptions = useMemo(() => {
+    if (!isChoiceType) return []
+    return options.map((option) => {
+      const text = option.plainText || option.answer || ''
+      return {
+        ...option,
+        plainText: text,
+        answer: text,
+        content: option.content || text,
+      }
+    })
+  }, [isChoiceType, options])
+
+  const updateOption = (index: number, value: string) => {
+    setOptions((prev) =>
+      prev.map((opt, i) =>
+        i === index
+          ? { ...opt, plainText: value, content: value, answer: value }
+          : opt
+      )
+    )
+  }
+
+  const setCorrectOption = (index: number) => {
+    if (type === 1) {
+      setOptions((prev) => prev.map((opt, i) => (i === index ? { ...opt, correct: !opt.correct } : opt)))
+      return
+    }
+    setOptions((prev) => prev.map((opt, i) => ({ ...opt, correct: i === index })))
+  }
+
+  const addOption = () => {
+    setOptions((prev) => [...prev, { plainText: `Option ${String.fromCharCode(65 + prev.length)}` }])
+  }
+
+  const removeOption = (index: number) => {
+    setOptions((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,17 +105,17 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
     try {
       const created = await apiClient.post<Question>('/questions', {
         plainText: plainText || 'New Question',
-        content: plainText || 'New Question',
+        content: content || plainText || 'New Question',
         type,
-        options: [],
-        toleranceNumerical: 0,
-        correctNumerical: 0,
+        options: sanitizedOptions,
+        toleranceNumerical: type === 4 ? toleranceNumerical : 0,
+        correctNumerical: type === 4 ? correctNumerical : 0,
         creator: userId,
         owner: userId,
         courseId,
         public: isPublic,
-        solution: '',
-        solution_plainText: '',
+        solution,
+        solution_plainText: solutionPlain || solution,
         approved: false,
         tags: [],
         sessionOptions: defaultSessionOptions,
@@ -63,7 +135,15 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
         <div className="ql-modal-header ql-header-bar"><h2>Add a Question</h2></div>
         <form className="ql-card-content" onSubmit={handleSubmit}>
           <label>Question text</label>
-          <input className="form-control" value={plainText} onChange={(e) => setPlainText(e.target.value)} />
+          <Editor
+            value={content}
+            placeholder="Type your question..."
+            minHeight={120}
+            onChange={(html, plain) => {
+              setContent(html)
+              setPlainText(plain)
+            }}
+          />
           <br />
 
           <label>Type</label>
@@ -74,6 +154,62 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
             <option value={3}>Short Answer</option>
             <option value={4}>Numerical</option>
           </select>
+          <br />
+
+          {isChoiceType && (
+            <div style={{ marginBottom: 12 }}>
+              <label>Options</label>
+              {options.map((option, index) => (
+                <div key={index} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                  <input
+                    type={type === 1 ? 'checkbox' : 'radio'}
+                    checked={Boolean(option.correct)}
+                    onChange={() => setCorrectOption(index)}
+                  />
+                  <input
+                    className="form-control"
+                    value={option.plainText || option.answer || ''}
+                    onChange={(e) => updateOption(index, e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-default btn-sm"
+                    disabled={type === 2}
+                    onClick={() => removeOption(index)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              {type !== 2 && (
+                <button type="button" className="btn btn-default btn-sm" onClick={addOption}>Add Option</button>
+              )}
+            </div>
+          )}
+
+          {type === 4 && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <div>
+                <label>Correct value</label>
+                <input className="form-control" type="number" value={correctNumerical} onChange={(e) => setCorrectNumerical(Number(e.target.value))} />
+              </div>
+              <div>
+                <label>Tolerance</label>
+                <input className="form-control" type="number" value={toleranceNumerical} onChange={(e) => setToleranceNumerical(Number(e.target.value))} />
+              </div>
+            </div>
+          )}
+
+          <label>Solution</label>
+          <Editor
+            value={solution}
+            placeholder="Optional solution text..."
+            minHeight={90}
+            onChange={(html, plain) => {
+              setSolution(html)
+              setSolutionPlain(plain)
+            }}
+          />
           <br />
 
           <label>

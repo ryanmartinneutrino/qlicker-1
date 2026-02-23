@@ -257,6 +257,13 @@ export const userSchema = z.object({
   services: z
     .object({
       password: z.object({ bcrypt: z.string() }).optional(),
+      emailVerification: z
+        .object({
+          token: z.string().optional(),
+          expiresAt: z.date().optional(),
+          requestedAt: z.date().optional(),
+        })
+        .optional(),
       sso: z
         .object({
           nameID: z.string().optional(),

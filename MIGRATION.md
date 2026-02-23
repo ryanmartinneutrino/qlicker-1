@@ -209,7 +209,8 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] SAML SSO login
 - [x] Registration (with signup form in Login page)
 - [x] Password reset (forgot password + token-based reset UI)
-- [x] Email verification request endpoint compatibility (`POST /api/users/verify-email`); SMTP delivery still pending
+- [x] Email verification request + token verification endpoint (`POST /api/users/verify-email`, `GET /api/users/verify-email/:token`)
+- [x] SMTP delivery attempt using `MAIL_URL` (falls back to logged verification URL if mail transport unavailable)
 
 ### Courses
 - [x] Create/edit/delete courses
@@ -229,6 +230,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] MC, TF, SA, MS, NU question types
 - [x] Session options (hidden, stats, correct, points, attempts)
 - [x] Question library UI
+- [x] Rich text editor component for question/solution authoring
 - [x] Content sanitization for rendered question/solution HTML in React pages
 
 ### Responses
@@ -273,9 +275,8 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 
 1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
 2. **Advanced components**: Port richer `QuestionDisplay` parity features and remaining grading tables (`AnswerDistribution`, `Histogram`, `ShortAnswerList` are now available in `SessionResults`)
-3. **Rich text editor**: Port `Editor.jsx` (WYSIWYG question editor) end-to-end
-4. **Email verification delivery**: Keep compatibility endpoint and add full SMTP delivery flow
-5. **Full test coverage**: Add component tests for all ported pages
+3. **Rich text editor hardening**: Expand toolbar parity and add regression tests around HTML/plain-text conversions
+4. **Full test coverage**: Add component tests for all ported pages
 
 
 ## Mock Data Seeding for Migration Testing

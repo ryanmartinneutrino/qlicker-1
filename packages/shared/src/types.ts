@@ -244,6 +244,11 @@ export interface User {
   profile: UserProfile
   services?: {
     password?: { bcrypt: string }
+    emailVerification?: {
+      token?: string
+      expiresAt?: Date
+      requestedAt?: Date
+    }
     sso?: {
       nameID?: string
       sessionIndex?: string
