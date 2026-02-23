@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MONGO_URL="${MONGO_URL:-mongodb://localhost:27017/qlicker?replicaSet=rs0}"
+MONGO_URL="${MONGO_URL:-}"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "node is required" >&2
   exit 1
 fi
 
-echo "Seeding mock users/course into ${MONGO_URL}"
+if [[ -n "$MONGO_URL" ]]; then
+  echo "Seeding mock users/course (preferred MONGO_URL=${MONGO_URL})"
+else
+  echo "Seeding mock users/course (auto-detecting Mongo URL for local/docker)"
+fi
 
 MONGO_URL="$MONGO_URL" node <<'NODE'
 const { MongoClient } = require('mongodb')
 const bcrypt = require('bcrypt')
 const crypto = require('crypto')
 
-const mongoUrl = process.env.MONGO_URL
+const preferredMongoUrl = process.env.MONGO_URL || ''
 
 const USERS = [
   { email: 'prof@gmail.com', first: 'Prof', last: 'User', roles: ['professor'] },
@@ -29,8 +33,44 @@ function makeId(prefix) {
 }
 
 async function main() {
-  const client = new MongoClient(mongoUrl)
-  await client.connect()
+  const candidates = [
+    preferredMongoUrl,
+    'mongodb://localhost:27017/qlicker?replicaSet=rs0',
+    'mongodb://localhost:27017/qlicker?directConnection=true',
+    'mongodb://127.0.0.1:27017/qlicker?directConnection=true',
+    'mongodb://mongo1:27017/qlicker?replicaSet=rs0',
+  ].filter(Boolean)
+
+  let client = null
+  let activeMongoUrl = ''
+  let lastError = null
+
+  for (const url of candidates) {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      try {
+        const probe = new MongoClient(url, { serverSelectionTimeoutMS: 5000 })
+        await probe.connect()
+        await probe.db().command({ ping: 1 })
+        client = probe
+        activeMongoUrl = url
+        break
+      } catch (err) {
+        lastError = err
+        await new Promise((resolve) => setTimeout(resolve, 1200))
+      }
+    }
+    if (client) break
+  }
+
+  if (!client) {
+    console.error('Failed to connect to MongoDB using all candidate URLs.')
+    console.error('Tried:')
+    for (const url of candidates) console.error(` - ${url}`)
+    if (lastError) console.error(lastError)
+    process.exit(1)
+  }
+
+  console.log(`Connected to MongoDB at ${activeMongoUrl}`)
   const db = client.db()
 
   const users = db.collection('users')
