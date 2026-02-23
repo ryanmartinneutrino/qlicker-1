@@ -177,16 +177,22 @@ const settings = db.collection('settings')
   const sessionIds = {
     interactive: makeId('session'),
     quiz: makeId('session'),
+    review: makeId('session'),
   }
   const questionIds = {
     q1: makeId('question'),
     q2: makeId('question'),
     q3: makeId('question'),
+    q4: makeId('question'),
+    q5: makeId('question'),
   }
+
+  const existingQuestions = await questions.find({ courseId }).project({ _id: 1 }).toArray()
+  const existingQuestionIds = existingQuestions.map((question) => question._id)
 
   await sessions.deleteMany({ courseId })
   await questions.deleteMany({ courseId })
-  await responses.deleteMany({ questionId: { $in: Object.values(questionIds) } })
+  await responses.deleteMany({ questionId: { $in: [...existingQuestionIds, ...Object.values(questionIds)] } })
   await grades.deleteMany({ courseId })
 
   await sessions.insertMany([
@@ -216,11 +222,23 @@ const settings = db.collection('settings')
       questions: [questionIds.q3],
       submittedQuiz: [],
     },
+    {
+      _id: sessionIds.review,
+      name: 'Review + Numerical Session',
+      description: 'Completed review session for grades visibility checks',
+      courseId,
+      status: 'done',
+      quiz: false,
+      createdAt: new Date(),
+      questions: [questionIds.q4, questionIds.q5],
+      currentQuestion: questionIds.q5,
+      joined: studentIds,
+    },
   ])
 
   await courses.updateOne(
     { _id: courseId },
-    { $set: { sessions: [sessionIds.interactive, sessionIds.quiz] } }
+    { $set: { sessions: [sessionIds.interactive, sessionIds.quiz, sessionIds.review] } }
   )
 
   await questions.insertMany([
@@ -290,6 +308,65 @@ const settings = db.collection('settings')
       solution: 'True',
       solution_plainText: 'True',
     },
+    {
+      _id: questionIds.q4,
+      plainText: 'Approximate value of pi to two decimals.',
+      type: 4,
+      content: 'Approximate value of pi to two decimals.',
+      options: [],
+      toleranceNumerical: 0.02,
+      correctNumerical: 3.14,
+      creator: profId,
+      owner: profId,
+      sessionId: sessionIds.review,
+      courseId,
+      public: false,
+      approved: true,
+      createdAt: new Date(),
+      tags: [],
+      solution: '3.14',
+      solution_plainText: '3.14',
+      sessionOptions: {
+        hidden: false,
+        stats: false,
+        correct: true,
+        points: 2,
+        maxAttempts: 2,
+        attemptWeights: [1, 0.5],
+        attempts: [{ number: 1, closed: false }, { number: 2, closed: false }],
+      },
+    },
+    {
+      _id: questionIds.q5,
+      plainText: 'Select all prime numbers under 6.',
+      type: 1,
+      content: 'Select all prime numbers under 6.',
+      options: [
+        { plainText: '2', answer: '2', correct: true },
+        { plainText: '3', answer: '3', correct: true },
+        { plainText: '4', answer: '4', correct: false },
+        { plainText: '5', answer: '5', correct: true },
+      ],
+      creator: profId,
+      owner: profId,
+      sessionId: sessionIds.review,
+      courseId,
+      public: false,
+      approved: true,
+      createdAt: new Date(),
+      tags: [],
+      solution: '2,3,5',
+      solution_plainText: '2,3,5',
+      sessionOptions: {
+        hidden: false,
+        stats: true,
+        correct: true,
+        points: 3,
+        maxAttempts: 1,
+        attemptWeights: [1],
+        attempts: [{ number: 1, closed: false }],
+      },
+    },
   ])
 
   await responses.insertMany([
@@ -322,6 +399,46 @@ const settings = db.collection('settings')
       createdAt: new Date(),
       updatedAt: new Date(),
     },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q3,
+      studentUserId: studentIds[0],
+      answer: 'True',
+      correct: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q3,
+      studentUserId: studentIds[1],
+      answer: 'False',
+      correct: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q4,
+      studentUserId: studentIds[0],
+      answer: '3.14',
+      correct: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    {
+      _id: makeId('response'),
+      attempt: 1,
+      questionId: questionIds.q5,
+      studentUserId: studentIds[0],
+      answer: ['2', '3', '5'],
+      correct: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
   ])
 
   await grades.insertMany([
@@ -345,6 +462,31 @@ const settings = db.collection('settings')
       marks: [{ questionId: questionIds.q1, points: 0, outOf: 1, automatic: true }],
       points: 0,
       outOf: 1,
+      visibleToStudents: false,
+    },
+    {
+      _id: makeId('grade'),
+      userId: studentIds[0],
+      courseId,
+      sessionId: sessionIds.quiz,
+      name: 'Quiz Demo Session',
+      marks: [{ questionId: questionIds.q3, points: 1, outOf: 1, automatic: true }],
+      points: 1,
+      outOf: 1,
+      visibleToStudents: true,
+    },
+    {
+      _id: makeId('grade'),
+      userId: studentIds[0],
+      courseId,
+      sessionId: sessionIds.review,
+      name: 'Review + Numerical Session',
+      marks: [
+        { questionId: questionIds.q4, points: 2, outOf: 2, automatic: true },
+        { questionId: questionIds.q5, points: 3, outOf: 3, automatic: true },
+      ],
+      points: 5,
+      outOf: 5,
       visibleToStudents: true,
     },
   ])

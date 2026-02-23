@@ -25,6 +25,7 @@ import ManageCourseGroups from './pages/ManageCourseGroups'
 import ResultsOverview from './pages/ResultsOverview'
 import ResetPassword from './pages/ResetPassword'
 import VideoChat from './pages/VideoChat'
+import JitsiWindow from './pages/JitsiWindow'
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { user, loading } = useAuth()
@@ -63,6 +64,8 @@ export default function App() {
             {/* Course */}
             <Route path="/course/:courseId" element={<ProtectedRoute><Course /></ProtectedRoute>} />
             <Route path="/course/:courseId/video" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
+            <Route path="/course/:courseId/videochatwindow" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
+            <Route path="/course/:courseId/categoryvideochatwindow/:catNumber/:gNumber" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
             <Route path="/course/:courseId/groups" element={<ProtectedRoute><ManageCourseGroups /></ProtectedRoute>} />
             <Route path="/course/:courseId/grades" element={<ProtectedRoute><CourseGrades /></ProtectedRoute>} />
             <Route path="/course/:courseId/questions" element={<ProtectedRoute><QuestionsLibrary /></ProtectedRoute>} />

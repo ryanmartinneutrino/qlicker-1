@@ -1036,6 +1036,11 @@ textarea.form-control,
   cursor: pointer;
 }
 
+.ql-profile-image-droparea.dropzone.drag-active {
+  border-color: #30B0E7;
+  background: rgba(48, 176, 231, 0.08);
+}
+
 /* ==========================================================================
    13. Dashboard Pages
    ========================================================================== */
@@ -1718,4 +1723,35 @@ select.ql-unstyled-select {
   content: attr(data-placeholder);
   color: #999;
   pointer-events: none;
+}
+
+/* Video chat popup window */
+.ql-jitsi-outer {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-flow: column nowrap;
+}
+
+.ql-jitsi-outer .ql-jitsi-inner {
+  width: 100%;
+  height: 100%;
+}
+
+.ql-jitsi-outer .ql-jitsi-toolbar {
+  padding: 5px;
+  min-height: 35px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background-color: #e8e8e8;
+}
+
+.ql-jitsi-outer .ql-jitsi-toolbar .btn {
+  background: #fff;
+}
+
+.ql-jitsi-outer .ql-jitsi-toolbar .ql-jitsi-toolbar-info {
+  font-size: 14px;
 }

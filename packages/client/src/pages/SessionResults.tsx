@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import type { Session, Question, Response as QResponse } from '@qlicker/shared'
+import { QUESTION_TYPE } from '../constants/questionTypes'
 import { apiClient } from '../api/client'
 import { AnswerDistribution } from '../components/AnswerDistribution'
 import { ShortAnswerList } from '../components/ShortAnswerList'
@@ -18,6 +19,10 @@ interface QuestionStats {
   options: { answer?: string; plainText?: string; content?: string; correct?: boolean }[]
   shortAnswers: string[]
   numericalAnswers: number[]
+}
+
+function optionValue(option: { answer?: string; plainText?: string; content?: string }, index: number): string {
+  return option.answer || option.plainText || option.content || `Option ${index + 1}`
 }
 
 export default function SessionResults() {
@@ -55,12 +60,15 @@ export default function SessionResults() {
 
           for (const r of responses) {
             if (r.correct) correctCount += 1
-            if (q.type <= 2) {
-              const answer = Array.isArray(r.answer) ? r.answer.join(',') : String(r.answer)
-              optionCounts[answer] = (optionCounts[answer] || 0) + 1
-            } else if (q.type === 3) {
-              shortAnswers.push(Array.isArray(r.answer) ? r.answer.join(', ') : String(r.answer))
-            } else if (q.type === 4) {
+
+            if (q.type === QUESTION_TYPE.MC || q.type === QUESTION_TYPE.MS || q.type === QUESTION_TYPE.TF) {
+              const answers = Array.isArray(r.answer) ? r.answer : [String(r.answer)]
+              answers.forEach((entry) => {
+                optionCounts[entry] = (optionCounts[entry] || 0) + 1
+              })
+            } else if (q.type === QUESTION_TYPE.SA) {
+              shortAnswers.push(r.answerWysiwyg || (Array.isArray(r.answer) ? r.answer.join(', ') : String(r.answer)))
+            } else if (q.type === QUESTION_TYPE.NU) {
               const parsed = Number(Array.isArray(r.answer) ? r.answer[0] : r.answer)
               if (!Number.isNaN(parsed)) numericalAnswers.push(parsed)
             }
@@ -74,7 +82,10 @@ export default function SessionResults() {
             totalResponses: responses.length,
             correctCount,
             optionCounts,
-            options: q.options || [],
+            options: (q.options || []).map((option, index) => ({
+              ...option,
+              answer: optionValue(option, index),
+            })),
             shortAnswers,
             numericalAnswers,
           })
@@ -119,15 +130,15 @@ export default function SessionResults() {
                   )}
                 </p>
 
-                {qs.type <= 2 && (
+                {(qs.type === QUESTION_TYPE.MC || qs.type === QUESTION_TYPE.MS || qs.type === QUESTION_TYPE.TF) && (
                   <AnswerDistribution
                     options={qs.options}
                     optionCounts={qs.optionCounts}
                     totalResponses={qs.totalResponses}
                   />
                 )}
-                {qs.type === 3 && <ShortAnswerList answers={qs.shortAnswers} />}
-                {qs.type === 4 && <Histogram values={qs.numericalAnswers} />}
+                {qs.type === QUESTION_TYPE.SA && <ShortAnswerList answers={qs.shortAnswers} />}
+                {qs.type === QUESTION_TYPE.NU && <Histogram values={qs.numericalAnswers} />}
               </div>
             </div>
           ))

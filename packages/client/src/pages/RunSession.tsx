@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { Session, Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
-import { sanitizeHtml } from '../utils/sanitizeHtml'
+import { QuestionDisplay } from '../components/QuestionDisplay'
 
 export default function RunSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -35,10 +35,26 @@ export default function RunSession() {
       .finally(() => setSessionLoading(false))
   }, [sessionId])
 
+  useEffect(() => {
+    if (!session?.currentQuestion || questions.length < 1) return
+    const idx = questions.findIndex((q) => q._id === session.currentQuestion)
+    if (idx >= 0) setCurrentIndex(idx)
+  }, [session?.currentQuestion, questions])
+
   const updateStatus = async (status: string) => {
     if (!sessionId) return
     try {
       const updated = await apiClient.put<Session>(`/sessions/${sessionId}/status`, { status })
+      setSession(updated)
+    } catch (err) {
+      setSessionError((err as Error).message)
+    }
+  }
+
+  const setCurrentQuestion = async (questionId: string | undefined) => {
+    if (!sessionId || !questionId) return
+    try {
+      const updated = await apiClient.put<Session>(`/sessions/${sessionId}/current`, { questionId })
       setSession(updated)
     } catch (err) {
       setSessionError((err as Error).message)
@@ -50,7 +66,14 @@ export default function RunSession() {
   if (error) return <div className="page">Error: {error}</div>
   if (!session) return <div className="page">Session not found</div>
 
-  const currentQuestion = questions[currentIndex] || null
+  const orderedQuestions = session.questions?.length
+    ? [...questions].sort(
+        (a, b) =>
+          (session.questions?.indexOf(a._id || '') ?? Number.MAX_SAFE_INTEGER) -
+          (session.questions?.indexOf(b._id || '') ?? Number.MAX_SAFE_INTEGER)
+      )
+    : questions
+  const currentQuestion = orderedQuestions[currentIndex] || null
 
   return (
     <div className="page">
@@ -90,43 +113,16 @@ export default function RunSession() {
           </div>
         </div>
 
-        {questions.length === 0 ? (
+        {orderedQuestions.length === 0 ? (
           <p>No questions in this session.</p>
         ) : (
           <>
             <div className="ql-card">
               <div className="ql-card-content">
                 <h3>
-                  Question {currentIndex + 1} of {questions.length}
+                  Question {currentIndex + 1} of {orderedQuestions.length}
                 </h3>
-                {currentQuestion && (
-                  <>
-                    <div
-                      className="ql-question-content"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(currentQuestion.content || currentQuestion.plainText || ''),
-                      }}
-                    />
-                    {currentQuestion.options && currentQuestion.options.length > 0 && (
-                      <div style={{ marginTop: '1rem' }}>
-                        {currentQuestion.options.map((opt, oi) => (
-                          <div
-                            key={oi}
-                            style={{
-                              padding: '0.75rem',
-                              margin: '0.5rem 0',
-                              border: '1px solid #ddd',
-                              borderRadius: '4px',
-                            }}
-                          >
-                            <strong>{String.fromCharCode(65 + oi)}.</strong>{' '}
-                            {opt.plainText || opt.content || opt.answer || `Option ${oi + 1}`}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
+                {currentQuestion && <QuestionDisplay question={currentQuestion} readonly />}
               </div>
             </div>
 
@@ -134,14 +130,26 @@ export default function RunSession() {
               <button
                 className="btn btn-secondary"
                 disabled={currentIndex === 0}
-                onClick={() => setCurrentIndex((i) => i - 1)}
+                onClick={() => {
+                  const previous = orderedQuestions[currentIndex - 1]
+                  if (previous?._id) {
+                    setCurrentQuestion(previous._id)
+                    setCurrentIndex((i) => i - 1)
+                  }
+                }}
               >
                 Previous
               </button>
               <button
                 className="btn btn-secondary"
-                disabled={currentIndex === questions.length - 1}
-                onClick={() => setCurrentIndex((i) => i + 1)}
+                disabled={currentIndex === orderedQuestions.length - 1}
+                onClick={() => {
+                  const next = orderedQuestions[currentIndex + 1]
+                  if (next?._id) {
+                    setCurrentQuestion(next._id)
+                    setCurrentIndex((i) => i + 1)
+                  }
+                }}
               >
                 Next
               </button>

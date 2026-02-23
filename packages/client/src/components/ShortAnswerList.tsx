@@ -1,3 +1,5 @@
+import { sanitizeHtml } from '../utils/sanitizeHtml'
+
 interface ShortAnswerListProps {
   answers: string[]
 }
@@ -8,7 +10,7 @@ export function ShortAnswerList({ answers }: ShortAnswerListProps) {
     <div style={{ marginTop: '0.5rem', maxHeight: 220, overflowY: 'auto', border: '1px solid #eee', borderRadius: 4 }}>
       {answers.map((answer, index) => (
         <div key={`${answer}-${index}`} style={{ padding: '0.4rem 0.6rem', borderBottom: '1px solid #f3f3f3' }}>
-          {answer}
+          <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(answer) }} />
         </div>
       ))}
     </div>

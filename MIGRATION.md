@@ -256,6 +256,16 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 - [x] Azure Blob upload adapter (`@azure/storage-blob`)
 - [x] Profile image upload UI wired to `/api/images` and `users.profile.profileImage`
 
+#### Agent 03 Lane Status (Profile Image Upload + Storage Backend)
+- [x] Ported `DragAndDropArea` behavior into `packages/client` with image-type filtering, max-files handling, drag/drop, and click-to-select fallback.
+- [x] Wired profile image replace flow on `Profile.tsx` to the new drop area and preserved updates to `users.profile.profileImage` and `users.profile.profileThumbnail`.
+- [x] Confirmed storage adapters continue honoring existing `settings` keys for `storageType`, AWS, and Azure in `packages/server/src/utils/image-storage.ts`.
+- [x] Expanded `scripts/migration-smoke.mjs` seeded-user end-to-end checks to validate multipart profile image upload (`/api/images`) and profile persistence (`/api/users/:id/profile`).
+- [x] Required checks run:
+  - `npm run build --workspace=packages/server`
+  - `npm run build --workspace=packages/client`
+  - Seeded end-to-end smoke: start server + `./seed-mock-db.sh` + `npm run test:migration-smoke` (passed, including new profile upload assertions)
+
 ### Admin
 - [x] User management (list, role change, delete)
 - [x] Settings management
@@ -303,6 +313,21 @@ If smoke fails, fix baseline on `master` first before opening new agent branches
   - Expanded toolbar capabilities
   - Safer link handling
   - Initial conversion/sanitization regression tests
+- Agent 5 lane status (integration parity harness) — 2026-02-23:
+  - Expanded seeded migration dataset in `seed-mock-db.sh`:
+    - Sessions: interactive + quiz + completed review session
+    - Questions: MC/SA/TF/NU/MS coverage
+    - Responses: objective + open-ended + multi-select rows
+    - Grades: visible and hidden rows for visibility parity checks
+  - Expanded `scripts/migration-smoke.mjs` parity coverage with explicit role flows:
+    - Professor: login, course create/edit normalization, session status update, question create/edit/delete lifecycle, quiz extension update
+    - Student: login, response submission/auto-grading check, response privacy, quiz submit, enrollment by uppercase code
+    - Admin: login, user listing, forgot/reset password, global course visibility
+    - Grade visibility parity: instructor toggles `visibleToStudents`, hidden grade becomes visible to student after toggle
+  - Validation commands for this lane:
+    - `./seed-mock-db.sh`
+    - `npm run build`
+    - `npm run test:migration-smoke`
 - Remaining gaps are mainly deep UI parity (`QuestionDisplay`/grading behavior) and broad automated coverage.
 
 ### Parallel Agent Plan (recommended)

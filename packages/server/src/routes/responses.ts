@@ -4,6 +4,7 @@ import { getResponses } from '../collections/responses'
 import { getQuestions } from '../collections/questions'
 import { getSessions } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
+import { quizIsActive } from '../collections/sessions'
 import { requireAuth } from '../auth/middleware'
 import { responseLimiter } from '../middleware/rate-limit'
 import type { User } from '@qlicker/shared'
@@ -11,6 +12,13 @@ import { responseSchema } from '@qlicker/shared'
 import { gradeResponse } from '../utils/grading'
 
 const router = Router()
+
+function getCurrentAttemptState(question: { sessionOptions?: { attempts?: Array<{ number: number; closed: boolean }> } }) {
+  const attempts = question.sessionOptions?.attempts || []
+  if (attempts.length < 1) return { number: 1, closed: false }
+  const latest = attempts[attempts.length - 1]
+  return { number: latest.number, closed: latest.closed }
+}
 
 /** GET /api/responses?questionId=... — get responses for a question */
 router.get('/', requireAuth, async (req, res, next) => {
@@ -78,12 +86,40 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
       _id: parsed.data.questionId,
     } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
     if (!question) return res.status(404).json({ error: 'Question not found.' })
+    if (!question.sessionId) return res.status(400).json({ error: 'Question is not attached to a session.' })
+
+    const sessions = getSessions()
+    const session = await sessions.findOne({ _id: question.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    if (session.quiz) {
+      if (!quizIsActive(session, user._id)) {
+        return res.status(400).json({ error: 'Quiz is closed.' })
+      }
+      if ((session.submittedQuiz || []).includes(user._id ?? '')) {
+        return res.status(400).json({ error: 'Quiz already submitted.' })
+      }
+      const maxAttempts = Number(question.sessionOptions?.maxAttempts ?? 1)
+      if (parsed.data.attempt < 1 || parsed.data.attempt > maxAttempts) {
+        return res.status(400).json({ error: 'Attempt is out of bounds for this quiz question.' })
+      }
+    } else {
+      if (session.status !== 'running') {
+        return res.status(400).json({ error: 'Session is closed.' })
+      }
+      const currentAttempt = getCurrentAttemptState(question)
+      if (parsed.data.attempt !== currentAttempt.number) {
+        return res.status(400).json({ error: 'Attempt does not match current open attempt.' })
+      }
+      if (currentAttempt.closed) {
+        return res.status(400).json({ error: 'Current attempt is closed.' })
+      }
+    }
 
     let sessionId = question.sessionId
     let courseId = question.courseId
     if (sessionId && !courseId) {
-      const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
-      courseId = session?.courseId
+      courseId = session.courseId
     }
 
     // Upsert: one response per (questionId, studentUserId, attempt)
@@ -94,6 +130,15 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
     }
     const existing = await responses.findOne(filter as Parameters<typeof responses.findOne>[0])
     if (existing) {
+      if (!session.quiz) {
+        return res.status(400).json({ error: 'Response already submitted for this attempt.' })
+      }
+      if (existing.editable === false) {
+        return res.status(400).json({ error: 'Response is no longer editable.' })
+      }
+      if (parsed.data.attempt !== 1 || existing.attempt !== 1) {
+        return res.status(400).json({ error: 'Only first-attempt quiz responses are editable.' })
+      }
       const responseDoc = { ...existing, ...parsed.data }
       const { responseUpdate } = await gradeResponse({
         responseDoc,
@@ -115,7 +160,12 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
       return res.json(updated)
     }
 
-    const baseDoc = { _id: generateStringId('response'), ...parsed.data, createdAt: new Date() }
+    const baseDoc = {
+      _id: generateStringId('response'),
+      ...parsed.data,
+      createdAt: new Date(),
+      editable: session.quiz ? true : undefined,
+    }
     const { responseUpdate } = await gradeResponse({
       responseDoc: baseDoc,
       questionId: parsed.data.questionId,
@@ -156,6 +206,22 @@ router.put('/:responseId', requireAuth, responseLimiter, async (req, res, next) 
     if (sessionId && !courseId) {
       const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
       courseId = session?.courseId
+    }
+    if (question?.sessionId) {
+      const session = await getSessions().findOne({ _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
+      if (!session) return res.status(404).json({ error: 'Session not found.' })
+      if (!session.quiz) {
+        return res.status(400).json({ error: 'Can only update quiz responses.' })
+      }
+      if (!quizIsActive(session, user._id)) {
+        return res.status(400).json({ error: 'Quiz is closed.' })
+      }
+      if (existing.editable === false) {
+        return res.status(400).json({ error: 'Response is no longer editable.' })
+      }
+      if (attempt !== 1) {
+        return res.status(400).json({ error: 'Only first-attempt quiz responses are editable.' })
+      }
     }
     const { responseUpdate } = question
       ? await gradeResponse({

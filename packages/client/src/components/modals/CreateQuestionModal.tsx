@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiClient } from '../../api/client'
 import type { Question, QuestionOption, SessionOptions } from '@qlicker/shared'
+import { QUESTION_TYPE, type QuestionTypeValue } from '../../constants/questionTypes'
 import { Editor } from '../Editor'
 
 const defaultSessionOptions: SessionOptions = {
@@ -35,7 +36,7 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
   const [content, setContent] = useState('')
   const [solution, setSolution] = useState('')
   const [solutionPlain, setSolutionPlain] = useState('')
-  const [type, setType] = useState(3)
+  const [type, setType] = useState<QuestionTypeValue>(QUESTION_TYPE.SA)
   const [options, setOptions] = useState<QuestionOption[]>([])
   const [correctNumerical, setCorrectNumerical] = useState(0)
   const [toleranceNumerical, setToleranceNumerical] = useState(0)
@@ -43,14 +44,14 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isChoiceType = type === 0 || type === 1 || type === 2
+  const isChoiceType = type === QUESTION_TYPE.MC || type === QUESTION_TYPE.MS || type === QUESTION_TYPE.TF
 
   useEffect(() => {
-    if (type === 2) {
+    if (type === QUESTION_TYPE.TF) {
       setOptions(trueFalseOptions)
       return
     }
-    if ((type === 0 || type === 1) && options.length < 2) {
+    if ((type === QUESTION_TYPE.MC || type === QUESTION_TYPE.MS) && options.length < 2) {
       setOptions(defaultMcOptions)
       return
     }
@@ -83,7 +84,7 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
   }
 
   const setCorrectOption = (index: number) => {
-    if (type === 1) {
+    if (type === QUESTION_TYPE.MS) {
       setOptions((prev) => prev.map((opt, i) => (i === index ? { ...opt, correct: !opt.correct } : opt)))
       return
     }
@@ -108,8 +109,8 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
         content: content || plainText || 'New Question',
         type,
         options: sanitizedOptions,
-        toleranceNumerical: type === 4 ? toleranceNumerical : 0,
-        correctNumerical: type === 4 ? correctNumerical : 0,
+        toleranceNumerical: type === QUESTION_TYPE.NU ? toleranceNumerical : 0,
+        correctNumerical: type === QUESTION_TYPE.NU ? correctNumerical : 0,
         creator: userId,
         owner: userId,
         courseId,
@@ -147,12 +148,12 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
           <br />
 
           <label>Type</label>
-          <select className="form-control" value={type} onChange={(e) => setType(Number(e.target.value))}>
-            <option value={0}>Multiple Choice</option>
-            <option value={1}>Multi-Select</option>
-            <option value={2}>True/False</option>
-            <option value={3}>Short Answer</option>
-            <option value={4}>Numerical</option>
+          <select className="form-control" value={type} onChange={(e) => setType(Number(e.target.value) as QuestionTypeValue)}>
+            <option value={QUESTION_TYPE.MC}>Multiple Choice</option>
+            <option value={QUESTION_TYPE.TF}>True/False</option>
+            <option value={QUESTION_TYPE.SA}>Short Answer</option>
+            <option value={QUESTION_TYPE.MS}>Multi-Select</option>
+            <option value={QUESTION_TYPE.NU}>Numerical</option>
           </select>
           <br />
 
@@ -162,7 +163,7 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
               {options.map((option, index) => (
                 <div key={index} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: 8, marginBottom: 6, alignItems: 'center' }}>
                   <input
-                    type={type === 1 ? 'checkbox' : 'radio'}
+                    type={type === QUESTION_TYPE.MS ? 'checkbox' : 'radio'}
                     checked={Boolean(option.correct)}
                     onChange={() => setCorrectOption(index)}
                   />
@@ -174,20 +175,20 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
                   <button
                     type="button"
                     className="btn btn-default btn-sm"
-                    disabled={type === 2}
+                    disabled={type === QUESTION_TYPE.TF}
                     onClick={() => removeOption(index)}
                   >
                     Remove
                   </button>
                 </div>
               ))}
-              {type !== 2 && (
+              {type !== QUESTION_TYPE.TF && (
                 <button type="button" className="btn btn-default btn-sm" onClick={addOption}>Add Option</button>
               )}
             </div>
           )}
 
-          {type === 4 && (
+          {type === QUESTION_TYPE.NU && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
               <div>
                 <label>Correct value</label>

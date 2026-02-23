@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { QuizExtension, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
+import QuizExtensionsModal from '../components/modals/QuizExtensionsModal'
+
+type ExtensionRow = QuizExtension & { quizStartInput: string; quizEndInput: string }
+type ExtensionCandidate = { userId: string; name: string; email: string }
 
 export default function ManageSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -13,7 +17,9 @@ export default function ManageSession() {
   const [quiz, setQuiz] = useState(false)
   const [quizStart, setQuizStart] = useState('')
   const [quizEnd, setQuizEnd] = useState('')
-  const [quizExtensions, setQuizExtensions] = useState<Array<QuizExtension & { quizStartInput: string; quizEndInput: string }>>([])
+  const [quizExtensions, setQuizExtensions] = useState<ExtensionRow[]>([])
+  const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidate[]>([])
+  const [showExtensionModal, setShowExtensionModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -42,6 +48,43 @@ export default function ManageSession() {
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
   }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    apiClient
+      .get<ExtensionCandidate[]>(`/sessions/${sessionId}/extension-candidates`)
+      .then(setExtensionCandidates)
+      .catch(() => {
+        setExtensionCandidates([])
+      })
+  }, [sessionId])
+
+  const setQuizStartWithParity = (nextValue: string) => {
+    setQuizStart(nextValue)
+    if (quizEnd && nextValue && nextValue > quizEnd) {
+      const shifted = new Date(new Date(nextValue).getTime() + 60 * 60 * 1000)
+      setQuizEnd(shifted.toISOString().slice(0, 16))
+    }
+  }
+
+  const setQuizEndWithParity = (nextValue: string) => {
+    if (quizStart && nextValue && nextValue < quizStart) {
+      setError('Cannot set end time before start time.')
+      return
+    }
+    setError(null)
+    setQuizEnd(nextValue)
+  }
+
+  const toggleQuizMode = (enabled: boolean) => {
+    setQuiz(enabled)
+    if (!enabled) return
+    const now = new Date(Date.now() + 60 * 60 * 1000)
+    const fallbackStart = now.toISOString().slice(0, 16)
+    const fallbackEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
+    setQuizStart((prev) => prev || fallbackStart)
+    setQuizEnd((prev) => prev || fallbackEnd)
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -79,18 +122,6 @@ export default function ManageSession() {
   if (loading) return <div className="page">Loading...</div>
   if (!session) return <div className="page">Session not found</div>
 
-  const addExtensionRow = () => {
-    setQuizExtensions((prev) => [...prev, { userId: '', quizStart: null, quizEnd: null, quizStartInput: '', quizEndInput: '' }])
-  }
-
-  const updateExtension = (index: number, key: 'userId' | 'quizStartInput' | 'quizEndInput', value: string) => {
-    setQuizExtensions((prev) => prev.map((entry, i) => (i === index ? { ...entry, [key]: value } : entry)))
-  }
-
-  const removeExtension = (index: number) => {
-    setQuizExtensions((prev) => prev.filter((_, i) => i !== index))
-  }
-
   return (
     <div className="page">
       <div className="ql-header-bar">
@@ -127,7 +158,7 @@ export default function ManageSession() {
               <input
                 type="checkbox"
                 checked={quiz}
-                onChange={(e) => setQuiz(e.target.checked)}
+                onChange={(e) => toggleQuizMode(e.target.checked)}
               />{' '}
               Quiz Mode
             </label>
@@ -142,7 +173,7 @@ export default function ManageSession() {
                   type="datetime-local"
                   className="form-control"
                   value={quizStart}
-                  onChange={(e) => setQuizStart(e.target.value)}
+                  onChange={(e) => setQuizStartWithParity(e.target.value)}
                 />
               </div>
               <div className="form-group">
@@ -152,37 +183,15 @@ export default function ManageSession() {
                   type="datetime-local"
                   className="form-control"
                   value={quizEnd}
-                  onChange={(e) => setQuizEnd(e.target.value)}
+                  onChange={(e) => setQuizEndWithParity(e.target.value)}
                 />
               </div>
               <div className="form-group">
                 <label>Quiz Extensions</label>
-                {quizExtensions.map((entry, index) => (
-                  <div key={index} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr auto', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input
-                      className="form-control"
-                      placeholder="Student userId"
-                      value={entry.userId}
-                      onChange={(e) => updateExtension(index, 'userId', e.target.value)}
-                    />
-                    <input
-                      type="datetime-local"
-                      className="form-control"
-                      value={entry.quizStartInput}
-                      onChange={(e) => updateExtension(index, 'quizStartInput', e.target.value)}
-                    />
-                    <input
-                      type="datetime-local"
-                      className="form-control"
-                      value={entry.quizEndInput}
-                      onChange={(e) => updateExtension(index, 'quizEndInput', e.target.value)}
-                    />
-                    <button type="button" className="btn btn-default" onClick={() => removeExtension(index)}>Remove</button>
-                  </div>
-                ))}
-                <button type="button" className="btn btn-default btn-sm" onClick={addExtensionRow}>
-                  Add Extension
+                <button type="button" className="btn btn-default btn-sm" onClick={() => setShowExtensionModal(true)}>
+                  Manage Extensions
                 </button>
+                {quizExtensions.length > 0 && <div style={{ marginTop: '0.5rem' }}>{quizExtensions.length} active extension(s)</div>}
               </div>
             </>
           )}
@@ -204,6 +213,15 @@ export default function ManageSession() {
           </div>
         </form>
       </div>
+      <QuizExtensionsModal
+        open={showExtensionModal}
+        onClose={() => setShowExtensionModal(false)}
+        sessionQuizStart={quizStart}
+        sessionQuizEnd={quizEnd}
+        candidates={extensionCandidates}
+        value={quizExtensions}
+        onChange={setQuizExtensions}
+      />
     </div>
   )
 }

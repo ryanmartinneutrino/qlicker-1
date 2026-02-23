@@ -2,6 +2,10 @@
 
 const baseUrl = process.env.QCLICKER_BASE_URL || 'http://localhost:3001'
 
+function assert(condition, message) {
+  if (!condition) throw new Error(message)
+}
+
 class ApiSession {
   constructor() {
     this.cookie = ''
@@ -24,7 +28,8 @@ class ApiSession {
     this.cookie = setCookie.split(';')[0]
   }
 
-  async request(method, path, body) {
+  async request(method, path, body, options = {}) {
+    const { expectStatus } = options
     if (method !== 'GET' && !this.csrf) {
       await this.getCsrf()
     }
@@ -40,8 +45,36 @@ class ApiSession {
     })
     this.captureCookie(res)
     const json = await res.json().catch(() => ({}))
+    if (expectStatus !== undefined) {
+      if (res.status !== expectStatus) {
+        throw new Error(
+          `${method} ${path} expected status ${expectStatus}, got ${res.status}: ${JSON.stringify(json)}`
+        )
+      }
+      return json
+    }
     if (!res.ok) {
       throw new Error(`${method} ${path} failed (${res.status}): ${JSON.stringify(json)}`)
+    }
+    return json
+  }
+
+  async requestMultipart(path, formData) {
+    if (!this.csrf) {
+      await this.getCsrf()
+    }
+    const headers = { 'x-csrf-token': this.csrf }
+    if (this.cookie) headers.cookie = this.cookie
+
+    const res = await fetch(`${baseUrl}/api${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    this.captureCookie(res)
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(`POST ${path} (multipart) failed (${res.status}): ${JSON.stringify(json)}`)
     }
     return json
   }
@@ -49,6 +82,13 @@ class ApiSession {
   login(email, password) {
     return this.request('POST', '/auth/login', { email, password })
   }
+}
+
+async function verifyRole(session, expectedRole, label) {
+  const me = await session.request('GET', '/auth/me')
+  const roles = me?.user?.profile?.roles || []
+  assert(roles.includes(expectedRole), `${label} should include role '${expectedRole}', got ${JSON.stringify(roles)}`)
+  return me.user
 }
 
 async function run() {
@@ -65,21 +105,28 @@ async function run() {
 
   const prof = new ApiSession()
   const student = new ApiSession()
+  const student2 = new ApiSession()
   const admin = new ApiSession()
 
   await prof.login('prof@gmail.com', '12345678')
   await student.login('student1@gmail.com', '12345678')
+  await student2.login('student2@gmail.com', '12345678')
   await admin.login('admin@gmail.com', '12345678')
+
+  const profUser = await verifyRole(prof, 'professor', 'Professor login')
+  const studentUser = await verifyRole(student, 'student', 'Student login')
+  const student2User = await verifyRole(student2, 'student', 'Student2 login')
+  await verifyRole(admin, 'admin', 'Admin login')
 
   const courses = await prof.request('GET', '/courses')
   const course = courses.find((c) => c.name === 'Migration Test Course')
   if (!course) throw new Error('Migration Test Course not found. Run ./seed-mock-db.sh first.')
 
   const sessions = await prof.request('GET', `/sessions?courseId=${course._id}`)
-  if (sessions.length < 2) throw new Error('Expected seeded sessions to exist.')
+  if (sessions.length < 3) throw new Error('Expected seeded sessions to exist.')
 
   const questions = await prof.request('GET', `/questions?courseId=${course._id}`)
-  if (questions.length < 3) throw new Error('Expected seeded questions to exist.')
+  if (questions.length < 5) throw new Error('Expected seeded questions to exist.')
 
   const createdCourse = await prof.request('POST', '/courses', {
     name: `Smoke Course ${Date.now()}`,
@@ -95,12 +142,60 @@ async function run() {
     throw new Error('Create-course normalization did not match expected legacy behavior.')
   }
 
+  const editedCourse = await prof.request('PUT', `/courses/${createdCourse._id}`, {
+    name: 'Smoke Course Edited',
+    section: '002',
+    allowStudentQuestions: false,
+  })
+  assert(editedCourse.name === 'Smoke Course Edited', 'Updated course name mismatch.')
+  assert(editedCourse.section === '002', 'Updated course section mismatch.')
+  assert(editedCourse.allowStudentQuestions === false, 'Updated course allowStudentQuestions mismatch.')
+
+  const createdSession = await prof.request('POST', '/sessions', {
+    name: 'Smoke Managed Session',
+    description: 'Session lifecycle parity check',
+    courseId: createdCourse._id,
+    status: 'hidden',
+    quiz: false,
+    questions: [],
+  })
+  assert(createdSession._id, 'Created session missing _id.')
+  const visibleSession = await prof.request('PUT', `/sessions/${createdSession._id}/status`, { status: 'visible' })
+  assert(visibleSession.status === 'visible', 'Session status update failed.')
+
+  const lifecycleQuestion = await prof.request('POST', '/questions', {
+    plainText: 'Smoke lifecycle question',
+    type: 0,
+    content: 'Smoke lifecycle question',
+    options: [
+      { plainText: 'Yes', answer: 'Yes', correct: true },
+      { plainText: 'No', answer: 'No', correct: false },
+    ],
+    owner: profUser._id,
+    sessionId: createdSession._id,
+    courseId: createdCourse._id,
+    public: false,
+    approved: true,
+    tags: [],
+  })
+  assert(lifecycleQuestion._id, 'Created question missing _id.')
+  const updatedQuestion = await prof.request('PUT', `/questions/${lifecycleQuestion._id}`, {
+    plainText: 'Smoke lifecycle question (edited)',
+  })
+  assert(updatedQuestion.plainText === 'Smoke lifecycle question (edited)', 'Question update did not persist.')
+  const fetchedQuestion = await prof.request('GET', `/questions/${lifecycleQuestion._id}`)
+  assert(fetchedQuestion._id === lifecycleQuestion._id, 'Question fetch by id mismatch.')
+  const deletedQuestion = await prof.request('DELETE', `/questions/${lifecycleQuestion._id}`)
+  assert(deletedQuestion.success === true, 'Question delete did not report success.')
+  const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
+  assert(!createdCourseQuestions.some((q) => q._id === lifecycleQuestion._id), 'Deleted question still appears in list.')
+
   const quizSession = sessions.find((s) => s.quiz)
   if (!quizSession) throw new Error('Seeded quiz session not found.')
   await prof.request('PUT', `/sessions/${quizSession._id}`, {
     quizExtensions: [
       {
-        userId: 'student_seed_check',
+        userId: studentUser._id,
         quizStart: new Date().toISOString(),
         quizEnd: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       },
@@ -111,19 +206,45 @@ async function run() {
   if (!q1) throw new Error('Expected one MC question in seeded dataset.')
   const beforeGrades = await student.request('GET', `/grades?courseId=${course._id}`)
   const beforePoints = beforeGrades.reduce((sum, grade) => sum + Number(grade.points || 0), 0)
-  await student.request('POST', '/responses', {
-    attempt: 1,
-    questionId: q1._id,
-    answer: '4',
-  })
+  try {
+    await student.request('POST', '/responses', {
+      attempt: 1,
+      questionId: q1._id,
+      answer: '4',
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (!message.includes('already submitted for this attempt')) throw err
+  }
 
   const studentGrades = await student.request('GET', `/grades?courseId=${course._id}`)
   if (studentGrades.length === 0) throw new Error('Student should have at least one grade row.')
   const afterPoints = studentGrades.reduce((sum, grade) => sum + Number(grade.points || 0), 0)
   if (afterPoints < beforePoints) throw new Error('Auto-grading should not reduce total points for a correct answer submission.')
 
+  const studentResponses = await student.request('GET', `/responses?questionId=${q1._id}`)
+  assert(studentResponses.some((response) => response.studentUserId === studentUser._id), 'Student should see own response with studentUserId.')
+  assert(studentResponses.some((response) => !Object.prototype.hasOwnProperty.call(response, 'studentUserId')), 'Student should see anonymized peer responses when stats are enabled.')
+
+  await student.request('POST', `/sessions/${quizSession._id}/join`, {})
+  const submitQuiz = await student.request('POST', `/sessions/${quizSession._id}/submit`, {})
+  assert(submitQuiz.success === true, 'Quiz submit endpoint did not report success.')
+
+  const seededStudent2Grades = await prof.request('GET', `/grades?courseId=${course._id}&userId=${student2User._id}`)
+  const hiddenGrade = seededStudent2Grades.find((grade) => grade.sessionId && grade.visibleToStudents === false)
+  assert(hiddenGrade?._id, 'Expected a hidden seeded grade for student2.')
+
+  const student2Before = await student2.request('GET', `/grades?courseId=${course._id}`)
+  assert(!student2Before.some((grade) => grade._id === hiddenGrade._id), 'Hidden grade should not be visible to student.')
+  await prof.request('PUT', `/grades/${hiddenGrade._id}/visible`, { visible: true })
+  const student2After = await student2.request('GET', `/grades?courseId=${course._id}`)
+  assert(student2After.some((grade) => grade._id === hiddenGrade._id), 'Visible grade should appear in student list after toggle.')
+
   const users = await admin.request('GET', '/users')
-  if (users.length < 3) throw new Error('Admin should be able to list users.')
+  if (users.length < 4) throw new Error('Admin should be able to list users.')
+
+  const adminCourses = await admin.request('GET', '/courses')
+  assert(adminCourses.some((entry) => entry._id === createdCourse._id), 'Admin should be able to list newly created course.')
 
   const videoConfig = await prof.request('GET', `/courses/${course._id}/video-chat-config`)
   if (!Object.prototype.hasOwnProperty.call(videoConfig, 'enabled')) {
@@ -135,6 +256,30 @@ async function run() {
     throw new Error('Verify-email endpoint missing expected response shape.')
   }
 
+  const loginState = await student.request('GET', '/auth/me')
+  const studentUserId = loginState?.user?._id
+  if (!studentUserId) throw new Error('Could not resolve authenticated seeded student user id.')
+
+  const uploadPayload = new FormData()
+  const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0])
+  uploadPayload.append('file', new Blob([pngBytes], { type: 'image/png' }), 'smoke-profile.png')
+  const uploadedImage = await student.requestMultipart('/images', uploadPayload)
+  if (!uploadedImage?.url || !uploadedImage?.UID) {
+    throw new Error('Image upload did not return expected url/UID shape.')
+  }
+
+  await student.request('PUT', `/users/${studentUserId}/profile`, {
+    profileImage: uploadedImage.url,
+    profileThumbnail: uploadedImage.url,
+  })
+  const updatedStudent = await student.request('GET', `/users/${studentUserId}`)
+  if (updatedStudent?.profile?.profileImage !== uploadedImage.url) {
+    throw new Error('Profile image URL was not persisted on seeded user.')
+  }
+  if (updatedStudent?.profile?.profileThumbnail !== uploadedImage.url) {
+    throw new Error('Profile thumbnail URL was not persisted on seeded user.')
+  }
+
   const forgot = await admin.request('POST', '/auth/forgot-password', { email: 'student2@gmail.com' })
   if (!forgot.success) throw new Error('Forgot-password endpoint did not report success.')
   if (!forgot.debugResetToken) throw new Error('Forgot-password debug token missing in non-production mode.')
@@ -144,6 +289,8 @@ async function run() {
   })
   if (!reset.success) throw new Error('Reset-password endpoint did not report success.')
 
+  const preEnrollCourses = await student.request('GET', '/courses')
+  assert(!preEnrollCourses.some((entry) => entry._id === createdCourse._id), 'Student should not have pre-enrolled in created course.')
   const enrolledCourse = await student.request('POST', '/courses/enroll', {
     enrollmentCode: createdCourse.enrollmentCode.toUpperCase(),
   })
@@ -155,7 +302,12 @@ async function run() {
     throw new Error('Enrolled course was not visible in student course list.')
   }
 
-  console.log('Migration smoke checks passed.')
+  await student.request('POST', '/auth/logout', {})
+  await prof.request('POST', '/auth/logout', {})
+  await admin.request('POST', '/auth/logout', {})
+  await student2.request('POST', '/auth/logout', {})
+
+  console.log('Migration smoke checks passed for professor, student, and admin parity paths.')
 }
 
 run().catch((err) => {

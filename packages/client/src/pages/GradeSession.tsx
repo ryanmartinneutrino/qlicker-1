@@ -7,18 +7,62 @@ export default function GradeSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
 
   const [grades, setGrades] = useState<Grade[]>([])
+  const [visibleToStudents, setVisibleToStudents] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!sessionId) return
     setLoading(true)
     apiClient
       .get<Grade[]>(`/grades?sessionId=${sessionId}`)
-      .then(setGrades)
+      .then((rows) => {
+        setGrades(rows)
+        setVisibleToStudents(rows.some((entry) => entry.visibleToStudents))
+      })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
   }, [sessionId])
+
+  const reload = async () => {
+    if (!sessionId) return
+    const rows = await apiClient.get<Grade[]>(`/grades?sessionId=${sessionId}`)
+    setGrades(rows)
+    setVisibleToStudents(rows.some((entry) => entry.visibleToStudents))
+  }
+
+  const calculateGrades = async () => {
+    if (!sessionId) return
+    setBusy(true)
+    setError(null)
+    try {
+      await apiClient.post<{ success: boolean }>(`/grades/calc-session/${sessionId}`, {})
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleVisibility = async () => {
+    if (!sessionId) return
+    const nextVisible = !visibleToStudents
+    setBusy(true)
+    setError(null)
+    try {
+      await apiClient.put<{ success: boolean }>(`/grades/session/${sessionId}/visible`, {
+        visible: nextVisible,
+      })
+      setVisibleToStudents(nextVisible)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   if (loading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
@@ -33,9 +77,18 @@ export default function GradeSession() {
         <Link className="btn btn-secondary" to={`/course/${courseId}`} style={{ marginBottom: '1rem', display: 'inline-block' }}>
           Back to Course
         </Link>
+        <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-secondary" onClick={calculateGrades} disabled={busy}>
+            {busy ? 'Working...' : grades.length === 0 ? 'Create Grade Items' : 'Re-calculate Grades'}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={toggleVisibility} disabled={busy || grades.length === 0}>
+            {visibleToStudents ? 'Hide From Students' : 'Show To Students'}
+          </button>
+        </div>
+        {error && <div className="ql-error" style={{ marginBottom: '0.75rem' }}>{error}</div>}
 
         {grades.length === 0 ? (
-          <p>No grades available for this session.</p>
+          <p>No grades available for this session yet.</p>
         ) : (
           <table className="ql-grade-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>

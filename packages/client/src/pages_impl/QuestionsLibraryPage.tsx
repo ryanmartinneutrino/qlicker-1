@@ -7,9 +7,9 @@ import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
 
 const QUESTION_TYPES: Record<number, string> = {
   0: 'Multiple Choice',
-  1: 'Multi-Select',
-  2: 'True/False',
-  3: 'Short Answer',
+  1: 'True/False',
+  2: 'Short Answer',
+  3: 'Multi-Select',
   4: 'Numerical',
 }
 

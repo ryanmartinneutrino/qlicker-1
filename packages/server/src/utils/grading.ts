@@ -41,7 +41,7 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     if (option.correct) correctIndexes.add(idx)
   })
 
-  if (question.type === 0 || question.type === 2) {
+  if (question.type === 0 || question.type === 1) {
     const raw = asArrayAnswer(response.answer)[0] || ''
     const idx = optionIndexMap.get(normalizeText(raw))
     const correct = idx !== undefined && correctIndexes.has(idx)
@@ -54,19 +54,22 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     }
   }
 
-  if (question.type === 1) {
+  if (question.type === 3) {
     const rawSelections = asArrayAnswer(response.answer)
     const selectedIndexes = new Set<number>()
     rawSelections.forEach((selection) => {
       const idx = optionIndexMap.get(normalizeText(selection))
       if (idx !== undefined) selectedIndexes.add(idx)
     })
-    const sameSize = selectedIndexes.size === correctIndexes.size
-    const sameMembers = sameSize && [...selectedIndexes].every((idx) => correctIndexes.has(idx))
-    const correct = sameMembers && correctIndexes.size > 0
+    const intersection = [...selectedIndexes].filter((idx) => correctIndexes.has(idx))
+    const denominator = correctIndexes.size
+    const rawScore =
+      denominator > 0 ? (2 * intersection.length - selectedIndexes.size) / denominator : 0
+    const boundedScore = Math.max(0, Math.min(1, rawScore))
+    const correct = boundedScore >= 1
     return {
       correct,
-      pointsAwarded: correct ? pointsPossible : 0,
+      pointsAwarded: pointsPossible * boundedScore,
       pointsPossible,
       automatic: true,
       needsGrading: false,
@@ -91,24 +94,11 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     }
   }
 
-  const answer = asArrayAnswer(response.answer)[0] || ''
-  const expected = question.solution_plainText || question.solution || ''
-  if (expected.trim()) {
-    const correct = normalizeText(answer) === normalizeText(expected)
-    return {
-      correct,
-      pointsAwarded: correct ? pointsPossible : 0,
-      pointsPossible,
-      automatic: true,
-      needsGrading: false,
-    }
-  }
-
   return {
     pointsAwarded: 0,
     pointsPossible,
     automatic: false,
-    needsGrading: true,
+    needsGrading: pointsPossible > 0,
   }
 }
 
@@ -141,6 +131,18 @@ export async function gradeResponse(params: {
   if (!question) return { responseUpdate: {} }
 
   const evaluation = evaluateResponse(question, responseDoc)
+  const maxAttempts = Number(question.sessionOptions?.maxAttempts ?? 1)
+  const weights = question.sessionOptions?.attemptWeights || [1]
+  let weight = 1
+  if (maxAttempts > 1) {
+    if (attempt >= 1 && attempt <= weights.length) {
+      weight = Number(weights[attempt - 1])
+    } else {
+      weight = 0
+    }
+  }
+  const weightedPointsAwarded = evaluation.pointsAwarded * weight
+  const weightedPointsPossible = evaluation.pointsPossible * weight
   const responseUpdate = evaluation.correct === undefined ? {} : { correct: evaluation.correct }
 
   if (!sessionId || !courseId) return { responseUpdate }
@@ -155,8 +157,8 @@ export async function gradeResponse(params: {
     questionId,
     responseId: responseDoc._id,
     attempt,
-    points: evaluation.pointsAwarded,
-    outOf: evaluation.pointsPossible,
+    points: weightedPointsAwarded,
+    outOf: weightedPointsPossible,
     automatic: evaluation.automatic,
     needsGrading: evaluation.needsGrading,
   }
