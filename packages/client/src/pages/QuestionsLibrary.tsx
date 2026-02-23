@@ -137,6 +137,18 @@ export default function QuestionsLibrary() {
           </button>
         </div>
 
+        {creatingQuestion && user?._id && (
+          <CreateQuestionModal
+            courseId={courseId!}
+            userId={user._id}
+            done={() => setCreatingQuestion(false)}
+            onCreated={(created) => {
+              setQuestions((prev) => [created, ...prev])
+              setEditingId(created._id || null)
+            }}
+          />
+        )}
+
         {questions.length === 0 ? (
           <p>No questions in this course library.</p>
         ) : (

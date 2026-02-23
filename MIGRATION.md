@@ -265,7 +265,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 
 ## Next Steps
 
-1. **Remaining modals**: Port `EnrollCourseModal`, `ChangeEmailModal`, `ChangePasswordModal`, `CreateSessionModal`, `CreateQuestionModal`, and other modals from `imports/ui/modals/`
+1. **Remaining modals**: Port `EnrollCourseModal` and additional specialized modals from `imports/ui/modals/` (core account/session/question creation modals are now migrated)
 2. **Advanced components**: Port `QuestionDisplay`, `QuestionEditItem`, `ResponseDisplay`, `ResponseList`, `GradeView`, `CleanTable`, `CleanGradeTable`, `Histogram`, `AnswerDistribution`
 3. **Profile image upload**: Port `DragAndDropArea` and image upload/resize logic
 4. **Quiz extensions**: Port quiz extension logic and `QuizExtensionsModal`
