@@ -175,7 +175,8 @@ export async function gradeResponse(params: {
   const answeredQuestionIds = new Set(
     marks
       .map((mark) => mark.questionId)
-      .filter((id): id is string => Boolean(id) && sessionQuestionIds.has(id))
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      .filter((id) => sessionQuestionIds.has(id))
   )
 
   const gradePatch: Partial<Grade> = {
