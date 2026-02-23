@@ -4,6 +4,7 @@ import type { Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
+import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
 
 const QUESTION_TYPES: Record<number, string> = {
   0: 'Multiple Choice',
@@ -18,23 +19,21 @@ const DEFAULT_OPTIONS = [{ plainText: '' }, { plainText: '' }]
 export default function QuestionsLibrary() {
   const { courseId } = useParams<{ courseId: string }>()
   const { user } = useAuth()
+  const { data, loading, error } = useRealtimeCollection<Question>({
+    fetchPath: `/questions?courseId=${courseId || ''}`,
+    subscribeEvent: 'subscribe:questions-course',
+    subscribePayload: { courseId: courseId || '' },
+    changeEvent: 'questions:change',
+    enabled: Boolean(courseId),
+  })
 
   const [questions, setQuestions] = useState<Question[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creatingQuestion, setCreatingQuestion] = useState(false)
 
   useEffect(() => {
-    if (!courseId) return
-    setLoading(true)
-    setError(null)
-    apiClient
-      .get<Question[]>(`/questions?courseId=${courseId}`)
-      .then(setQuestions)
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false))
-  }, [courseId])
+    setQuestions(data)
+  }, [data])
 
   const patchQuestion = (questionId: string, partial: Partial<Question>) => {
     setQuestions((prev) => prev.map((q) => (q._id === questionId ? { ...q, ...partial } : q)))

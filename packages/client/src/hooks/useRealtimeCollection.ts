@@ -8,9 +8,11 @@ interface UseRealtimeCollectionOptions {
   /** Socket.IO event name to subscribe with */
   subscribeEvent: string
   /** Payload to send with the subscribe event */
-  subscribePayload: Record<string, string>
+  subscribePayload: Record<string, string | number | boolean | null | undefined>
   /** Socket.IO event name to listen for changes */
   changeEvent: string
+  /** Whether the hook should fetch/subscribe (default true) */
+  enabled?: boolean
 }
 
 interface UseRealtimeCollectionResult<T> {
@@ -30,13 +32,20 @@ interface UseRealtimeCollectionResult<T> {
 export function useRealtimeCollection<T extends { _id?: string }>(
   options: UseRealtimeCollectionOptions
 ): UseRealtimeCollectionResult<T> {
-  const { fetchPath, subscribeEvent, subscribePayload, changeEvent } = options
+  const { fetchPath, subscribeEvent, subscribePayload, changeEvent, enabled = true } = options
   const { socket } = useRealtimeContext()
+  const payloadKey = JSON.stringify(subscribePayload)
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false)
+      setError(null)
+      setData([])
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -47,7 +56,7 @@ export function useRealtimeCollection<T extends { _id?: string }>(
     } finally {
       setLoading(false)
     }
-  }, [fetchPath])
+  }, [enabled, fetchPath])
 
   useEffect(() => {
     fetchData()
@@ -55,8 +64,9 @@ export function useRealtimeCollection<T extends { _id?: string }>(
 
   useEffect(() => {
     if (!socket) return
+    if (!enabled) return
 
-    socket.emit(subscribeEvent, subscribePayload)
+    socket.emit(subscribeEvent, JSON.parse(payloadKey))
 
     const handler = (event: { operationType: string; fullDocument?: T; documentKey?: { _id: string } }) => {
       if (event.operationType === 'insert' && event.fullDocument) {
@@ -74,7 +84,7 @@ export function useRealtimeCollection<T extends { _id?: string }>(
     return () => {
       socket.off(changeEvent, handler)
     }
-  }, [socket, subscribeEvent, subscribePayload, changeEvent])
+  }, [socket, enabled, subscribeEvent, payloadKey, changeEvent])
 
   return { data, loading, error, refetch: fetchData }
 }

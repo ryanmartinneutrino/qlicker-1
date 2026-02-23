@@ -2,32 +2,40 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import type { Session as SessionType, Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
+import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 export default function ReplaySession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
 
   const [session, setSession] = useState<SessionType | null>(null)
-  const [questions, setQuestions] = useState<Question[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [sessionLoading, setSessionLoading] = useState(true)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const {
+    data: questions,
+    loading: questionsLoading,
+    error: questionsError,
+  } = useRealtimeCollection<Question>({
+    fetchPath: `/questions?sessionId=${sessionId || ''}`,
+    subscribeEvent: 'subscribe:questions',
+    subscribePayload: { sessionId: sessionId || '' },
+    changeEvent: 'questions:change',
+    enabled: Boolean(sessionId),
+  })
 
   useEffect(() => {
     if (!sessionId) return
-    setLoading(true)
-    Promise.all([
-      apiClient.get<SessionType>(`/sessions/${sessionId}`),
-      apiClient.get<Question[]>(`/questions?sessionId=${sessionId}`),
-    ])
-      .then(([s, q]) => {
-        setSession(s)
-        setQuestions(q)
-      })
-      .catch((err) => setError((err as Error).message))
-      .finally(() => setLoading(false))
+    setSessionLoading(true)
+    apiClient
+      .get<SessionType>(`/sessions/${sessionId}`)
+      .then((s) => setSession(s))
+      .catch((err) => setSessionError((err as Error).message))
+      .finally(() => setSessionLoading(false))
   }, [sessionId])
 
-  if (loading) return <div className="page">Loading...</div>
+  const error = sessionError || questionsError
+  if (sessionLoading || questionsLoading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
   if (!session) return <div className="page">Session not found</div>
 
@@ -58,7 +66,7 @@ export default function ReplaySession() {
                     <div
                       className="ql-question-content"
                       dangerouslySetInnerHTML={{
-                        __html: currentQuestion.content || currentQuestion.plainText || '',
+                        __html: sanitizeHtml(currentQuestion.content || currentQuestion.plainText || ''),
                       }}
                     />
                     {currentQuestion.options && currentQuestion.options.length > 0 && (
@@ -84,7 +92,7 @@ export default function ReplaySession() {
                     {currentQuestion.solution && (
                       <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
                         <strong>Solution:</strong>
-                        <div dangerouslySetInnerHTML={{ __html: currentQuestion.solution }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.solution) }} />
                       </div>
                     )}
                   </>

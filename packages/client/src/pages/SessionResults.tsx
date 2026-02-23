@@ -2,14 +2,22 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import type { Session, Question, Response as QResponse } from '@qlicker/shared'
 import { apiClient } from '../api/client'
+import { AnswerDistribution } from '../components/AnswerDistribution'
+import { ShortAnswerList } from '../components/ShortAnswerList'
+import { Histogram } from '../components/Histogram'
+import { sanitizeHtml } from '../utils/sanitizeHtml'
 
 interface QuestionStats {
   questionId: string
   plainText: string
+  content: string
+  type: number
   totalResponses: number
   correctCount: number
   optionCounts: Record<string, number>
   options: { answer?: string; plainText?: string; content?: string; correct?: boolean }[]
+  shortAnswers: string[]
+  numericalAnswers: number[]
 }
 
 export default function SessionResults() {
@@ -37,22 +45,38 @@ export default function SessionResults() {
           try {
             responses = await apiClient.get<QResponse[]>(`/responses?questionId=${q._id}`)
           } catch {
-            // responses may not be available
+            responses = []
           }
+
           const optionCounts: Record<string, number> = {}
           let correctCount = 0
+          const shortAnswers: string[] = []
+          const numericalAnswers: number[] = []
+
           for (const r of responses) {
-            const ans = Array.isArray(r.answer) ? r.answer.join(',') : r.answer
-            optionCounts[ans] = (optionCounts[ans] || 0) + 1
-            if (r.correct) correctCount++
+            if (r.correct) correctCount += 1
+            if (q.type <= 2) {
+              const answer = Array.isArray(r.answer) ? r.answer.join(',') : String(r.answer)
+              optionCounts[answer] = (optionCounts[answer] || 0) + 1
+            } else if (q.type === 3) {
+              shortAnswers.push(Array.isArray(r.answer) ? r.answer.join(', ') : String(r.answer))
+            } else if (q.type === 4) {
+              const parsed = Number(Array.isArray(r.answer) ? r.answer[0] : r.answer)
+              if (!Number.isNaN(parsed)) numericalAnswers.push(parsed)
+            }
           }
+
           questionStats.push({
             questionId: q._id!,
             plainText: q.plainText || 'Question',
+            content: q.content || q.plainText || '',
+            type: q.type,
             totalResponses: responses.length,
             correctCount,
             optionCounts,
             options: q.options || [],
+            shortAnswers,
+            numericalAnswers,
           })
         }
         setStats(questionStats)
@@ -83,6 +107,10 @@ export default function SessionResults() {
             <div key={qs.questionId} className="ql-card" style={{ marginBottom: '1rem' }}>
               <div className="ql-card-content">
                 <h3>Q{i + 1}: {qs.plainText}</h3>
+                <div
+                  className="ql-question-content"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(qs.content) }}
+                />
                 <p>
                   Total responses: <strong>{qs.totalResponses}</strong> |
                   Correct: <strong>{qs.correctCount}</strong>
@@ -90,33 +118,16 @@ export default function SessionResults() {
                     <> ({Math.round((qs.correctCount / qs.totalResponses) * 100)}%)</>
                   )}
                 </p>
-                {qs.options.length > 0 && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    {qs.options.map((opt, oi) => {
-                      const label = String.fromCharCode(65 + oi)
-                      const count = qs.optionCounts[label] || qs.optionCounts[String(oi)] || 0
-                      const pct = qs.totalResponses > 0 ? Math.round((count / qs.totalResponses) * 100) : 0
-                      return (
-                        <div key={oi} style={{ marginBottom: '0.25rem' }}>
-                          <strong>{label}.</strong> {opt.plainText || opt.answer || opt.content || `Option ${oi + 1}`}
-                          {' — '}
-                          <span style={{ color: opt.correct ? '#5ACE5F' : 'inherit' }}>
-                            {count} ({pct}%)
-                          </span>
-                          <div
-                            style={{
-                              height: '8px',
-                              width: `${pct}%`,
-                              backgroundColor: opt.correct ? '#5ACE5F' : '#30B0E7',
-                              borderRadius: '4px',
-                              marginTop: '2px',
-                            }}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
+
+                {qs.type <= 2 && (
+                  <AnswerDistribution
+                    options={qs.options}
+                    optionCounts={qs.optionCounts}
+                    totalResponses={qs.totalResponses}
+                  />
                 )}
+                {qs.type === 3 && <ShortAnswerList answers={qs.shortAnswers} />}
+                {qs.type === 4 && <Histogram values={qs.numericalAnswers} />}
               </div>
             </div>
           ))
