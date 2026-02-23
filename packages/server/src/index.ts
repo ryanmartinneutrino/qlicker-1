@@ -34,6 +34,7 @@ const COOKIE_SECURE =
   process.env.COOKIE_SECURE === 'true' ||
   (process.env.NODE_ENV === 'production' && ROOT_URL.startsWith('https://'))
 const CSRF_COOKIE_NAME = COOKIE_SECURE ? '__Host-qlicker.x-csrf-token' : 'qlicker.x-csrf-token'
+const CSRF_ENABLED = process.env.DISABLE_CSRF !== 'true'
 
 async function main() {
   // 1. Connect to MongoDB
@@ -74,22 +75,34 @@ async function main() {
   app.use(passport.session())
 
   // 6. CSRF protection (double-submit cookie pattern)
-  const { generateToken, doubleCsrfProtection } = doubleCsrf({
-    getSecret: () => SESSION_SECRET,
-    cookieName: CSRF_COOKIE_NAME,
-    cookieOptions: {
-      secure: COOKIE_SECURE,
-      sameSite: 'strict',
-      path: '/',
-    },
-  })
-  // Expose CSRF token endpoint (GET /api/csrf-token) — clients must fetch this
-  // before making state-changing requests and include the token in x-csrf-token header
-  app.get('/api/csrf-token', (req, res) => {
-    res.json({ csrfToken: generateToken(req, res) })
-  })
-  // Apply CSRF protection to all state-changing API routes
-  app.use('/api', doubleCsrfProtection)
+  if (CSRF_ENABLED) {
+    const { generateToken, doubleCsrfProtection } = doubleCsrf({
+      getSecret: () => SESSION_SECRET,
+      cookieName: CSRF_COOKIE_NAME,
+      cookieOptions: {
+        secure: COOKIE_SECURE,
+        sameSite: 'strict',
+        path: '/',
+      },
+    })
+    // Expose CSRF token endpoint (GET /api/csrf-token) — clients must fetch this
+    // before making state-changing requests and include the token in x-csrf-token header
+    app.get('/api/csrf-token', (req, res) => {
+      try {
+        res.json({ csrfToken: generateToken(req, res) })
+      } catch (err) {
+        console.error('Failed to generate CSRF token:', err)
+        res.status(500).json({ error: 'Failed to generate CSRF token.' })
+      }
+    })
+    // Apply CSRF protection to all state-changing API routes
+    app.use('/api', doubleCsrfProtection)
+  } else {
+    console.warn('CSRF protection is disabled via DISABLE_CSRF=true')
+    app.get('/api/csrf-token', (_req, res) => {
+      res.json({ csrfToken: 'csrf-disabled' })
+    })
+  }
 
   // 7. Rate limiting
   app.use('/api', generalLimiter)

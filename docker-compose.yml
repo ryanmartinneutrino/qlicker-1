@@ -42,6 +42,7 @@ services:
     environment:
       - NODE_ENV=production
       - COOKIE_SECURE=false
+      - DISABLE_CSRF=true
       - PORT=3001
       - MONGO_URL=mongodb://mongo1:27017/qlicker?replicaSet=rs0
       - ROOT_URL=${ROOT_URL:-http://localhost:3000}
