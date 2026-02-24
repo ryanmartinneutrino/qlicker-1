@@ -23,6 +23,7 @@ import QuestionsLibrary from './pages/QuestionsLibrary'
 import ManageCourses from './pages/ManageCourses'
 import ManageCourseGroups from './pages/ManageCourseGroups'
 import ResultsOverview from './pages/ResultsOverview'
+import CourseResults from './pages/CourseResults'
 import ResetPassword from './pages/ResetPassword'
 import VideoChat from './pages/VideoChat'
 import JitsiWindow from './pages/JitsiWindow'
@@ -63,6 +64,7 @@ export default function App() {
 
             {/* Course */}
             <Route path="/course/:courseId" element={<ProtectedRoute><Course /></ProtectedRoute>} />
+            <Route path="/course/:courseId/results" element={<ProtectedRoute roles={['professor', 'admin']}><CourseResults /></ProtectedRoute>} />
             <Route path="/course/:courseId/video" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
             <Route path="/course/:courseId/videochatwindow" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
             <Route path="/course/:courseId/categoryvideochatwindow/:catNumber/:gNumber" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />

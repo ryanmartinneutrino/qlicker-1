@@ -239,6 +239,98 @@ router.delete('/:sessionId', requireAuth, requireInstructor, async (req, res, ne
   }
 })
 
+/** POST /api/sessions/:sessionId/copy — duplicate a session (optionally into another managed course) */
+router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const sessions = getSessions()
+    const questions = getQuestions()
+    const courses = getCourses()
+
+    const source = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!source) return res.status(404).json({ error: 'Session not found.' })
+
+    const requestedCourseId = typeof req.body?.courseId === 'string' ? req.body.courseId.trim() : ''
+    const targetCourseId = requestedCourseId || source.courseId
+
+    if (targetCourseId !== source.courseId) {
+      const targetAccess = await courseAccessForUser(user, targetCourseId)
+      if (!targetAccess.exists) return res.status(404).json({ error: 'Course not found.' })
+      if (!targetAccess.canManage) return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const targetCourse = await courses.findOne({ _id: targetCourseId } as Parameters<typeof courses.findOne>[0])
+    if (!targetCourse) return res.status(404).json({ error: 'Course not found.' })
+
+    const sourceQuestionIds = (source.questions || []).filter(
+      (questionId): questionId is string => typeof questionId === 'string' && questionId.length > 0
+    )
+    const questionDocs = sourceQuestionIds.length > 0
+      ? await questions
+          .find({ _id: { $in: sourceQuestionIds } } as Parameters<typeof questions.find>[0])
+          .toArray()
+      : []
+    const questionById = new Map(
+      questionDocs
+        .filter((question): question is typeof question & { _id: string } => typeof question._id === 'string')
+        .map((question) => [question._id, question])
+    )
+    const orderedQuestions = sourceQuestionIds
+      .map((questionId) => questionById.get(questionId))
+      .filter((question): question is NonNullable<typeof question> => Boolean(question))
+
+    const copiedSessionId = generateStringId('session')
+    const copiedQuestions = orderedQuestions.map((question) => {
+      const { _id: _omitId, createdAt: _omitCreatedAt, ...rest } = question
+      const normalizedSessionOptions = {
+        ...defaultQuestionSessionOptions,
+        ...(question.sessionOptions || {}),
+        hidden: false,
+        stats: false,
+        correct: false,
+        attempts: [{ number: 1, closed: false }],
+      }
+      return {
+        ...rest,
+        _id: generateStringId('question'),
+        courseId: targetCourseId,
+        sessionId: copiedSessionId,
+        sessionOptions: normalizedSessionOptions,
+        createdAt: new Date(),
+      }
+    })
+    if (copiedQuestions.length > 0) {
+      await questions.insertMany(copiedQuestions as Parameters<typeof questions.insertMany>[0])
+    }
+
+    const copiedQuestionIds = copiedQuestions.map((question) => question._id)
+    const copiedSession = {
+      ...source,
+      _id: copiedSessionId,
+      courseId: targetCourseId,
+      name: source.name ? `${source.name} (Copy)` : 'Session Copy',
+      status: 'hidden',
+      date: null,
+      joined: [],
+      submittedQuiz: [],
+      currentQuestion: copiedQuestionIds[0],
+      questions: copiedQuestionIds,
+      createdAt: new Date(),
+    }
+
+    await sessions.insertOne(copiedSession as Parameters<typeof sessions.insertOne>[0])
+    await courses.updateOne(
+      { _id: targetCourseId } as Parameters<typeof courses.updateOne>[0],
+      { $addToSet: { sessions: copiedSessionId } }
+    )
+
+    const created = await sessions.findOne({ _id: copiedSessionId } as Parameters<typeof sessions.findOne>[0])
+    res.status(201).json(created)
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** PUT /api/sessions/:sessionId/status — change session status */
 router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res, next) => {
   try {

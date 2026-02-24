@@ -282,6 +282,22 @@ router.delete('/:courseId', requireAuth, requireInstructor, async (req, res, nex
   }
 })
 
+/** POST /api/courses/:courseId/enrollment-code/regenerate — rotate course enrollment code */
+router.post('/:courseId/enrollment-code/regenerate', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const courses = getCourses()
+    const nextCode = generateEnrollmentCode()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { enrollmentCode: nextCode } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/courses/:courseId/enroll — student self-enroll via enrollment code */
 router.post('/:courseId/enroll', requireAuth, async (req, res, next) => {
   try {
@@ -319,6 +335,37 @@ router.post('/:courseId/enroll', requireAuth, async (req, res, next) => {
       { $addToSet: { 'profile.courses': req.params.courseId } }
     )
     res.json(await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/unenroll — student self-unenroll */
+router.post('/:courseId/unenroll', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const userId = user._id ?? ''
+    const courses = getCourses()
+    const users = getUsers()
+    const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const isInstructor = course.instructors?.includes(userId) ?? false
+    const isOwner = course.owner === userId
+    if (isInstructor || isOwner) {
+      return res.status(403).json({ error: 'Instructors cannot self-unenroll.' })
+    }
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $pull: { students: userId } }
+    )
+    await users.updateOne(
+      { _id: userId } as Parameters<typeof users.updateOne>[0],
+      { $pull: { 'profile.courses': req.params.courseId } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
   } catch (err) {
     next(err)
   }
@@ -368,13 +415,77 @@ router.post('/enroll', requireAuth, async (req, res, next) => {
   }
 })
 
+/** GET /api/courses/:courseId/roster — instructor roster for course management */
+router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const users = getUsers()
+    const studentIds = (course.students || []).filter(
+      (studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0
+    )
+    const instructorIds = (course.instructors || []).filter(
+      (instructorId): instructorId is string => typeof instructorId === 'string' && instructorId.length > 0
+    )
+
+    const [students, instructors] = await Promise.all([
+      studentIds.length > 0
+        ? users
+            .find(
+              { _id: { $in: studentIds } } as Parameters<typeof users.find>[0],
+              { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+      instructorIds.length > 0
+        ? users
+            .find(
+              { _id: { $in: instructorIds } } as Parameters<typeof users.find>[0],
+              { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+    ])
+
+    const mapUser = (entry: Awaited<(typeof students)[number]>) => ({
+      _id: entry._id,
+      firstname: entry.profile.firstname || '',
+      lastname: entry.profile.lastname || '',
+      email: entry.emails?.[0]?.address || '',
+    })
+
+    res.json({
+      courseId: req.params.courseId,
+      owner: course.owner,
+      students: students.map(mapUser).sort((a, b) => {
+        const byLast = a.lastname.localeCompare(b.lastname)
+        if (byLast !== 0) return byLast
+        return a.firstname.localeCompare(b.firstname)
+      }),
+      instructors: instructors.map(mapUser).sort((a, b) => {
+        const byLast = a.lastname.localeCompare(b.lastname)
+        if (byLast !== 0) return byLast
+        return a.firstname.localeCompare(b.firstname)
+      }),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** DELETE /api/courses/:courseId/students/:studentId — remove a student */
 router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const courses = getCourses()
+    const users = getUsers()
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
       { $pull: { students: req.params.studentId } }
+    )
+    await users.updateOne(
+      { _id: req.params.studentId } as Parameters<typeof users.updateOne>[0],
+      { $pull: { 'profile.courses': req.params.courseId } }
     )
     res.json({ success: true })
   } catch (err) {
