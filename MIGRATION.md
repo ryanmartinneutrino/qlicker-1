@@ -15,7 +15,7 @@
 - `Agent-05 Question Editor`: question library/editor parity (library/public/student queue flows and copy/approve/public controls landed; final parity checks pending).
 - `Agent-06 Groups/Video`: group categories + video workflow parity.
 - `Agent-07 Realtime/Perf`: realtime routing correctness + perf hardening (question channel sanitization/invalidation hardening and dynamic response-stats privacy refresh landed).
-- `Agent-08 QA/Parity`: smoke/e2e/manual parity + cutover checklist.
+- `Agent-08 QA/Parity`: smoke/e2e/manual parity + cutover checklist (added dedicated authz integration harness: `npm run test:migration-authz`).
 
 ## Release Gate Summary
 - Auth + CSRF parity: `in-progress`
