@@ -46,7 +46,7 @@
 | MIG-030 | Realtime wildcard fan-out dedup and deterministic event routing | Agent-07 | MIG-010..014 | One logical update per DB change per channel | in-progress |
 | MIG-031 | Subscription authorization parity on socket channels | Agent-07 | MIG-012..013 | Cross-course unauthorized subscriptions blocked | in-progress |
 | MIG-032 | Hot-path query/payload optimization | Agent-07 | MIG-014 | p95 latency and payload size targets documented | pending |
-| MIG-033 | Load-test and document high-concurrency behavior | Agent-07 | MIG-030..032 | Results recorded in verification log | pending |
+| MIG-033 | Load-test and document high-concurrency behavior | Agent-07 | MIG-030..032 | Results recorded in verification log | in-progress |
 | MIG-040 | Expand migration smoke suite for critical parity paths | Agent-08 | MIG-020..024 | Smoke suite covers core lifecycle for all roles | in-progress |
 | MIG-041 | Add server integration tests for authz + grading/response semantics | Agent-08 | MIG-012..014 | Integration suite green in CI/local docker | in-progress |
 | MIG-042 | Add client e2e parity tests for student/prof/admin | Agent-08 | MIG-020..024 | E2E suite verifies top workflows | pending |
@@ -146,6 +146,7 @@ Rebase protocol:
 | 2026-02-24 | `working-tree` | Agent-01/03/08 | `npm run build --workspace=packages/server && node --check scripts/migration-smoke.mjs` | pass | Adds session deletion cleanup parity path and smoke assertions for session cleanup semantics. |
 | 2026-02-24 | `working-tree` | Agent-07 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Fixes realtime response privacy correctness when `sessionOptions.stats` toggles during active subscriptions. |
 | 2026-02-24 | `working-tree` | Agent-08 | `node --check scripts/migration-authz-integration.mjs` | pass | Added dedicated integration harness for route-level authz/parity checks (`npm run test:migration-authz`). |
+| 2026-02-24 | `working-tree` | Agent-07 | `node --check scripts/migration-load-check.mjs` | pass | Added repeatable load/perf harness with p95/error-rate thresholds (`npm run test:migration-load`). |
 
 ## Risks and Blockers
 
