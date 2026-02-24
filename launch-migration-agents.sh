@@ -6,11 +6,14 @@ WORKTREE_DIR="$ROOT_DIR/.agent-worktrees"
 mkdir -p "$WORKTREE_DIR"
 
 agents=(
-  "agent-01/questions-editor"
-  "agent-02/quiz-session-parity"
-  "agent-03/profile-image-upload"
-  "agent-04/video-chat-parity"
-  "agent-05/integration-parity-tests"
+  "agent-01/contracts-auth"
+  "agent-02/student-session"
+  "agent-03/instructor-run"
+  "agent-04/grading"
+  "agent-05/question-editor"
+  "agent-06/groups-video"
+  "agent-07/realtime-perf"
+  "agent-08/qa-parity"
 )
 
 for entry in "${agents[@]}"; do
@@ -32,7 +35,6 @@ for entry in "${agents[@]}"; do
     git worktree add "$target" "$branch"
     echo "[ok] created worktree: $target"
   fi
-
 done
 
 echo

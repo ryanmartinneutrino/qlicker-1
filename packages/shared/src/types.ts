@@ -1,3 +1,5 @@
+import { QuestionType } from './configs'
+
 // Shared TypeScript interfaces for all Qlicker collections.
 // Migrated from the *Pattern objects in imports/api/*.js
 
@@ -30,7 +32,7 @@ export interface QuestionTag {
 export interface Question {
   _id?: string
   plainText: string
-  type: number
+  type: QuestionType
   content: string
   options: QuestionOption[]
   toleranceNumerical?: number
