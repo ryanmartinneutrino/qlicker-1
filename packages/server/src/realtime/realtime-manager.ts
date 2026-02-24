@@ -149,6 +149,18 @@ export function setupRealtime(io: SocketIOServer): void {
       }
 
       const userId = user._id || ''
+      let statsEnabled = question.sessionOptions?.stats ?? false
+
+      registerSubscription(`responses:question-stats:${questionId}`, () =>
+        streams.questions.subscribe(`questions:${questionId}`, (event) => {
+          const doc = (event as { fullDocument?: { sessionOptions?: { stats?: boolean } } }).fullDocument
+          if (doc?.sessionOptions) {
+            statsEnabled = Boolean(doc.sessionOptions.stats)
+            socket.emit('responses:change', { operationType: 'invalidate' })
+          }
+        })
+      )
+
       registerSubscription(`responses:${questionId}`, () =>
         streams.responses.subscribe(`responses:question:${questionId}`, (event) => {
           const doc = (event as { fullDocument?: { studentUserId?: string } }).fullDocument
@@ -158,7 +170,6 @@ export function setupRealtime(io: SocketIOServer): void {
             return
           }
 
-          const statsEnabled = question.sessionOptions?.stats ?? false
           if (statsEnabled) {
             if (doc?.studentUserId && doc.studentUserId !== userId) {
               const { studentUserId: _omit, ...docRest } = doc

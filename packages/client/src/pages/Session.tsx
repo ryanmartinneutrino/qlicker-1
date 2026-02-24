@@ -141,6 +141,7 @@ export default function Session() {
     subscribePayload: { questionId: currentQuestion?._id || '' },
     changeEvent: 'responses:change',
     enabled: Boolean(currentQuestion?._id && !session?.quiz),
+    refetchOnChange: true,
   })
 
   const loadSession = useCallback(async () => {
@@ -211,6 +212,12 @@ export default function Session() {
     }
     void loadQuizResponses()
   }, [session?.quiz, loadQuizResponses])
+
+  useEffect(() => {
+    if (!currentQuestion?._id) return
+    if (session?.quiz) return
+    refetchResponses()
+  }, [currentQuestion?._id, currentQuestion?.sessionOptions?.stats, session?.quiz, refetchResponses])
 
   const ownCurrentResponse = useMemo(() => {
     if (!currentQuestion || !userId) return null
