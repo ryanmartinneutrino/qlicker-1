@@ -21,41 +21,53 @@ export default function ResultsOverview() {
   if (error) return <div className="page">Error: {error}</div>
 
   const activeCourses = courses.filter((c) => !c.inactive)
+  const inactiveCourses = courses.filter((c) => c.inactive)
 
   return (
     <div className="page">
       <div className="ql-header-bar">
-        <h1>Results Overview</h1>
+        <h1>Response Results</h1>
       </div>
 
       <div className="container">
+        <h2>Active Courses</h2>
         {activeCourses.length === 0 ? (
-          <p>No courses available.</p>
+          <p>No active courses available.</p>
         ) : (
-          <div>
-            {activeCourses.map((c) => {
-              const courseCode = `${c.deptCode} ${c.courseNumber}-${c.section}`.toUpperCase()
+          <div className="ql-courselist">
+            {activeCourses.map((course) => {
+              const courseCode = `${course.deptCode} ${course.courseNumber}-${course.section}`.toUpperCase()
               return (
-                <div
-                  key={c._id}
-                  className="ql-list-item"
-                  style={{
-                    padding: '0.75rem',
-                    borderBottom: '1px solid #eee',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
+                <div key={course._id} className="ql-list-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <strong>{courseCode}</strong> — {c.name}
-                    <span style={{ marginLeft: '0.5rem', color: '#888' }}>{c.semester}</span>
+                    <strong>{courseCode}</strong> — {course.name}
+                    <span style={{ marginLeft: '0.5rem', color: '#888' }}>{course.semester}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <Link className="btn btn-secondary" to={`/course/${c._id}/grades`}>
-                      Grades
-                    </Link>
+                  <Link className="btn btn-secondary" to={`/course/${course._id}/results`}>
+                    View Results
+                  </Link>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <h2 className="m-margin-top">Inactive Courses</h2>
+        {inactiveCourses.length === 0 ? (
+          <p>No inactive courses.</p>
+        ) : (
+          <div className="ql-courselist">
+            {inactiveCourses.map((course) => {
+              const courseCode = `${course.deptCode} ${course.courseNumber}-${course.section}`.toUpperCase()
+              return (
+                <div key={course._id} className="ql-list-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong>{courseCode}</strong> — {course.name}
+                    <span style={{ marginLeft: '0.5rem', color: '#888' }}>{course.semester}</span>
                   </div>
+                  <Link className="btn btn-secondary" to={`/course/${course._id}/results`}>
+                    View Results
+                  </Link>
                 </div>
               )
             })}
