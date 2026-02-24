@@ -9,6 +9,9 @@
 - Add explicit subscribe/unsubscribe pairing for collection channels.
 - Add per-socket subscription dedup so re-subscribing the same route key replaces old listeners.
 - Add delete-event routing by `documentKey._id` and client-side upsert semantics to avoid duplicate rows.
+- Add additive `attempt` filter support to `GET /api/responses` for attempt-scoped hot-path reads.
+- Switch `Session.tsx` and `RunSession.tsx` to active-attempt response queries to reduce payload size.
+- Optimize `SessionResults.tsx` response hydration with parallel per-question fetches and session-order alignment.
 
 ## Primary files
 - `packages/server/src/realtime/*`
