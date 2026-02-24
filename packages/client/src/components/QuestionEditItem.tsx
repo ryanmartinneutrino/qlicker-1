@@ -74,6 +74,9 @@ interface QuestionEditItemProps {
   onCancelEdit: () => void
   onDelete: () => void
   onSave: (updated: Question) => Promise<void> | void
+  canEdit?: boolean
+  canDelete?: boolean
+  allowPublicEdit?: boolean
 }
 
 export function QuestionEditItem({
@@ -84,6 +87,9 @@ export function QuestionEditItem({
   onCancelEdit,
   onDelete,
   onSave,
+  canEdit = true,
+  canDelete = true,
+  allowPublicEdit = true,
 }: QuestionEditItemProps) {
   const [draft, setDraft] = useState<Question>(question)
   const [saving, setSaving] = useState(false)
@@ -150,7 +156,11 @@ export function QuestionEditItem({
   const save = async () => {
     setSaving(true)
     try {
-      await onSave({ ...draft, options })
+      await onSave({
+        ...draft,
+        options,
+        public: allowPublicEdit ? Boolean(draft.public) : false,
+      })
     } finally {
       setSaving(false)
     }
@@ -189,8 +199,8 @@ export function QuestionEditItem({
               Public
             </span>
           )}
-          <button className="btn btn-default btn-sm" onClick={onStartEdit}>Edit</button>
-          <button className="btn btn-danger btn-sm" onClick={onDelete}>Delete</button>
+          {canEdit && <button className="btn btn-default btn-sm" onClick={onStartEdit}>Edit</button>}
+          {canDelete && <button className="btn btn-danger btn-sm" onClick={onDelete}>Delete</button>}
         </div>
       </div>
     )
@@ -283,14 +293,16 @@ export function QuestionEditItem({
         onChange={(html, plain) => setDraft((prev) => ({ ...prev, solution: html, solution_plainText: plain }))}
       />
 
-      <label>
-        <input
-          type="checkbox"
-          checked={Boolean(draft.public)}
-          onChange={(e) => setDraft((prev) => ({ ...prev, public: e.target.checked }))}
-        />
-        {' '}Public
-      </label>
+      {allowPublicEdit && (
+        <label>
+          <input
+            type="checkbox"
+            checked={Boolean(draft.public)}
+            onChange={(e) => setDraft((prev) => ({ ...prev, public: e.target.checked }))}
+          />
+          {' '}Public
+        </label>
+      )}
 
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>{saving ? 'Saving...' : 'Save'}</button>

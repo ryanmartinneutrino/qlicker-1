@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Grade, Mark, Question, Response, Session } from '@qlicker/shared'
+import type { Course, Grade, Mark, Question, Response, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { QuestionDisplay } from '../components/QuestionDisplay'
 import { ResponseList, type ResponseListStudent } from '../components/ResponseList'
@@ -36,14 +36,18 @@ function markKey(questionId: string): string {
 export default function GradeSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
 
+  const [course, setCourse] = useState<Course | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
   const [grades, setGrades] = useState<Grade[]>([])
   const [students, setStudents] = useState<ResponseListStudent[]>([])
   const [responses, setResponses] = useState<Response[]>([])
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0)
+  const [questionPoints, setQuestionPoints] = useState(0)
   const [studentSearch, setStudentSearch] = useState('')
   const [answerSearch, setAnswerSearch] = useState('')
+  const [groupCategoryNumber, setGroupCategoryNumber] = useState('')
+  const [groupNumber, setGroupNumber] = useState('')
   const [drafts, setDrafts] = useState<Record<string, DraftMark>>({})
   const [visibleToStudents, setVisibleToStudents] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -59,8 +63,10 @@ export default function GradeSession() {
       apiClient.get<Question[]>(`/questions?sessionId=${sessionId}`),
       apiClient.get<Grade[]>(`/grades?sessionId=${sessionId}`),
       apiClient.get<ExtensionCandidate[]>(`/sessions/${sessionId}/extension-candidates`),
+      courseId ? apiClient.get<Course>(`/courses/${courseId}`) : Promise.resolve(null),
     ])
-      .then(([loadedSession, loadedQuestions, loadedGrades, roster]) => {
+      .then(([loadedSession, loadedQuestions, loadedGrades, roster, loadedCourse]) => {
+        setCourse(loadedCourse)
         setSession(loadedSession)
         const orderedQuestions = loadedSession.questions?.length
           ? [...loadedQuestions].sort(
@@ -70,6 +76,7 @@ export default function GradeSession() {
             )
           : loadedQuestions
         setQuestions(orderedQuestions)
+        setQuestionPoints(Number(orderedQuestions[0]?.sessionOptions?.points ?? 1))
         setGrades(loadedGrades)
         setVisibleToStudents(loadedGrades.some((entry) => entry.visibleToStudents))
         const studentRows: ResponseListStudent[] = roster.map((candidate) => {
@@ -83,12 +90,18 @@ export default function GradeSession() {
         })
         setStudents(studentRows)
         setSelectedQuestionIndex(0)
+        setGroupCategoryNumber('')
+        setGroupNumber('')
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
-  }, [sessionId])
+  }, [courseId, sessionId])
 
   const selectedQuestion = questions[selectedQuestionIndex] || null
+
+  useEffect(() => {
+    setQuestionPoints(Number(selectedQuestion?.sessionOptions?.points ?? 1))
+  }, [selectedQuestion?._id])
 
   useEffect(() => {
     if (!selectedQuestion?._id) {
@@ -176,11 +189,44 @@ export default function GradeSession() {
     return map
   }, [students, selectedQuestion?._id, gradeByStudentId])
 
+  const selectedGroupCategory = useMemo(() => {
+    const categories = course?.groupCategories || []
+    if (!groupCategoryNumber) return null
+    return (
+      categories.find((category) => String(category.categoryNumber ?? '') === groupCategoryNumber) || null
+    )
+  }, [course?.groupCategories, groupCategoryNumber])
+
+  const selectedGroup = useMemo(() => {
+    if (!selectedGroupCategory || !groupNumber) return null
+    return (
+      (selectedGroupCategory.groups || []).find(
+        (group) => String(group.groupNumber ?? '') === groupNumber
+      ) || null
+    )
+  }, [selectedGroupCategory, groupNumber])
+
+  useEffect(() => {
+    if (!selectedGroupCategory) {
+      if (groupNumber) setGroupNumber('')
+      return
+    }
+    if (!groupNumber) return
+    const exists = (selectedGroupCategory.groups || []).some(
+      (group) => String(group.groupNumber ?? '') === groupNumber
+    )
+    if (!exists) setGroupNumber('')
+  }, [selectedGroupCategory, groupNumber])
+
   const filteredStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase()
     const answerQ = answerSearch.trim().toLowerCase()
+    const basePool =
+      selectedGroup && Array.isArray(selectedGroup.students)
+        ? students.filter((student) => selectedGroup.students?.includes(student.userId))
+        : students
 
-    return students.filter((student) => {
+    return basePool.filter((student) => {
       const fullName = `${student.firstname} ${student.lastname}`.trim().toLowerCase()
       const idMatch = student.userId.toLowerCase().includes(q)
       const nameMatch = fullName.includes(q)
@@ -196,7 +242,7 @@ export default function GradeSession() {
         .toLowerCase()
       return joinedAnswers.includes(answerQ)
     })
-  }, [students, studentSearch, answerSearch, responsesByStudentId])
+  }, [students, selectedGroup, studentSearch, answerSearch, responsesByStudentId])
 
   const responseStats = useMemo(() => {
     if (!selectedQuestion || !selectedQuestion.options?.length) return []
@@ -242,7 +288,7 @@ export default function GradeSession() {
     })
   }
 
-  const saveStudent = async (studentId: string) => {
+  const persistStudentMark = async (studentId: string, overrideDraft?: DraftMark) => {
     if (!selectedQuestion?._id) return
     const grade = gradeByStudentId[studentId]
     if (!grade?._id) {
@@ -251,7 +297,7 @@ export default function GradeSession() {
     }
 
     const existingMark = markByStudentId[studentId]
-    const draft = drafts[studentId]
+    const draft = overrideDraft || drafts[studentId]
     if (!draft) return
 
     const outOf = existingMark?.outOf ?? selectedQuestion.sessionOptions?.points ?? 1
@@ -305,12 +351,38 @@ export default function GradeSession() {
     }
   }
 
+  const saveStudent = async (studentId: string) => {
+    await persistStudentMark(studentId)
+  }
+
   const saveAll = async () => {
     const toSave = Object.keys(drafts)
     for (const studentId of toSave) {
       // Keep saves sequential to avoid clobbering grade updates for same question.
       // eslint-disable-next-line no-await-in-loop
-      await saveStudent(studentId)
+      await persistStudentMark(studentId)
+    }
+  }
+
+  const assignPointsToFiltered = async () => {
+    if (!selectedQuestion || filteredStudents.length < 1) return
+    if (!window.confirm('Assign this grade to all currently filtered students?')) return
+
+    if (questionPoints < 0) {
+      setError('Points cannot be negative.')
+      return
+    }
+
+    setBusy(true)
+    setError(null)
+    try {
+      for (const student of filteredStudents) {
+        // Keep updates sequential to avoid overwriting stale marks arrays.
+        // eslint-disable-next-line no-await-in-loop
+        await persistStudentMark(student.userId, { points: questionPoints })
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -368,6 +440,37 @@ export default function GradeSession() {
             </div>
 
             {selectedQuestion && (
+              <div
+                style={{
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>Assign points for this question:</span>
+                <input
+                  type="number"
+                  className="form-control"
+                  style={{ width: 120 }}
+                  min={0}
+                  step={0.5}
+                  value={Number.isFinite(questionPoints) ? questionPoints : 0}
+                  onChange={(e) => setQuestionPoints(Number(e.target.value))}
+                />
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={busy || filteredStudents.length < 1}
+                  onClick={assignPointsToFiltered}
+                >
+                  Assign to Filtered Students ({filteredStudents.length})
+                </button>
+              </div>
+            )}
+
+            {selectedQuestion && (
               <div className="ql-card" style={{ marginBottom: '0.75rem' }}>
                 <div className="ql-card-content">
                   <QuestionDisplay
@@ -384,6 +487,53 @@ export default function GradeSession() {
             )}
 
             <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              {course && (course.groupCategories || []).length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.5rem' }}>
+                  <select
+                    className="form-control"
+                    value={groupCategoryNumber}
+                    onChange={(e) => {
+                      const nextCategory = e.target.value
+                      setGroupCategoryNumber(nextCategory)
+                      const category = (course.groupCategories || []).find(
+                        (entry) => String(entry.categoryNumber ?? '') === nextCategory
+                      )
+                      const firstGroup = category?.groups?.[0]
+                      setGroupNumber(firstGroup?.groupNumber ? String(firstGroup.groupNumber) : '')
+                    }}
+                  >
+                    <option value="">All Categories</option>
+                    {(course.groupCategories || []).map((category) => (
+                      <option key={String(category.categoryNumber)} value={String(category.categoryNumber)}>
+                        {category.categoryName || `Category ${category.categoryNumber}`}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="form-control"
+                    value={groupNumber}
+                    disabled={!selectedGroupCategory}
+                    onChange={(e) => setGroupNumber(e.target.value)}
+                  >
+                    <option value="">All Groups</option>
+                    {(selectedGroupCategory?.groups || []).map((group) => (
+                      <option key={String(group.groupNumber)} value={String(group.groupNumber)}>
+                        {group.groupName || `Group ${group.groupNumber}`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setGroupCategoryNumber('')
+                      setGroupNumber('')
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
               <input
                 type="text"
                 className="form-control"

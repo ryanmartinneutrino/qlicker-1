@@ -19,6 +19,7 @@ interface CreateQuestionModalProps {
   userId: string
   onCreated: (question: Question) => void
   done: () => void
+  canSetPublic?: boolean
 }
 
 const defaultMcOptions: QuestionOption[] = [
@@ -31,7 +32,13 @@ const trueFalseOptions: QuestionOption[] = [
   { plainText: 'False', content: 'False', answer: 'False', correct: false },
 ]
 
-export function CreateQuestionModal({ courseId, userId, onCreated, done }: CreateQuestionModalProps) {
+export function CreateQuestionModal({
+  courseId,
+  userId,
+  onCreated,
+  done,
+  canSetPublic = true,
+}: CreateQuestionModalProps) {
   const [plainText, setPlainText] = useState('')
   const [content, setContent] = useState('')
   const [solution, setSolution] = useState('')
@@ -114,10 +121,9 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
         creator: userId,
         owner: userId,
         courseId,
-        public: isPublic,
+        public: canSetPublic ? isPublic : false,
         solution,
         solution_plainText: solutionPlain || solution,
-        approved: false,
         tags: [],
         sessionOptions: defaultSessionOptions,
       })
@@ -213,9 +219,11 @@ export function CreateQuestionModal({ courseId, userId, onCreated, done }: Creat
           />
           <br />
 
-          <label>
-            <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} /> Public question
-          </label>
+          {canSetPublic && (
+            <label>
+              <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} /> Public question
+            </label>
+          )}
 
           {error && <div className="alert alert-danger" style={{ marginTop: '12px' }}>{error}</div>}
 

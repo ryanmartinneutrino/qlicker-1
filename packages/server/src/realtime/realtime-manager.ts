@@ -21,6 +21,25 @@ async function loadSocketUser(socket: Socket): Promise<User | null> {
   return getUsers().findOne({ _id: userId } as Parameters<ReturnType<typeof getUsers>['findOne']>[0])
 }
 
+function sanitizeQuestionForStudent(question: Record<string, unknown>): Record<string, unknown> {
+  const options = Array.isArray(question.options)
+    ? question.options.map((option) => {
+        if (!option || typeof option !== 'object') return option
+        const { correct: _omit, ...rest } = option as Record<string, unknown>
+        return rest
+      })
+    : question.options
+
+  const sanitized: Record<string, unknown> = { ...question, options }
+  delete sanitized.correctNumerical
+  return sanitized
+}
+
+function stripFullDocument(event: Record<string, unknown>): Record<string, unknown> {
+  const { fullDocument: _omit, ...rest } = event
+  return rest
+}
+
 /**
  * Initialize Socket.IO + MongoDB Change Streams.
  *
@@ -208,8 +227,39 @@ export function setupRealtime(io: SocketIOServer): void {
       if (!access.canAccess && !isAdmin(user)) return
 
       registerSubscription(`questions:session:${sessionId}`, () =>
-        streams.questions.subscribe(`questions:session:${sessionId}`, (event) => {
-          socket.emit('questions:change', event)
+        streams.questions.subscribe(`questions:session:${sessionId}`, async (event) => {
+          const rawEvent = event as unknown as Record<string, unknown>
+          if (isAdmin(user) || access.isInstructor) {
+            socket.emit('questions:change', rawEvent)
+            return
+          }
+
+          const question = rawEvent.fullDocument as Record<string, unknown> | undefined
+          if (!question) {
+            socket.emit('questions:change', stripFullDocument(rawEvent))
+            return
+          }
+
+          let revealCorrect = Boolean(
+            (question.sessionOptions as { correct?: boolean } | undefined)?.correct
+          )
+          if (!revealCorrect) {
+            const latestSession = await getSessions().findOne(
+              { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+              { projection: { practiceQuiz: 1 } }
+            )
+            revealCorrect = Boolean(latestSession?.practiceQuiz)
+          }
+
+          if (revealCorrect) {
+            socket.emit('questions:change', rawEvent)
+            return
+          }
+
+          socket.emit('questions:change', {
+            ...rawEvent,
+            fullDocument: sanitizeQuestionForStudent(question),
+          })
         })
       )
     })
@@ -231,7 +281,13 @@ export function setupRealtime(io: SocketIOServer): void {
 
       registerSubscription(`questions:course:${courseId}`, () =>
         streams.questions.subscribe(`questions:course:${courseId}`, (event) => {
-          socket.emit('questions:change', event)
+          const rawEvent = event as unknown as Record<string, unknown>
+          if (isAdmin(user) || access.isInstructor) {
+            socket.emit('questions:change', rawEvent)
+            return
+          }
+          // Student course-library views use role-filtered REST queries; emit invalidation only.
+          socket.emit('questions:change', stripFullDocument(rawEvent))
         })
       )
     })
