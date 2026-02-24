@@ -3,6 +3,7 @@ import { generateStringId } from '../utils/id'
 import { getSessions, quizIsActive } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
 import { getQuestions } from '../collections/questions'
+import { getGrades } from '../collections/grades'
 import { requireAuth, requireInstructor } from '../auth/middleware'
 import type { Question, User } from '@qlicker/shared'
 import { sessionSchema } from '@qlicker/shared'
@@ -213,6 +214,24 @@ router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next)
 router.delete('/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const sessions = getSessions()
+    const questions = getQuestions()
+    const responses = getResponses()
+    const grades = getGrades()
+    const courses = getCourses()
+
+    const existing = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!existing) return res.status(404).json({ error: 'Session not found.' })
+
+    const questionIds = (existing.questions || []).filter((id): id is string => typeof id === 'string' && id.length > 0)
+    if (questionIds.length > 0) {
+      await responses.deleteMany({ questionId: { $in: questionIds } } as Parameters<typeof responses.deleteMany>[0])
+    }
+    await questions.deleteMany({ sessionId: existing._id } as Parameters<typeof questions.deleteMany>[0])
+    await grades.deleteMany({ sessionId: existing._id } as Parameters<typeof grades.deleteMany>[0])
+    await courses.updateOne(
+      { _id: existing.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $pull: { sessions: existing._id } }
+    )
     await sessions.deleteOne({ _id: req.params.sessionId } as Parameters<typeof sessions.deleteOne>[0])
     res.json({ success: true })
   } catch (err) {
