@@ -13,5 +13,8 @@ export async function initGrades(): Promise<Collection<Grade>> {
   await col.createIndex({ courseId: 1 })
   await col.createIndex({ sessionId: 1 })
   await col.createIndex({ userId: 1, sessionId: 1 }) // compound for hot path
+  await col.createIndex({ courseId: 1, userId: 1 })
+  await col.createIndex({ sessionId: 1, userId: 1 })
+  await col.createIndex({ sessionId: 1, visibleToStudents: 1, userId: 1 })
   return col
 }

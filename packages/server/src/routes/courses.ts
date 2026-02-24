@@ -5,7 +5,7 @@ import { getSettings } from '../collections/settings'
 import { getUsers } from '../collections/users'
 import { requireAuth, requireInstructor, requireProfOrAdmin } from '../auth/middleware'
 import type { Course, Group, GroupCategory, User, VideoOptions } from '@qlicker/shared'
-import { courseSchema } from '@qlicker/shared'
+import { courseSchema, UserRole } from '@qlicker/shared'
 
 const router = Router()
 const defaultVideoChatApiOptions = {
@@ -36,8 +36,9 @@ const defaultJitsiInterfaceConfigOverwrite = {
 }
 
 function isCourseInstructor(user: User, course: Course): boolean {
-  if (user.profile.roles.includes('admin')) return true
-  return Boolean(user._id && course.instructors?.includes(user._id))
+  if (user.profile.roles.includes(UserRole.admin)) return true
+  const userId = user._id ?? ''
+  return Boolean(course.owner === userId || course.instructors?.includes(userId))
 }
 
 function isCourseStudent(user: User, course: Course): boolean {
@@ -151,9 +152,11 @@ router.get('/', requireAuth, async (req, res, next) => {
 /** GET /api/courses/:courseId */
 router.get('/:courseId', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
     const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
     if (!course) return res.status(404).json({ error: 'Course not found.' })
+    if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
     res.json(course)
   } catch (err) {
     next(err)

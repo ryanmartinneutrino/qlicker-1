@@ -150,6 +150,8 @@ async function run() {
   assert(editedCourse.name === 'Smoke Course Edited', 'Updated course name mismatch.')
   assert(editedCourse.section === '002', 'Updated course section mismatch.')
   assert(editedCourse.allowStudentQuestions === false, 'Updated course allowStudentQuestions mismatch.')
+  await student.request('GET', `/courses/${createdCourse._id}`, undefined, { expectStatus: 403 })
+  await student.request('GET', `/sessions?courseId=${createdCourse._id}`, undefined, { expectStatus: 403 })
 
   const createdSession = await prof.request('POST', '/sessions', {
     name: 'Smoke Managed Session',
@@ -160,6 +162,8 @@ async function run() {
     questions: [],
   })
   assert(createdSession._id, 'Created session missing _id.')
+  await student.request('POST', `/sessions/${createdSession._id}/join`, {}, { expectStatus: 403 })
+
   const visibleSession = await prof.request('PUT', `/sessions/${createdSession._id}/status`, { status: 'visible' })
   assert(visibleSession.status === 'visible', 'Session status update failed.')
 
@@ -179,6 +183,17 @@ async function run() {
     tags: [],
   })
   assert(lifecycleQuestion._id, 'Created question missing _id.')
+  await student.request('GET', `/questions/${lifecycleQuestion._id}`, undefined, { expectStatus: 403 })
+  await student.request(
+    'POST',
+    '/responses',
+    {
+      attempt: 1,
+      questionId: lifecycleQuestion._id,
+      answer: 'Yes',
+    },
+    { expectStatus: 403 }
+  )
   const updatedQuestion = await prof.request('PUT', `/questions/${lifecycleQuestion._id}`, {
     plainText: 'Smoke lifecycle question (edited)',
   })
@@ -297,6 +312,8 @@ async function run() {
   if (enrolledCourse._id !== createdCourse._id) {
     throw new Error('Enrollment by code should return the enrolled course.')
   }
+  await student.request('GET', `/courses/${createdCourse._id}`)
+  await student.request('GET', `/sessions?courseId=${createdCourse._id}`)
   const studentCourses = await student.request('GET', '/courses')
   if (!studentCourses.some((c) => c._id === createdCourse._id)) {
     throw new Error('Enrolled course was not visible in student course list.')

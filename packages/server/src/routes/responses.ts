@@ -3,13 +3,13 @@ import { generateStringId } from '../utils/id'
 import { getResponses } from '../collections/responses'
 import { getQuestions } from '../collections/questions'
 import { getSessions } from '../collections/sessions'
-import { getCourses } from '../collections/courses'
 import { quizIsActive } from '../collections/sessions'
 import { requireAuth } from '../auth/middleware'
 import { responseLimiter } from '../middleware/rate-limit'
-import type { User } from '@qlicker/shared'
+import type { Question, User } from '@qlicker/shared'
 import { responseSchema } from '@qlicker/shared'
 import { gradeResponse } from '../utils/grading'
+import { courseAccessForUser, isAdmin } from '../auth/course-access'
 
 const router = Router()
 
@@ -18,6 +18,30 @@ function getCurrentAttemptState(question: { sessionOptions?: { attempts?: Array<
   if (attempts.length < 1) return { number: 1, closed: false }
   const latest = attempts[attempts.length - 1]
   return { number: latest.number, closed: latest.closed }
+}
+
+async function resolveQuestionContext(question: Pick<Question, 'sessionId' | 'courseId'>): Promise<{
+  sessionId?: string
+  courseId?: string
+}> {
+  const sessionId = question.sessionId
+  if (question.courseId) {
+    return { sessionId, courseId: question.courseId }
+  }
+
+  if (!sessionId) {
+    return { sessionId, courseId: undefined }
+  }
+
+  const session = await getSessions().findOne(
+    { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+    { projection: { courseId: 1 } }
+  )
+
+  return {
+    sessionId,
+    courseId: session?.courseId,
+  }
 }
 
 /** GET /api/responses?questionId=... — get responses for a question */
@@ -32,22 +56,17 @@ router.get('/', requireAuth, async (req, res, next) => {
     const question = await questions.findOne({ _id: questionId } as Parameters<typeof questions.findOne>[0])
     if (!question) return res.status(404).json({ error: 'Question not found.' })
 
-    const isAdmin = user.profile.roles.includes('admin')
-    let isInstructor = false
-
-    if (question.sessionId) {
-      const sessions = getSessions()
-      const session = await sessions.findOne({ _id: question.sessionId } as Parameters<typeof sessions.findOne>[0])
-      if (session) {
-        const courses = getCourses()
-        const course = await courses.findOne({ _id: session.courseId } as Parameters<typeof courses.findOne>[0])
-        if (course) {
-          isInstructor = course.instructors?.includes(user._id ?? '') ?? false
-        }
-      }
+    const context = await resolveQuestionContext(question)
+    if (!context.courseId && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Forbidden.' })
     }
 
-    if (isAdmin || isInstructor) {
+    const access = await courseAccessForUser(user, context.courseId)
+    if (!access.canAccess && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    if (isAdmin(user) || access.isInstructor) {
       const result = await responses.find({ questionId }).toArray()
       return res.json(result)
     }
@@ -92,6 +111,15 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
     const session = await sessions.findOne({ _id: question.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
+    const context = await resolveQuestionContext(question)
+    const access = await courseAccessForUser(user, context.courseId)
+    if (!access.canAccess && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+    if (!access.isStudent && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Only enrolled students can submit responses.' })
+    }
+
     if (session.quiz) {
       if (!quizIsActive(session, user._id)) {
         return res.status(400).json({ error: 'Quiz is closed.' })
@@ -116,11 +144,8 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
       }
     }
 
-    let sessionId = question.sessionId
-    let courseId = question.courseId
-    if (sessionId && !courseId) {
-      courseId = session.courseId
-    }
+    const sessionId = context.sessionId
+    const courseId = context.courseId
 
     // Upsert: one response per (questionId, studentUserId, attempt)
     const filter = {
@@ -190,25 +215,44 @@ router.put('/:responseId', requireAuth, responseLimiter, async (req, res, next) 
     const responses = getResponses()
     const existing = await responses.findOne({ _id: req.params.responseId } as Parameters<typeof responses.findOne>[0])
     if (!existing) return res.status(404).json({ error: 'Response not found.' })
-    if (existing.studentUserId !== user._id && !user.profile.roles.includes('admin')) {
-      return res.status(403).json({ error: 'Forbidden.' })
-    }
+
     const parsed = responseSchema.partial().safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
+    const questionId = (parsed.data.questionId || existing.questionId) as string
+    const question = await getQuestions().findOne(
+      { _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0]
+    )
+    if (!question) return res.status(404).json({ error: 'Question not found.' })
+
+    const context = await resolveQuestionContext(question)
+    const access = await courseAccessForUser(user, context.courseId)
+    if (!access.canAccess && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const canOverride = isAdmin(user) || access.isInstructor
+    if (existing.studentUserId !== user._id && !canOverride) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    if (!canOverride) {
+      if (parsed.data.studentUserId && parsed.data.studentUserId !== existing.studentUserId) {
+        return res.status(403).json({ error: 'Cannot change response owner.' })
+      }
+      if (parsed.data.questionId && parsed.data.questionId !== existing.questionId) {
+        return res.status(400).json({ error: 'Cannot move response to another question.' })
+      }
+    }
+
     const merged = { ...existing, ...parsed.data }
-    const questionId = (merged.questionId || existing.questionId) as string
     const studentUserId = (merged.studentUserId || existing.studentUserId) as string
     const attempt = Number(merged.attempt ?? existing.attempt ?? 1)
-    const question = await getQuestions().findOne({ _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
-    let sessionId = question?.sessionId
-    let courseId = question?.courseId
-    if (sessionId && !courseId) {
-      const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
-      courseId = session?.courseId
-    }
-    if (question?.sessionId) {
-      const session = await getSessions().findOne({ _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
+
+    if (question.sessionId && !canOverride) {
+      const session = await getSessions().findOne(
+        { _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0]
+      )
       if (!session) return res.status(404).json({ error: 'Session not found.' })
       if (!session.quiz) {
         return res.status(400).json({ error: 'Can only update quiz responses.' })
@@ -223,16 +267,16 @@ router.put('/:responseId', requireAuth, responseLimiter, async (req, res, next) 
         return res.status(400).json({ error: 'Only first-attempt quiz responses are editable.' })
       }
     }
-    const { responseUpdate } = question
-      ? await gradeResponse({
-          responseDoc: merged as typeof existing,
-          questionId,
-          studentUserId,
-          attempt,
-          sessionId,
-          courseId,
-        })
-      : { responseUpdate: {} }
+
+    const { responseUpdate } = await gradeResponse({
+      responseDoc: merged as typeof existing,
+      questionId,
+      studentUserId,
+      attempt,
+      sessionId: context.sessionId,
+      courseId: context.courseId,
+    })
+
     const setPayload: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() }
     if (responseUpdate.correct !== undefined) {
       setPayload.correct = responseUpdate.correct

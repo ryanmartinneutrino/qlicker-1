@@ -12,5 +12,7 @@ export async function initResponses(): Promise<Collection<Response>> {
   await col.createIndex({ questionId: 1 })
   await col.createIndex({ studentUserId: 1 })
   await col.createIndex({ questionId: 1, studentUserId: 1 }) // compound for hot path
+  await col.createIndex({ questionId: 1, studentUserId: 1, attempt: 1 })
+  await col.createIndex({ studentUserId: 1, createdAt: -1 })
   return col
 }

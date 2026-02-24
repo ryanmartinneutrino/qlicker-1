@@ -36,7 +36,7 @@
 | MIG-011 | Standardize `QuestionOption` handling for legacy/new docs | Agent-01 | MIG-010 | No runtime/TS shape mismatch for option fields | in-progress |
 | MIG-012 | Harden `/api/questions` authz for read/write parity | Agent-01 | MIG-010 | Role + course membership enforced | in-progress |
 | MIG-013 | Tighten authz parity for sessions/grades/responses/courses edge cases | Agent-01 | MIG-012 | Unauthorized cross-course access blocked | in-progress |
-| MIG-014 | Ensure required Mongo indexes are initialized safely at boot | Agent-01 | MIG-001 | Index bootstrap runs without destructive migrations | in-progress |
+| MIG-014 | Ensure required Mongo indexes are initialized safely at boot | Agent-01 | MIG-001 | Index bootstrap runs without destructive migrations | done |
 | MIG-020 | Student session parity (attempts, submission, visibility/correct/stats) | Agent-02 | MIG-010..012 | Student flow matches Meteor behavior | pending |
 | MIG-021 | Instructor run-session parity (controls/live state/quiz behavior) | Agent-03 | MIG-010..012 | Instructor workflow parity achieved | pending |
 | MIG-022 | Grading parity (manual overrides, visibility, review) | Agent-04 | MIG-010..013 | Grading behavior aligns with legacy | pending |
@@ -46,7 +46,7 @@
 | MIG-031 | Subscription authorization parity on socket channels | Agent-07 | MIG-012..013 | Cross-course unauthorized subscriptions blocked | in-progress |
 | MIG-032 | Hot-path query/payload optimization | Agent-07 | MIG-014 | p95 latency and payload size targets documented | pending |
 | MIG-033 | Load-test and document high-concurrency behavior | Agent-07 | MIG-030..032 | Results recorded in verification log | pending |
-| MIG-040 | Expand migration smoke suite for critical parity paths | Agent-08 | MIG-020..024 | Smoke suite covers core lifecycle for all roles | pending |
+| MIG-040 | Expand migration smoke suite for critical parity paths | Agent-08 | MIG-020..024 | Smoke suite covers core lifecycle for all roles | in-progress |
 | MIG-041 | Add server integration tests for authz + grading/response semantics | Agent-08 | MIG-012..014 | Integration suite green in CI/local docker | pending |
 | MIG-042 | Add client e2e parity tests for student/prof/admin | Agent-08 | MIG-020..024 | E2E suite verifies top workflows | pending |
 | MIG-043 | Execute manual parity checklist vs Meteor behaviors | Agent-08 | MIG-040..042 | Signed checklist attached | pending |
@@ -132,6 +132,8 @@ Rebase protocol:
 |---|---|---|---|---|---|
 | 2026-02-24 | `a096e40` | baseline | `docker compose build && docker compose up -d && ./seed-mock-db.sh && npm run test:migration-smoke` | pass (reported) | Baseline parity smoke reported passing before this planning update. |
 | 2026-02-24 | `pending` | Agent-01 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pending | To be recorded after Phase 1 patch merge. |
+| 2026-02-24 | `pending` | Agent-01/07/08 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes route auth hardening, enum usage cleanup, realtime route-key dedup, and index additions. |
+| 2026-02-24 | `pending` | Agent-08 | `QCLICKER_BASE_URL=http://localhost:3101 npm run test:migration-smoke` | pass | Verified against isolated server with `DISABLE_CSRF=true` for local smoke execution. |
 | 2026-02-24 | `pending` | Agent-08 | `npm run test:migration-smoke` | pending | Expanded smoke must pass before cutover gate. |
 
 ## Risks and Blockers
