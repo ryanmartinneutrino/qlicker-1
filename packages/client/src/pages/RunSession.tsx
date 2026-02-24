@@ -4,6 +4,8 @@ import type { Session, Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
 import { QuestionDisplay } from '../components/QuestionDisplay'
+import { QuestionSidebar } from '../components/QuestionSidebar'
+import { SessionDetails } from '../components/SessionDetails'
 
 export default function RunSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -87,29 +89,11 @@ export default function RunSession() {
       <div className="container">
         <div className="row" style={{ marginBottom: '1rem' }}>
           <div className="col-md-12">
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              {session.status === 'hidden' && (
-                <button className="btn btn-primary" onClick={() => updateStatus('visible')}>
-                  Make Visible
-                </button>
-              )}
-              {(session.status === 'visible' || session.status === 'hidden') && (
-                <button className="btn btn-primary" onClick={() => updateStatus('running')}>
-                  Start Session
-                </button>
-              )}
-              {session.status === 'running' && (
-                <button className="btn btn-secondary" onClick={() => updateStatus('done')}>
-                  Stop Session
-                </button>
-              )}
-              <button
-                className="btn btn-secondary"
-                onClick={() => navigate(`/course/${courseId}`)}
-              >
-                Back to Course
-              </button>
-            </div>
+            <SessionDetails
+              session={session}
+              onUpdateStatus={updateStatus}
+              onBack={() => navigate(`/course/${courseId}`)}
+            />
           </div>
         </div>
 
@@ -117,12 +101,29 @@ export default function RunSession() {
           <p>No questions in this session.</p>
         ) : (
           <>
-            <div className="ql-card">
-              <div className="ql-card-content">
-                <h3>
-                  Question {currentIndex + 1} of {orderedQuestions.length}
-                </h3>
-                {currentQuestion && <QuestionDisplay question={currentQuestion} readonly />}
+            <div className="row">
+              <div className="col-md-3">
+                <QuestionSidebar
+                  questions={orderedQuestions}
+                  currentIndex={currentIndex}
+                  onSelect={(nextIndex) => {
+                    const question = orderedQuestions[nextIndex]
+                    if (question?._id) {
+                      setCurrentQuestion(question._id)
+                      setCurrentIndex(nextIndex)
+                    }
+                  }}
+                />
+              </div>
+              <div className="col-md-9">
+                <div className="ql-card">
+                  <div className="ql-card-content">
+                    <h3>
+                      Question {currentIndex + 1} of {orderedQuestions.length}
+                    </h3>
+                    {currentQuestion && <QuestionDisplay question={currentQuestion} readonly />}
+                  </div>
+                </div>
               </div>
             </div>
 

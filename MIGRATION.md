@@ -161,7 +161,7 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 | Session | `session.jsx` | `Session.tsx` | ✅ Question navigation, answer options display |
 | Run Session | `run_session.jsx` | `RunSession.tsx` | ✅ Status controls, question navigation |
 | Manage Session | `manage_session.jsx` | `ManageSession.tsx` | ✅ Edit name/description, quiz settings |
-| Grade Session | `grade_session.jsx` | `GradeSession.tsx` | ✅ Grades table with points |
+| Grade Session | `grade_session.jsx` | `GradeSession.tsx` | ✅ Question-by-question grading + response list + manual mark save |
 | Course Grades | `course_grades.jsx` | `CourseGrades.tsx` | ✅ Course-wide grades table |
 | Questions Library | `questions_library.jsx` | `QuestionsLibrary.tsx` | ✅ Question list + create/edit/delete basics |
 | Session Results | `results.jsx` | `SessionResults.tsx` | ✅ Per-question response statistics |
@@ -177,6 +177,9 @@ All pages have been ported from `imports/ui/pages/` to modern React 18 functiona
 | CourseListItem | `CourseListItem.jsx` + `ListItem.jsx` | `CourseListItem.tsx` | ✅ Ported |
 | SessionListItem | `SessionListItem.jsx` | `SessionListItem.tsx` | ✅ Ported (simplified) |
 | CreateCourseModal | `modals/CreateCourseModal.jsx` | `CreateCourseModal.tsx` | ✅ Ported |
+| QuestionSidebar | `QuestionSidebar.jsx` | `QuestionSidebar.tsx` | ✅ Ported as shared question navigation component |
+| SessionDetails | `SessionDetails.jsx` | `SessionDetails.tsx` | ✅ Ported for run-session controls/status actions |
+| ResponseList | `ResponseList.jsx` | `ResponseList.tsx` | ✅ Ported for per-student grading workflow |
 
 ### Pattern Replacements
 
@@ -310,6 +313,11 @@ If smoke fails, fix baseline on `master` first before opening new agent branches
   - Profile image parity updates (React drag/drop area, profile image replace flow, smoke coverage for multipart upload + profile persistence)
   - Video/Jitsi parity baseline (`VideoChat` + new `JitsiWindow` page, expanded course video-chat endpoints and group connection payloads)
   - Expanded migration harness (`seed-mock-db.sh` + `scripts/migration-smoke.mjs`) with broader professor/student/admin parity checks
+- Next component parity batch (current branch) adds:
+  - React admin tab decomposition (`ManageUsers`, `ManageMainSettings`, `ManageImages`, `ManageSSO`, `ManageJitsi`) and updated `Admin.tsx`
+  - Shared `QuestionSidebar` wiring across `Session`, `RunSession`, and `ReplaySession`
+  - Shared `SessionDetails` wiring in `RunSession`
+  - Shared `ResponseList` wiring in `GradeSession`, including manual per-student mark/feedback edits and save/cancel flows
 - Validation run on the assembled rollup:
   - `npm run build --prefix packages/shared`
   - `npm run build --workspace=packages/server`
@@ -322,11 +330,20 @@ If smoke fails, fix baseline on `master` first before opening new agent branches
   - Server route-level automated tests remain thinner than desired for new session/grade/video behavior
   - Realtime/performance validation under load is still pending
   - Final cutover runbook should include explicit rollback drill and side-by-side verification checklist
+  - Grade-session parity still needs group/category filters and student jump-to behavior from the legacy Meteor workflow
 
 ### Parallel Agent Plan (next wave)
 Use 4 focused agents in parallel for final parity hardening. Keep each PR narrow and independently mergeable.
 
-#### Agent 1 — Modal + UX Edge Parity
+#### Agent 1 — Grading Workflow Completion
+- Scope:
+  - Finish remaining `grade_session.jsx` parity: group/category filters and student jump-to behavior
+  - Validate parity of manual grading edge cases (unsaved changes on question switch, batch save/cancel)
+- Acceptance:
+  - Grading parity checklist complete against legacy behavior matrix
+  - No regression in grade visibility and calculation workflows
+
+#### Agent 2 — Modal + UX Edge Parity
 - Scope:
   - Audit remaining legacy modal flows from `imports/ui/modals/` and map to React equivalents
   - Close keyboard/cancel/submit behavior gaps and remove dead modal actions/routes
@@ -334,7 +351,7 @@ Use 4 focused agents in parallel for final parity hardening. Keep each PR narrow
   - Modal parity matrix complete (ported/deprecated/merged list)
   - No broken modal entry points from current pages
 
-#### Agent 2 — Realtime + Performance Validation
+#### Agent 3 — Realtime + Performance Validation
 - Scope:
   - Validate socket subscription fan-out and change-stream behavior under concurrent usage
   - Add/verify indexes for the hottest response/session/grade/course queries
@@ -343,7 +360,7 @@ Use 4 focused agents in parallel for final parity hardening. Keep each PR narrow
   - No per-client change stream regressions
   - Performance report checked into `docs/`
 
-#### Agent 3 — Route-Level Regression Tests
+#### Agent 4 — Route-Level Regression Tests
 - Scope:
   - Add focused server tests for session lifecycle, quiz submission/join rules, grade visibility/calc, and video-chat connection endpoints
   - Capture current expected behavior for parity-sensitive edge cases
@@ -351,7 +368,7 @@ Use 4 focused agents in parallel for final parity hardening. Keep each PR narrow
   - Repeatable server test command with deterministic pass/fail output
   - Core parity behaviors encoded as automated tests
 
-#### Agent 4 — Cutover + Rollback Readiness
+#### Agent 5 — Cutover + Rollback Readiness
 - Scope:
   - Write final production cutover checklist and rollback procedure
   - Add side-by-side verification script/checklist for Meteor vs Express stack parity signoff
