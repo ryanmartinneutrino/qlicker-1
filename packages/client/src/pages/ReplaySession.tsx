@@ -4,6 +4,7 @@ import type { Session as SessionType, Question, Response } from '@qlicker/shared
 import { apiClient } from '../api/client'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
 import { QuestionDisplay } from '../components/QuestionDisplay'
+import { QuestionSidebar } from '../components/QuestionSidebar'
 
 export default function ReplaySession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -100,21 +101,35 @@ export default function ReplaySession() {
               </button>
               <div style={{ alignSelf: 'center' }}>Responses in attempt {currentAttempt}: {attemptResponses.length}</div>
             </div>
-            <div className="ql-card">
-              <div className="ql-card-content">
-                <h3>
-                  Question {currentIndex + 1} of {orderedQuestions.length}
-                </h3>
-                {currentQuestion && (
-                  <QuestionDisplay
-                    question={currentQuestion}
-                    readonly
-                    showCorrect
-                    forReview
-                    responseStats={responseStats}
-                    showStatsOverride={showStats}
-                  />
-                )}
+            <div className="row">
+              <div className="col-md-3">
+                <QuestionSidebar
+                  questions={orderedQuestions}
+                  currentIndex={currentIndex}
+                  onSelect={(nextIndex) => {
+                    setCurrentIndex(nextIndex)
+                    setShowStats(false)
+                  }}
+                />
+              </div>
+              <div className="col-md-9">
+                <div className="ql-card">
+                  <div className="ql-card-content">
+                    <h3>
+                      Question {currentIndex + 1} of {orderedQuestions.length}
+                    </h3>
+                    {currentQuestion && (
+                      <QuestionDisplay
+                        question={currentQuestion}
+                        readonly
+                        showCorrect
+                        forReview
+                        responseStats={responseStats}
+                        showStatsOverride={showStats}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

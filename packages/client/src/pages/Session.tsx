@@ -4,6 +4,7 @@ import type { Session as SessionType, Question } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
 import { QuestionDisplay } from '../components/QuestionDisplay'
+import { QuestionSidebar } from '../components/QuestionSidebar'
 
 export default function Session() {
   const { sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -75,26 +76,11 @@ export default function Session() {
           <>
             <div className="row" style={{ marginBottom: '1rem' }}>
               <div className="col-md-3">
-                <h3>Questions</h3>
-                <ul className="ql-question-nav" style={{ listStyle: 'none', padding: 0 }}>
-                  {orderedQuestions.map((q, i) => (
-                    <li
-                      key={q._id}
-                      style={{
-                        padding: '0.5rem',
-                        cursor: 'pointer',
-                        backgroundColor: i === currentIndex ? '#30B0E7' : 'transparent',
-                        color: i === currentIndex ? '#fff' : 'inherit',
-                        borderRadius: '4px',
-                        marginBottom: '2px',
-                      }}
-                      onClick={() => setCurrentIndex(i)}
-                    >
-                      Q{i + 1}: {q.plainText ? q.plainText.substring(0, 40) : 'Question'}
-                      {q.plainText && q.plainText.length > 40 ? '...' : ''}
-                    </li>
-                  ))}
-                </ul>
+                <QuestionSidebar
+                  questions={orderedQuestions}
+                  currentIndex={currentIndex}
+                  onSelect={setCurrentIndex}
+                />
               </div>
 
               <div className="col-md-9">
