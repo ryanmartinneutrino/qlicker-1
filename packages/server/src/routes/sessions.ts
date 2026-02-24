@@ -2,14 +2,24 @@ import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import { getSessions, quizIsActive } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
+import { getQuestions } from '../collections/questions'
 import { requireAuth, requireInstructor } from '../auth/middleware'
-import type { User } from '@qlicker/shared'
+import type { Question, User } from '@qlicker/shared'
 import { sessionSchema } from '@qlicker/shared'
 import { getResponses } from '../collections/responses'
 import { getUsers } from '../collections/users'
 import { canUserAccessCourse, courseAccessForUser, isAdmin } from '../auth/course-access'
 
 const router = Router()
+const defaultQuestionSessionOptions = {
+  hidden: false,
+  stats: false,
+  correct: false,
+  points: 1,
+  maxAttempts: 1,
+  attemptWeights: [1],
+  attempts: [{ number: 1, closed: false }],
+}
 
 function parseOptionalDate(value: unknown): Date | null | undefined {
   if (value === undefined) return undefined
@@ -51,6 +61,16 @@ function adjustQuizWindow(
     return { quizStart, quizEnd }
   }
   return { quizStart, quizEnd: new Date(quizStart.getTime() + 60 * 60 * 1000) }
+}
+
+async function resolveQuestionCourseId(question: Pick<Question, 'courseId' | 'sessionId'>): Promise<string | undefined> {
+  if (question.courseId) return question.courseId
+  if (!question.sessionId) return undefined
+  const session = await getSessions().findOne(
+    { _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+    { projection: { courseId: 1 } }
+  )
+  return session?.courseId
 }
 
 /** GET /api/sessions?courseId=... */
@@ -333,6 +353,121 @@ router.put('/:sessionId/current', requireAuth, requireInstructor, async (req, re
     await sessions.updateOne(
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: { currentQuestion: questionId } }
+    )
+    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/sessions/:sessionId/questions/:questionId/copy — copy question into session */
+router.post('/:sessionId/questions/:questionId/copy', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const sessions = getSessions()
+    const questions = getQuestions()
+
+    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const source = await questions.findOne({ _id: req.params.questionId } as Parameters<typeof questions.findOne>[0])
+    if (!source) return res.status(404).json({ error: 'Question not found.' })
+
+    const sourceCourseId = await resolveQuestionCourseId(source)
+    if (!sourceCourseId) return res.status(400).json({ error: 'Question is missing courseId.' })
+    if (sourceCourseId !== session.courseId) {
+      return res.status(400).json({ error: 'Question must belong to the same course as the session.' })
+    }
+
+    const userId = user._id || ''
+    const copiedId = generateStringId('question')
+    const copiedQuestion = {
+      ...source,
+      _id: copiedId,
+      originalQuestion: source._id,
+      sessionId: session._id,
+      courseId: session.courseId,
+      owner: userId,
+      creator: userId,
+      approved: true,
+      public: false,
+      studentCopyOfPublic: undefined,
+      sessionOptions: defaultQuestionSessionOptions,
+      createdAt: new Date(),
+    }
+
+    await questions.insertOne(copiedQuestion as Parameters<typeof questions.insertOne>[0])
+    await sessions.updateOne(
+      { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
+      { $addToSet: { questions: copiedId } }
+    )
+
+    const created = await questions.findOne({ _id: copiedId } as Parameters<typeof questions.findOne>[0])
+    res.status(201).json(created)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/sessions/:sessionId/questions/:questionId — remove question from session */
+router.delete('/:sessionId/questions/:questionId', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const sessions = getSessions()
+    const questions = getQuestions()
+
+    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(session.questions || []).includes(req.params.questionId)) {
+      return res.status(404).json({ error: 'Question is not attached to this session.' })
+    }
+
+    await questions.deleteOne({ _id: req.params.questionId } as Parameters<typeof questions.deleteOne>[0])
+
+    const patch: Record<string, unknown> = { questions: (session.questions || []).filter((id) => id !== req.params.questionId) }
+    if (session.currentQuestion === req.params.questionId) {
+      patch.currentQuestion = null
+    }
+
+    await sessions.updateOne(
+      { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
+      { $set: patch }
+    )
+
+    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** PUT /api/sessions/:sessionId/questions — reorder attached questions */
+router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    if (!Array.isArray((req.body as { questionIds?: unknown[] }).questionIds)) {
+      return res.status(400).json({ error: 'questionIds required.' })
+    }
+    const questionIds = (req.body as { questionIds: unknown[] }).questionIds
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+    const sessions = getSessions()
+    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const existingIds = new Set((session.questions || []).filter((id): id is string => typeof id === 'string'))
+    const incomingIds = new Set(questionIds)
+    if (existingIds.size !== incomingIds.size || questionIds.some((id) => !existingIds.has(id))) {
+      return res.status(400).json({ error: 'questionIds must exactly match attached session questions.' })
+    }
+
+    const patch: Record<string, unknown> = { questions: questionIds }
+    if (session.currentQuestion && !incomingIds.has(session.currentQuestion)) {
+      patch.currentQuestion = questionIds[0]
+    }
+
+    await sessions.updateOne(
+      { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
+      { $set: patch }
     )
     const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
     res.json(updated)

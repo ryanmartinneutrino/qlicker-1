@@ -252,7 +252,7 @@ async function run() {
   const visibleSession = await prof.request('PUT', `/sessions/${createdSession._id}/status`, { status: 'visible' })
   assert(visibleSession.status === 'visible', 'Session status update failed.')
 
-  const lifecycleQuestion = await prof.request('POST', '/questions', {
+  const lifecycleLibraryQuestion = await prof.request('POST', '/questions', {
     plainText: 'Smoke lifecycle question',
     type: 0,
     content: 'Smoke lifecycle question',
@@ -261,34 +261,84 @@ async function run() {
       { plainText: 'No', answer: 'No', correct: false },
     ],
     owner: profUser._id,
-    sessionId: createdSession._id,
     courseId: createdCourse._id,
     public: false,
     approved: true,
     tags: [],
   })
-  assert(lifecycleQuestion._id, 'Created question missing _id.')
-  await student.request('GET', `/questions/${lifecycleQuestion._id}`, undefined, { expectStatus: 403 })
+  assert(lifecycleLibraryQuestion._id, 'Created library question missing _id.')
+
+  const lifecycleLibraryQuestion2 = await prof.request('POST', '/questions', {
+    plainText: 'Smoke lifecycle question 2',
+    type: 1,
+    content: 'Smoke lifecycle question 2',
+    options: [
+      { plainText: 'True', answer: 'True', correct: true },
+      { plainText: 'False', answer: 'False', correct: false },
+    ],
+    owner: profUser._id,
+    courseId: createdCourse._id,
+    public: false,
+    approved: true,
+    tags: [],
+  })
+  assert(lifecycleLibraryQuestion2._id, 'Created secondary library question missing _id.')
+
+  const copiedQuestionA = await prof.request(
+    'POST',
+    `/sessions/${createdSession._id}/questions/${lifecycleLibraryQuestion._id}/copy`,
+    {}
+  )
+  const copiedQuestionB = await prof.request(
+    'POST',
+    `/sessions/${createdSession._id}/questions/${lifecycleLibraryQuestion2._id}/copy`,
+    {}
+  )
+  assert(copiedQuestionA._id && copiedQuestionB._id, 'Expected copied session questions to be created.')
+
+  const sessionAfterCopy = await prof.request('GET', `/sessions/${createdSession._id}`)
+  assert(
+    (sessionAfterCopy.questions || []).includes(copiedQuestionA._id) &&
+      (sessionAfterCopy.questions || []).includes(copiedQuestionB._id),
+    'Copied questions were not attached to the session.'
+  )
+
+  const reorderedIds = [copiedQuestionB._id, copiedQuestionA._id]
+  const reorderedSession = await prof.request('PUT', `/sessions/${createdSession._id}/questions`, {
+    questionIds: reorderedIds,
+  })
+  assert(
+    JSON.stringify(reorderedSession.questions || []) === JSON.stringify(reorderedIds),
+    'Session question order update did not persist.'
+  )
+
+  await student.request('GET', `/questions/${copiedQuestionA._id}`, undefined, { expectStatus: 403 })
   await student.request(
     'POST',
     '/responses',
     {
       attempt: 1,
-      questionId: lifecycleQuestion._id,
+      questionId: copiedQuestionA._id,
       answer: 'Yes',
     },
     { expectStatus: 403 }
   )
-  const updatedQuestion = await prof.request('PUT', `/questions/${lifecycleQuestion._id}`, {
+  const updatedQuestion = await prof.request('PUT', `/questions/${copiedQuestionA._id}`, {
     plainText: 'Smoke lifecycle question (edited)',
   })
   assert(updatedQuestion.plainText === 'Smoke lifecycle question (edited)', 'Question update did not persist.')
-  const fetchedQuestion = await prof.request('GET', `/questions/${lifecycleQuestion._id}`)
-  assert(fetchedQuestion._id === lifecycleQuestion._id, 'Question fetch by id mismatch.')
-  const deletedQuestion = await prof.request('DELETE', `/questions/${lifecycleQuestion._id}`)
-  assert(deletedQuestion.success === true, 'Question delete did not report success.')
+  const fetchedQuestion = await prof.request('GET', `/questions/${copiedQuestionA._id}`)
+  assert(fetchedQuestion._id === copiedQuestionA._id, 'Question fetch by id mismatch.')
+  const sessionAfterRemove = await prof.request(
+    'DELETE',
+    `/sessions/${createdSession._id}/questions/${copiedQuestionA._id}`
+  )
+  assert(
+    !(sessionAfterRemove.questions || []).includes(copiedQuestionA._id),
+    'Session question delete endpoint did not remove question.'
+  )
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
-  assert(!createdCourseQuestions.some((q) => q._id === lifecycleQuestion._id), 'Deleted question still appears in list.')
+  assert(!createdCourseQuestions.some((q) => q._id === copiedQuestionA._id), 'Deleted session copy still appears in course list.')
 
   const runningSession = sessions.find((entry) => !entry.quiz && entry.status === 'running')
   if (!runningSession) throw new Error('Expected seeded running interactive session.')

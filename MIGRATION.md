@@ -10,7 +10,7 @@
 ## Active Lanes
 - `Agent-01 Contracts/Auth`: question enum + option normalization, `/api/questions` authz hardening, route-level parity audit, index bootstrap.
 - `Agent-02 Student Session`: student session + quiz interaction parity.
-- `Agent-03 Instructor Run`: run-session controls + live workflow parity.
+- `Agent-03 Instructor Run`: run-session controls + live workflow parity (session question add/remove/reorder management landed in this tranche).
 - `Agent-04 Grading`: instructor grading workflow parity (group/category filtering + bulk assignment landed; remaining parity checks pending).
 - `Agent-05 Question Editor`: question library/editor parity (library/public/student queue flows and copy/approve/public controls landed; final parity checks pending).
 - `Agent-06 Groups/Video`: group categories + video workflow parity.
@@ -25,7 +25,7 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Close the grading/editor parity tranche (`MIG-022`, `MIG-023`) and then run the expanded smoke/integration tranche (`MIG-040`, `MIG-041`) in Docker/CI with latest `master`.
+Close remaining run-session/grading/editor parity deltas (`MIG-021`, `MIG-022`, `MIG-023`) and then run the expanded smoke/integration tranche (`MIG-040`, `MIG-041`) in Docker/CI with latest `master`.
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.
