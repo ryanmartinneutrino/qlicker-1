@@ -43,10 +43,22 @@ This document summarizes migration progress completed in the autonomous PR batch
 - Added manual parity checklist: `docs/migration-manual-parity-checklist.md`.
 - Added cutover/rollback runbook: `docs/migration-cutover-runbook.md`.
 
+8. PR #36 (`c005842`)
+- Grading parity tranche for course-level grade review:
+  - `CourseGrades` now supports explicit session selection (or show-all) like legacy flow.
+  - Session-scoped per-student grade matrix with aggregate totals landed.
+  - Instructor roster mapping integrated for readable student identity display.
+
+9. PR #37 (`f8c4bf7`)
+- Realtime/perf tranche for response hot paths:
+  - Added additive `attempt` query support on `GET /api/responses`.
+  - `Session` and `RunSession` now fetch attempt-scoped responses for active question workflows.
+  - `SessionResults` response hydration now runs in parallel and preserves session question order.
+
 ## Current State
 
 - Core migration feature parity: materially advanced; key question/session/grading/realtime/authz gaps reduced.
-- Verification tooling: smoke + authz integration + load harnesses are now defined and runnable.
+- Verification tooling: smoke + authz integration + load harnesses are now defined and runnable; post-merge compile/syntax checks remain green.
 - Documentation: migration status/details, manual checklist, and cutover runbook are in place and aligned.
 
 ## Remaining High-Priority Work

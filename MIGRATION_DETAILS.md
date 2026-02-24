@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-24`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `8f6cce7`
+- Last verified baseline commit before this update: `f8c4bf7`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -18,9 +18,9 @@
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management persistence APIs and React parity landed in active batch; final behavior/test parity still pending | Agent-01, Agent-06 | pending |
 | `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder workflow and delete cleanup (`courses.sessions`, attached question/response/grade cleanup) now landed; full lifecycle smoke/e2e validation pending | Agent-02, Agent-03 | pending |
 | `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow + student-safe create/update/delete constraints now landed; final parity tests still pending | Agent-01, Agent-05 | pending |
-| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Live stats-visibility toggles now refresh student response subscriptions correctly; full parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
-| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Group/category filtering and bulk per-question assignment landed; remaining parity and verification still pending | Agent-01, Agent-04 | pending |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Question-channel invalidation/sanitization hardening landed; load validation still pending | Agent-07 | pending |
+| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Live stats-visibility toggles now refresh student response subscriptions correctly; attempt-scoped fetch path parity/perf landed; full runtime parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
+| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Group/category filtering, bulk per-question assignment, and session-selected aggregate `CourseGrades` parity landed; remaining runtime parity checks pending | Agent-01, Agent-04 | pending |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Question-channel invalidation/sanitization and attempt-scoped response fetch hardening landed; runtime load validation still pending | Agent-07 | pending |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Inconsistent mappings still exist in some pages/flows | Agent-01, Agent-05 | pending |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | End-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | pending |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | pending |
@@ -45,7 +45,7 @@
 | MIG-024 | Group/video parity for course categories and rooms | Agent-06 | MIG-010..013 | Group/video behavior mirrors legacy | in-progress |
 | MIG-030 | Realtime wildcard fan-out dedup and deterministic event routing | Agent-07 | MIG-010..014 | One logical update per DB change per channel | in-progress |
 | MIG-031 | Subscription authorization parity on socket channels | Agent-07 | MIG-012..013 | Cross-course unauthorized subscriptions blocked | in-progress |
-| MIG-032 | Hot-path query/payload optimization | Agent-07 | MIG-014 | p95 latency and payload size targets documented | pending |
+| MIG-032 | Hot-path query/payload optimization | Agent-07 | MIG-014 | p95 latency and payload size targets documented | in-progress |
 | MIG-033 | Load-test and document high-concurrency behavior | Agent-07 | MIG-030..032 | Results recorded in verification log | in-progress |
 | MIG-040 | Expand migration smoke suite for critical parity paths | Agent-08 | MIG-020..024 | Smoke suite covers core lifecycle for all roles | in-progress |
 | MIG-041 | Add server integration tests for authz + grading/response semantics | Agent-08 | MIG-012..014 | Integration suite green in CI/local docker | in-progress |
@@ -149,6 +149,9 @@ Rebase protocol:
 | 2026-02-24 | `working-tree` | Agent-07 | `node --check scripts/migration-load-check.mjs` | pass | Added repeatable load/perf harness with p95/error-rate thresholds (`npm run test:migration-load`). |
 | 2026-02-24 | `working-tree` | Agent-08 | `ls docs/migration-manual-parity-checklist.md docs/migration-cutover-runbook.md` | pass | Added manual parity checklist and cutover/rollback runbook docs for final release gate sign-off. |
 | 2026-02-24 | `working-tree` | Coordinator | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && node --check scripts/migration-smoke.mjs && node --check scripts/migration-authz-integration.mjs && node --check scripts/migration-load-check.mjs` | pass | Final local compile/syntax verification after merged PRs #28-#34 before opening summary PR. |
+| 2026-02-24 | `a3ce19e` | Agent-04 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Course-grades parity tranche: session-selected aggregate grade view (`PR #36`). |
+| 2026-02-24 | `4604675` | Agent-07 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Attempt-scoped response hot-path optimization + session results fetch ordering/parallelization (`PR #37`). |
+| 2026-02-24 | `f8c4bf7` | Coordinator | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && node --check scripts/migration-smoke.mjs && node --check scripts/migration-authz-integration.mjs && node --check scripts/migration-load-check.mjs` | pass | Post-merge local verification after PRs #36 and #37 on latest `master`. |
 
 ## Risks and Blockers
 
