@@ -5,7 +5,7 @@
 - Phase 1 (contract + security parity): `in-progress`
 - Phase 2 (feature parity lanes): `in-progress`
 - Phase 3 (reactivity + performance hardening): `in-progress`
-- Phase 4 (verification + cutover readiness): `not started`
+- Phase 4 (verification + cutover readiness): `in-progress`
 
 ## Active Lanes
 - `Agent-01 Contracts/Auth`: question enum + option normalization, `/api/questions` authz hardening, route-level parity audit, index bootstrap.
@@ -25,7 +25,8 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Close remaining run-session/grading/editor parity deltas (`MIG-021`, `MIG-022`, `MIG-023`) and execute runtime verification (`MIG-040`, `MIG-041`, `MIG-043`, `MIG-044`) in Docker/CI with latest `master`.
+Execute runtime verification (`MIG-040`, `MIG-041`, `MIG-033`, `MIG-043`, `MIG-044`) in Docker/CI with latest `master` and close final run-session/grading/editor/group-video parity deltas.
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.
+See `docs/migration-work-summary-2026-02-24.md` for a consolidated summary of merged migration batches in this window.
