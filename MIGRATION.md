@@ -3,7 +3,7 @@
 ## Status
 - Phase 0 (coordination/docs baseline): `in-progress`
 - Phase 1 (contract + security parity): `in-progress`
-- Phase 2 (feature parity lanes): `not started`
+- Phase 2 (feature parity lanes): `in-progress`
 - Phase 3 (reactivity + performance hardening): `in-progress`
 - Phase 4 (verification + cutover readiness): `not started`
 
@@ -25,7 +25,7 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Close remaining Phase 1 contract/auth parity gaps (`MIG-010` through `MIG-013`) and continue Phase 3 realtime/perf validation (`MIG-030..033`) before opening the Phase 2 feature lanes.
+Complete the current Phase 2 tranche (`MIG-020`, `MIG-021`, `MIG-024`) and then run expanded parity smoke checks before advancing remaining lanes (`MIG-022`, `MIG-023`, `MIG-030..033`).
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.
