@@ -4,13 +4,59 @@ import { getQuestions } from '../collections/questions'
 import { getCourses } from '../collections/courses'
 import { getSessions } from '../collections/sessions'
 import { requireAuth } from '../auth/middleware'
-import type { Question, User } from '@qlicker/shared'
+import type { Course, Question, User } from '@qlicker/shared'
 import { questionSchema, UserRole } from '@qlicker/shared'
 
 const router = Router()
 
 function isAdmin(user: User): boolean {
   return user.profile.roles.includes(UserRole.admin)
+}
+
+function isCourseInstructor(user: User, course: Pick<Course, 'owner' | 'instructors'>): boolean {
+  if (isAdmin(user)) return true
+  const userId = user._id ?? ''
+  return Boolean(course.owner === userId || course.instructors?.includes(userId))
+}
+
+function isCourseStudent(user: User, course: Pick<Course, 'students'>): boolean {
+  if (isAdmin(user)) return true
+  const userId = user._id ?? ''
+  return Boolean(course.students?.includes(userId))
+}
+
+async function getCourseAccessInfo(user: User, courseId: string): Promise<{
+  course: Course | null
+  canAccess: boolean
+  canManage: boolean
+  isStudent: boolean
+}> {
+  const course = await getCourses().findOne(
+    { _id: courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0]
+  )
+  if (!course) {
+    return { course: null, canAccess: false, canManage: false, isStudent: false }
+  }
+
+  const canManage = isCourseInstructor(user, course)
+  const isStudent = isCourseStudent(user, course)
+  return {
+    course,
+    canAccess: canManage || isStudent,
+    canManage,
+    isStudent,
+  }
+}
+
+function canStudentEditQuestion(user: User, question: Question, course: Course): boolean {
+  if (isCourseInstructor(user, course)) return false
+  const userId = user._id ?? ''
+  const ownsQuestion = question.owner === userId || question.creator === userId
+  if (!ownsQuestion) return false
+  if (!course.allowStudentQuestions) return false
+  if (question.approved || question.public) return false
+  if (question.sessionId) return false
+  return true
 }
 
 async function resolveCourseIdFromQuestion(question: Partial<Question>): Promise<string | undefined> {
@@ -25,33 +71,13 @@ async function resolveCourseIdFromQuestion(question: Partial<Question>): Promise
 }
 
 async function userCanAccessCourse(user: User, courseId: string): Promise<boolean> {
-  if (isAdmin(user)) return true
-
-  const course = await getCourses().findOne(
-    { _id: courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0],
-    { projection: { owner: 1, instructors: 1, students: 1 } }
-  )
-  if (!course) return false
-
-  const userId = user._id ?? ''
-  return Boolean(
-    course.owner === userId ||
-      course.instructors?.includes(userId) ||
-      course.students?.includes(userId)
-  )
+  const access = await getCourseAccessInfo(user, courseId)
+  return access.canAccess
 }
 
 async function userCanManageCourse(user: User, courseId: string): Promise<boolean> {
-  if (isAdmin(user)) return true
-
-  const course = await getCourses().findOne(
-    { _id: courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0],
-    { projection: { owner: 1, instructors: 1 } }
-  )
-  if (!course) return false
-
-  const userId = user._id ?? ''
-  return Boolean(course.owner === userId || course.instructors?.includes(userId))
+  const access = await getCourseAccessInfo(user, courseId)
+  return access.canManage
 }
 
 type OptionInput = {
@@ -102,7 +128,7 @@ async function shouldRevealCorrectInSession(
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
-    const { sessionId, courseId, owner } = req.query as Record<string, string | undefined>
+    const { sessionId, courseId, owner, library } = req.query as Record<string, string | undefined>
     const questions = getQuestions()
 
     const query: Record<string, unknown> = {}
@@ -126,8 +152,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       )
       if (!session) return res.status(404).json({ error: 'Session not found.' })
 
-      const allowed = await userCanAccessCourse(user, session.courseId)
-      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+      const access = await getCourseAccessInfo(user, session.courseId)
+      if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
       const result = await questions.find({
         ...query,
@@ -135,8 +161,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         courseId: session.courseId,
       }).toArray()
 
-      const canManage = await userCanManageCourse(user, session.courseId)
-      if (canManage) return res.json(result)
+      if (access.canManage) return res.json(result)
 
       const sanitized = await Promise.all(
         result.map(async (question) => {
@@ -148,11 +173,54 @@ router.get('/', requireAuth, async (req, res, next) => {
     }
 
     if (courseId) {
-      const allowed = await userCanAccessCourse(user, courseId)
-      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+      const access = await getCourseAccessInfo(user, courseId)
+      if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
-      const canManage = await userCanManageCourse(user, courseId)
-      if (canManage) {
+      if (library === 'public') {
+        const result = await questions.find({
+          ...query,
+          courseId,
+          sessionId: { $exists: false },
+          public: true,
+          approved: true,
+        }).toArray()
+        return res.json(result)
+      }
+
+      if (library === 'unapprovedFromStudents') {
+        if (!access.canManage) return res.status(403).json({ error: 'Forbidden.' })
+        const result = await questions.find({
+          ...query,
+          courseId,
+          sessionId: { $exists: false },
+          approved: false,
+          $or: [{ private: false }, { private: { $exists: false } }],
+        }).toArray()
+        return res.json(result)
+      }
+
+      if (library === 'library') {
+        if (access.canManage) {
+          const result = await questions.find({
+            ...query,
+            courseId,
+            sessionId: { $exists: false },
+            approved: true,
+            studentCopyOfPublic: { $exists: false },
+          }).toArray()
+          return res.json(result)
+        }
+
+        const result = await questions.find({
+          ...query,
+          courseId,
+          sessionId: { $exists: false },
+          $or: [{ creator: user._id }, { owner: user._id }],
+        }).toArray()
+        return res.json(result)
+      }
+
+      if (access.canManage) {
         const result = await questions.find({
           ...query,
           courseId,
@@ -160,7 +228,7 @@ router.get('/', requireAuth, async (req, res, next) => {
         return res.json(result)
       }
 
-      // Student view of course library: only non-session questions created/owned by the user.
+      // Default student view without explicit library: own library only.
       const result = await questions.find({
         ...query,
         courseId,
@@ -197,10 +265,12 @@ router.get('/', requireAuth, async (req, res, next) => {
       .filter((id): id is string => typeof id === 'string' && id.length > 0)
     if (instructorCourseIds.length < 1) return res.json([])
 
-    const result = await questions.find({
-      ...query,
-      courseId: { $in: instructorCourseIds },
-    }).toArray()
+    const result = await questions
+      .find({
+        ...query,
+        courseId: { $in: instructorCourseIds },
+      })
+      .toArray()
     res.json(result)
   } catch (err) {
     next(err)
@@ -234,9 +304,10 @@ router.get('/:questionId', requireAuth, async (req, res, next) => {
       const allowed = await userCanAccessCourse(user, courseIdForQuestion)
       if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
 
-      // Students may only read non-session questions they created/own.
+      // Students may only read non-session questions they created/own, or public questions.
       if (!question.sessionId) {
-        if (question.creator !== user._id && question.owner !== user._id) {
+        const ownsQuestion = question.creator === user._id || question.owner === user._id
+        if (!ownsQuestion && !question.public) {
           return res.status(403).json({ error: 'Forbidden.' })
         }
         return res.json(question)
@@ -262,16 +333,29 @@ router.post('/', requireAuth, async (req, res, next) => {
     const courseIdForQuestion = await resolveCourseIdFromQuestion(parsed.data)
     if (!courseIdForQuestion) return res.status(400).json({ error: 'courseId required.' })
 
-    const allowed = await userCanManageCourse(user, courseIdForQuestion)
-    if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+    const access = await getCourseAccessInfo(user, courseIdForQuestion)
+    if (!access.course) return res.status(404).json({ error: 'Course not found.' })
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
+    const isStudentCreation = !access.canManage
+    if (isStudentCreation && !access.course.allowStudentQuestions) {
+      return res.status(403).json({ error: 'Student questions are disabled for this course.' })
+    }
+    if (isStudentCreation && parsed.data.sessionId) {
+      return res.status(400).json({ error: 'Students cannot create session-attached questions.' })
+    }
+
+    const userId = user._id ?? ''
     const doc = {
       _id: generateStringId('question'),
       ...parsed.data,
       courseId: courseIdForQuestion,
       options: normalizeQuestionOptions(parsed.data.options || []),
-      creator: user._id ?? '',
-      owner: parsed.data.owner || user._id || '',
+      creator: userId,
+      owner: userId,
+      approved: access.canManage ? true : false,
+      public: access.canManage ? Boolean(parsed.data.public) : false,
+      sessionId: isStudentCreation ? undefined : parsed.data.sessionId,
       createdAt: new Date(),
     }
 
@@ -301,12 +385,34 @@ router.put('/:questionId', requireAuth, async (req, res, next) => {
     const courseIdForQuestion = await resolveCourseIdFromQuestion(merged)
     if (!courseIdForQuestion) return res.status(400).json({ error: 'courseId required.' })
 
-    const allowed = await userCanManageCourse(user, courseIdForQuestion)
-    if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+    const access = await getCourseAccessInfo(user, courseIdForQuestion)
+    if (!access.course) return res.status(404).json({ error: 'Course not found.' })
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
     const updatePayload: Record<string, unknown> = { ...parsed.data, courseId: courseIdForQuestion }
+
     if (parsed.data.options) {
       updatePayload.options = normalizeQuestionOptions(parsed.data.options)
+    }
+
+    if (!access.canManage) {
+      if (!canStudentEditQuestion(user, existing, access.course)) {
+        return res.status(403).json({ error: 'Forbidden.' })
+      }
+
+      const forbiddenStudentFields = ['approved', 'public', 'owner', 'creator', 'courseId', 'sessionId']
+      for (const field of forbiddenStudentFields) {
+        if (field in parsed.data) {
+          return res.status(403).json({ error: `Students cannot update '${field}'.` })
+        }
+      }
+
+      updatePayload.approved = false
+      updatePayload.public = false
+      updatePayload.owner = existing.owner
+      updatePayload.creator = existing.creator
+      updatePayload.courseId = existing.courseId
+      updatePayload.sessionId = existing.sessionId
     }
 
     await questions.updateOne(
@@ -315,6 +421,56 @@ router.put('/:questionId', requireAuth, async (req, res, next) => {
     )
     const updated = await questions.findOne({ _id: req.params.questionId } as Parameters<typeof questions.findOne>[0])
     res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/questions/:questionId/copy — copy a question into caller library */
+router.post('/:questionId/copy', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const questions = getQuestions()
+    const source = await questions.findOne(
+      { _id: req.params.questionId } as Parameters<typeof questions.findOne>[0]
+    )
+    if (!source) return res.status(404).json({ error: 'Question not found.' })
+
+    const courseIdForQuestion = await resolveCourseIdFromQuestion(source)
+    if (!courseIdForQuestion) return res.status(400).json({ error: 'courseId required.' })
+
+    const access = await getCourseAccessInfo(user, courseIdForQuestion)
+    if (!access.course) return res.status(404).json({ error: 'Course not found.' })
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
+
+    const userId = user._id ?? ''
+    const copy = {
+      _id: generateStringId('question'),
+      plainText: source.plainText,
+      type: source.type,
+      content: source.content,
+      options: normalizeQuestionOptions(source.options || []),
+      toleranceNumerical: source.toleranceNumerical,
+      correctNumerical: source.correctNumerical,
+      creator: source.creator || userId,
+      owner: userId,
+      originalQuestion: source._id,
+      sessionId: undefined,
+      courseId: courseIdForQuestion,
+      public: false,
+      solution: source.solution,
+      solution_plainText: source.solution_plainText,
+      createdAt: new Date(),
+      approved: access.canManage ? true : false,
+      tags: source.tags || [],
+      sessionOptions: source.sessionOptions,
+      imagePath: source.imagePath,
+      studentCopyOfPublic: access.canManage ? undefined : true,
+    }
+
+    await questions.insertOne(copy as Parameters<typeof questions.insertOne>[0])
+    const created = await questions.findOne({ _id: copy._id } as Parameters<typeof questions.findOne>[0])
+    res.status(201).json(created)
   } catch (err) {
     next(err)
   }
@@ -333,8 +489,13 @@ router.delete('/:questionId', requireAuth, async (req, res, next) => {
     const courseIdForQuestion = await resolveCourseIdFromQuestion(existing)
     if (!courseIdForQuestion) return res.status(400).json({ error: 'courseId required.' })
 
-    const allowed = await userCanManageCourse(user, courseIdForQuestion)
-    if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+    const access = await getCourseAccessInfo(user, courseIdForQuestion)
+    if (!access.course) return res.status(404).json({ error: 'Course not found.' })
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
+
+    if (!access.canManage && !canStudentEditQuestion(user, existing, access.course)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
 
     await questions.deleteOne({ _id: req.params.questionId } as Parameters<typeof questions.deleteOne>[0])
     res.json({ success: true })

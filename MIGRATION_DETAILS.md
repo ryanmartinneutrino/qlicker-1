@@ -17,10 +17,10 @@
 | `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | pending |
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management persistence APIs and React parity landed in active batch; final behavior/test parity still pending | Agent-01, Agent-06 | pending |
 | `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Student/instructor lifecycle controls moved to in-progress parity implementation; full smoke/e2e validation pending | Agent-02, Agent-03 | pending |
-| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Role-filtered course/session visibility now in-progress; full editor + integration parity still pending | Agent-01, Agent-05 | pending |
+| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow + student-safe create/update/delete constraints now landed; final parity tests still pending | Agent-01, Agent-05 | pending |
 | `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Session-wide self-response endpoint and additional smoke checks added; full parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
-| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Instructor scoping + rich grading workflow parity pending | Agent-01, Agent-04 | pending |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Active batch adds subscribe/unsubscribe dedup + key-level resubscribe semantics; load validation still pending | Agent-07 | pending |
+| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Group/category filtering and bulk per-question assignment landed; remaining parity and verification still pending | Agent-01, Agent-04 | pending |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Question-channel invalidation/sanitization hardening landed; load validation still pending | Agent-07 | pending |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Inconsistent mappings still exist in some pages/flows | Agent-01, Agent-05 | pending |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | End-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | pending |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | pending |
@@ -40,8 +40,8 @@
 | MIG-014 | Ensure required Mongo indexes are initialized safely at boot | Agent-01 | MIG-001 | Index bootstrap runs without destructive migrations | done |
 | MIG-020 | Student session parity (attempts, submission, visibility/correct/stats) | Agent-02 | MIG-010..012 | Student flow matches Meteor behavior | in-progress |
 | MIG-021 | Instructor run-session parity (controls/live state/quiz behavior) | Agent-03 | MIG-010..012 | Instructor workflow parity achieved | in-progress |
-| MIG-022 | Grading parity (manual overrides, visibility, review) | Agent-04 | MIG-010..013 | Grading behavior aligns with legacy | pending |
-| MIG-023 | Question library/editor parity (type-specific UX + solutions) | Agent-05 | MIG-010..011 | Editor flow parity verified | pending |
+| MIG-022 | Grading parity (manual overrides, visibility, review) | Agent-04 | MIG-010..013 | Grading behavior aligns with legacy | in-progress |
+| MIG-023 | Question library/editor parity (type-specific UX + solutions) | Agent-05 | MIG-010..011 | Editor flow parity verified | in-progress |
 | MIG-024 | Group/video parity for course categories and rooms | Agent-06 | MIG-010..013 | Group/video behavior mirrors legacy | in-progress |
 | MIG-030 | Realtime wildcard fan-out dedup and deterministic event routing | Agent-07 | MIG-010..014 | One logical update per DB change per channel | in-progress |
 | MIG-031 | Subscription authorization parity on socket channels | Agent-07 | MIG-012..013 | Cross-course unauthorized subscriptions blocked | in-progress |
@@ -140,6 +140,8 @@ Rebase protocol:
 | 2026-02-24 | `pending` | Agent-01/07/08 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes route auth hardening, enum usage cleanup, realtime route-key dedup, and index additions. |
 | 2026-02-24 | `pending` | Agent-08 | `QCLICKER_BASE_URL=http://localhost:3101 npm run test:migration-smoke` | pass | Verified against isolated server with `DISABLE_CSRF=true` for local smoke execution. |
 | 2026-02-24 | `pending` | Agent-08 | `npm run test:migration-smoke` | pending | Expanded smoke must pass before cutover gate. |
+| 2026-02-24 | `working-tree` | Agent-01/04/05/07 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes question route/library parity tranche, grading group+bulk controls, and question realtime invalidation hardening. |
+| 2026-02-24 | `working-tree` | Agent-08 | `docker compose up -d` | blocked | Docker daemon socket permission denied in this execution environment, so smoke/e2e were not re-run in this tranche. |
 
 ## Risks and Blockers
 

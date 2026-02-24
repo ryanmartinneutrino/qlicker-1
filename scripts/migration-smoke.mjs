@@ -128,7 +128,55 @@ async function run() {
   const questions = await prof.request('GET', `/questions?courseId=${course._id}`)
   if (questions.length < 5) throw new Error('Expected seeded questions to exist.')
 
-  await student.request('GET', `/questions?courseId=${course._id}`, undefined, { expectStatus: 403 })
+  const studentLibrary = await student.request('GET', `/questions?courseId=${course._id}&library=library`)
+  assert(Array.isArray(studentLibrary), 'Student library query should return a list.')
+  const seededPublicQuestion =
+    questions.find((q) => !q.sessionId && q.public && q.approved) ||
+    (await prof.request('POST', '/questions', {
+      plainText: `Smoke public question ${Date.now()}`,
+      type: 0,
+      content: 'Smoke public question',
+      options: [
+        { plainText: 'True', answer: 'True', correct: true },
+        { plainText: 'False', answer: 'False', correct: false },
+      ],
+      owner: profUser._id,
+      courseId: course._id,
+      public: true,
+      approved: true,
+      tags: [],
+    }))
+
+  const studentPublic = await student.request('GET', `/questions?courseId=${course._id}&library=public`)
+  assert(
+    studentPublic.some((question) => question._id === seededPublicQuestion._id),
+    'Student public query should include approved public questions.'
+  )
+
+  const copiedPublic = await student.request(
+    'POST',
+    `/questions/${seededPublicQuestion._id}/copy`,
+    {}
+  )
+  assert(copiedPublic.owner === studentUser._id, 'Copied question should belong to the student.')
+  assert(copiedPublic.approved === false, 'Student copy should be unapproved.')
+  assert(copiedPublic.public === false, 'Student copy should not be public.')
+
+  await student.request(
+    'PUT',
+    `/questions/${copiedPublic._id}`,
+    { approved: true, public: true },
+    { expectStatus: 403 }
+  )
+
+  const instructorStudentQueue = await prof.request(
+    'GET',
+    `/questions?courseId=${course._id}&library=unapprovedFromStudents`
+  )
+  assert(
+    instructorStudentQueue.some((question) => question._id === copiedPublic._id),
+    'Instructor queue should include newly copied student question.'
+  )
 
   const groupManageBefore = await prof.request('GET', `/courses/${course._id}/groups/manage`)
   assert(Array.isArray(groupManageBefore.students), 'Group management endpoint should return students array.')
