@@ -1,21 +1,29 @@
 # Migration Multi-Agent Runbook
 
-This folder contains ready-to-use task packets for parallel migration work.
+This directory contains packet files for the current migration topology.
 
-## Agents
-- `agent-01-questions-editor.md`
-- `agent-02-quiz-session-parity.md`
-- `agent-03-profile-image-upload.md`
-- `agent-04-video-chat-parity.md`
-- `agent-05-integration-parity-tests.md`
+## Packets
+- `agent-01-contracts-auth.md`
+- `agent-02-student-session.md`
+- `agent-03-instructor-run.md`
+- `agent-04-grading.md`
+- `agent-05-question-editor.md`
+- `agent-06-groups-video.md`
+- `agent-07-realtime-perf.md`
+- `agent-08-qa-parity.md`
 
-## Suggested operating model
-1. Create one git worktree per agent task branch.
-2. Assign exactly one packet per agent.
-3. Require each agent to:
-   - keep `MIGRATION.md` updated for its domain,
-   - run package builds/tests relevant to changed code,
-   - include screenshots for visual changes.
+## Assignment model
+1. Launch worktrees via `./launch-migration-agents.sh`.
+2. Assign exactly one packet to each agent.
+3. Require every PR to include:
+   - Completed `MIG-*` task IDs.
+   - Verified Meteor behaviors matched.
+   - Commands + results used for validation.
+   - `MIGRATION_DETAILS.md` lane status updates.
 
-## Quick launch
-Use `./launch-migration-agents.sh` to create local worktrees and branch names for each packet.
+## Merge protocol
+- `Agent-01` first.
+- `Agent-05` second.
+- `Agent-02`/`03`/`04`/`06` with rebases after each merge.
+- `Agent-07` once feature lanes stabilize.
+- `Agent-08` last as verification gate.

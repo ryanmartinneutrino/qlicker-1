@@ -4,8 +4,9 @@ import { SharedChangeStream } from './shared-streams'
 import { getCourses } from '../collections/courses'
 import { getSessions } from '../collections/sessions'
 import { getQuestions } from '../collections/questions'
-import { getResponses } from '../collections/responses'
-import { getGrades } from '../collections/grades'
+import { getUsers } from '../collections/users'
+import type { User } from '@qlicker/shared'
+import { UserRole } from '@qlicker/shared'
 
 // One SharedChangeStream per collection
 const streams: Record<string, SharedChangeStream> = {}
@@ -13,6 +14,32 @@ const streams: Record<string, SharedChangeStream> = {}
 /** Extract authenticated user ID from socket session */
 function getUserIdFromSocket(socket: Socket): string | undefined {
   return (socket.request as { session?: { passport?: { user?: string } } }).session?.passport?.user
+}
+
+function isAdmin(user: User): boolean {
+  return user.profile.roles.includes(UserRole.admin)
+}
+
+async function loadSocketUser(socket: Socket): Promise<User | null> {
+  const userId = getUserIdFromSocket(socket)
+  if (!userId) return null
+  return getUsers().findOne({ _id: userId } as Parameters<ReturnType<typeof getUsers>['findOne']>[0])
+}
+
+async function courseAccess(user: User, courseId?: string): Promise<{ canAccess: boolean; isInstructor: boolean }> {
+  if (!courseId) return { canAccess: false, isInstructor: false }
+  if (isAdmin(user)) return { canAccess: true, isInstructor: true }
+
+  const course = await getCourses().findOne(
+    { _id: courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0],
+    { projection: { owner: 1, instructors: 1, students: 1 } }
+  )
+  if (!course) return { canAccess: false, isInstructor: false }
+
+  const userId = user._id ?? ''
+  const instructor = Boolean(course.owner === userId || course.instructors?.includes(userId))
+  const student = Boolean(course.students?.includes(userId))
+  return { canAccess: instructor || student, isInstructor: instructor }
 }
 
 /**
@@ -32,20 +59,28 @@ export function setupRealtime(io: SocketIOServer): void {
 
   // Start one Change Stream per collection
   for (const name of collectionNames) {
-    const stream = new SharedChangeStream(name)
+    const stream = new SharedChangeStream()
     streams[name] = stream
 
     const col = db.collection(name)
     const changeStream = col.watch([], { fullDocument: 'updateLookup' })
     changeStream.on('change', (event) => {
-      // Route to appropriate keys
-      const doc = (event as { fullDocument?: { _id?: unknown; sessionId?: string; courseId?: string; questionId?: string } }).fullDocument
-      if (!doc) {
-        stream.publish(`${name}:*`, event)
-        return
-      }
+      const doc = (event as {
+        fullDocument?: {
+          _id?: unknown
+          sessionId?: string
+          courseId?: string
+          questionId?: string
+        }
+      }).fullDocument
+
       // Collection-level wildcard
       stream.publish(`${name}:*`, event)
+
+      if (!doc) {
+        return
+      }
+
       // Document-level routing
       if (doc._id) stream.publish(`${name}:${doc._id}`, event)
       // Parent-level routing
@@ -72,54 +107,77 @@ export function setupRealtime(io: SocketIOServer): void {
     socket.on('subscribe:responses', async ({ questionId }: { questionId: string }) => {
       if (!questionId) return
 
-      const userId = getUserIdFromSocket(socket)
-      if (!userId) {
+      const user = await loadSocketUser(socket)
+      if (!user) {
         socket.emit('error', { message: 'Not authenticated.' })
         return
       }
 
-      const question = await getQuestions().findOne({ _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
+      const question = await getQuestions().findOne(
+        { _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0]
+      )
       if (!question) return
 
-      let isInstructor = false
-      if (question.sessionId) {
-        const session = await getSessions().findOne({ _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
-        if (session) {
-          const course = await getCourses().findOne({ _id: session.courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0])
-          if (course) isInstructor = course.instructors?.includes(userId) ?? false
-        }
+      let sessionCourseId = question.courseId
+      if (!sessionCourseId && question.sessionId) {
+        const session = await getSessions().findOne(
+          { _id: question.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+          { projection: { courseId: 1 } }
+        )
+        sessionCourseId = session?.courseId
       }
 
-      const unsub = streams['responses'].subscribe(
-        `responses:question:${questionId}`,
-        (event) => {
-          const doc = (event as { fullDocument?: { studentUserId?: string } }).fullDocument
-          if (isInstructor) {
-            socket.emit('responses:change', event)
-          } else {
-            const statsEnabled = question.sessionOptions?.stats ?? false
-            if (statsEnabled) {
-              // Omit studentUserId for other students (use destructuring, not undefined assignment)
-              if (doc?.studentUserId && doc.studentUserId !== userId) {
-                const { studentUserId: _omit, ...docRest } = doc
-                const sanitized = { ...event, fullDocument: docRest }
-                socket.emit('responses:change', sanitized)
-              } else {
-                socket.emit('responses:change', event)
-              }
-            } else if (doc?.studentUserId === userId) {
-              socket.emit('responses:change', event)
-            }
-          }
+      const access = await courseAccess(user, sessionCourseId)
+      if (!access.canAccess && !isAdmin(user)) {
+        socket.emit('error', { message: 'Forbidden.' })
+        return
+      }
+
+      const userId = user._id || ''
+      const unsub = streams.responses.subscribe(`responses:question:${questionId}`, (event) => {
+        const doc = (event as { fullDocument?: { studentUserId?: string } }).fullDocument
+
+        if (isAdmin(user) || access.isInstructor) {
+          socket.emit('responses:change', event)
+          return
         }
-      )
+
+        const statsEnabled = question.sessionOptions?.stats ?? false
+        if (statsEnabled) {
+          if (doc?.studentUserId && doc.studentUserId !== userId) {
+            const { studentUserId: _omit, ...docRest } = doc
+            const sanitized = { ...event, fullDocument: docRest }
+            socket.emit('responses:change', sanitized)
+          } else {
+            socket.emit('responses:change', event)
+          }
+          return
+        }
+
+        if (doc?.studentUserId === userId) {
+          socket.emit('responses:change', event)
+        }
+      })
       unsubscribers.push(unsub)
     })
 
     /** Subscribe to session updates */
     socket.on('subscribe:session', async ({ sessionId }: { sessionId: string }) => {
       if (!sessionId) return
-      const unsub = streams['sessions'].subscribe(`sessions:${sessionId}`, (event) => {
+
+      const user = await loadSocketUser(socket)
+      if (!user) return
+
+      const session = await getSessions().findOne(
+        { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+        { projection: { courseId: 1 } }
+      )
+      if (!session) return
+
+      const access = await courseAccess(user, session.courseId)
+      if (!access.canAccess && !isAdmin(user)) return
+
+      const unsub = streams.sessions.subscribe(`sessions:${sessionId}`, (event) => {
         socket.emit('session:change', event)
       })
       unsubscribers.push(unsub)
@@ -128,7 +186,20 @@ export function setupRealtime(io: SocketIOServer): void {
     /** Subscribe to question updates within a session */
     socket.on('subscribe:questions', async ({ sessionId }: { sessionId: string }) => {
       if (!sessionId) return
-      const unsub = streams['questions'].subscribe(`questions:session:${sessionId}`, (event) => {
+
+      const user = await loadSocketUser(socket)
+      if (!user) return
+
+      const session = await getSessions().findOne(
+        { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+        { projection: { courseId: 1 } }
+      )
+      if (!session) return
+
+      const access = await courseAccess(user, session.courseId)
+      if (!access.canAccess && !isAdmin(user)) return
+
+      const unsub = streams.questions.subscribe(`questions:session:${sessionId}`, (event) => {
         socket.emit('questions:change', event)
       })
       unsubscribers.push(unsub)
@@ -137,7 +208,14 @@ export function setupRealtime(io: SocketIOServer): void {
     /** Subscribe to question updates within a course */
     socket.on('subscribe:questions-course', async ({ courseId }: { courseId: string }) => {
       if (!courseId) return
-      const unsub = streams['questions'].subscribe(`questions:course:${courseId}`, (event) => {
+
+      const user = await loadSocketUser(socket)
+      if (!user) return
+
+      const access = await courseAccess(user, courseId)
+      if (!access.canAccess && !isAdmin(user)) return
+
+      const unsub = streams.questions.subscribe(`questions:course:${courseId}`, (event) => {
         socket.emit('questions:change', event)
       })
       unsubscribers.push(unsub)
@@ -146,7 +224,14 @@ export function setupRealtime(io: SocketIOServer): void {
     /** Subscribe to session updates within a course */
     socket.on('subscribe:sessions', async ({ courseId }: { courseId: string }) => {
       if (!courseId) return
-      const unsub = streams['sessions'].subscribe(`sessions:course:${courseId}`, (event) => {
+
+      const user = await loadSocketUser(socket)
+      if (!user) return
+
+      const access = await courseAccess(user, courseId)
+      if (!access.canAccess && !isAdmin(user)) return
+
+      const unsub = streams.sessions.subscribe(`sessions:course:${courseId}`, (event) => {
         socket.emit('sessions:change', event)
       })
       unsubscribers.push(unsub)
@@ -154,11 +239,13 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to grade updates for a user */
     socket.on('subscribe:grades', async ({ userId: targetUserId }: { userId: string }) => {
-      const requestingUserId = getUserIdFromSocket(socket)
-      // Only allow users to subscribe to their own grades, or admins/instructors
-      if (!requestingUserId || requestingUserId !== targetUserId) return
+      const user = await loadSocketUser(socket)
+      if (!user || !targetUserId) return
 
-      const unsub = streams['grades'].subscribe(`grades:*`, (event) => {
+      const own = user._id === targetUserId
+      if (!own && !isAdmin(user)) return
+
+      const unsub = streams.grades.subscribe('grades:*', (event) => {
         const doc = (event as { fullDocument?: { userId?: string } }).fullDocument
         if (doc?.userId === targetUserId) {
           socket.emit('grades:change', event)
@@ -167,7 +254,6 @@ export function setupRealtime(io: SocketIOServer): void {
       unsubscribers.push(unsub)
     })
 
-    // Unsubscribe from all on disconnect
     socket.on('disconnect', () => {
       unsubscribers.forEach((unsub) => unsub())
     })

@@ -10,15 +10,24 @@ import { initSettings } from './settings'
 import { initUsers } from './users'
 
 export async function initAllCollections(): Promise<void> {
-  await Promise.all([
-    initCourses(),
-    initSessions(),
-    initQuestions(),
-    initResponses(),
-    initGrades(),
-    initImages(),
-    initSettings(),
-    initUsers(),
-  ])
-  console.log('All collection indexes ensured.')
+  const tasks: Array<[string, () => Promise<unknown>]> = [
+    ['courses', initCourses],
+    ['sessions', initSessions],
+    ['questions', initQuestions],
+    ['responses', initResponses],
+    ['grades', initGrades],
+    ['images', initImages],
+    ['settings', initSettings],
+    ['users', initUsers],
+  ]
+
+  const results = await Promise.allSettled(tasks.map(([, init]) => init()))
+  results.forEach((result, index) => {
+    const [name] = tasks[index]
+    if (result.status === 'fulfilled') {
+      console.log(`Indexes ensured for ${name}.`)
+      return
+    }
+    console.error(`Failed to ensure indexes for ${name}:`, result.reason)
+  })
 }
