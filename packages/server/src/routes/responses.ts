@@ -90,6 +90,42 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 })
 
+/** GET /api/responses/session/:sessionId/me — get a student's responses for all session questions */
+router.get('/session/:sessionId/me', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const sessions = getSessions()
+    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const access = await courseAccessForUser(user, session.courseId)
+    if (!access.canAccess && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const requestedUserId = typeof req.query?.userId === 'string' ? req.query.userId : ''
+    if (requestedUserId && requestedUserId !== user._id && !(access.isInstructor || isAdmin(user))) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+    const targetUserId = requestedUserId || user._id || ''
+    if (!targetUserId) return res.json([])
+
+    const questionIds = (session.questions || []).filter((questionId): questionId is string => typeof questionId === 'string' && questionId.length > 0)
+    if (questionIds.length < 1) return res.json([])
+
+    const responses = getResponses()
+    const docs = await responses
+      .find({
+        questionId: { $in: questionIds },
+        studentUserId: targetUserId,
+      } as Parameters<typeof responses.find>[0])
+      .toArray()
+    res.json(docs)
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/responses — submit a response */
 router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
   try {

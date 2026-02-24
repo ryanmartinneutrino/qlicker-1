@@ -3,21 +3,22 @@
 ## Snapshot
 - Date: `2026-02-24`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `a096e40`
+- Last verified baseline commit before this update: `0fdfcc6`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
   - Existing Meteor database is source of truth; migrated stack must remain compatible.
+  - Parallel lane worktrees are created via `./launch-migration-agents.sh` under `.agent-worktrees/`.
 
 ## Meteor-to-New Parity Matrix
 
 | Meteor artifact | New artifact | Collections/fields touched | Status (done/partial/missing) | Gap | Owner lane | PR |
 |---|---|---|---|---|---|---|
 | `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | pending |
-| `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Membership/authz edge checks + deeper group/video parity pending | Agent-01, Agent-06 | pending |
-| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Student/instructor lifecycle parity not complete | Agent-02, Agent-03 | pending |
+| `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management persistence APIs and React parity landed in active batch; final behavior/test parity still pending | Agent-01, Agent-06 | pending |
+| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Student/instructor lifecycle controls moved to in-progress parity implementation; full smoke/e2e validation pending | Agent-02, Agent-03 | pending |
 | `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Authz tightening + full editor parity needed | Agent-01, Agent-05 | pending |
-| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Membership/authz tightening + parity tests pending | Agent-01, Agent-07, Agent-08 | pending |
+| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Added session-wide self-response endpoint for quiz parity; broadened parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
 | `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Instructor scoping + rich grading workflow parity pending | Agent-01, Agent-04 | pending |
 | Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Wildcard fan-out dedup + subscription auth + load validation pending | Agent-07 | pending |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Inconsistent mappings still exist in some pages/flows | Agent-01, Agent-05 | pending |
@@ -37,11 +38,11 @@
 | MIG-012 | Harden `/api/questions` authz for read/write parity | Agent-01 | MIG-010 | Role + course membership enforced | in-progress |
 | MIG-013 | Tighten authz parity for sessions/grades/responses/courses edge cases | Agent-01 | MIG-012 | Unauthorized cross-course access blocked | in-progress |
 | MIG-014 | Ensure required Mongo indexes are initialized safely at boot | Agent-01 | MIG-001 | Index bootstrap runs without destructive migrations | done |
-| MIG-020 | Student session parity (attempts, submission, visibility/correct/stats) | Agent-02 | MIG-010..012 | Student flow matches Meteor behavior | pending |
-| MIG-021 | Instructor run-session parity (controls/live state/quiz behavior) | Agent-03 | MIG-010..012 | Instructor workflow parity achieved | pending |
+| MIG-020 | Student session parity (attempts, submission, visibility/correct/stats) | Agent-02 | MIG-010..012 | Student flow matches Meteor behavior | in-progress |
+| MIG-021 | Instructor run-session parity (controls/live state/quiz behavior) | Agent-03 | MIG-010..012 | Instructor workflow parity achieved | in-progress |
 | MIG-022 | Grading parity (manual overrides, visibility, review) | Agent-04 | MIG-010..013 | Grading behavior aligns with legacy | pending |
 | MIG-023 | Question library/editor parity (type-specific UX + solutions) | Agent-05 | MIG-010..011 | Editor flow parity verified | pending |
-| MIG-024 | Group/video parity for course categories and rooms | Agent-06 | MIG-010..013 | Group/video behavior mirrors legacy | pending |
+| MIG-024 | Group/video parity for course categories and rooms | Agent-06 | MIG-010..013 | Group/video behavior mirrors legacy | in-progress |
 | MIG-030 | Realtime wildcard fan-out dedup and deterministic event routing | Agent-07 | MIG-010..014 | One logical update per DB change per channel | in-progress |
 | MIG-031 | Subscription authorization parity on socket channels | Agent-07 | MIG-012..013 | Cross-course unauthorized subscriptions blocked | in-progress |
 | MIG-032 | Hot-path query/payload optimization | Agent-07 | MIG-014 | p95 latency and payload size targets documented | pending |
@@ -131,6 +132,8 @@ Rebase protocol:
 | Date | Commit | Lane | Command | Result | Notes |
 |---|---|---|---|---|---|
 | 2026-02-24 | `a096e40` | baseline | `docker compose build && docker compose up -d && ./seed-mock-db.sh && npm run test:migration-smoke` | pass (reported) | Baseline parity smoke reported passing before this planning update. |
+| 2026-02-24 | `working-tree` | Coordinator | `./launch-migration-agents.sh` | pass | Created 8 lane branches and worktrees under `.agent-worktrees` for parallel execution. |
+| 2026-02-24 | `working-tree` | Agent-02/03/06 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && npm run build --workspace=packages/shared` | pass | Includes active-batch updates for student session, run-session controls, and persisted group management APIs/UI. |
 | 2026-02-24 | `pending` | Agent-01 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pending | To be recorded after Phase 1 patch merge. |
 | 2026-02-24 | `pending` | Agent-01/07/08 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes route auth hardening, enum usage cleanup, realtime route-key dedup, and index additions. |
 | 2026-02-24 | `pending` | Agent-08 | `QCLICKER_BASE_URL=http://localhost:3101 npm run test:migration-smoke` | pass | Verified against isolated server with `DISABLE_CSRF=true` for local smoke execution. |
