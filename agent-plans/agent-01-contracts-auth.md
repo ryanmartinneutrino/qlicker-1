@@ -6,6 +6,13 @@
 - Harden route-level authz for `questions` and related edge routes.
 - Ensure index bootstrap is executed safely at server startup.
 
+## Current Batch (2026-02-24)
+- Enforce role-filtered `/api/questions` reads:
+  - student `courseId` library access restricted to owned/created non-session questions.
+  - student `sessionId` access sanitizes `options.correct`/`correctNumerical` unless revealed by session settings.
+- Preserve instructor/admin full-fidelity question access for management and grading workflows.
+- Extend smoke coverage for question visibility parity checks.
+
 ## Primary files
 - `packages/shared/src/{types,validation,configs}.ts`
 - `packages/server/src/routes/{questions,sessions,responses,grades,courses}.ts`

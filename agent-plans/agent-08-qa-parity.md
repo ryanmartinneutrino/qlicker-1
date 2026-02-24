@@ -5,6 +5,11 @@
 - Execute and document manual parity checklist.
 - Produce cutover checklist and rollback runbook.
 
+## Current Batch (2026-02-24)
+- Extend smoke checks for persisted course-group workflows (category/group create/toggle/delete).
+- Extend smoke checks for `/api/questions` student visibility parity in sessions.
+- Keep smoke assertions aligned with tightened question-library authorization.
+
 ## Primary files
 - `scripts/migration-smoke.mjs`
 - Integration/e2e test suites

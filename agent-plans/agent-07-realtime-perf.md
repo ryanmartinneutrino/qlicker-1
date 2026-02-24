@@ -5,6 +5,11 @@
 - Enforce subscription authorization on all channels.
 - Optimize hot queries/payloads and document load-test outcomes.
 
+## Current Batch (2026-02-24)
+- Add explicit subscribe/unsubscribe pairing for collection channels.
+- Add per-socket subscription dedup so re-subscribing the same route key replaces old listeners.
+- Add delete-event routing by `documentKey._id` and client-side upsert semantics to avoid duplicate rows.
+
 ## Primary files
 - `packages/server/src/realtime/*`
 - `packages/client/src/hooks/useRealtimeCollection.ts`
