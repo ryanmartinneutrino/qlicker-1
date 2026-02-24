@@ -304,78 +304,60 @@ npm run test:migration-smoke
 If smoke fails, fix baseline on `master` first before opening new agent branches. The smoke script now fails fast with a clear preflight error if the Express server is not reachable.
 
 ### Current Migration State (for resuming work)
-- Enrollment and auth compatibility work has been migrated to Express routes and React pages:
-  - Student enrollment by code (including code normalization and profile course linkage)
-  - Forgot/reset password API routes
-  - Enroll course modal parity in student dashboard
-- Grade read visibility for students now matches Meteor publications (`visibleToStudents` enforced for student grade reads).
-- Editor hardening started:
-  - Expanded toolbar capabilities
-  - Safer link handling
-  - Initial conversion/sanitization regression tests
-- Agent 5 lane status (integration parity harness) — 2026-02-23:
-  - Expanded seeded migration dataset in `seed-mock-db.sh`:
-    - Sessions: interactive + quiz + completed review session
-    - Questions: MC/SA/TF/NU/MS coverage
-    - Responses: objective + open-ended + multi-select rows
-    - Grades: visible and hidden rows for visibility parity checks
-  - Expanded `scripts/migration-smoke.mjs` parity coverage with explicit role flows:
-    - Professor: login, course create/edit normalization, session status update, question create/edit/delete lifecycle, quiz extension update
-    - Student: login, response submission/auto-grading check, response privacy, quiz submit, enrollment by uppercase code
-    - Admin: login, user listing, forgot/reset password, global course visibility
-    - Grade visibility parity: instructor toggles `visibleToStudents`, hidden grade becomes visible to student after toggle
-  - Validation commands for this lane:
-    - `./seed-mock-db.sh`
-    - `npm run build`
-    - `npm run test:migration-smoke`
-- Remaining gaps are mainly deep UI parity (`QuestionDisplay`/grading behavior) and broad automated coverage.
+- Parallel lane rollup has now landed on the integration branch and includes:
+  - Question/response UI parity work (`QuestionDisplay`, `QuestionEditItem`, `QuestionDisplay` + `QuestionEditItem` tests, session/replay/run page integration)
+  - Quiz/session lifecycle parity updates (`QuizExtensionsModal`, expanded session/response/grade route behavior, weighted-attempt grading logic)
+  - Profile image parity updates (React drag/drop area, profile image replace flow, smoke coverage for multipart upload + profile persistence)
+  - Video/Jitsi parity baseline (`VideoChat` + new `JitsiWindow` page, expanded course video-chat endpoints and group connection payloads)
+  - Expanded migration harness (`seed-mock-db.sh` + `scripts/migration-smoke.mjs`) with broader professor/student/admin parity checks
+- Validation run on the assembled rollup:
+  - `npm run build --prefix packages/shared`
+  - `npm run build --workspace=packages/server`
+  - `npm run build --workspace=packages/client`
+  - `npm run test --workspace=packages/client` (Vitest)
+  - `./seed-mock-db.sh`
+  - `QCLICKER_BASE_URL=http://localhost:3101 npm run test:migration-smoke` (with server running on `:3101`)
+- Known remaining gaps before cutover:
+  - Some legacy modal/interaction edge-cases in `imports/ui/modals/*` are still not explicitly parity-audited
+  - Server route-level automated tests remain thinner than desired for new session/grade/video behavior
+  - Realtime/performance validation under load is still pending
+  - Final cutover runbook should include explicit rollback drill and side-by-side verification checklist
 
-### Parallel Agent Plan (recommended)
-Use 5 agents in parallel with one focused lane each. Keep each PR small enough to rebase quickly.
+### Parallel Agent Plan (next wave)
+Use 4 focused agents in parallel for final parity hardening. Keep each PR narrow and independently mergeable.
 
-#### Agent 1 — Question/Response UI parity
+#### Agent 1 — Modal + UX Edge Parity
 - Scope:
-  - Port richer `QuestionDisplay` behavior from `imports/ui/QuestionDisplay.jsx`
-  - Port `ResponseDisplay`/grading interaction parity from `imports/ui/ResponseDisplay.jsx`
-  - Replace simplified inline question rendering in `Session.tsx`, `RunSession.tsx`, `ReplaySession.tsx`, `GradeSession.tsx` with shared components
+  - Audit remaining legacy modal flows from `imports/ui/modals/` and map to React equivalents
+  - Close keyboard/cancel/submit behavior gaps and remove dead modal actions/routes
 - Acceptance:
-  - MC/TF/SA/MS/NU interactions match Meteor behavior
-  - Quiz/editable attempt behavior matches legacy flows
-  - No regression in sanitized HTML rendering
+  - Modal parity matrix complete (ported/deprecated/merged list)
+  - No broken modal entry points from current pages
 
-#### Agent 2 — Session/quiz behavior parity
+#### Agent 2 — Realtime + Performance Validation
 - Scope:
-  - Validate/patch quiz attempt limits, closed attempts, extension windows, and submission semantics
-  - Confirm server logic in `packages/server/src/routes/sessions.ts`, `responses.ts`, `grades.ts` mirrors legacy method behavior
+  - Validate socket subscription fan-out and change-stream behavior under concurrent usage
+  - Add/verify indexes for the hottest response/session/grade/course queries
+  - Document load test setup + observed update latency
 - Acceptance:
-  - End-to-end quiz flow for professor and student passes against seeded data
-  - Grade updates and visibility toggles align with Meteor behavior
+  - No per-client change stream regressions
+  - Performance report checked into `docs/`
 
-#### Agent 3 — Modals and specialized workflow parity
+#### Agent 3 — Route-Level Regression Tests
 - Scope:
-  - Port remaining specialized modals from `imports/ui/modals/` beyond core account/session/question creation and enroll flows
-  - Ensure keyboard/cancel/submit UX parity for modal stack
+  - Add focused server tests for session lifecycle, quiz submission/join rules, grade visibility/calc, and video-chat connection endpoints
+  - Capture current expected behavior for parity-sensitive edge cases
 - Acceptance:
-  - Missing modal list in `imports/ui/modals/` has React equivalents or explicit deprecation notes
-  - No dead modal routes/actions in React pages
+  - Repeatable server test command with deterministic pass/fail output
+  - Core parity behaviors encoded as automated tests
 
-#### Agent 4 — Realtime and performance hardening
+#### Agent 4 — Cutover + Rollback Readiness
 - Scope:
-  - Audit socket subscriptions and fan-out paths for high-concurrency safety
-  - Add indexing/perf fixes where query hotspots appear (`courses`, `sessions`, `responses`, `grades`)
-  - Verify no per-client Mongo Change Stream creation
+  - Write final production cutover checklist and rollback procedure
+  - Add side-by-side verification script/checklist for Meteor vs Express stack parity signoff
 - Acceptance:
-  - Load-test sanity checks documented
-  - Observable update latency remains acceptable under concurrent activity
-
-#### Agent 5 — Coverage and migration regression suite
-- Scope:
-  - Expand `scripts/migration-smoke.mjs` for critical parity paths
-  - Add client component tests (Vitest) for migrated pages/components
-  - Add server route tests for auth/courses/sessions/responses/grades parity edge cases
-- Acceptance:
-  - Smoke suite covers login, enroll, course create/edit, question lifecycle, response submission, grading visibility, reset password
-  - Tests run in CI/local Docker environment with reproducible commands
+  - Operator-ready runbook committed in `docs/`
+  - Explicit go/no-go criteria with rollback trigger points
 
 ### Agent Execution Protocol
 1. Run `./launch-migration-agents.sh`.
