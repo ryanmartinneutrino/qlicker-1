@@ -53,8 +53,10 @@ export function setupRealtime(io: SocketIOServer): void {
         }
       }).fullDocument
 
+      const docKey = (event as { documentKey?: { _id?: unknown } }).documentKey
       const routingKeys = new Set<string>([`${name}:*`])
       if (doc?._id) routingKeys.add(`${name}:${doc._id}`)
+      if (!doc?._id && docKey?._id) routingKeys.add(`${name}:${docKey._id}`)
       if (doc?.sessionId) routingKeys.add(`${name}:session:${doc.sessionId}`)
       if (doc?.courseId) routingKeys.add(`${name}:course:${doc.courseId}`)
       if (doc?.questionId) routingKeys.add(`${name}:question:${doc.questionId}`)
@@ -68,7 +70,29 @@ export function setupRealtime(io: SocketIOServer): void {
 
   // Socket.IO connection handler
   io.on('connection', (socket: Socket) => {
-    const unsubscribers: (() => void)[] = []
+    const activeSubscriptions = new Map<string, () => void>()
+
+    const registerSubscription = (key: string, subscribe: () => () => void) => {
+      const existing = activeSubscriptions.get(key)
+      if (existing) {
+        existing()
+        activeSubscriptions.delete(key)
+      }
+      const unsubscribe = subscribe()
+      activeSubscriptions.set(key, unsubscribe)
+    }
+
+    const removeSubscription = (key: string) => {
+      const existing = activeSubscriptions.get(key)
+      if (!existing) return
+      existing()
+      activeSubscriptions.delete(key)
+    }
+
+    const removeAllSubscriptions = () => {
+      activeSubscriptions.forEach((unsubscribe) => unsubscribe())
+      activeSubscriptions.clear()
+    }
 
     /**
      * Subscribe to responses for a question.
@@ -106,31 +130,37 @@ export function setupRealtime(io: SocketIOServer): void {
       }
 
       const userId = user._id || ''
-      const unsub = streams.responses.subscribe(`responses:question:${questionId}`, (event) => {
-        const doc = (event as { fullDocument?: { studentUserId?: string } }).fullDocument
+      registerSubscription(`responses:${questionId}`, () =>
+        streams.responses.subscribe(`responses:question:${questionId}`, (event) => {
+          const doc = (event as { fullDocument?: { studentUserId?: string } }).fullDocument
 
-        if (isAdmin(user) || access.isInstructor) {
-          socket.emit('responses:change', event)
-          return
-        }
+          if (isAdmin(user) || access.isInstructor) {
+            socket.emit('responses:change', event)
+            return
+          }
 
-        const statsEnabled = question.sessionOptions?.stats ?? false
-        if (statsEnabled) {
-          if (doc?.studentUserId && doc.studentUserId !== userId) {
-            const { studentUserId: _omit, ...docRest } = doc
-            const sanitized = { ...event, fullDocument: docRest }
-            socket.emit('responses:change', sanitized)
-          } else {
+          const statsEnabled = question.sessionOptions?.stats ?? false
+          if (statsEnabled) {
+            if (doc?.studentUserId && doc.studentUserId !== userId) {
+              const { studentUserId: _omit, ...docRest } = doc
+              const sanitized = { ...event, fullDocument: docRest }
+              socket.emit('responses:change', sanitized)
+            } else {
+              socket.emit('responses:change', event)
+            }
+            return
+          }
+
+          if (doc?.studentUserId === userId) {
             socket.emit('responses:change', event)
           }
-          return
-        }
+        })
+      )
+    })
 
-        if (doc?.studentUserId === userId) {
-          socket.emit('responses:change', event)
-        }
-      })
-      unsubscribers.push(unsub)
+    socket.on('unsubscribe:responses', ({ questionId }: { questionId: string }) => {
+      if (!questionId) return
+      removeSubscription(`responses:${questionId}`)
     })
 
     /** Subscribe to session updates */
@@ -149,10 +179,16 @@ export function setupRealtime(io: SocketIOServer): void {
       const access = await courseAccessForUser(user, session.courseId)
       if (!access.canAccess && !isAdmin(user)) return
 
-      const unsub = streams.sessions.subscribe(`sessions:${sessionId}`, (event) => {
-        socket.emit('session:change', event)
-      })
-      unsubscribers.push(unsub)
+      registerSubscription(`session:${sessionId}`, () =>
+        streams.sessions.subscribe(`sessions:${sessionId}`, (event) => {
+          socket.emit('session:change', event)
+        })
+      )
+    })
+
+    socket.on('unsubscribe:session', ({ sessionId }: { sessionId: string }) => {
+      if (!sessionId) return
+      removeSubscription(`session:${sessionId}`)
     })
 
     /** Subscribe to question updates within a session */
@@ -171,10 +207,16 @@ export function setupRealtime(io: SocketIOServer): void {
       const access = await courseAccessForUser(user, session.courseId)
       if (!access.canAccess && !isAdmin(user)) return
 
-      const unsub = streams.questions.subscribe(`questions:session:${sessionId}`, (event) => {
-        socket.emit('questions:change', event)
-      })
-      unsubscribers.push(unsub)
+      registerSubscription(`questions:session:${sessionId}`, () =>
+        streams.questions.subscribe(`questions:session:${sessionId}`, (event) => {
+          socket.emit('questions:change', event)
+        })
+      )
+    })
+
+    socket.on('unsubscribe:questions', ({ sessionId }: { sessionId: string }) => {
+      if (!sessionId) return
+      removeSubscription(`questions:session:${sessionId}`)
     })
 
     /** Subscribe to question updates within a course */
@@ -187,10 +229,16 @@ export function setupRealtime(io: SocketIOServer): void {
       const access = await courseAccessForUser(user, courseId)
       if (!access.canAccess && !isAdmin(user)) return
 
-      const unsub = streams.questions.subscribe(`questions:course:${courseId}`, (event) => {
-        socket.emit('questions:change', event)
-      })
-      unsubscribers.push(unsub)
+      registerSubscription(`questions:course:${courseId}`, () =>
+        streams.questions.subscribe(`questions:course:${courseId}`, (event) => {
+          socket.emit('questions:change', event)
+        })
+      )
+    })
+
+    socket.on('unsubscribe:questions-course', ({ courseId }: { courseId: string }) => {
+      if (!courseId) return
+      removeSubscription(`questions:course:${courseId}`)
     })
 
     /** Subscribe to session updates within a course */
@@ -203,10 +251,16 @@ export function setupRealtime(io: SocketIOServer): void {
       const access = await courseAccessForUser(user, courseId)
       if (!access.canAccess && !isAdmin(user)) return
 
-      const unsub = streams.sessions.subscribe(`sessions:course:${courseId}`, (event) => {
-        socket.emit('sessions:change', event)
-      })
-      unsubscribers.push(unsub)
+      registerSubscription(`sessions:course:${courseId}`, () =>
+        streams.sessions.subscribe(`sessions:course:${courseId}`, (event) => {
+          socket.emit('sessions:change', event)
+        })
+      )
+    })
+
+    socket.on('unsubscribe:sessions', ({ courseId }: { courseId: string }) => {
+      if (!courseId) return
+      removeSubscription(`sessions:course:${courseId}`)
     })
 
     /** Subscribe to grade updates for a user */
@@ -217,17 +271,23 @@ export function setupRealtime(io: SocketIOServer): void {
       const own = user._id === targetUserId
       if (!own && !isAdmin(user)) return
 
-      const unsub = streams.grades.subscribe('grades:*', (event) => {
-        const doc = (event as { fullDocument?: { userId?: string } }).fullDocument
-        if (doc?.userId === targetUserId) {
-          socket.emit('grades:change', event)
-        }
-      })
-      unsubscribers.push(unsub)
+      registerSubscription(`grades:${targetUserId}`, () =>
+        streams.grades.subscribe('grades:*', (event) => {
+          const doc = (event as { fullDocument?: { userId?: string } }).fullDocument
+          if (doc?.userId === targetUserId) {
+            socket.emit('grades:change', event)
+          }
+        })
+      )
+    })
+
+    socket.on('unsubscribe:grades', ({ userId: targetUserId }: { userId: string }) => {
+      if (!targetUserId) return
+      removeSubscription(`grades:${targetUserId}`)
     })
 
     socket.on('disconnect', () => {
-      unsubscribers.forEach((unsub) => unsub())
+      removeAllSubscriptions()
     })
   })
 }

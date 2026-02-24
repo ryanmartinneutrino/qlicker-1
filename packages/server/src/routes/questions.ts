@@ -74,6 +74,30 @@ function normalizeQuestionOptions(options: OptionInput[]): OptionInput[] {
   })
 }
 
+function sanitizeQuestionForStudent(question: Question): Question {
+  const options = (question.options || []).map((option) => {
+    const { correct: _omit, ...rest } = option
+    return rest
+  })
+  const sanitized: Question = { ...question, options }
+  delete sanitized.correctNumerical
+  return sanitized
+}
+
+async function shouldRevealCorrectInSession(
+  question: Question,
+  sessionId: string | undefined
+): Promise<boolean> {
+  if (question.sessionOptions?.correct) return true
+  if (!sessionId) return false
+
+  const session = await getSessions().findOne(
+    { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
+    { projection: { practiceQuiz: 1 } }
+  )
+  return Boolean(session?.practiceQuiz)
+}
+
 /** GET /api/questions?sessionId=...&courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -95,52 +119,88 @@ router.get('/', requireAuth, async (req, res, next) => {
       return res.status(403).json({ error: 'Forbidden.' })
     }
 
-    const targetCourseIds = new Set<string>()
-
-    if (courseId) {
-      const allowed = await userCanAccessCourse(user, courseId)
-      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
-      targetCourseIds.add(courseId)
-    }
-
     if (sessionId) {
       const session = await getSessions().findOne(
         { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
-        { projection: { courseId: 1 } }
+        { projection: { courseId: 1, practiceQuiz: 1 } }
       )
       if (!session) return res.status(404).json({ error: 'Session not found.' })
 
       const allowed = await userCanAccessCourse(user, session.courseId)
       if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
-      targetCourseIds.add(session.courseId)
+
+      const result = await questions.find({
+        ...query,
+        sessionId,
+        courseId: session.courseId,
+      }).toArray()
+
+      const canManage = await userCanManageCourse(user, session.courseId)
+      if (canManage) return res.json(result)
+
+      const sanitized = await Promise.all(
+        result.map(async (question) => {
+          if (question.sessionOptions?.correct || session.practiceQuiz) return question
+          return sanitizeQuestionForStudent(question)
+        })
+      )
+      return res.json(sanitized)
     }
 
-    if (!courseId && !sessionId) {
-      const memberCourses = await getCourses()
+    if (courseId) {
+      const allowed = await userCanAccessCourse(user, courseId)
+      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+
+      const canManage = await userCanManageCourse(user, courseId)
+      if (canManage) {
+        const result = await questions.find({
+          ...query,
+          courseId,
+        }).toArray()
+        return res.json(result)
+      }
+
+      // Student view of course library: only non-session questions created/owned by the user.
+      const result = await questions.find({
+        ...query,
+        courseId,
+        sessionId: { $exists: false },
+        $or: [{ creator: user._id }, { owner: user._id }],
+      }).toArray()
+      return res.json(result)
+    }
+
+    if (owner === user._id) {
+      const result = await questions.find({
+        ...query,
+        owner: user._id,
+      }).toArray()
+      return res.json(result)
+    }
+
+    const isInstructorRole = user.profile.roles.includes(UserRole.prof)
+    if (!isInstructorRole) {
+      return res.json([])
+    }
+
+    const instructorCourses = await getCourses()
         .find(
           {
-            $or: [{ owner: user._id }, { instructors: user._id }, { students: user._id }],
+            $or: [{ owner: user._id }, { instructors: user._id }],
           } as Parameters<ReturnType<typeof getCourses>['find']>[0],
           { projection: { _id: 1 } }
         )
         .toArray()
 
-      memberCourses
-        .map((course) => course._id)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0)
-        .forEach((id) => targetCourseIds.add(id))
-    }
+    const instructorCourseIds = instructorCourses
+      .map((course) => course._id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    if (instructorCourseIds.length < 1) return res.json([])
 
-    if (targetCourseIds.size === 0) {
-      return res.json([])
-    }
-
-    const filteredQuery: Record<string, unknown> = {
+    const result = await questions.find({
       ...query,
-      courseId: { $in: [...targetCourseIds] },
-    }
-
-    const result = await questions.find(filteredQuery).toArray()
+      courseId: { $in: instructorCourseIds },
+    }).toArray()
     res.json(result)
   } catch (err) {
     next(err)
@@ -163,10 +223,27 @@ router.get('/:questionId', requireAuth, async (req, res, next) => {
         if (question.creator !== user._id && question.owner !== user._id) {
           return res.status(403).json({ error: 'Forbidden.' })
         }
-      } else {
-        const allowed = await userCanAccessCourse(user, courseIdForQuestion)
-        if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+        return res.json(question)
       }
+
+      const canManage = await userCanManageCourse(user, courseIdForQuestion)
+      if (canManage) {
+        return res.json(question)
+      }
+
+      const allowed = await userCanAccessCourse(user, courseIdForQuestion)
+      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+
+      // Students may only read non-session questions they created/own.
+      if (!question.sessionId) {
+        if (question.creator !== user._id && question.owner !== user._id) {
+          return res.status(403).json({ error: 'Forbidden.' })
+        }
+        return res.json(question)
+      }
+
+      const revealCorrect = await shouldRevealCorrectInSession(question, question.sessionId)
+      return res.json(revealCorrect ? question : sanitizeQuestionForStudent(question))
     }
 
     res.json(question)

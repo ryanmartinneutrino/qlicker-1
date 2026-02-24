@@ -25,7 +25,7 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Complete the current Phase 2 tranche (`MIG-020`, `MIG-021`, `MIG-024`) and then run expanded parity smoke checks before advancing remaining lanes (`MIG-022`, `MIG-023`, `MIG-030..033`).
+Finish the active Phase 1 + Phase 3 tranche (`MIG-012`, `MIG-013`, `MIG-030`, `MIG-031`) and run the expanded smoke checks before opening the grading/editor completion tranche (`MIG-022`, `MIG-023`, `MIG-040..042`).
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.

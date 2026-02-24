@@ -128,6 +128,43 @@ async function run() {
   const questions = await prof.request('GET', `/questions?courseId=${course._id}`)
   if (questions.length < 5) throw new Error('Expected seeded questions to exist.')
 
+  await student.request('GET', `/questions?courseId=${course._id}`, undefined, { expectStatus: 403 })
+
+  const groupManageBefore = await prof.request('GET', `/courses/${course._id}/groups/manage`)
+  assert(Array.isArray(groupManageBefore.students), 'Group management endpoint should return students array.')
+  const groupCategoryName = `SmokeCategory_${Date.now()}`
+  const addedCategoryResponse = await prof.request('POST', `/courses/${course._id}/groups/categories`, {
+    categoryName: groupCategoryName,
+    nGroups: 2,
+  })
+  const addedCategory = (addedCategoryResponse.groupCategories || []).find(
+    (entry) => entry.categoryName === groupCategoryName
+  )
+  assert(addedCategory, 'Expected newly created category in response.')
+  assert((addedCategory.groups || []).length >= 2, 'Expected category to contain created groups.')
+  const firstGroup = (addedCategory.groups || [])[0]
+  assert(firstGroup?.groupNumber, 'Expected first group number in created category.')
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/groups/categories/${addedCategory.categoryNumber}/groups/${firstGroup.groupNumber}/students/${studentUser._id}/toggle`,
+    {}
+  )
+  const groupManageAfter = await prof.request('GET', `/courses/${course._id}/groups/manage`)
+  const categoryAfterToggle = (groupManageAfter.groupCategories || []).find(
+    (entry) => entry.categoryName === groupCategoryName
+  )
+  const toggledGroup = (categoryAfterToggle?.groups || []).find(
+    (entry) => Number(entry.groupNumber) === Number(firstGroup.groupNumber)
+  )
+  assert(
+    (toggledGroup?.students || []).includes(studentUser._id),
+    'Expected toggled student to be in selected group.'
+  )
+  await prof.request(
+    'DELETE',
+    `/courses/${course._id}/groups/categories/${addedCategory.categoryNumber}`
+  )
+
   const createdCourse = await prof.request('POST', '/courses', {
     name: `Smoke Course ${Date.now()}`,
     deptCode: 'CISC',
@@ -204,6 +241,81 @@ async function run() {
   assert(deletedQuestion.success === true, 'Question delete did not report success.')
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
   assert(!createdCourseQuestions.some((q) => q._id === lifecycleQuestion._id), 'Deleted question still appears in list.')
+
+  const runningSession = sessions.find((entry) => !entry.quiz && entry.status === 'running')
+  if (!runningSession) throw new Error('Expected seeded running interactive session.')
+  const visibilityProbeQuestion = await prof.request('POST', '/questions', {
+    plainText: 'Smoke visibility probe',
+    type: 0,
+    content: 'Smoke visibility probe',
+    options: [
+      { plainText: 'A', answer: 'A', correct: true },
+      { plainText: 'B', answer: 'B', correct: false },
+    ],
+    owner: profUser._id,
+    sessionId: runningSession._id,
+    courseId: course._id,
+    public: false,
+    approved: true,
+    tags: [],
+    sessionOptions: {
+      hidden: false,
+      stats: false,
+      correct: false,
+      points: 1,
+      maxAttempts: 1,
+      attemptWeights: [1],
+      attempts: [{ number: 1, closed: false }],
+    },
+  })
+  const studentSessionQuestionsHidden = await student.request(
+    'GET',
+    `/questions?sessionId=${runningSession._id}`
+  )
+  const hiddenVersion = studentSessionQuestionsHidden.find(
+    (entry) => entry._id === visibilityProbeQuestion._id
+  )
+  assert(hiddenVersion, 'Student should receive session question payload.')
+  assert(
+    (hiddenVersion.options || []).every(
+      (option) => !Object.prototype.hasOwnProperty.call(option, 'correct')
+    ),
+    'Student session payload should hide option.correct when not visible.'
+  )
+  assert(
+    !Object.prototype.hasOwnProperty.call(hiddenVersion, 'correctNumerical'),
+    'Student session payload should hide correctNumerical when not visible.'
+  )
+
+  await prof.request('PUT', `/questions/${visibilityProbeQuestion._id}`, {
+    sessionOptions: {
+      hidden: false,
+      stats: false,
+      correct: true,
+      points: 1,
+      maxAttempts: 1,
+      attemptWeights: [1],
+      attempts: [{ number: 1, closed: false }],
+    },
+  })
+
+  const studentSessionQuestionsVisible = await student.request(
+    'GET',
+    `/questions?sessionId=${runningSession._id}`
+  )
+  const visibleVersion = studentSessionQuestionsVisible.find(
+    (entry) => entry._id === visibilityProbeQuestion._id
+  )
+  assert(
+    Boolean(
+      visibleVersion &&
+        (visibleVersion.options || []).some((option) =>
+          Object.prototype.hasOwnProperty.call(option, 'correct')
+        )
+    ),
+    'Student session payload should include option.correct when instructor enables visibility.'
+  )
+  await prof.request('DELETE', `/questions/${visibilityProbeQuestion._id}`)
 
   const quizSession = sessions.find((s) => s.quiz)
   if (!quizSession) throw new Error('Seeded quiz session not found.')

@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-24`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `0fdfcc6`
+- Last verified baseline commit before this update: `76d381b`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -17,10 +17,10 @@
 | `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | pending |
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management persistence APIs and React parity landed in active batch; final behavior/test parity still pending | Agent-01, Agent-06 | pending |
 | `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Student/instructor lifecycle controls moved to in-progress parity implementation; full smoke/e2e validation pending | Agent-02, Agent-03 | pending |
-| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Authz tightening + full editor parity needed | Agent-01, Agent-05 | pending |
-| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Added session-wide self-response endpoint for quiz parity; broadened parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
+| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Role-filtered course/session visibility now in-progress; full editor + integration parity still pending | Agent-01, Agent-05 | pending |
+| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Session-wide self-response endpoint and additional smoke checks added; full parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
 | `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Instructor scoping + rich grading workflow parity pending | Agent-01, Agent-04 | pending |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Wildcard fan-out dedup + subscription auth + load validation pending | Agent-07 | pending |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Active batch adds subscribe/unsubscribe dedup + key-level resubscribe semantics; load validation still pending | Agent-07 | pending |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Inconsistent mappings still exist in some pages/flows | Agent-01, Agent-05 | pending |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | End-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | pending |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | pending |
@@ -134,6 +134,8 @@ Rebase protocol:
 | 2026-02-24 | `a096e40` | baseline | `docker compose build && docker compose up -d && ./seed-mock-db.sh && npm run test:migration-smoke` | pass (reported) | Baseline parity smoke reported passing before this planning update. |
 | 2026-02-24 | `working-tree` | Coordinator | `./launch-migration-agents.sh` | pass | Created 8 lane branches and worktrees under `.agent-worktrees` for parallel execution. |
 | 2026-02-24 | `working-tree` | Agent-02/03/06 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && npm run build --workspace=packages/shared` | pass | Includes active-batch updates for student session, run-session controls, and persisted group management APIs/UI. |
+| 2026-02-24 | `working-tree` | Coordinator | `git -C .agent-worktrees/agent-01-contracts-auth merge --ff-only origin/master` (and same for agent-02..08) | pass | Rebased all 8 lane worktrees to merged `master` baseline (`76d381b`) for next parallel tranche. |
+| 2026-02-24 | `working-tree` | Agent-01/07/08 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes `/api/questions` visibility hardening, realtime subscribe/unsubscribe dedup semantics, and smoke coverage expansion. |
 | 2026-02-24 | `pending` | Agent-01 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pending | To be recorded after Phase 1 patch merge. |
 | 2026-02-24 | `pending` | Agent-01/07/08 | `npm run build --workspace=packages/shared && npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Includes route auth hardening, enum usage cleanup, realtime route-key dedup, and index additions. |
 | 2026-02-24 | `pending` | Agent-08 | `QCLICKER_BASE_URL=http://localhost:3101 npm run test:migration-smoke` | pass | Verified against isolated server with `DISABLE_CSRF=true` for local smoke execution. |
