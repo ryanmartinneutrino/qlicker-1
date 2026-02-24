@@ -1,21 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Question, QuestionOption } from '@qlicker/shared'
+import type { Question } from '@qlicker/shared'
+import { QUESTION_TYPE, QUESTION_TYPE_LABELS } from '../constants/questionTypes'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
 import { CreateQuestionModal } from '../components/modals/CreateQuestionModal'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
-import { Editor } from '../components/Editor'
+import { QuestionEditItem } from '../components/QuestionEditItem'
 
-const QUESTION_TYPES: Record<number, string> = {
-  0: 'Multiple Choice',
-  1: 'Multi-Select',
-  2: 'True/False',
-  3: 'Short Answer',
-  4: 'Numerical',
-}
-
-const DEFAULT_OPTIONS: QuestionOption[] = [{ plainText: '' }, { plainText: '' }]
+const DEFAULT_OPTIONS = [{ plainText: 'Option A' }, { plainText: 'Option B' }]
 
 export default function QuestionsLibrary() {
   const { courseId } = useParams<{ courseId: string }>()
@@ -36,21 +29,6 @@ export default function QuestionsLibrary() {
     setQuestions(data)
   }, [data])
 
-  const patchQuestion = (questionId: string, partial: Partial<Question>) => {
-    setQuestions((prev) => prev.map((q) => (q._id === questionId ? { ...q, ...partial } : q)))
-  }
-
-  const patchOption = (questionId: string, index: number, plainText: string) => {
-    setQuestions((prev) =>
-      prev.map((q) => {
-        if (q._id !== questionId) return q
-        const options = [...(q.options || DEFAULT_OPTIONS)]
-        options[index] = { ...options[index], plainText, answer: plainText, content: plainText }
-        return { ...q, options }
-      })
-    )
-  }
-
   const handleDelete = async (questionId: string) => {
     if (!window.confirm('Delete this question?')) return
     try {
@@ -64,6 +42,9 @@ export default function QuestionsLibrary() {
 
   const handleSaveQuestion = async (question: Question) => {
     try {
+      const isChoiceType =
+        question.type === QUESTION_TYPE.MC || question.type === QUESTION_TYPE.MS || question.type === QUESTION_TYPE.TF
+
       const payload: Partial<Question> = {
         plainText: question.plainText,
         content: question.content || question.plainText,
@@ -71,16 +52,18 @@ export default function QuestionsLibrary() {
         public: question.public,
         solution: question.solution || '',
         solution_plainText: question.solution_plainText || question.solution || '',
-        options:
-          question.type <= 2
-            ? (question.options || DEFAULT_OPTIONS).map((option) => ({
-                ...option,
-                plainText: option.plainText || option.answer || '',
-                answer: option.answer || option.plainText || '',
-                content: option.content || option.plainText || option.answer || '',
-              }))
-            : [],
+        options: isChoiceType
+          ? (question.options || DEFAULT_OPTIONS).map((option) => ({
+              ...option,
+              plainText: option.plainText || option.answer || '',
+              answer: option.answer || option.plainText || '',
+              content: option.content || option.plainText || option.answer || '',
+            }))
+          : [],
+        correctNumerical: question.type === QUESTION_TYPE.NU ? Number(question.correctNumerical || 0) : 0,
+        toleranceNumerical: question.type === QUESTION_TYPE.NU ? Number(question.toleranceNumerical || 0) : 0,
       }
+
       const updated = await apiClient.put<Question>(`/questions/${question._id}`, payload)
       setQuestions((prev) => prev.map((q) => (q._id === updated._id ? { ...q, ...updated } : q)))
       setEditingId(null)
@@ -124,107 +107,35 @@ export default function QuestionsLibrary() {
           <p>No questions in this course library.</p>
         ) : (
           <div>
-            {questions.map((q, i) => {
-              const isEditing = editingId === q._id
-              const options = q.options && q.options.length > 0 ? q.options : DEFAULT_OPTIONS
-              return (
-                <div
-                  key={q._id}
-                  className="ql-list-item"
-                  style={{
-                    padding: '0.75rem',
-                    borderBottom: '1px solid #eee',
+            {questions.map((question, index) => (
+              <div
+                key={question._id}
+                className="ql-list-item"
+                style={{
+                  padding: '0.75rem',
+                  borderBottom: '1px solid #eee',
+                }}
+              >
+                <QuestionEditItem
+                  question={{
+                    ...question,
+                    options: question.options || [],
+                    type: question.type,
                   }}
-                >
-                  {isEditing ? (
-                    <div style={{ display: 'grid', gap: '0.5rem' }}>
-                      <Editor
-                        value={q.content || q.plainText || ''}
-                        minHeight={110}
-                        onChange={(html, plain) => patchQuestion(q._id || '', { content: html, plainText: plain })}
-                      />
-                      <select
-                        className="form-control"
-                        style={{ maxWidth: 260 }}
-                        value={q.type}
-                        onChange={(e) => patchQuestion(q._id || '', { type: Number(e.target.value) })}
-                      >
-                        {Object.entries(QUESTION_TYPES).map(([value, label]) => (
-                          <option key={value} value={value}>{label}</option>
-                        ))}
-                      </select>
-                      {q.type <= 2 && (
-                        <div style={{ display: 'grid', gap: '0.4rem' }}>
-                          {options.map((option, optionIndex) => (
-                            <input
-                              key={optionIndex}
-                              className="form-control"
-                              placeholder={`Option ${optionIndex + 1}`}
-                              value={option.plainText || option.answer || ''}
-                              onChange={(e) => patchOption(q._id || '', optionIndex, e.target.value)}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <Editor
-                        value={q.solution || ''}
-                        minHeight={80}
-                        placeholder="Solution (optional)"
-                        onChange={(html, plain) => patchQuestion(q._id || '', { solution: html, solution_plainText: plain })}
-                      />
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(q.public)}
-                          onChange={(e) => patchQuestion(q._id || '', { public: e.target.checked })}
-                        />
-                        {' '}Public
-                      </label>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <button className="btn btn-primary btn-sm" onClick={() => handleSaveQuestion(q)}>Save</button>
-                        <button className="btn btn-default btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-                      <div>
-                        <strong>Q{i + 1}.</strong>{' '}
-                        {q.plainText
-                          ? q.plainText.substring(0, 120) + (q.plainText.length > 120 ? '...' : '')
-                          : 'Untitled Question'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span
-                          style={{
-                            padding: '0.25rem 0.5rem',
-                            backgroundColor: '#f0f0f0',
-                            borderRadius: '4px',
-                            fontSize: '0.85em',
-                          }}
-                        >
-                          {QUESTION_TYPES[q.type] ?? `Type ${q.type}`}
-                        </span>
-                        {q.public && (
-                          <span
-                            style={{
-                              padding: '0.25rem 0.5rem',
-                              backgroundColor: '#30B0E7',
-                              color: '#fff',
-                              borderRadius: '4px',
-                              fontSize: '0.85em',
-                            }}
-                          >
-                            Public
-                          </span>
-                        )}
-                        <button className="btn btn-default btn-sm" onClick={() => setEditingId(q._id || null)}>Edit</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(q._id || '')}>Delete</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                  index={index}
+                  isEditing={editingId === question._id}
+                  onStartEdit={() => setEditingId(question._id || null)}
+                  onCancelEdit={() => setEditingId(null)}
+                  onDelete={() => handleDelete(question._id || '')}
+                  onSave={handleSaveQuestion}
+                />
+                {editingId !== question._id && (
+                  <div style={{ marginTop: '0.35rem', fontSize: '0.85em', opacity: 0.8 }}>
+                    {QUESTION_TYPE_LABELS[question.type] ?? `Type ${question.type}`}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

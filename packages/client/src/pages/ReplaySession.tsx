@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import type { Session as SessionType, Question } from '@qlicker/shared'
+import type { Session as SessionType, Question, Response } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useRealtimeCollection } from '../hooks/useRealtimeCollection'
-import { sanitizeHtml } from '../utils/sanitizeHtml'
+import { QuestionDisplay } from '../components/QuestionDisplay'
 
 export default function ReplaySession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -12,6 +12,8 @@ export default function ReplaySession() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [sessionError, setSessionError] = useState<string | null>(null)
+  const [showStats, setShowStats] = useState(false)
+  const [responses, setResponses] = useState<Response[]>([])
   const {
     data: questions,
     loading: questionsLoading,
@@ -34,12 +36,48 @@ export default function ReplaySession() {
       .finally(() => setSessionLoading(false))
   }, [sessionId])
 
+  useEffect(() => {
+    const questionId = questions[currentIndex]?._id
+    if (!questionId) {
+      setResponses([])
+      return
+    }
+    apiClient
+      .get<Response[]>(`/responses?questionId=${questionId}`)
+      .then((rows) => setResponses(rows))
+      .catch(() => setResponses([]))
+  }, [currentIndex, questions])
+
   const error = sessionError || questionsError
   if (sessionLoading || questionsLoading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
   if (!session) return <div className="page">Session not found</div>
 
-  const currentQuestion = questions[currentIndex] || null
+  const orderedQuestions = session.questions?.length
+    ? [...questions].sort(
+        (a, b) =>
+          (session.questions?.indexOf(a._id || '') ?? Number.MAX_SAFE_INTEGER) -
+          (session.questions?.indexOf(b._id || '') ?? Number.MAX_SAFE_INTEGER)
+      )
+    : questions
+  const currentQuestion = orderedQuestions[currentIndex] || null
+  const currentAttempt = currentQuestion?.sessionOptions?.attempts?.slice(-1)[0]?.number || 1
+  const attemptResponses = responses.filter((row) => Number(row.attempt) === currentAttempt)
+  const responseStats =
+    currentQuestion && currentQuestion.options?.length
+      ? currentQuestion.options.map((opt, index) => {
+          const answer = opt.answer || opt.plainText || opt.content || String.fromCharCode(65 + index)
+          const selected = attemptResponses.filter((row) => {
+            const normalized = String(answer).toLowerCase()
+            if (Array.isArray(row.answer)) {
+              return row.answer.map((value) => String(value).toLowerCase()).includes(normalized)
+            }
+            return String(row.answer).toLowerCase() === normalized
+          }).length
+          const pct = attemptResponses.length > 0 ? (selected / attemptResponses.length) * 100 : 0
+          return { answer, pct }
+        })
+      : []
 
   return (
     <div className="page">
@@ -52,50 +90,30 @@ export default function ReplaySession() {
           Back to Course
         </Link>
 
-        {questions.length === 0 ? (
+        {orderedQuestions.length === 0 ? (
           <p>No questions in this session to replay.</p>
         ) : (
           <>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowStats((prev) => !prev)}>
+                {showStats ? 'Hide Stats' : 'Show Stats'}
+              </button>
+              <div style={{ alignSelf: 'center' }}>Responses in attempt {currentAttempt}: {attemptResponses.length}</div>
+            </div>
             <div className="ql-card">
               <div className="ql-card-content">
                 <h3>
-                  Question {currentIndex + 1} of {questions.length}
+                  Question {currentIndex + 1} of {orderedQuestions.length}
                 </h3>
                 {currentQuestion && (
-                  <>
-                    <div
-                      className="ql-question-content"
-                      dangerouslySetInnerHTML={{
-                        __html: sanitizeHtml(currentQuestion.content || currentQuestion.plainText || ''),
-                      }}
-                    />
-                    {currentQuestion.options && currentQuestion.options.length > 0 && (
-                      <div style={{ marginTop: '1rem' }}>
-                        {currentQuestion.options.map((opt, oi) => (
-                          <div
-                            key={oi}
-                            style={{
-                              padding: '0.75rem',
-                              margin: '0.5rem 0',
-                              border: '1px solid #ddd',
-                              borderRadius: '4px',
-                              backgroundColor: opt.correct ? '#e8f5e9' : 'transparent',
-                            }}
-                          >
-                            <strong>{String.fromCharCode(65 + oi)}.</strong>{' '}
-                            {opt.plainText || opt.content || opt.answer || `Option ${oi + 1}`}
-                            {opt.correct && <span style={{ color: '#5ACE5F', marginLeft: '0.5rem' }}>✓ Correct</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {currentQuestion.solution && (
-                      <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-                        <strong>Solution:</strong>
-                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(currentQuestion.solution) }} />
-                      </div>
-                    )}
-                  </>
+                  <QuestionDisplay
+                    question={currentQuestion}
+                    readonly
+                    showCorrect
+                    forReview
+                    responseStats={responseStats}
+                    showStatsOverride={showStats}
+                  />
                 )}
               </div>
             </div>
@@ -104,14 +122,20 @@ export default function ReplaySession() {
               <button
                 className="btn btn-secondary"
                 disabled={currentIndex === 0}
-                onClick={() => setCurrentIndex((i) => i - 1)}
+                onClick={() => {
+                  setCurrentIndex((i) => i - 1)
+                  setShowStats(false)
+                }}
               >
                 Previous
               </button>
               <button
                 className="btn btn-secondary"
-                disabled={currentIndex === questions.length - 1}
-                onClick={() => setCurrentIndex((i) => i + 1)}
+                disabled={currentIndex === orderedQuestions.length - 1}
+                onClick={() => {
+                  setCurrentIndex((i) => i + 1)
+                  setShowStats(false)
+                }}
               >
                 Next
               </button>

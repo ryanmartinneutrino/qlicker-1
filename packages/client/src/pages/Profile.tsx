@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { apiClient } from '../api/client'
 import { ChangeEmailModal } from '../components/modals/ChangeEmailModal'
 import { ChangePasswordModal } from '../components/modals/ChangePasswordModal'
+import { DragAndDropArea } from '../components/DragAndDropArea'
 
 export default function Profile() {
   const { user, loading } = useAuth()
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const [changingName, setChangingName] = useState(false)
   const [firstName, setFirstName] = useState('')
@@ -19,6 +19,7 @@ export default function Profile() {
   const [changingEmail, setChangingEmail] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadActive, setUploadActive] = useState(false)
 
   if (loading || !user) return <div className="ql-subs-loading">Loading…</div>
 
@@ -89,7 +90,6 @@ export default function Profile() {
       alert('Error: ' + (err instanceof Error ? err.message : 'Could not upload image'))
     } finally {
       setUploadingImage(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
@@ -120,29 +120,53 @@ export default function Profile() {
 
             <div className="ql-card-content">
               <div className="ql-profile-image-container">
-                <div
-                  className="ql-profile-image"
-                  style={{ backgroundImage: profileImage ? `url(${profileImage})` : undefined }}
-                >
-                  &nbsp;
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) void handleUploadImage(file)
-                  }}
-                />
-                <button
-                  className="ql-image-upload-new-button btn btn-default btn-sm"
-                  disabled={uploadingImage}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploadingImage ? 'Uploading...' : 'Upload New'}
-                </button>
+                {!uploadActive ? (
+                  <div>
+                    <div
+                      className="ql-profile-image"
+                      style={{ backgroundImage: profileImage ? `url(${profileImage})` : undefined }}
+                    >
+                      &nbsp;
+                      <div
+                        className="ql-image-upload-new-button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setUploadActive(true)
+                        }}
+                      >
+                        Upload new image
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <DragAndDropArea
+                      onDrop={handleUploadImage}
+                      acceptedFiles={['image/jpeg', 'image/png', 'image/gif']}
+                      maxFiles={1}
+                      disabled={uploadingImage}
+                      className="ql-profile-image-droparea dropzone"
+                    >
+                      <div className="dz-default dz-message">
+                        <span className="glyphicon glyphicon-camera" aria-hidden="true" />
+                        {' '}
+                        {uploadingImage ? 'Uploading...' : 'Drag and Drop an image to upload'}
+                      </div>
+                    </DragAndDropArea>
+                    <div className="btn-group btn-group-justified" role="group">
+                      <a
+                        href="#"
+                        className="btn btn-default"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setUploadActive(false)
+                        }}
+                      >
+                        Cancel
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {!isSSOSession && (
