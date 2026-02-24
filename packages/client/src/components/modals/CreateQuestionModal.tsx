@@ -32,6 +32,55 @@ const trueFalseOptions: QuestionOption[] = [
   { plainText: 'False', content: 'False', answer: 'False', correct: false },
 ]
 
+function normalizeChoiceOptions(options: QuestionOption[]): QuestionOption[] {
+  return options.map((option, index) => {
+    const text = (option.plainText || option.answer || option.content || '').trim()
+    const fallback = text || `Option ${String.fromCharCode(65 + index)}`
+    return {
+      ...option,
+      plainText: fallback,
+      answer: fallback,
+      content: option.content?.trim() ? option.content : fallback,
+      correct: Boolean(option.correct),
+    }
+  })
+}
+
+function validateQuestionDraft({
+  plainText,
+  type,
+  options,
+  correctNumerical,
+  toleranceNumerical,
+}: {
+  plainText: string
+  type: QuestionTypeValue
+  options: QuestionOption[]
+  correctNumerical: number
+  toleranceNumerical: number
+}): string | null {
+  if (!plainText.trim()) return 'Question text is required.'
+
+  if (type === QUESTION_TYPE.MC || type === QUESTION_TYPE.MS || type === QUESTION_TYPE.TF) {
+    const nonEmpty = options.filter((option) => (option.plainText || option.answer || '').trim().length > 0)
+    if (nonEmpty.length < 2) return 'Choice questions require at least two options.'
+    const nCorrect = nonEmpty.filter((option) => option.correct).length
+    if (type === QUESTION_TYPE.MS && nCorrect < 1) return 'Multi-select questions require at least one correct option.'
+    if ((type === QUESTION_TYPE.MC || type === QUESTION_TYPE.TF) && nCorrect !== 1) {
+      return 'Multiple-choice and true/false questions require exactly one correct option.'
+    }
+  }
+
+  if (type === QUESTION_TYPE.NU) {
+    if (!Number.isFinite(correctNumerical)) return 'Numerical questions require a valid correct value.'
+    if (!Number.isFinite(toleranceNumerical) || toleranceNumerical < 0) {
+      return 'Numerical tolerance must be a non-negative number.'
+    }
+  }
+
+  return null
+}
+
 export function CreateQuestionModal({
   courseId,
   userId,
@@ -69,16 +118,20 @@ export function CreateQuestionModal({
 
   const sanitizedOptions = useMemo(() => {
     if (!isChoiceType) return []
-    return options.map((option) => {
-      const text = option.plainText || option.answer || ''
-      return {
-        ...option,
-        plainText: text,
-        answer: text,
-        content: option.content || text,
-      }
-    })
+    return normalizeChoiceOptions(options)
   }, [isChoiceType, options])
+
+  const validationError = useMemo(
+    () =>
+      validateQuestionDraft({
+        plainText,
+        type,
+        options: sanitizedOptions,
+        correctNumerical,
+        toleranceNumerical,
+      }),
+    [plainText, type, sanitizedOptions, correctNumerical, toleranceNumerical]
+  )
 
   const updateOption = (index: number, value: string) => {
     setOptions((prev) =>
@@ -99,15 +152,35 @@ export function CreateQuestionModal({
   }
 
   const addOption = () => {
-    setOptions((prev) => [...prev, { plainText: `Option ${String.fromCharCode(65 + prev.length)}` }])
+    setOptions((prev) => [
+      ...prev,
+      {
+        plainText: `Option ${String.fromCharCode(65 + prev.length)}`,
+        answer: `Option ${String.fromCharCode(65 + prev.length)}`,
+        content: `Option ${String.fromCharCode(65 + prev.length)}`,
+        correct: false,
+      },
+    ])
   }
 
   const removeOption = (index: number) => {
-    setOptions((prev) => prev.filter((_, i) => i !== index))
+    setOptions((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      if (type === QUESTION_TYPE.MC || type === QUESTION_TYPE.TF) {
+        if (!next.some((option) => option.correct) && next.length > 0) {
+          next[0] = { ...next[0], correct: true }
+        }
+      }
+      return next
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
     setSubmitting(true)
     setError(null)
     try {
@@ -226,10 +299,17 @@ export function CreateQuestionModal({
           )}
 
           {error && <div className="alert alert-danger" style={{ marginTop: '12px' }}>{error}</div>}
+          {!error && validationError && (
+            <div className="alert alert-warning" style={{ marginTop: '12px' }}>
+              {validationError}
+            </div>
+          )}
 
           <div className="ql-buttongroup">
             <button type="button" className="btn btn-default" onClick={done} disabled={submitting}>Cancel</button>
-            <button type="submit" className="btn btn-default" disabled={submitting}>{submitting ? 'Submitting...' : 'Submit Question'}</button>
+            <button type="submit" className="btn btn-default" disabled={submitting || Boolean(validationError)}>
+              {submitting ? 'Submitting...' : 'Submit Question'}
+            </button>
           </div>
         </form>
       </div>
