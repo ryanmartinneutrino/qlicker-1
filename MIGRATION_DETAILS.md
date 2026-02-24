@@ -50,8 +50,8 @@
 | MIG-040 | Expand migration smoke suite for critical parity paths | Agent-08 | MIG-020..024 | Smoke suite covers core lifecycle for all roles | in-progress |
 | MIG-041 | Add server integration tests for authz + grading/response semantics | Agent-08 | MIG-012..014 | Integration suite green in CI/local docker | in-progress |
 | MIG-042 | Add client e2e parity tests for student/prof/admin | Agent-08 | MIG-020..024 | E2E suite verifies top workflows | pending |
-| MIG-043 | Execute manual parity checklist vs Meteor behaviors | Agent-08 | MIG-040..042 | Signed checklist attached | pending |
-| MIG-044 | Final cutover checklist + rollback runbook | Agent-08 | MIG-043 | Decision-ready cutover/runback docs | pending |
+| MIG-043 | Execute manual parity checklist vs Meteor behaviors | Agent-08 | MIG-040..042 | Signed checklist attached | in-progress |
+| MIG-044 | Final cutover checklist + rollback runbook | Agent-08 | MIG-043 | Decision-ready cutover/runback docs | in-progress |
 
 ## Agent Packets
 
@@ -147,6 +147,7 @@ Rebase protocol:
 | 2026-02-24 | `working-tree` | Agent-07 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Fixes realtime response privacy correctness when `sessionOptions.stats` toggles during active subscriptions. |
 | 2026-02-24 | `working-tree` | Agent-08 | `node --check scripts/migration-authz-integration.mjs` | pass | Added dedicated integration harness for route-level authz/parity checks (`npm run test:migration-authz`). |
 | 2026-02-24 | `working-tree` | Agent-07 | `node --check scripts/migration-load-check.mjs` | pass | Added repeatable load/perf harness with p95/error-rate thresholds (`npm run test:migration-load`). |
+| 2026-02-24 | `working-tree` | Agent-08 | `ls docs/migration-manual-parity-checklist.md docs/migration-cutover-runbook.md` | pass | Added manual parity checklist and cutover/rollback runbook docs for final release gate sign-off. |
 
 ## Risks and Blockers
 

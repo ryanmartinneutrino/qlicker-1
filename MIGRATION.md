@@ -15,7 +15,7 @@
 - `Agent-05 Question Editor`: question library/editor parity (library/public/student queue flows and copy/approve/public controls landed; final parity checks pending).
 - `Agent-06 Groups/Video`: group categories + video workflow parity.
 - `Agent-07 Realtime/Perf`: realtime routing correctness + perf hardening (question channel sanitization/invalidation hardening, dynamic response-stats privacy refresh, and load harness `npm run test:migration-load` landed).
-- `Agent-08 QA/Parity`: smoke/e2e/manual parity + cutover checklist (added dedicated authz integration harness: `npm run test:migration-authz`).
+- `Agent-08 QA/Parity`: smoke/e2e/manual parity + cutover checklist (added authz harness `npm run test:migration-authz` plus manual checklist/runbook docs).
 
 ## Release Gate Summary
 - Auth + CSRF parity: `in-progress`
@@ -25,7 +25,7 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Close remaining run-session/grading/editor parity deltas (`MIG-021`, `MIG-022`, `MIG-023`) and then run the expanded smoke/integration tranche (`MIG-040`, `MIG-041`) in Docker/CI with latest `master`.
+Close remaining run-session/grading/editor parity deltas (`MIG-021`, `MIG-022`, `MIG-023`) and execute runtime verification (`MIG-040`, `MIG-041`, `MIG-043`, `MIG-044`) in Docker/CI with latest `master`.
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.
