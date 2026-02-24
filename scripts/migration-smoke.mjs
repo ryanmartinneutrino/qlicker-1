@@ -339,6 +339,18 @@ async function run() {
   )
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
   assert(!createdCourseQuestions.some((q) => q._id === copiedQuestionA._id), 'Deleted session copy still appears in course list.')
+  const deletedSession = await prof.request('DELETE', `/sessions/${createdSession._id}`)
+  assert(deletedSession.success === true, 'Session delete endpoint did not report success.')
+  const createdCourseSessionsAfterDelete = await prof.request('GET', `/sessions?courseId=${createdCourse._id}`)
+  assert(
+    !createdCourseSessionsAfterDelete.some((entry) => entry._id === createdSession._id),
+    'Deleted session still appears in course session list.'
+  )
+  const createdCourseDocAfterDelete = await prof.request('GET', `/courses/${createdCourse._id}`)
+  assert(
+    !(createdCourseDocAfterDelete.sessions || []).includes(createdSession._id),
+    'Deleted session id still appears in course.sessions.'
+  )
 
   const runningSession = sessions.find((entry) => !entry.quiz && entry.status === 'running')
   if (!runningSession) throw new Error('Expected seeded running interactive session.')
