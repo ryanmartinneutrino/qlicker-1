@@ -44,14 +44,33 @@ export default function SessionResults() {
       .then(async ([s, questions]) => {
         setSession(s)
 
+        const questionById = new Map(
+          questions
+            .filter((question): question is Question & { _id: string } => Boolean(question._id))
+            .map((question) => [question._id, question])
+        )
+        const orderedQuestions =
+          Array.isArray(s.questions) && s.questions.length > 0
+            ? s.questions
+                .map((id) => (typeof id === 'string' ? questionById.get(id) : undefined))
+                .filter((question): question is Question & { _id: string } => Boolean(question))
+            : questions.filter((question): question is Question & { _id: string } => Boolean(question._id))
+
+        const responseRows = await Promise.all(
+          orderedQuestions.map(async (question) => {
+            try {
+              const responses = await apiClient.get<QResponse[]>(`/responses?questionId=${question._id}`)
+              return [question._id, responses] as const
+            } catch {
+              return [question._id, [] as QResponse[]] as const
+            }
+          })
+        )
+        const responsesByQuestion = new Map<string, QResponse[]>(responseRows)
+
         const questionStats: QuestionStats[] = []
-        for (const q of questions) {
-          let responses: QResponse[] = []
-          try {
-            responses = await apiClient.get<QResponse[]>(`/responses?questionId=${q._id}`)
-          } catch {
-            responses = []
-          }
+        for (const q of orderedQuestions) {
+          const responses = responsesByQuestion.get(q._id) || []
 
           const optionCounts: Record<string, number> = {}
           let correctCount = 0
@@ -75,7 +94,7 @@ export default function SessionResults() {
           }
 
           questionStats.push({
-            questionId: q._id!,
+            questionId: q._id,
             plainText: q.plainText || 'Question',
             content: q.content || q.plainText || '',
             type: q.type,
