@@ -14,7 +14,7 @@
 - `Agent-04 Grading`: instructor grading workflow parity (group/category filtering + bulk assignment landed; remaining parity checks pending).
 - `Agent-05 Question Editor`: question library/editor parity (library/public/student queue flows and copy/approve/public controls landed; final parity checks pending).
 - `Agent-06 Groups/Video`: group categories + video workflow parity.
-- `Agent-07 Realtime/Perf`: realtime routing correctness + perf hardening (question channel sanitization/invalidation hardening landed).
+- `Agent-07 Realtime/Perf`: realtime routing correctness + perf hardening (question channel sanitization/invalidation hardening and dynamic response-stats privacy refresh landed).
 - `Agent-08 QA/Parity`: smoke/e2e/manual parity + cutover checklist.
 
 ## Release Gate Summary
