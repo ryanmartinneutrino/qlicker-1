@@ -44,12 +44,17 @@ async function resolveQuestionContext(question: Pick<Question, 'sessionId' | 'co
   }
 }
 
-/** GET /api/responses?questionId=... — get responses for a question */
+/** GET /api/responses?questionId=...&attempt=... — get responses for a question */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
-    const { questionId } = req.query as { questionId?: string }
+    const { questionId, attempt: rawAttempt } = req.query as { questionId?: string; attempt?: string }
     if (!questionId) return res.status(400).json({ error: 'questionId required.' })
+    const parsedAttempt = Number(rawAttempt)
+    const attempt =
+      rawAttempt !== undefined && Number.isFinite(parsedAttempt) && parsedAttempt >= 1
+        ? parsedAttempt
+        : undefined
 
     const responses = getResponses()
     const questions = getQuestions()
@@ -67,14 +72,18 @@ router.get('/', requireAuth, async (req, res, next) => {
     }
 
     if (isAdmin(user) || access.isInstructor) {
-      const result = await responses.find({ questionId }).toArray()
+      const result = await responses
+        .find({ questionId, ...(attempt ? { attempt } : {}) } as Parameters<typeof responses.find>[0])
+        .toArray()
       return res.json(result)
     }
 
     // Students: show own response, and if stats is enabled, show others without studentUserId
     const statsEnabled = question.sessionOptions?.stats ?? false
     if (statsEnabled) {
-      const all = await responses.find({ questionId }).toArray()
+      const all = await responses
+        .find({ questionId, ...(attempt ? { attempt } : {}) } as Parameters<typeof responses.find>[0])
+        .toArray()
       const sanitized = all.map((r) => {
         if (r.studentUserId === user._id) return r
         const { studentUserId: _omit, ...rest } = r
@@ -83,7 +92,9 @@ router.get('/', requireAuth, async (req, res, next) => {
       return res.json(sanitized)
     }
 
-    const own = await responses.find({ questionId, studentUserId: user._id }).toArray()
+    const own = await responses
+      .find({ questionId, studentUserId: user._id, ...(attempt ? { attempt } : {}) } as Parameters<typeof responses.find>[0])
+      .toArray()
     res.json(own)
   } catch (err) {
     next(err)

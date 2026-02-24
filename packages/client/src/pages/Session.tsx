@@ -136,7 +136,7 @@ export default function Session() {
     error: responsesError,
     refetch: refetchResponses,
   } = useRealtimeCollection<QuestionResponse>({
-    fetchPath: `/responses?questionId=${currentQuestion?._id || ''}`,
+    fetchPath: `/responses?questionId=${currentQuestion?._id || ''}&attempt=${currentQuestionAttempt}`,
     subscribeEvent: 'subscribe:responses',
     subscribePayload: { questionId: currentQuestion?._id || '' },
     changeEvent: 'responses:change',

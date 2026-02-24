@@ -97,13 +97,14 @@ export default function RunSession() {
   }, [questions, session])
 
   const currentQuestion = orderedQuestions[currentIndex] || null
+  const activeAttemptNumber = currentAttempt(currentQuestion).number
 
   const {
     data: responses,
     loading: responsesLoading,
     error: responsesError,
   } = useRealtimeCollection<QuestionResponse>({
-    fetchPath: `/responses?questionId=${currentQuestion?._id || ''}`,
+    fetchPath: `/responses?questionId=${currentQuestion?._id || ''}&attempt=${activeAttemptNumber}`,
     subscribeEvent: 'subscribe:responses',
     subscribePayload: { questionId: currentQuestion?._id || '' },
     changeEvent: 'responses:change',
