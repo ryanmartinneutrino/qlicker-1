@@ -46,6 +46,9 @@ export default function QuestionsLibrary() {
   const [creatingQuestion, setCreatingQuestion] = useState(false)
   const [busyQuestionId, setBusyQuestionId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'unapproved' | 'public' | 'mine'>('all')
 
   useEffect(() => {
     if (!courseId) return
@@ -67,6 +70,9 @@ export default function QuestionsLibrary() {
     setEditingId(null)
     setPreviewId(null)
     setActionError(null)
+    setSearchQuery('')
+    setTypeFilter('all')
+    setStatusFilter('all')
   }, [selectedLibrary])
 
   const isAdmin = Boolean(user?.profile.roles.includes('admin'))
@@ -111,6 +117,21 @@ export default function QuestionsLibrary() {
     if (!question._id) return false
     return true
   }
+
+  const filteredQuestions = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return questions.filter((question) => {
+      if (typeFilter !== 'all' && String(question.type) !== typeFilter) return false
+      if (statusFilter === 'approved' && !question.approved) return false
+      if (statusFilter === 'unapproved' && question.approved) return false
+      if (statusFilter === 'public' && !question.public) return false
+      if (statusFilter === 'mine' && !ownsQuestion(question)) return false
+
+      if (!query) return true
+      const text = `${question.plainText || ''} ${question.content || ''} ${question.solution || ''}`.toLowerCase()
+      return text.includes(query)
+    })
+  }, [questions, searchQuery, typeFilter, statusFilter, ownsQuestion])
 
   const handleDelete = async (questionId: string) => {
     if (!window.confirm('Delete this question?')) return
@@ -274,6 +295,55 @@ export default function QuestionsLibrary() {
           </div>
         )}
 
+        {questions.length > 0 && (
+          <div className="ql-card" style={{ marginBottom: '0.75rem' }}>
+            <div className="ql-card-content" style={{ display: 'grid', gap: '0.5rem' }}>
+              <input
+                className="form-control"
+                type="text"
+                placeholder="Search question text or solution"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: '1fr 1fr 1fr' }}>
+                <select className="form-control" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                  <option value="all">All Types</option>
+                  {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="form-control"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="approved">Approved</option>
+                  <option value="unapproved">Unapproved</option>
+                  <option value="public">Public</option>
+                  <option value="mine">Owned by Me</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-default"
+                  onClick={() => {
+                    setSearchQuery('')
+                    setTypeFilter('all')
+                    setStatusFilter('all')
+                  }}
+                >
+                  Clear Filters
+                </button>
+              </div>
+              <div>
+                Showing <strong>{filteredQuestions.length}</strong> of {questions.length} questions
+              </div>
+            </div>
+          </div>
+        )}
+
         {creatingQuestion && user?._id && (
           <CreateQuestionModal
             courseId={courseId!}
@@ -296,9 +366,11 @@ export default function QuestionsLibrary() {
                 ? 'No student submissions are waiting for approval.'
                 : 'No questions in this library yet.'}
           </p>
+        ) : filteredQuestions.length === 0 ? (
+          <p>No questions match the active filters.</p>
         ) : (
           <div>
-            {questions.map((question, index) => (
+            {filteredQuestions.map((question, index) => (
               // Keeping each question self-contained limits edit-state conflicts when
               // realtime updates reorder filtered libraries.
               <div
