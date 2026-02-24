@@ -4,7 +4,7 @@
 - Phase 0 (coordination/docs baseline): `in-progress`
 - Phase 1 (contract + security parity): `in-progress`
 - Phase 2 (feature parity lanes): `not started`
-- Phase 3 (reactivity + performance hardening): `not started`
+- Phase 3 (reactivity + performance hardening): `in-progress`
 - Phase 4 (verification + cutover readiness): `not started`
 
 ## Active Lanes
@@ -25,7 +25,7 @@
 - Full smoke/integration/e2e/load verification: `pending`
 
 ## Next Milestone
-Complete Phase 1 blockers (`MIG-010` through `MIG-014`) on `master`, then execute Phase 2 in parallel using the new 8-agent topology.
+Close remaining Phase 1 contract/auth parity gaps (`MIG-010` through `MIG-013`) and continue Phase 3 realtime/perf validation (`MIG-030..033`) before opening the Phase 2 feature lanes.
 
 ## Reference
 See `MIGRATION_DETAILS.md` for parity matrix, detailed backlog, merge protocol, agent packet boundaries, and verification log.

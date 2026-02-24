@@ -1,9 +1,14 @@
 import type { Request, Response, NextFunction } from 'express'
-import { getCourses } from '../collections/courses'
-import { getSessions } from '../collections/sessions'
-import { getGrades } from '../collections/grades'
 import type { User } from '@qlicker/shared'
 import { UserRole } from '@qlicker/shared'
+import {
+  courseAccessForUser,
+  isAdmin,
+  resolveCourseIdFromGrade,
+  resolveCourseIdFromQuestion,
+  resolveCourseIdFromResponse,
+  resolveCourseIdFromSession,
+} from './course-access'
 
 /** Require authenticated session */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -56,40 +61,30 @@ export async function requireInstructor(
     return
   }
 
-  if (user.profile.roles.includes(UserRole.admin)) {
+  if (isAdmin(user)) {
     next()
     return
   }
 
   try {
     let courseId = req.params.courseId || req.body?.courseId
-    if (!courseId && req.params.sessionId) {
-      const session = await getSessions().findOne(
-        { _id: req.params.sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0]
-      )
-      courseId = session?.courseId
-    }
-    if (!courseId && req.params.gradeId) {
-      const grade = await getGrades().findOne(
-        { _id: req.params.gradeId } as Parameters<ReturnType<typeof getGrades>['findOne']>[0]
-      )
-      courseId = grade?.courseId
-    }
+    if (!courseId) courseId = await resolveCourseIdFromSession(req.params.sessionId)
+    if (!courseId) courseId = await resolveCourseIdFromGrade(req.params.gradeId)
+    if (!courseId) courseId = await resolveCourseIdFromQuestion(req.params.questionId)
+    if (!courseId) courseId = await resolveCourseIdFromResponse(req.params.responseId)
 
     if (!courseId) {
       res.status(400).json({ error: 'courseId required.' })
       return
     }
 
-    const courses = getCourses()
-    const course = await courses.findOne({ _id: courseId } as Parameters<typeof courses.findOne>[0])
-    if (!course) {
+    const access = await courseAccessForUser(user, courseId)
+    if (!access.exists) {
       res.status(404).json({ error: 'Course not found.' })
       return
     }
 
-    const isInstructor = course.instructors?.includes(user._id ?? '') ?? false
-    if (!isInstructor) {
+    if (!access.canManage) {
       res.status(403).json({ error: 'Forbidden.' })
       return
     }

@@ -7,6 +7,7 @@ import type { User } from '@qlicker/shared'
 import { sessionSchema } from '@qlicker/shared'
 import { getResponses } from '../collections/responses'
 import { getUsers } from '../collections/users'
+import { canUserAccessCourse, courseAccessForUser, isAdmin } from '../auth/course-access'
 
 const router = Router()
 
@@ -55,11 +56,40 @@ function adjustQuizWindow(
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
     const { courseId } = req.query as { courseId?: string }
     const sessions = getSessions()
-    const query: Record<string, unknown> = {}
-    if (courseId) query.courseId = courseId
-    const result = await sessions.find(query).toArray()
+
+    if (courseId) {
+      const allowed = await canUserAccessCourse(user, courseId)
+      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+      const result = await sessions.find({ courseId } as Parameters<typeof sessions.find>[0]).toArray()
+      return res.json(result)
+    }
+
+    if (isAdmin(user)) {
+      const result = await sessions.find({}).toArray()
+      return res.json(result)
+    }
+
+    const courseIds = await getCourses()
+      .find(
+        {
+          $or: [{ owner: user._id }, { instructors: user._id }, { students: user._id }],
+        } as Parameters<ReturnType<typeof getCourses>['find']>[0],
+        { projection: { _id: 1 } }
+      )
+      .toArray()
+
+    const allowedIds = courseIds
+      .map((course) => course._id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+    if (allowedIds.length === 0) return res.json([])
+
+    const result = await sessions
+      .find({ courseId: { $in: allowedIds } } as Parameters<typeof sessions.find>[0])
+      .toArray()
     res.json(result)
   } catch (err) {
     next(err)
@@ -69,9 +99,14 @@ router.get('/', requireAuth, async (req, res, next) => {
 /** GET /api/sessions/:sessionId */
 router.get('/:sessionId', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const allowed = await canUserAccessCourse(user, session.courseId)
+    if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+
     res.json(session)
   } catch (err) {
     next(err)
@@ -208,6 +243,13 @@ router.post('/:sessionId/submit', requireAuth, async (req, res, next) => {
     const sessions = getSessions()
     const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const access = await courseAccessForUser(user, session.courseId)
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
+    if (!access.isStudent && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Only enrolled students can submit quizzes.' })
+    }
+
     if (!session.quiz) return res.status(400).json({ error: 'Not a quiz session.' })
     if (!quizIsActive(session, user._id)) return res.status(400).json({ error: 'Quiz is closed.' })
     if (!(session.joined || []).includes(user._id ?? '')) {
@@ -257,6 +299,13 @@ router.post('/:sessionId/join', requireAuth, async (req, res, next) => {
     const sessions = getSessions()
     const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const access = await courseAccessForUser(user, session.courseId)
+    if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
+    if (!access.isStudent && !isAdmin(user)) {
+      return res.status(403).json({ error: 'Only enrolled students can join sessions.' })
+    }
+
     await sessions.updateOne(
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $addToSet: { joined: user._id } }

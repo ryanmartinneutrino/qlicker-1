@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { getGrades } from '../collections/grades'
 import { requireAuth, requireInstructor } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
-import { gradeSchema } from '@qlicker/shared'
+import { gradeSchema, QuestionType } from '@qlicker/shared'
 import { getSessions } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
 import { getQuestions } from '../collections/questions'
@@ -10,6 +10,12 @@ import { getResponses } from '../collections/responses'
 import type { Grade, Mark, Question, Response } from '@qlicker/shared'
 import type { WithId } from 'mongodb'
 import { generateStringId } from '../utils/id'
+import {
+  canUserManageCourse,
+  isAdmin,
+  isProfessor,
+  resolveCourseIdFromSession,
+} from '../auth/course-access'
 
 const router = Router()
 
@@ -23,7 +29,7 @@ function asArrayAnswer(answer: Response['answer']): string[] {
 }
 
 function questionPoints(question: Question): number {
-  if (question.type === 2 && question.sessionOptions?.points === undefined) return 0
+  if (question.type === QuestionType.SA && question.sessionOptions?.points === undefined) return 0
   return question.sessionOptions?.points ?? 1
 }
 
@@ -48,6 +54,15 @@ function buildOptionIndexMap(question: Question): Map<string, number> {
   return map
 }
 
+function isAutoGradeable(type: Question['type']): boolean {
+  return (
+    type === QuestionType.MC ||
+    type === QuestionType.TF ||
+    type === QuestionType.MS ||
+    type === QuestionType.NU
+  )
+}
+
 function calculateAutomaticPoints(question: Question, response: Response | null): number {
   if (!response) return 0
   const basePoints = questionPoints(question)
@@ -60,13 +75,13 @@ function calculateAutomaticPoints(question: Question, response: Response | null)
     if (option.correct) correctIndexes.add(idx)
   })
 
-  if (question.type === 0 || question.type === 1) {
+  if (question.type === QuestionType.MC || question.type === QuestionType.TF) {
     const raw = asArrayAnswer(response.answer)[0] || ''
     const idx = optionIndexMap.get(normalizeText(raw))
     return idx !== undefined && correctIndexes.has(idx) ? weightedPoints : 0
   }
 
-  if (question.type === 3) {
+  if (question.type === QuestionType.MS) {
     const rawSelections = asArrayAnswer(response.answer)
     const selectedIndexes = new Set<number>()
     rawSelections.forEach((selection) => {
@@ -81,7 +96,7 @@ function calculateAutomaticPoints(question: Question, response: Response | null)
     return weightedPoints * boundedScore
   }
 
-  if (question.type === 4) {
+  if (question.type === QuestionType.NU) {
     const raw = asArrayAnswer(response.answer)[0] || ''
     const numericAnswer = Number(raw)
     const expected = Number(question.correctNumerical ?? NaN)
@@ -106,15 +121,47 @@ router.get('/', requireAuth, async (req, res, next) => {
     if (courseId) query.courseId = courseId
     if (sessionId) query.sessionId = sessionId
 
-    const isInstructor = user.profile.roles.includes('professor') || user.profile.roles.includes('admin')
-    if (userId && isInstructor) {
-      query.userId = userId
-    } else if (!isInstructor) {
-      // Meteor parity: students can only see their own visible grades.
-      query.userId = user._id
-      query.visibleToStudents = true
+    if (isAdmin(user)) {
+      if (userId) query.userId = userId
+      const result = await grades.find(query).toArray()
+      return res.json(result)
     }
 
+    if (isProfessor(user)) {
+      let targetCourseId = courseId
+      if (!targetCourseId && sessionId) {
+        targetCourseId = await resolveCourseIdFromSession(sessionId)
+      }
+
+      if (targetCourseId) {
+        const allowed = await canUserManageCourse(user, targetCourseId)
+        if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+      } else {
+        const instructorCourses = await getCourses()
+          .find(
+            {
+              $or: [{ owner: user._id }, { instructors: user._id }],
+            } as Parameters<ReturnType<typeof getCourses>['find']>[0],
+            { projection: { _id: 1 } }
+          )
+          .toArray()
+
+        const ids = instructorCourses
+          .map((course) => course._id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+        if (ids.length === 0) return res.json([])
+        query.courseId = { $in: ids }
+      }
+
+      if (userId) query.userId = userId
+      const result = await grades.find(query).toArray()
+      return res.json(result)
+    }
+
+    // Students can only see their own visible grades.
+    query.userId = user._id
+    query.visibleToStudents = true
     const result = await grades.find(query).toArray()
     res.json(result)
   } catch (err) {
@@ -130,10 +177,21 @@ router.get('/:gradeId', requireAuth, async (req, res, next) => {
     const grade = await grades.findOne({ _id: req.params.gradeId } as Parameters<typeof grades.findOne>[0])
     if (!grade) return res.status(404).json({ error: 'Grade not found.' })
 
-    const isInstructor = user.profile.roles.includes('professor') || user.profile.roles.includes('admin')
-    if (!isInstructor && (grade.userId !== user._id || !grade.visibleToStudents)) {
+    if (isAdmin(user)) {
+      return res.json(grade)
+    }
+
+    if (isProfessor(user)) {
+      const targetCourseId = grade.courseId || (await resolveCourseIdFromSession(grade.sessionId))
+      const allowed = await canUserManageCourse(user, targetCourseId)
+      if (!allowed) return res.status(403).json({ error: 'Forbidden.' })
+      return res.json(grade)
+    }
+
+    if (grade.userId !== user._id || !grade.visibleToStudents) {
       return res.status(403).json({ error: 'Forbidden.' })
     }
+
     res.json(grade)
   } catch (err) {
     next(err)
@@ -241,17 +299,17 @@ router.post('/calc-session/:sessionId', requireAuth, requireInstructor, async (r
 
         const existingMark = existing?.marks?.find((mark) => mark.questionId === question._id)
         const markAutomatic = !(existingMark && existingMark.automatic === false)
-        const isAutoGradeable = question.type === 0 || question.type === 1 || question.type === 3 || question.type === 4
+        const autoGradeable = isAutoGradeable(question.type)
 
         let points = 0
-        if (markAutomatic && isAutoGradeable) {
+        if (markAutomatic && autoGradeable) {
           points = calculateAutomaticPoints(question, latestResponse)
         } else if (existingMark?.points !== undefined) {
           points = existingMark.points
         }
 
         let markNeedsGrading = false
-        if (!isAutoGradeable && markOutOf[i] > 0 && latestResponse) {
+        if (!autoGradeable && markOutOf[i] > 0 && latestResponse) {
           markNeedsGrading = existingMark?.needsGrading ?? true
           if (markNeedsGrading) needsGrading = true
         }
@@ -263,7 +321,7 @@ router.post('/calc-session/:sessionId', requireAuth, requireInstructor, async (r
           attempt: latestResponse?.attempt || 0,
           points,
           outOf: markOutOf[i],
-          automatic: markAutomatic && isAutoGradeable,
+          automatic: markAutomatic && autoGradeable,
           needsGrading: markNeedsGrading,
           feedback: existingMark?.feedback || '',
         })
