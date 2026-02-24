@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-24`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `76d381b`
+- Last verified baseline commit before this update: `8f6cce7`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -148,6 +148,7 @@ Rebase protocol:
 | 2026-02-24 | `working-tree` | Agent-08 | `node --check scripts/migration-authz-integration.mjs` | pass | Added dedicated integration harness for route-level authz/parity checks (`npm run test:migration-authz`). |
 | 2026-02-24 | `working-tree` | Agent-07 | `node --check scripts/migration-load-check.mjs` | pass | Added repeatable load/perf harness with p95/error-rate thresholds (`npm run test:migration-load`). |
 | 2026-02-24 | `working-tree` | Agent-08 | `ls docs/migration-manual-parity-checklist.md docs/migration-cutover-runbook.md` | pass | Added manual parity checklist and cutover/rollback runbook docs for final release gate sign-off. |
+| 2026-02-24 | `working-tree` | Coordinator | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && node --check scripts/migration-smoke.mjs && node --check scripts/migration-authz-integration.mjs && node --check scripts/migration-load-check.mjs` | pass | Final local compile/syntax verification after merged PRs #28-#34 before opening summary PR. |
 
 ## Risks and Blockers
 
