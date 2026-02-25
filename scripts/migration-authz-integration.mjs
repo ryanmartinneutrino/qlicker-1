@@ -237,6 +237,47 @@ async function run() {
   })
   assert(Array.isArray(reordered.questions), 'Reorder response should include questions array.')
 
+  // group assignment semantics check (exclusive membership + renumber on delete)
+  const createdCategory = await prof.request('POST', `/courses/${tempCourse._id}/groups/categories`, {
+    categoryName: 'AuthzCategory',
+    nGroups: 2,
+  })
+  const category = (createdCategory.groupCategories || []).find((entry) => entry.categoryName === 'AuthzCategory')
+  assert(category, 'Group category should be created.')
+  const initialGroups = category.groups || []
+  assert(initialGroups.length >= 2, 'Category should contain at least two groups.')
+
+  const groupA = initialGroups[0]
+  const groupB = initialGroups[1]
+  assert(groupA?.groupNumber && groupB?.groupNumber, 'Group numbers should be defined.')
+
+  await prof.request(
+    'POST',
+    `/courses/${tempCourse._id}/groups/categories/${category.categoryNumber}/groups/${groupA.groupNumber}/students/${meStudent.user._id}/toggle`,
+    {}
+  )
+  const moved = await prof.request(
+    'POST',
+    `/courses/${tempCourse._id}/groups/categories/${category.categoryNumber}/groups/${groupB.groupNumber}/students/${meStudent.user._id}/toggle`,
+    {}
+  )
+  const movedCategory = (moved.groupCategories || []).find((entry) => entry.categoryName === 'AuthzCategory')
+  const movedGroups = movedCategory?.groups || []
+  const inGroupA = (movedGroups.find((entry) => entry.groupNumber === groupA.groupNumber)?.students || []).includes(meStudent.user._id)
+  const inGroupB = (movedGroups.find((entry) => entry.groupNumber === groupB.groupNumber)?.students || []).includes(meStudent.user._id)
+  assert(!inGroupA && inGroupB, 'Student should be assigned to exactly one group within a category.')
+
+  const deletedGroup = await prof.request(
+    'DELETE',
+    `/courses/${tempCourse._id}/groups/categories/${category.categoryNumber}/groups/${groupA.groupNumber}`
+  )
+  const deletedCategory = (deletedGroup.groupCategories || []).find((entry) => entry.categoryName === 'AuthzCategory')
+  const remainingGroupNumbers = (deletedCategory?.groups || []).map((entry) => Number(entry.groupNumber))
+  assert(
+    remainingGroupNumbers.every((number, index) => number === index + 1),
+    'Group numbers should be renumbered after deletion.'
+  )
+
   // cross-course check for question-to-session copy
   const tempCourse2 = await prof.request('POST', '/courses', {
     name: `Authz Integration 2 ${Date.now()}`,
