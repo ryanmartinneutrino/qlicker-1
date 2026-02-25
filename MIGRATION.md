@@ -98,6 +98,10 @@
   - smoke coverage now verifies manual mark overrides survive `calc-session` recomputation
 - Video/Jitsi edge matrix closure landed:
   - smoke coverage now verifies membership-resolved category connection behavior, instructor-join help reset, and disabled-room connection denial
+- UI route parity closure landed:
+  - React router now includes legacy compatibility paths for `/logout`, `/verify-email/:token`, `/course/:courseId/videochat`, and `/course/:courseId/session/run/:sessionId/mobile`
+  - added `/reset-password/:token` alias for reset-link compatibility
+  - audit doc added: `docs/migration/ui-parity-audit.md`
 - Pilot checklist automation landed:
   - `npm run test:migration-pilot-checklist` validates runtime + legacy evidence artifacts and emits machine-readable sign-off summary JSON
   - optional gate inclusion via `QCLICKER_GATE_INCLUDE_PILOT_CHECKLIST=true`
@@ -162,6 +166,7 @@
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
 - Realtime design notes: `docs/migration/realtime-design.md`
+- UI parity audit: `docs/migration/ui-parity-audit.md`
 - DB compatibility testing guide: `docs/migration/db-compat-testing.md`
 - Cutover runbook: `docs/migration/cutover-runbook.md`
 - Pilot checklist: `docs/migration/pilot-checklist.md`

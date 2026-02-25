@@ -5,6 +5,7 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Area | Legacy Meteor behavior | New stack status | Validation source |
 |---|---|---|---|
 | Auth login/register/reset | Shared bcrypt + role-based auth | Done | smoke + build |
+| UI routing + page coverage | Legacy routes/pages available to student/prof/admin | Done | route audit in `docs/migration/ui-parity-audit.md`; legacy aliases (`/logout`, `/verify-email/:token`, `/course/:courseId/videochat`, `/course/:courseId/session/run/:sessionId/mobile`) now mapped in React router |
 | Course membership isolation | Course/session/question reads constrained by membership | In Progress | route hardening landed, question detached-session normalization landed, non-course session docs are filtered, and instructor mutation guards were expanded for courses/sessions/grades; broader endpoint sweep pending |
 | Interactive session (student) | One live question, reactive current question | In Progress | realtime session subscribe + response submit landed |
 | Quiz flow | All questions, deadline/extensions, submit lock | In Progress | submit path exists; full UX parity pending |
