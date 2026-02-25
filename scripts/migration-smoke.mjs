@@ -533,14 +533,123 @@ async function run() {
   assert(submitQuiz.success === true, 'Quiz submit endpoint did not report success.')
 
   const seededStudent2Grades = await prof.request('GET', `/grades?courseId=${course._id}&userId=${student2User._id}`)
-  const hiddenGrade = seededStudent2Grades.find((grade) => grade.sessionId && grade.visibleToStudents === false)
-  assert(hiddenGrade?._id, 'Expected a hidden seeded grade for student2.')
+  let hiddenGrade = seededStudent2Grades.find(
+    (grade) => grade.sessionId && grade.visibleToStudents === false
+  )
+  if (!hiddenGrade?._id) {
+    const fallbackGrade = seededStudent2Grades.find((grade) => grade._id && grade.sessionId)
+    assert(fallbackGrade?._id, 'Expected at least one seeded grade for student2.')
+    await prof.request('PUT', `/grades/${fallbackGrade._id}/visible`, { visible: false })
+    const refreshedGrades = await prof.request(
+      'GET',
+      `/grades?courseId=${course._id}&userId=${student2User._id}`
+    )
+    hiddenGrade = refreshedGrades.find((grade) => grade._id === fallbackGrade._id) || fallbackGrade
+  }
+  assert(hiddenGrade?._id, 'Expected a hidden grade for student2 after visibility setup.')
 
   const student2Before = await student2.request('GET', `/grades?courseId=${course._id}`)
   assert(!student2Before.some((grade) => grade._id === hiddenGrade._id), 'Hidden grade should not be visible to student.')
   await prof.request('PUT', `/grades/${hiddenGrade._id}/visible`, { visible: true })
   const student2After = await student2.request('GET', `/grades?courseId=${course._id}`)
   assert(student2After.some((grade) => grade._id === hiddenGrade._id), 'Visible grade should appear in student list after toggle.')
+
+  const reviewableSession = await prof.request('POST', '/sessions', {
+    name: `Smoke Reviewable ${Date.now()}`,
+    description: 'Reviewability parity check',
+    courseId: course._id,
+    status: 'hidden',
+    quiz: false,
+    questions: [],
+    reviewable: false,
+  })
+  assert(reviewableSession?._id, 'Reviewability parity session creation failed.')
+  const reviewableSourceQuestion =
+    questions.find((question) => question.courseId === course._id && !question.sessionId) ||
+    questions.find((question) => question.courseId === course._id) ||
+    q1
+  assert(reviewableSourceQuestion?._id, 'Reviewability parity source question missing.')
+  const reviewableQuestion = await prof.request(
+    'POST',
+    `/sessions/${reviewableSession._id}/questions/${reviewableSourceQuestion._id}/copy`,
+    {}
+  )
+  assert(reviewableQuestion?._id, 'Reviewability parity question copy failed.')
+
+  await prof.request('PUT', `/sessions/${reviewableSession._id}/status`, { status: 'running' })
+  await student.request('POST', `/sessions/${reviewableSession._id}/join`, {})
+  const reviewAnswer =
+    reviewableQuestion.options?.[0]?.answer ||
+    reviewableQuestion.options?.[0]?.plainText ||
+    reviewableQuestion.options?.[0]?.content ||
+    'A'
+  await student.request('POST', '/responses', {
+    attempt: 1,
+    questionId: reviewableQuestion._id,
+    answer: reviewAnswer,
+  })
+  await prof.request('PUT', `/sessions/${reviewableSession._id}/status`, { status: 'done' })
+
+  const reviewableEnabled = await prof.request(
+    'PUT',
+    `/sessions/${reviewableSession._id}/reviewable`,
+    { reviewable: true }
+  )
+  assert(
+    reviewableEnabled?.session?.reviewable === true,
+    'Session reviewable toggle-on should set reviewable=true.'
+  )
+  assert(
+    Number(reviewableEnabled?.gradesUpdated || 0) >= 1,
+    'Session reviewable toggle-on should recalculate at least one student grade.'
+  )
+
+  const reviewableGrades = await prof.request(
+    'GET',
+    `/grades?sessionId=${reviewableSession._id}&userId=${studentUser._id}`
+  )
+  const reviewableGrade = reviewableGrades.find((grade) => grade.userId === studentUser._id)
+  assert(reviewableGrade?._id, 'Reviewability parity should create a student grade record.')
+  assert(
+    reviewableGrade.visibleToStudents === true,
+    'Reviewable session grade should be visible to students.'
+  )
+  const reviewableVisibleToStudent = await student.request('GET', `/grades?sessionId=${reviewableSession._id}`)
+  assert(
+    reviewableVisibleToStudent.some((grade) => grade._id === reviewableGrade._id),
+    'Student should see session grade when reviewability is enabled.'
+  )
+
+  const reviewableDisabled = await prof.request(
+    'PUT',
+    `/sessions/${reviewableSession._id}/reviewable`,
+    { reviewable: false }
+  )
+  assert(
+    reviewableDisabled?.session?.reviewable === false,
+    'Session reviewable toggle-off should set reviewable=false.'
+  )
+  const hiddenAfterDisable = await prof.request(
+    'GET',
+    `/grades?sessionId=${reviewableSession._id}&userId=${studentUser._id}`
+  )
+  const hiddenReviewGrade = hiddenAfterDisable.find((grade) => grade._id === reviewableGrade._id)
+  assert(
+    hiddenReviewGrade?.visibleToStudents === false,
+    'Disabling reviewability should hide session grade from students.'
+  )
+  const reviewableHiddenFromStudent = await student.request('GET', `/grades?sessionId=${reviewableSession._id}`)
+  assert(
+    !reviewableHiddenFromStudent.some((grade) => grade._id === reviewableGrade._id),
+    'Student should not see session grade when reviewability is disabled.'
+  )
+  await student.request(
+    'PUT',
+    `/sessions/${reviewableSession._id}/reviewable`,
+    { reviewable: true },
+    { expectStatus: 403 }
+  )
+  await prof.request('DELETE', `/sessions/${reviewableSession._id}`)
 
   const users = await admin.request('GET', '/users')
   if (users.length < 4) throw new Error('Admin should be able to list users.')

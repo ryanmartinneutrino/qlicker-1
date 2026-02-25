@@ -317,10 +317,42 @@ async function run() {
   })
   assert(Array.isArray(reordered.questions), 'Reorder response should include questions array.')
 
+  await prof.request('PUT', `/sessions/${tempSession._id}/status`, { status: 'done' })
+  const reviewableEnabled = await prof.request(
+    'PUT',
+    `/sessions/${tempSession._id}/reviewable`,
+    { reviewable: true }
+  )
+  assert(
+    reviewableEnabled?.session?.reviewable === true,
+    'Instructor should be able to enable session reviewability.'
+  )
+  const reviewableDisabled = await prof.request(
+    'PUT',
+    `/sessions/${tempSession._id}/reviewable`,
+    { reviewable: false }
+  )
+  assert(
+    reviewableDisabled?.session?.reviewable === false,
+    'Instructor should be able to disable session reviewability.'
+  )
+
   // export surface checks (course/session grades + session responses)
   await prof.request('POST', `/grades/calc-session/${tempSession._id}`, {})
 
   await outsiderProf.request('PUT', `/sessions/${tempSession._id}/status`, { status: 'visible' }, { expectStatus: 403 })
+  await outsiderProf.request(
+    'PUT',
+    `/sessions/${tempSession._id}/reviewable`,
+    { reviewable: true },
+    { expectStatus: 403 }
+  )
+  await student.request(
+    'PUT',
+    `/sessions/${tempSession._id}/reviewable`,
+    { reviewable: true },
+    { expectStatus: 403 }
+  )
   await outsiderProf.request('PUT', `/sessions/${tempSession._id}/questions`, { questionIds: [sessionQuestion._id] }, { expectStatus: 403 })
   await outsiderProf.request('POST', `/sessions/${tempSession._id}/questions/${publicQuestion._id}/copy`, {}, { expectStatus: 403 })
   await outsiderProf.request('GET', `/sessions/${tempSession._id}/extension-candidates`, undefined, { expectStatus: 403 })

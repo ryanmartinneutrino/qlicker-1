@@ -10,6 +10,11 @@ import { sessionSchema } from '@qlicker/shared'
 import { getResponses } from '../collections/responses'
 import { getUsers } from '../collections/users'
 import { canUserAccessCourse, courseAccessForUser, isAdmin } from '../auth/course-access'
+import {
+  recalculateSessionGrades,
+  SessionGradesError,
+  setSessionGradesVisibility,
+} from '../services/session-grades'
 
 const router = Router()
 const defaultQuestionSessionOptions = {
@@ -123,6 +128,18 @@ async function ensureSessionManageAccess(
   return ensureCourseManageAccess(user, session.courseId, res)
 }
 
+async function syncSessionReviewableEffects(
+  sessionId: string,
+  reviewable: boolean
+): Promise<number> {
+  if (reviewable) {
+    return recalculateSessionGrades(sessionId)
+  }
+
+  await setSessionGradesVisibility(sessionId, false)
+  return 0
+}
+
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -192,6 +209,9 @@ router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
     if (typeof normalized.status !== 'string' || normalized.status.trim().length < 1) {
       normalized.status = 'hidden'
     }
+    if (typeof normalized.reviewable !== 'boolean') {
+      normalized.reviewable = false
+    }
     const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalized)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
     if (!(await ensureCourseManageAccess(user, parsed.data.courseId, res))) return
@@ -229,6 +249,11 @@ router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const patch: Record<string, unknown> = { ...parsed.data }
+    const reviewableWas = Boolean(existing.reviewable)
+    const reviewableProvided = Object.prototype.hasOwnProperty.call(parsed.data, 'reviewable')
+    const reviewableNext = reviewableProvided
+      ? Boolean(parsed.data.reviewable)
+      : reviewableWas
     const quiz = 'quiz' in patch ? Boolean(patch.quiz) : Boolean(existing.quiz)
     if (!quiz) {
       patch.quizExtensions = []
@@ -261,9 +286,15 @@ router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next)
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: patch }
     )
+    if (reviewableProvided && reviewableNext !== reviewableWas) {
+      await syncSessionReviewableEffects(req.params.sessionId, reviewableNext)
+    }
     const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
+    if (err instanceof SessionGradesError) {
+      return res.status(err.status).json({ error: err.message })
+    }
     next(err)
   }
 })
@@ -366,6 +397,7 @@ router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res,
       courseId: targetCourseId,
       name: source.name ? `${source.name} (Copy)` : 'Session Copy',
       status: 'hidden',
+      reviewable: false,
       date: null,
       joined: [],
       submittedQuiz: [],
@@ -421,6 +453,36 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
     const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
+    next(err)
+  }
+})
+
+/** PUT /api/sessions/:sessionId/reviewable — set/toggle review visibility and synchronize grade visibility */
+router.put('/:sessionId/reviewable', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const sessions = getSessions()
+    const existing = await findCourseSessionById(req.params.sessionId)
+    if (!existing) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, existing, res))) return
+
+    const requestedReviewable = (req.body as { reviewable?: unknown })?.reviewable
+    const nextReviewable =
+      typeof requestedReviewable === 'boolean'
+        ? requestedReviewable
+        : !Boolean(existing.reviewable)
+
+    await sessions.updateOne(
+      { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
+      { $set: { reviewable: nextReviewable } }
+    )
+    const gradesUpdated = await syncSessionReviewableEffects(req.params.sessionId, nextReviewable)
+    const updated = await findCourseSessionById(req.params.sessionId)
+    res.json({ session: updated, gradesUpdated, reviewable: nextReviewable })
+  } catch (err) {
+    if (err instanceof SessionGradesError) {
+      return res.status(err.status).json({ error: err.message })
+    }
     next(err)
   }
 })
