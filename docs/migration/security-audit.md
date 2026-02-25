@@ -15,7 +15,7 @@
 - Added explicit per-course manager checks on instructor-only mutation/export routes:
   - `sessions`: create/update/delete/status/current/reorder/copy/extension-candidates
   - `grades`: calc/update/visibility/session-export endpoints
-  - `courses`: management, roster/student removal, groups/category CRUD, instructor video-chat control endpoints
+  - `courses`: management, roster/student removal, add student by email, add/remove instructor (TA), groups/category CRUD, instructor video-chat control endpoints
 - Restricted broad list reads for non-admin users to membership-scoped data.
 - Hardened question mutation to owner/instructor/admin semantics.
 - Hardened image APIs:
@@ -44,9 +44,13 @@
   - `GET /api/grades/session/:sessionId/export`
   - `GET /api/responses/session/:sessionId/export`
 - `scripts/migration-authz-integration.mjs` now verifies outsider-professor denial on instructor-only management endpoints for:
-  - `courses` (`PUT/DELETE`, enrollment-code regenerate, roster, group/category manage, video-chat toggle)
+  - `courses` (`PUT/DELETE`, enrollment-code regenerate, roster, student/instructor add/remove, group/category manage, video-chat toggle)
   - `sessions` (`status`, question attach/reorder, extension candidates)
   - `grades` (`calc-session`, session export, grade visibility/update)
+- `scripts/migration-authz-integration.mjs` now verifies roster-management parity flows:
+  - add student by email
+  - promote student to instructor by email
+  - enforce owner/self instructor-removal safeguards
 - `scripts/migration-realtime-authz.mjs` now verifies realtime subscribe authz/error contracts across all `subscribe:*` channels:
   - outsider `forbidden`
   - anonymous `not_authenticated`

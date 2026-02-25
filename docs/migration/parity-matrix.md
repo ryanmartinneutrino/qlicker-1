@@ -9,7 +9,7 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Interactive session (student) | One live question, reactive current question | In Progress | realtime session subscribe + response submit landed |
 | Quiz flow | All questions, deadline/extensions, submit lock | In Progress | submit path exists; full UX parity pending |
 | Manage session question workflow | attach/reorder/remove/copy | In Progress | session question API + management UI landed; edge parity checks pending |
-| Course management (prof) | TA/student management incl. email actions | In Progress | expanded course management merged; final behavior matrix pending |
+| Course management (prof) | TA/student management incl. email actions | In Progress | course roster now supports add student by email, add instructor by email, and instructor removal parity APIs/UI; full behavior matrix still pending |
 | Group categories | category/group CRUD + assignments + CSV export | In Progress | CRUD and CSV export landed; cleanup/renumber parity pending |
 | Grade calculation | participation + automatic/manual marks | In Progress | calc endpoint exists; parity checks still pending |
 | Session/course results views | clean tables + controls parity | In Progress | results pages improved; final review/visibility parity checks pending |

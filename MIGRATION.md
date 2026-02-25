@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `6768bbc0`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`
+- Baseline commit: `d44474a4`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -30,6 +30,11 @@
 - Question-library parity/authz fix landed:
   - normalized detached-question filtering (`sessionId` missing/null)
   - avoid writing `undefined` fields on question create/copy paths
+- Course roster management parity expanded:
+  - add student to course by email (`POST /api/courses/:courseId/students`)
+  - add instructor/TA by email (`POST /api/courses/:courseId/instructors`)
+  - remove instructor/TA (`DELETE /api/courses/:courseId/instructors/:instructorId`) with owner/self safeguards
+  - instructor course page now exposes by-email add/remove workflows in roster UI
 - Image API authz hardened:
   - non-admin image list is owner-scoped
   - image delete requires owner or admin
@@ -41,6 +46,10 @@
   - standardized `subscription:error` contract across `subscribe:*` handlers
   - auto re-subscribe + refetch on socket reconnect in `useRealtimeCollection`
   - added realtime authz regression harness `npm run test:migration-realtime-authz`
+- Authz integration harness expanded for roster parity:
+  - outsider-professor denied for student/instructor roster mutations
+  - add student by email -> promote to instructor by email -> remove instructor flow verified
+  - owner/self instructor-removal safeguards verified
 - DB-readiness tooling milestone landed:
   - `npm run test:migration-db-compat` (read-only compatibility audit)
   - `npm run test:migration-db-parity` (baseline-vs-candidate DB diff harness)
@@ -68,7 +77,7 @@
 |---|---|---|---|---|
 | L1 | AuthZ + API policy | 93% | PR `#42`, `#46`, `#54`, `#55`, `#58`, `#59`; outsider-prof authz integration checks green | Close residual endpoint edge-case matrix and rerun authz/realtime authz suites on latest Docker baseline |
 | L2 | Student/prof session-question parity | 65% | PR `#40`, PR `#43` | Finish edge transitions + verify interactive/quiz behavior against Meteor checklist |
-| L3 | Course/groups parity | 60% | PR `#39`, PR `#44` (groups CSV) | Finalize group/category semantics and parity tests |
+| L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), lane `migration/lane-03-roster-email-parity` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 76% | PR `#36`, `#44`, `#53` | Complete remaining grade/review visibility edge semantics + CSV value-order parity checks against Meteor outputs |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 35% | partial server/client support | Finish Jitsi/group room behavior and cleanup parity |
@@ -95,7 +104,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~84%** toward pilot-readiness.
+- Current migration completion: **~85%** toward pilot-readiness.
 - Remaining critical path: L6 + L7 + L8 validation closure.
 
 ## References
@@ -105,6 +114,7 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch3.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch4.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch5.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch6.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`

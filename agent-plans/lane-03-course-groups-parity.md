@@ -9,6 +9,15 @@
 - Group category/group operations and assignment/unassignment parity.
 - Groups CSV export parity.
 
+## Progress
+- Done: roster parity APIs for by-email membership management:
+  - `POST /api/courses/:courseId/students`
+  - `POST /api/courses/:courseId/instructors`
+  - `DELETE /api/courses/:courseId/instructors/:instructorId`
+- Done: course roster UI now supports add-student/add-instructor by email and instructor removal controls.
+- Done: authz integration script covers outsider denial + roster lifecycle flow checks.
+- Pending: remaining group/category cleanup/renumber edge-case parity matrix closure.
+
 ## Acceptance
 - Legacy manage-course and manage-course-groups workflows are fully reproducible.
 
