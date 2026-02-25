@@ -9,8 +9,62 @@ import { courseAccessForUser, isAdmin } from '../auth/course-access'
 
 // One SharedChangeStream per collection
 const streams: Record<string, SharedChangeStream> = {}
+const routeHintCacheByCollection: Record<string, Map<string, RouteHints>> = {}
+
+type RouteHints = {
+  sessionId?: string
+  courseId?: string
+  questionId?: string
+}
+
+function toPositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback
+  return Math.floor(parsed)
+}
+
+const routeHintCacheMax = toPositiveInt(process.env.QCLICKER_REALTIME_ROUTE_CACHE_MAX, 50_000)
 
 type SubscriptionErrorCode = 'bad_request' | 'not_authenticated' | 'not_found' | 'forbidden'
+
+function asNonEmptyId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function getRouteHintCache(collectionName: string): Map<string, RouteHints> {
+  if (!routeHintCacheByCollection[collectionName]) {
+    routeHintCacheByCollection[collectionName] = new Map<string, RouteHints>()
+  }
+  return routeHintCacheByCollection[collectionName]
+}
+
+function trimRouteHintCache(cache: Map<string, RouteHints>): void {
+  while (cache.size > routeHintCacheMax) {
+    const oldest = cache.keys().next().value
+    if (!oldest) break
+    cache.delete(oldest)
+  }
+}
+
+function writeRouteHints(collectionName: string, documentId: string, hints: RouteHints): void {
+  const cache = getRouteHintCache(collectionName)
+  if (cache.has(documentId)) cache.delete(documentId)
+  cache.set(documentId, hints)
+  trimRouteHintCache(cache)
+}
+
+function readRouteHints(collectionName: string, documentId: string): RouteHints | undefined {
+  const cache = routeHintCacheByCollection[collectionName]
+  return cache?.get(documentId)
+}
+
+function deleteRouteHints(collectionName: string, documentId: string): void {
+  const cache = routeHintCacheByCollection[collectionName]
+  if (!cache) return
+  cache.delete(documentId)
+}
 
 /** Extract authenticated user ID from socket session */
 function getUserIdFromSocket(socket: Socket): string | undefined {
@@ -84,12 +138,34 @@ export function setupRealtime(io: SocketIOServer): void {
       }).fullDocument
 
       const docKey = (event as { documentKey?: { _id?: unknown } }).documentKey
+      const operationType = (event as { operationType?: string }).operationType
+      const documentId = asNonEmptyId(doc?._id) || asNonEmptyId(docKey?._id)
+
+      if (doc && documentId) {
+        writeRouteHints(name, documentId, {
+          sessionId: asNonEmptyId(doc.sessionId),
+          courseId: asNonEmptyId(doc.courseId),
+          questionId: asNonEmptyId(doc.questionId),
+        })
+      }
+
+      const cachedHints = documentId ? readRouteHints(name, documentId) : undefined
+      if (operationType === 'delete' && documentId) {
+        deleteRouteHints(name, documentId)
+      }
+
       const routingKeys = new Set<string>([`${name}:*`])
-      if (doc?._id) routingKeys.add(`${name}:${doc._id}`)
-      if (!doc?._id && docKey?._id) routingKeys.add(`${name}:${docKey._id}`)
-      if (doc?.sessionId) routingKeys.add(`${name}:session:${doc.sessionId}`)
-      if (doc?.courseId) routingKeys.add(`${name}:course:${doc.courseId}`)
-      if (doc?.questionId) routingKeys.add(`${name}:question:${doc.questionId}`)
+      if (documentId) routingKeys.add(`${name}:${documentId}`)
+
+      const sessionId = asNonEmptyId(doc?.sessionId) || cachedHints?.sessionId
+      if (sessionId) routingKeys.add(`${name}:session:${sessionId}`)
+
+      const courseId = asNonEmptyId(doc?.courseId) || cachedHints?.courseId
+      if (courseId) routingKeys.add(`${name}:course:${courseId}`)
+
+      const questionId = asNonEmptyId(doc?.questionId) || cachedHints?.questionId
+      if (questionId) routingKeys.add(`${name}:question:${questionId}`)
+
       routingKeys.forEach((routingKey) => stream.publish(routingKey, event))
     })
 
