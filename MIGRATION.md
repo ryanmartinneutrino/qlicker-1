@@ -76,6 +76,8 @@
   - `test:migration-gate` writes JSON summary when `QCLICKER_GATE_OUTPUT` is set
   - `test:migration-legacy-backup` writes JSON summary + compat/parity report paths
   - docs/runbook now define artifact archival workflow for CI/staging pilot evidence
+- Runtime artifact CI workflow landed:
+  - `.github/workflows/migration-runtime-gate-artifacts.yml` runs runtime gate on a replica-set Mongo service and uploads artifacts (`migration-gate-runtime.json`, server logs)
 - Reviewability parity milestone landed:
   - `PUT /api/sessions/:sessionId/reviewable` now supports Meteor-equivalent review toggle semantics
   - enabling review recalculates session grades; disabling review hides grades from students
@@ -109,7 +111,7 @@
 | L5 | Realtime correctness + scale | 88% | PR `#37`, `#42`, `#47`, `#72`; parent-hint delete routing cache + churn harness landed | Publish recurring churn/load evidence in CI/staging and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 84% | PR `#49`, `#55`, `#57`, `#71`; real backup restore/compat/parity run passes locally with summary artifacts | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 94% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`; smoke/authz/realtime-authz/load gates pass with machine-readable summaries | Wire artifact publishing in CI/staging and close final pilot checklist |
+| L8 | Integration/load/cutover ops | 95% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`, `#74`; runtime gate + churn pass with machine-readable summaries and CI artifact workflow | Add backup-dataset artifact publishing in staging/CI and close final pilot checklist |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -131,7 +133,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~93%** toward pilot-readiness.
+- Current migration completion: **~94%** toward pilot-readiness.
 - Remaining critical path: L6 parity closure + CI/staging archival evidence + final pilot checklist sign-off.
 
 ## References

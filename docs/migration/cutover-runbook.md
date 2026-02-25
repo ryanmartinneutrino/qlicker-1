@@ -19,6 +19,7 @@
 - machine-readable evidence is archived for the latest gate run:
   - gate summary JSON via `QCLICKER_GATE_OUTPUT=...`
   - legacy-backup summary JSON + compat/parity reports from `test:migration-legacy-backup`
+  - runtime gate CI artifact bundle from workflow `.github/workflows/migration-runtime-gate-artifacts.yml`
 
 ## Pilot execution
 1. Deploy new stack for pilot cohort only.

@@ -108,6 +108,17 @@ npm run test:migration-gate
   - a summary JSON (default: `<artifactDir>/legacy-backup-summary-<baseline>-vs-<candidate>.json`, overridable via `QCLICKER_LEGACY_SUMMARY_OUTPUT`)
 - Archive these JSON files in CI/staging for pilot go/no-go evidence.
 
+## 6. GitHub Actions runtime artifact workflow
+- Use workflow: `.github/workflows/migration-runtime-gate-artifacts.yml`
+- Trigger manually from Actions (`workflow_dispatch`).
+- The workflow:
+  - brings up MongoDB service and initializes replica set `rs0`
+  - builds workspaces
+  - seeds migration dataset
+  - runs runtime migration gate with artifact output
+  - uploads `artifacts/` (including `migration-gate-runtime.json` and server logs)
+- Toggle churn stage at dispatch time via `include_realtime_churn` input.
+
 ## Notes
 - `test:migration-db-compat` is read-only and checks collection presence, string `_id` compatibility, and key field-type invariants.
 - `test:migration-db-parity` compares projected document shapes/values across baseline and candidate DBs and highlights missing/changed docs in sampled IDs.
