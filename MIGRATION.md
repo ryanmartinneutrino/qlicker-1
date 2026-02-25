@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `656443e4`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`, `#70`, `#71`, `#72`
+- Baseline commit: `c4b14a96`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`, `#70`, `#71`, `#72`, `#74`, `#75`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -98,7 +98,7 @@
   - full groups/video/Jitsi behavior parity
 - End-to-end parity verification is incomplete:
   - no latest full Docker smoke/integration/e2e run evidence on current `master`
-  - backup parity is validated locally; CI/staging still needs to publish and retain the new JSON evidence artifacts per gate run
+  - backup parity is validated locally; CI/staging still needs to publish and retain legacy-backup JSON evidence artifacts per gate run
 
 ## 8-Lane Progress Matrix
 
@@ -108,10 +108,10 @@
 | L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
-| L5 | Realtime correctness + scale | 88% | PR `#37`, `#42`, `#47`, `#72`; parent-hint delete routing cache + churn harness landed | Publish recurring churn/load evidence in CI/staging and confirm no unauthorized channels |
+| L5 | Realtime correctness + scale | 90% | PR `#37`, `#42`, `#47`, `#72`, `#74`; parent-hint delete routing cache + churn harness landed | Publish recurring churn/load evidence in CI/staging and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 84% | PR `#49`, `#55`, `#57`, `#71`; real backup restore/compat/parity run passes locally with summary artifacts | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 95% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`, `#74`; runtime gate + churn pass with machine-readable summaries and CI artifact workflow | Add backup-dataset artifact publishing in staging/CI and close final pilot checklist |
+| L8 | Integration/load/cutover ops | 96% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`, `#74`, `#75`; runtime gate + churn pass with machine-readable summaries and CI artifact workflow | Add backup-dataset artifact publishing in staging/CI and close final pilot checklist |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -133,7 +133,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~94%** toward pilot-readiness.
+- Current migration completion: **~95%** toward pilot-readiness.
 - Remaining critical path: L6 parity closure + CI/staging archival evidence + final pilot checklist sign-off.
 
 ## References
@@ -147,6 +147,7 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch7.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch8.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch9.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch10.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
