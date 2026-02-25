@@ -50,6 +50,7 @@
 | `responses.add` | `POST /api/responses` |
 | `responses.update` | `PUT /api/responses/:responseId` |
 | `responses.makeUneditable` | implicit through quiz submit path |
+| session response export | `GET /api/responses/session/:sessionId/export` |
 
 ### Grades
 | Meteor method | New endpoint |
@@ -57,8 +58,9 @@
 | `grades.calcSessionGrades` | `POST /api/grades/calc-session/:sessionId` |
 | `grades.update` | `PUT /api/grades/:gradeId` |
 | `grades.hide/showToStudents` | `PUT /api/grades/:gradeId/visible` and `PUT /api/grades/session/:sessionId/visible` |
+| course grade export | `GET /api/grades/course/:courseId/export` |
+| session grade export | `GET /api/grades/session/:sessionId/export` |
 
 ## Open parity work
 - course TA/student-by-email management endpoints
 - session-question order/copy/remove operations
-- CSV export endpoints (session/course/groups/responses)

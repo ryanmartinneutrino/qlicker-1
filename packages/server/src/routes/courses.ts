@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { generateStringId } from '../utils/id'
+import { sendCsvDownload } from '../utils/csv'
 import { getCourses } from '../collections/courses'
 import { getSettings } from '../collections/settings'
 import { getUsers } from '../collections/users'
@@ -154,15 +155,6 @@ function normalizeGroupCategories(
       groups: normalizedGroups,
     }
   })
-}
-
-function csvCell(value: unknown): string {
-  const text = value === undefined || value === null ? '' : String(value)
-  return `"${text.replace(/"/g, '""')}"`
-}
-
-function toCsv(rows: Array<Array<unknown>>): string {
-  return rows.map((row) => row.map((value) => csvCell(value)).join(',')).join('\n')
 }
 
 function getFilteredGroupCategories(course: Course, user: User, isInstructor: boolean): GroupCategory[] {
@@ -666,11 +658,7 @@ router.get('/:courseId/groups/export', requireAuth, requireInstructor, async (re
       })
     })
 
-    const csv = toCsv(rows)
-    const fileName = `groups-${req.params.courseId}.csv`
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename=\"${fileName}\"`)
-    res.send(csv)
+    sendCsvDownload(res, `groups-${req.params.courseId}.csv`, rows)
   } catch (err) {
     next(err)
   }

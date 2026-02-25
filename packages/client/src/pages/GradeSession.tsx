@@ -4,6 +4,7 @@ import type { Course, Grade, Mark, Question, Response, Session } from '@qlicker/
 import { apiClient } from '../api/client'
 import { QuestionDisplay } from '../components/QuestionDisplay'
 import { ResponseList, type ResponseListStudent } from '../components/ResponseList'
+import { downloadCsvFile, downloadCsvText } from '../utils/csv'
 
 interface ExtensionCandidate {
   userId: string
@@ -50,6 +51,7 @@ export default function GradeSession() {
   const [groupNumber, setGroupNumber] = useState('')
   const [drafts, setDrafts] = useState<Record<string, DraftMark>>({})
   const [visibleToStudents, setVisibleToStudents] = useState(false)
+  const [downloadingCsv, setDownloadingCsv] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [savingStudentId, setSavingStudentId] = useState<string | null>(null)
@@ -260,6 +262,74 @@ export default function GradeSession() {
     })
   }, [selectedQuestion, responses])
 
+  const sessionGradeCsvRows = useMemo(() => {
+    const header: Array<unknown> = [
+      'LastName',
+      'FirstName',
+      'Email',
+      'UserId',
+      'Joined',
+      'Participation',
+      'Grade (%)',
+      'Points',
+      'OutOf',
+      'Answered',
+      'Questions',
+      'NeedsGrading',
+      'VisibleToStudents',
+    ]
+    questions.forEach((_question, index) => {
+      const label = `Q${index + 1}`
+      header.push(`${label} Points`)
+      header.push(`${label} OutOf`)
+      header.push(`${label} NeedsGrading`)
+      header.push(`${label} Feedback`)
+    })
+
+    const rows: Array<Array<unknown>> = [header]
+    const sortedStudents = [...students].sort((left, right) => {
+      const byLast = left.lastname.localeCompare(right.lastname)
+      if (byLast !== 0) return byLast
+      const byFirst = left.firstname.localeCompare(right.firstname)
+      if (byFirst !== 0) return byFirst
+      return left.userId.localeCompare(right.userId)
+    })
+
+    sortedStudents.forEach((student) => {
+      const grade = gradeByStudentId[student.userId]
+      const values: Array<unknown> = [
+        student.lastname,
+        student.firstname,
+        student.email,
+        student.userId,
+        grade?.joined ? 'true' : 'false',
+        grade?.participation ?? '',
+        grade?.value ?? '',
+        Number(grade?.points ?? 0).toFixed(1),
+        Number(grade?.outOf ?? 0).toFixed(1),
+        grade?.numAnswered ?? '',
+        grade?.numQuestions ?? '',
+        grade?.needsGrading ? 'true' : 'false',
+        grade?.visibleToStudents ? 'true' : 'false',
+      ]
+      const marksByQuestionId = new Map(
+        (grade?.marks || [])
+          .filter((mark): mark is Mark & { questionId: string } => Boolean(mark.questionId))
+          .map((mark) => [mark.questionId, mark])
+      )
+      questions.forEach((question) => {
+        const mark = marksByQuestionId.get(question._id || '')
+        values.push(mark?.points !== undefined ? Number(mark.points).toFixed(1) : '')
+        values.push(mark?.outOf !== undefined ? Number(mark.outOf).toFixed(1) : '')
+        values.push(mark?.needsGrading ? 'true' : mark ? 'false' : '')
+        values.push(mark?.feedback || '')
+      })
+      rows.push(values)
+    })
+
+    return rows
+  }, [gradeByStudentId, questions, students])
+
   const setDraftPoints = (studentId: string, points: number) => {
     setDrafts((prev) => ({
       ...prev,
@@ -407,6 +477,26 @@ export default function GradeSession() {
           </button>
           <button type="button" className="btn btn-secondary" onClick={toggleVisibility} disabled={busy || grades.length === 0}>
             {visibleToStudents ? 'Hide From Students' : 'Show To Students'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-default"
+            disabled={downloadingCsv}
+            onClick={() => {
+              void (async () => {
+                setDownloadingCsv(true)
+                try {
+                  const csvText = await apiClient.get<string>(`/grades/session/${sessionId}/export`)
+                  downloadCsvText(`session-grades-${sessionId || 'session'}.csv`, csvText)
+                } catch {
+                  downloadCsvFile(`session-grades-${sessionId || 'session'}.csv`, sessionGradeCsvRows)
+                } finally {
+                  setDownloadingCsv(false)
+                }
+              })()
+            }}
+          >
+            {downloadingCsv ? 'Downloading...' : 'Download Session Grades CSV'}
           </button>
         </div>
 

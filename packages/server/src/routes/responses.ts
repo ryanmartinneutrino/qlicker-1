@@ -10,6 +10,7 @@ import type { Question, User } from '@qlicker/shared'
 import { responseSchema } from '@qlicker/shared'
 import { gradeResponse } from '../utils/grading'
 import { courseAccessForUser, isAdmin } from '../auth/course-access'
+import { sendCsvDownload } from '../utils/csv'
 
 const router = Router()
 
@@ -42,6 +43,17 @@ async function resolveQuestionContext(question: Pick<Question, 'sessionId' | 'co
     sessionId,
     courseId: session?.courseId,
   }
+}
+
+function formatResponseAnswer(answer: string | string[]): string {
+  return Array.isArray(answer) ? answer.join(' | ') : answer
+}
+
+function formatTimestamp(value: unknown): string {
+  if (!value) return ''
+  const parsed = new Date(value as string)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString()
 }
 
 /** GET /api/responses?questionId=...&attempt=... — get responses for a question */
@@ -96,6 +108,95 @@ router.get('/', requireAuth, async (req, res, next) => {
       .find({ questionId, studentUserId: user._id, ...(attempt ? { attempt } : {}) } as Parameters<typeof responses.find>[0])
       .toArray()
     res.json(own)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/responses/session/:sessionId/export — instructor CSV export */
+router.get('/session/:sessionId/export', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const sessions = getSessions()
+    const questions = getQuestions()
+    const responses = getResponses()
+    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+
+    const access = await courseAccessForUser(user, session.courseId)
+    if (!(isAdmin(user) || access.isInstructor)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const questionIds = (session.questions || []).filter(
+      (questionId): questionId is string => typeof questionId === 'string' && questionId.length > 0
+    )
+    const questionDocs = questionIds.length > 0
+      ? await questions
+          .find({ _id: { $in: questionIds } } as Parameters<typeof questions.find>[0])
+          .toArray()
+      : []
+    const questionById = new Map(
+      questionDocs
+        .filter((question): question is Question & { _id: string } => typeof question._id === 'string' && question._id.length > 0)
+        .map((question) => [question._id, question])
+    )
+    const orderedQuestions = questionIds
+      .map((questionId) => questionById.get(questionId))
+      .filter((question): question is Question & { _id: string } => Boolean(question))
+
+    const allResponses = questionIds.length > 0
+      ? await responses
+          .find({ questionId: { $in: questionIds } } as Parameters<typeof responses.find>[0])
+          .toArray()
+      : []
+    const responsesByQuestion = new Map<string, typeof allResponses>()
+    allResponses.forEach((response) => {
+      const list = responsesByQuestion.get(response.questionId) || []
+      list.push(response)
+      responsesByQuestion.set(response.questionId, list)
+    })
+
+    const rows: Array<Array<unknown>> = [
+      [
+        'QuestionIndex',
+        'QuestionId',
+        'QuestionPlainText',
+        'QuestionType',
+        'Attempt',
+        'StudentUserId',
+        'Answer',
+        'Correct',
+        'CreatedAt',
+      ],
+    ]
+
+    orderedQuestions.forEach((question, index) => {
+      const questionResponses = responsesByQuestion.get(question._id) || []
+      questionResponses
+        .sort((left, right) => {
+          const byAttempt = Number(left.attempt || 0) - Number(right.attempt || 0)
+          if (byAttempt !== 0) return byAttempt
+          const byStudent = String(left.studentUserId || '').localeCompare(String(right.studentUserId || ''))
+          if (byStudent !== 0) return byStudent
+          return formatTimestamp(left.createdAt).localeCompare(formatTimestamp(right.createdAt))
+        })
+        .forEach((response) => {
+          rows.push([
+            index + 1,
+            question._id,
+            question.plainText || '',
+            question.type,
+            response.attempt,
+            response.studentUserId || '',
+            formatResponseAnswer(response.answer),
+            typeof response.correct === 'boolean' ? String(response.correct) : '',
+            formatTimestamp(response.createdAt),
+          ])
+        })
+    })
+
+    sendCsvDownload(res, `session-responses-${req.params.sessionId}.csv`, rows)
   } catch (err) {
     next(err)
   }

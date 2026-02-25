@@ -237,6 +237,32 @@ async function run() {
   })
   assert(Array.isArray(reordered.questions), 'Reorder response should include questions array.')
 
+  // export surface checks (course/session grades + session responses)
+  await prof.request('POST', `/grades/calc-session/${tempSession._id}`, {})
+
+  const courseGradesCsv = await prof.request(
+    'GET',
+    `/grades/course/${tempCourse._id}/export?sessionIds=${encodeURIComponent(tempSession._id)}`
+  )
+  assert(typeof courseGradesCsv === 'string', 'Course grades export should return CSV text.')
+  assert(courseGradesCsv.includes('"LastName","FirstName","Email","UserId"'), 'Course grades export header mismatch.')
+  assert(courseGradesCsv.includes(meStudent.user._id), 'Course grades export should include enrolled student row.')
+
+  await student2.request('GET', `/grades/course/${tempCourse._id}/export`, undefined, { expectStatus: 403 })
+
+  const sessionGradesCsv = await prof.request('GET', `/grades/session/${tempSession._id}/export`)
+  assert(typeof sessionGradesCsv === 'string', 'Session grades export should return CSV text.')
+  assert(sessionGradesCsv.includes('"Grade (%)"'), 'Session grades export header mismatch.')
+  await student.request('GET', `/grades/session/${tempSession._id}/export`, undefined, { expectStatus: 403 })
+
+  const sessionResponsesCsv = await prof.request('GET', `/responses/session/${tempSession._id}/export`)
+  assert(typeof sessionResponsesCsv === 'string', 'Session responses export should return CSV text.')
+  assert(
+    sessionResponsesCsv.includes('"QuestionIndex","QuestionId","QuestionPlainText","QuestionType"'),
+    'Session responses export header mismatch.'
+  )
+  await student.request('GET', `/responses/session/${tempSession._id}/export`, undefined, { expectStatus: 403 })
+
   // group assignment semantics check (exclusive membership + renumber on delete)
   const createdCategory = await prof.request('POST', `/courses/${tempCourse._id}/groups/categories`, {
     categoryName: 'AuthzCategory',
