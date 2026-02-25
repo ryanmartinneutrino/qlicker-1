@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `21733d47`
-- Recent merged PRs in this tranche: `#49`, `#50`
+- Baseline commit: `6347321a`
+- Recent merged PRs in this tranche: `#53`, `#54`, `#55`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -14,13 +14,22 @@
 - Realtime routing now handles change-stream delete events via `documentKey` and uses scoped routing keys.
 - Collection index bootstrap is now called at server startup.
 - Session create parity gap fixed: server defaults `status` to `hidden` when omitted.
-- CSV parity improved on the React side:
-  - course grades CSV export
-  - session responses CSV export
-  - groups CSV export refactored to shared utility
+- CSV parity improved with server-backed exports:
+  - `GET /api/grades/course/:courseId/export`
+  - `GET /api/grades/session/:sessionId/export`
+  - `GET /api/responses/session/:sessionId/export`
+  - `GET /api/courses/:courseId/groups/export`
+  - client pages now prefer server CSV with local fallback
+- Question-library parity/authz fix landed:
+  - normalized detached-question filtering (`sessionId` missing/null)
+  - avoid writing `undefined` fields on question create/copy paths
 - Image API authz hardened:
   - non-admin image list is owner-scoped
   - image delete requires owner or admin
+- Session-store collision fix landed:
+  - auth middleware sessions now use Mongo collection `authSessions`
+  - session APIs now ignore non-course docs lacking valid `courseId`
+  - DB compat harness now reports explicit `sessions._collection` collision errors
 - Realtime subscription resilience/security hardened:
   - standardized `subscription:error` contract across `subscribe:*` handlers
   - auto re-subscribe + refetch on socket reconnect in `useRealtimeCollection`
@@ -47,14 +56,14 @@
 
 | Lane | Scope | Status | Evidence | Next gate |
 |---|---|---|---|---|
-| L1 | AuthZ + API policy | 80% | PR `#42`, `#46`, authz harness present | Close residual endpoint edge-case matrix and rerun authz integration on latest `master` |
+| L1 | AuthZ + API policy | 88% | PR `#42`, `#46`, `#54`, `#55`, authz harness green on isolated runtime | Close residual endpoint edge-case matrix and rerun authz/realtime authz suites on latest Docker baseline |
 | L2 | Student/prof session-question parity | 65% | PR `#40`, PR `#43` | Finish edge transitions + verify interactive/quiz behavior against Meteor checklist |
 | L3 | Course/groups parity | 60% | PR `#39`, PR `#44` (groups CSV) | Finalize group/category semantics and parity tests |
-| L4 | Grades/results/export parity | 60% | PR `#36`, PR `#44` | Complete remaining grade/review visibility parity + CSV value-order matching checks |
+| L4 | Grades/results/export parity | 76% | PR `#36`, `#44`, `#53` | Complete remaining grade/review visibility edge semantics + CSV value-order parity checks against Meteor outputs |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 35% | partial server/client support | Finish Jitsi/group room behavior and cleanup parity |
-| L7 | DB compatibility + parity fixtures | 58% | PR `#49` DB compatibility + parity diff harnesses | Execute baseline-vs-candidate runs on sanitized Meteor backup staging |
-| L8 | Integration/load/cutover ops | 66% | PR `#50` unified gate runner + updated runbook/testing docs | Run full gate in Docker/CI and archive evidence for pilot decision |
+| L7 | DB compatibility + parity fixtures | 66% | PR `#49`, `#55` | Execute baseline-vs-candidate runs on sanitized Meteor backup staging and clear any `sessions._collection` collision findings |
+| L8 | Integration/load/cutover ops | 72% | PR `#50`, `#54` + isolated runtime authz pass | Run full gate in Docker/CI and archive evidence for pilot decision |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -76,7 +85,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~74%** toward pilot-readiness.
+- Current migration completion: **~80%** toward pilot-readiness.
 - Remaining critical path: L6 + L7 + L8 validation closure.
 
 ## References
@@ -84,6 +93,7 @@
 - Latest tranche summary: `docs/migration-work-summary-2026-02-25.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch2.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch3.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch4.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`

@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-25`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `21733d47`
+- Last verified baseline commit before this update: `6347321a`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -16,12 +16,12 @@
 |---|---|---|---|---|---|---|
 | `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | `#42` (indirect) |
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management APIs are broader; final behavior/test parity still pending | Agent-01, Agent-06 | `#39`, `#42`, `#44` |
-| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; runtime parity + smoke/e2e still pending | Agent-02, Agent-03 | `#40`, `#43` |
-| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow landed; final parity tests still pending | Agent-01, Agent-05 | `#41`, `#42` |
+| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; auth-session collection separation + non-course session filtering landed; runtime parity + smoke/e2e still pending | Agent-02, Agent-03 | `#40`, `#43`, `#55` |
+| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow landed; detached-session null/missing normalization landed; final parity tests still pending | Agent-01, Agent-05 | `#41`, `#42`, `#54` |
 | `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; reconnect/load parity evidence still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44`, `#47` |
-| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44` |
+| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and server-backed CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44`, `#53` |
 | Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth/routing/reconnect hardening landed; runtime churn/load validation still pending | Agent-07 | `#37`, `#42`, `#47` |
-| Legacy collection compatibility (cross-cutting) | DB compatibility + parity scripts (`migration-db-compat-check`, `migration-db-parity-diff`) | `courses`, `sessions`, `questions`, `responses`, `grades`, `users`, `settings`, `images` | partial | Tooling landed; must execute against sanitized backup baseline/candidate before pilot | Agent-07, Agent-08 | `#49`, `#50` |
+| Legacy collection compatibility (cross-cutting) | DB compatibility + parity scripts (`migration-db-compat-check`, `migration-db-parity-diff`) | `courses`, `sessions`, `questions`, `responses`, `grades`, `users`, `settings`, `images`, `authSessions` | partial | Tooling landed; explicit detection for auth-session/session-collection collision landed; must execute against sanitized backup baseline/candidate before pilot | Agent-07, Agent-08 | `#49`, `#50`, `#55` |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Some flows still need final normalization checks | Agent-01, Agent-05 | `#41`, `#43` |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | Ownership authz hardening landed; end-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | `#46` |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | `#39`, `#44` |
@@ -163,6 +163,9 @@ Rebase protocol:
 | 2026-02-25 | `0623642` | Agent-05/L8 | `npm run build && node --check scripts/migration-realtime-authz.mjs` | pass | Realtime reconnect resubscribe + standardized subscription auth errors + realtime authz harness (`PR #47`). |
 | 2026-02-25 | `390bf0e` | Agent-07 | `npm run build && node --check scripts/migration-db-compat-check.mjs && node --check scripts/migration-db-parity-diff.mjs` | pass | Added DB compatibility + baseline/candidate parity diff harnesses (`PR #49`). |
 | 2026-02-25 | `21733d4` | Agent-08 | `npm run build && node --check scripts/migration-gate-runner.mjs` | pass | Added unified migration gate runner and updated DB/cutover docs (`PR #50`). |
+| 2026-02-25 | `2b43ca1` | Agent-04/L1 | `npm run build && node --check scripts/migration-authz-integration.mjs` | pass | Added server-backed course/session/response CSV exports + UI wiring + export authz checks (`PR #53`). |
+| 2026-02-25 | `de2e3fd` | Agent-01/L8 | `npm run build && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-authz` | pass | Fixed question-library detached session null/missing handling; normalized temp-course authz harness setup (`PR #54`). |
+| 2026-02-25 | `6347321` | Agent-01/L7 | `npm run build && npm run test:migration-db-compat` | pass/fail (expected) | Separated auth sessions into `authSessions`; db compat now emits explicit `sessions._collection` collision errors for polluted DBs (`PR #55`). |
 
 ## Risks and Blockers
 
