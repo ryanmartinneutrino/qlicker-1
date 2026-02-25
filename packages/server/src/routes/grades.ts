@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Response as ExpressResponse } from 'express'
 import { getGrades } from '../collections/grades'
 import { requireAuth, requireInstructor } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
@@ -183,6 +183,43 @@ function calculateAutomaticPoints(question: Question, response: Response | null)
   }
 
   return 0
+}
+
+async function ensureSessionManageAccess(
+  user: User,
+  session: Pick<Session, 'courseId'>,
+  res: ExpressResponse
+): Promise<boolean> {
+  if (isAdmin(user)) return true
+  const allowed = await canUserManageCourse(user, session.courseId)
+  if (!allowed) {
+    res.status(403).json({ error: 'Forbidden.' })
+    return false
+  }
+  return true
+}
+
+async function loadManagedGrade(
+  user: User,
+  gradeId: string,
+  res: ExpressResponse
+): Promise<WithId<Grade> | null> {
+  const grades = getGrades()
+  const grade = await grades.findOne({ _id: gradeId } as Parameters<typeof grades.findOne>[0])
+  if (!grade) {
+    res.status(404).json({ error: 'Grade not found.' })
+    return null
+  }
+  if (isAdmin(user)) return grade
+
+  const courseId = grade.courseId || (await resolveCourseIdFromSession(grade.sessionId))
+  const allowed = await canUserManageCourse(user, courseId)
+  if (!allowed) {
+    res.status(403).json({ error: 'Forbidden.' })
+    return null
+  }
+
+  return grade
 }
 
 /** GET /api/grades?courseId=...&sessionId=...&userId=... */
@@ -383,6 +420,7 @@ router.get('/course/:courseId/export', requireAuth, async (req, res, next) => {
 /** GET /api/grades/session/:sessionId/export */
 router.get('/session/:sessionId/export', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessionId = req.params.sessionId
     const sessions = getSessions()
     const courses = getCourses()
@@ -391,6 +429,7 @@ router.get('/session/:sessionId/export', requireAuth, requireInstructor, async (
 
     const session = await sessions.findOne({ _id: sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
 
     const course = await courses.findOne(
       { _id: session.courseId } as Parameters<typeof courses.findOne>[0],
@@ -535,9 +574,12 @@ router.get('/:gradeId', requireAuth, async (req, res, next) => {
 /** PUT /api/grades/:gradeId — update a grade (instructor only) */
 router.put('/:gradeId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const grades = getGrades()
     const parsed = gradeSchema.partial().safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
+    const existing = await loadManagedGrade(user, req.params.gradeId, res)
+    if (!existing) return
 
     await grades.updateOne(
       { _id: req.params.gradeId } as Parameters<typeof grades.updateOne>[0],
@@ -553,8 +595,11 @@ router.put('/:gradeId', requireAuth, requireInstructor, async (req, res, next) =
 /** PUT /api/grades/:gradeId/visible — toggle student visibility */
 router.put('/:gradeId/visible', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const { visible } = req.body as { visible: boolean }
     const grades = getGrades()
+    const existing = await loadManagedGrade(user, req.params.gradeId, res)
+    if (!existing) return
     await grades.updateOne(
       { _id: req.params.gradeId } as Parameters<typeof grades.updateOne>[0],
       { $set: { visibleToStudents: visible } }
@@ -568,6 +613,7 @@ router.put('/:gradeId/visible', requireAuth, requireInstructor, async (req, res,
 /** POST /api/grades/calc-session/:sessionId — (re)calculate grades for a session */
 router.post('/calc-session/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const courses = getCourses()
     const questionsCol = getQuestions()
@@ -576,6 +622,7 @@ router.post('/calc-session/:sessionId', requireAuth, requireInstructor, async (r
 
     const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
     const course = await courses.findOne({ _id: session.courseId } as Parameters<typeof courses.findOne>[0])
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
@@ -721,7 +768,15 @@ function gradePatchWithoutId(grade: Partial<Grade>): Partial<Grade> {
 /** PUT /api/grades/session/:sessionId/visible — toggle visibility for all session grades */
 router.put('/session/:sessionId/visible', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const visible = Boolean((req.body as { visible?: boolean }).visible)
+    const sessions = getSessions()
+    const session = await sessions.findOne(
+      { _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0],
+      { projection: { courseId: 1 } }
+    )
+    if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
     const grades = getGrades()
     await grades.updateMany(
       { sessionId: req.params.sessionId } as Parameters<typeof grades.updateMany>[0],
