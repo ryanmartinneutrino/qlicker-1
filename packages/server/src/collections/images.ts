@@ -10,5 +10,7 @@ export async function initImages(): Promise<Collection<Image>> {
   const col = getImages()
   // Index migrated from server/main.js
   await col.createIndex({ UID: 1 })
+  // Owner scoping for image listing/deletion.
+  await col.createIndex({ owner: 1 })
   return col
 }

@@ -195,6 +195,7 @@ export const imageSchema = z.object({
   _id: mongoId.optional(),
   url: z.string(),
   UID: z.string(),
+  owner: mongoId.optional(),
 })
 
 // ─── Settings ────────────────────────────────────────────────────────────────
