@@ -327,6 +327,18 @@ export default function Session() {
   if (!session) return <div className="page">Session not found</div>
 
   if (!session.quiz) {
+    if (session.status === 'hidden') {
+      return (
+        <div className="page">
+          <div className="ql-header-bar"><h1>{session.name}</h1></div>
+          <div className="container">
+            <p>This session is not open yet.</p>
+            <Link className="btn btn-secondary" to={`/course/${courseId}`}>Back to Course</Link>
+          </div>
+        </div>
+      )
+    }
+
     if (session.status === 'visible') {
       return (
         <div className="page">
@@ -340,11 +352,25 @@ export default function Session() {
     }
 
     if (session.status === 'done') {
+      const canReview = !isInstructorView && Boolean(session.reviewable)
       return (
         <div className="page">
           <div className="ql-header-bar"><h1>{session.name}</h1></div>
           <div className="container">
-            <p>This session has finished.</p>
+            {canReview ? (
+              <>
+                <p>This session has finished. Review is enabled.</p>
+                <Link
+                  className="btn btn-primary"
+                  to={`/course/${courseId}/session/${sessionId}/results`}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  Review Session
+                </Link>
+              </>
+            ) : (
+              <p>This session has finished.</p>
+            )}
             <Link className="btn btn-secondary" to={`/course/${courseId}`}>Back to Course</Link>
           </div>
         </div>

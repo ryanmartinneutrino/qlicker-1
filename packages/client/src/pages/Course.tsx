@@ -28,6 +28,28 @@ function toMillis(value: unknown): number {
   return Number.isFinite(millis) ? millis : 0
 }
 
+function hasActiveQuizExtension(session: Session, userId: string): boolean {
+  if (!Array.isArray(session.quizExtensions)) return false
+  const extension = session.quizExtensions.find((entry) => entry.userId === userId)
+  if (!extension) return false
+  const start = toMillis(extension.quizStart)
+  const end = toMillis(extension.quizEnd)
+  const now = Date.now()
+  return start > 0 && end > 0 && now > start && now < end
+}
+
+function isQuizOpenForStudent(session: Session, userId: string): boolean {
+  if (!session.quiz) return false
+  if (session.status === 'running') return true
+  if (session.status === 'hidden' || session.status === 'done') return false
+  if (hasActiveQuizExtension(session, userId)) return true
+  const start = toMillis(session.quizStart)
+  const end = toMillis(session.quizEnd)
+  if (start < 1 || end < 1) return false
+  const now = Date.now()
+  return now > start && now < end
+}
+
 function sessionSortValue(session: Session): number {
   if (session.quiz) {
     return toMillis(session.quizEnd || session.quizStart || session.date || session.createdAt)
@@ -87,6 +109,7 @@ export default function Course() {
       (((course.instructors || []).includes(user._id || '') || course.owner === user._id) ||
         user.profile?.roles?.includes('admin'))
   )
+  const userId = user?._id || ''
 
   useEffect(() => {
     if (!courseId || !isInstructor) {
@@ -183,6 +206,50 @@ export default function Course() {
     } finally {
       setBusySessionId(null)
     }
+  }
+
+  const toggleSessionReviewable = async (sessionId: string, reviewable: boolean) => {
+    setBusySessionId(sessionId)
+    setCourseError(null)
+    try {
+      await apiClient.put(`/sessions/${sessionId}/reviewable`, { reviewable })
+      await refetchSessions()
+    } catch (err) {
+      setCourseError((err as Error).message)
+    } finally {
+      setBusySessionId(null)
+    }
+  }
+
+  const openStudentSession = (session: Session) => {
+    if (!session._id || !courseId) return
+
+    if (session.status === 'done' && session.reviewable) {
+      navigate(`/course/${courseId}/session/${session._id}/results`)
+      return
+    }
+
+    if (session.status === 'done') {
+      window.alert(session.quiz ? 'Quiz not reviewable' : 'Session not reviewable')
+      return
+    }
+
+    if (
+      session.quiz &&
+      userId &&
+      !session.practiceQuiz &&
+      (session.submittedQuiz || []).includes(userId)
+    ) {
+      window.alert('Quiz already submitted')
+      return
+    }
+
+    if (session.quiz && userId && !isQuizOpenForStudent(session, userId)) {
+      window.alert('Quiz not open')
+      return
+    }
+
+    navigate(`/course/${courseId}/session/present/${session._id}`)
   }
 
   const copyAllSessions = async () => {
@@ -324,6 +391,19 @@ export default function Course() {
       { label: 'Grade', click: () => navigate(`/course/${courseId}/session/${sessionId}/grade`) },
       { label: 'Results', click: () => navigate(`/course/${courseId}/session/${sessionId}/results`) },
       { label: 'Replay', click: () => navigate(`/course/${courseId}/session/replay/${sessionId}`) },
+      ...(session.status === 'done'
+        ? [
+            {
+              label:
+                busySessionId === sessionId
+                  ? 'Saving...'
+                  : session.reviewable
+                    ? 'Disable Review'
+                    : 'Allow Review',
+              click: () => void toggleSessionReviewable(sessionId, !Boolean(session.reviewable)),
+            },
+          ]
+        : []),
       { label: busySessionId === sessionId ? 'Duplicating...' : 'Duplicate', click: () => void duplicateSession(sessionId) },
       ...(copyTargetCourseId
         ? [
@@ -567,7 +647,12 @@ export default function Course() {
           <SessionListItem
             key={session._id}
             session={session}
-            click={() => navigate(`/course/${courseId}/session/present/${session._id}`)}
+            click={() => openStudentSession(session)}
+            controls={
+              session.status === 'done' && session.reviewable
+                ? [{ label: 'Review', click: () => navigate(`/course/${courseId}/session/${session._id}/results`) }]
+                : undefined
+            }
           />
         ))}
 
@@ -576,7 +661,12 @@ export default function Course() {
           <SessionListItem
             key={session._id}
             session={session}
-            click={() => navigate(`/course/${courseId}/session/present/${session._id}`)}
+            click={() => openStudentSession(session)}
+            controls={
+              session.status === 'done' && session.reviewable
+                ? [{ label: 'Review', click: () => navigate(`/course/${courseId}/session/${session._id}/results`) }]
+                : undefined
+            }
           />
         ))}
       </div>
