@@ -22,12 +22,29 @@ class ApiSession {
     this.label = label
     this.cookie = ''
     this.csrf = ''
+    this.cookies = new Map()
   }
 
   captureCookie(res) {
-    const setCookie = res.headers.get('set-cookie')
-    if (!setCookie) return
-    this.cookie = setCookie.split(';')[0]
+    const setCookies =
+      typeof res.headers.getSetCookie === 'function'
+        ? res.headers.getSetCookie()
+        : (() => {
+            const single = res.headers.get('set-cookie')
+            return single ? [single] : []
+          })()
+
+    if (!Array.isArray(setCookies) || setCookies.length < 1) return
+    for (const rawCookie of setCookies) {
+      if (!rawCookie) continue
+      const firstPart = rawCookie.split(';')[0]?.trim()
+      if (!firstPart) continue
+      const separator = firstPart.indexOf('=')
+      if (separator < 1) continue
+      const name = firstPart.slice(0, separator).trim()
+      this.cookies.set(name, firstPart)
+    }
+    this.cookie = [...this.cookies.values()].join('; ')
   }
 
   async parseBody(res) {
