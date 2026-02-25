@@ -30,6 +30,7 @@
     "test:migration-db-compat": "node scripts/migration-db-compat-check.mjs",
     "test:migration-db-parity": "node scripts/migration-db-parity-diff.mjs",
     "test:migration-legacy-backup": "node scripts/migration-legacy-backup-validate.mjs",
+    "test:migration-pilot-checklist": "node scripts/migration-pilot-checklist.mjs",
     "test:migration-gate": "node scripts/migration-gate-runner.mjs"
   },
   "dependencies": {
