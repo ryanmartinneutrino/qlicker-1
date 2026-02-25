@@ -328,6 +328,28 @@ async function run() {
     JSON.stringify(reorderedSession.questions || []) === JSON.stringify(reorderedIds),
     'Session question order update did not persist.'
   )
+  const startedLifecycle = await prof.request('PUT', `/sessions/${createdSession._id}/status`, {
+    status: 'running',
+  })
+  assert(
+    startedLifecycle.currentQuestion === reorderedIds[0],
+    'Starting a session should set currentQuestion to the first ordered question.'
+  )
+  const movedLifecycleCurrent = await prof.request('PUT', `/sessions/${createdSession._id}/current`, {
+    questionId: reorderedIds[1],
+  })
+  assert(
+    movedLifecycleCurrent.currentQuestion === reorderedIds[1],
+    'Run-session current-question update should persist.'
+  )
+  await prof.request('PUT', `/sessions/${createdSession._id}/status`, { status: 'visible' })
+  const restartedLifecycle = await prof.request('PUT', `/sessions/${createdSession._id}/status`, {
+    status: 'running',
+  })
+  assert(
+    restartedLifecycle.currentQuestion === reorderedIds[0],
+    'Restarting a session should reset currentQuestion to the first ordered question.'
+  )
 
   await student.request('GET', `/questions/${copiedQuestionA._id}`, undefined, { expectStatus: 403 })
   await student.request(
@@ -636,6 +658,64 @@ async function run() {
     reviewableVisibleToStudent.some((grade) => grade._id === reviewableGrade._id),
     'Student should see session grade when reviewability is enabled.'
   )
+  const reviewableMark = (reviewableGrade.marks || []).find(
+    (mark) => mark.questionId === reviewableQuestion._id
+  )
+  assert(reviewableMark, 'Expected a grade mark for the reviewability parity question.')
+  const reviewableMarkOutOf = Number(reviewableMark.outOf ?? 1)
+  const reviewableMarkPoints = Number(reviewableMark.points ?? 0)
+  const manualReviewPoints =
+    reviewableMarkOutOf > 0
+      ? reviewableMarkPoints === reviewableMarkOutOf
+        ? Math.max(0, reviewableMarkOutOf - 0.5)
+        : reviewableMarkOutOf
+      : 0
+  const manualReviewMarks = (reviewableGrade.marks || []).map((mark) =>
+    mark.questionId === reviewableQuestion._id
+      ? {
+          ...mark,
+          points: manualReviewPoints,
+          automatic: false,
+          needsGrading: false,
+        }
+      : mark
+  )
+  const manualReviewPointsTotal = manualReviewMarks.reduce(
+    (sum, mark) => sum + Number(mark.points ?? 0),
+    0
+  )
+  const manualReviewOutOfTotal = manualReviewMarks.reduce(
+    (sum, mark) => sum + Number(mark.outOf ?? 0),
+    0
+  )
+  const manualReviewValue =
+    manualReviewOutOfTotal > 0 ? Math.round((1000 * manualReviewPointsTotal) / manualReviewOutOfTotal) / 10 : 0
+  await prof.request('PUT', `/grades/${reviewableGrade._id}`, {
+    marks: manualReviewMarks,
+    points: manualReviewPointsTotal,
+    outOf: manualReviewOutOfTotal,
+    value: manualReviewValue,
+    needsGrading: manualReviewMarks.some((mark) => Boolean(mark.needsGrading)),
+  })
+  await prof.request('POST', `/grades/calc-session/${reviewableSession._id}`, {})
+  const recalculatedReviewableGrades = await prof.request(
+    'GET',
+    `/grades?sessionId=${reviewableSession._id}&userId=${studentUser._id}`
+  )
+  const recalculatedReviewableGrade = recalculatedReviewableGrades.find(
+    (grade) => grade.userId === studentUser._id
+  )
+  const recalculatedReviewableMark = (recalculatedReviewableGrade?.marks || []).find(
+    (mark) => mark.questionId === reviewableQuestion._id
+  )
+  assert(
+    recalculatedReviewableMark?.automatic === false,
+    'Recalculating session grades should preserve manual mark overrides.'
+  )
+  assert(
+    Math.abs(Number(recalculatedReviewableMark?.points ?? 0) - manualReviewPoints) < 0.0001,
+    'Recalculating session grades should preserve manual mark points.'
+  )
 
   const reviewableDisabled = await prof.request(
     'PUT',
@@ -722,6 +802,14 @@ async function run() {
     Number(categoryVideoConnection?.connectionInfo?.groupNumber) === groupOneNumber,
     'Student should resolve to assigned group video room.'
   )
+  const categoryVideoConnectionWithGroupParam = await student.request(
+    'GET',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/connection?groupNumber=${groupTwoNumber}`
+  )
+  assert(
+    Number(categoryVideoConnectionWithGroupParam?.connectionInfo?.groupNumber) === groupOneNumber,
+    'Student category connection should ignore requested groupNumber and resolve from membership.'
+  )
 
   await student.request(
     'POST',
@@ -744,6 +832,21 @@ async function run() {
   )
   const helpGroup = (helpCategory?.groups || []).find((entry) => Number(entry.groupNumber) === groupOneNumber)
   assert(helpGroup?.helpVideoChat === true, 'Group help flag should be enabled after student toggle.')
+  const instructorJoinedGroup = await prof.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/join`,
+    {}
+  )
+  const instructorJoinedCategory = (instructorJoinedGroup.groupCategories || []).find(
+    (entry) => Number(entry.categoryNumber) === Number(videoCategory.categoryNumber)
+  )
+  const instructorJoinedGroupState = (instructorJoinedCategory?.groups || []).find(
+    (entry) => Number(entry.groupNumber) === groupOneNumber
+  )
+  assert(
+    instructorJoinedGroupState?.helpVideoChat === false,
+    'Instructor join should clear pending group help-call flag.'
+  )
 
   const clearedGroup = await prof.request(
     'POST',
@@ -770,7 +873,20 @@ async function run() {
     `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/clear`,
     {}
   )
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/toggle`,
+    { enabled: false }
+  )
+  await student.request(
+    'GET',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/connection`,
+    undefined,
+    { expectStatus: 400 }
+  )
   await prof.request('POST', `/courses/${course._id}/video-chat/clear`, {})
+  await prof.request('POST', `/courses/${course._id}/video-chat/toggle`, { enabled: false })
+  await student.request('GET', `/courses/${course._id}/video-chat/connection`, undefined, { expectStatus: 400 })
 
   const verifyResponse = await student.request('POST', '/users/verify-email', {})
   if (!Object.prototype.hasOwnProperty.call(verifyResponse, 'success')) {

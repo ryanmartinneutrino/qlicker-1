@@ -438,9 +438,14 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
 
     const patch: Record<string, unknown> = { status }
     if (status === 'running') {
-      if (!existing.currentQuestion && existing.questions?.[0]) {
-        patch.currentQuestion = existing.questions[0]
+      const firstQuestionId = (existing.questions || []).find(
+        (questionId): questionId is string => typeof questionId === 'string' && questionId.length > 0
+      )
+      if (!firstQuestionId) {
+        return res.status(400).json({ error: 'Cannot run a session with no valid questions.' })
       }
+      // Match Meteor start-session behavior: running always resets to the first question.
+      patch.currentQuestion = firstQuestionId
     }
     if (status === 'done' && !existing.date) {
       patch.date = new Date()
