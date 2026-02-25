@@ -27,7 +27,8 @@
     "test:migration-load": "node scripts/migration-load-check.mjs",
     "test:migration-realtime-authz": "node scripts/migration-realtime-authz.mjs",
     "test:migration-db-compat": "node scripts/migration-db-compat-check.mjs",
-    "test:migration-db-parity": "node scripts/migration-db-parity-diff.mjs"
+    "test:migration-db-parity": "node scripts/migration-db-parity-diff.mjs",
+    "test:migration-gate": "node scripts/migration-gate-runner.mjs"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",

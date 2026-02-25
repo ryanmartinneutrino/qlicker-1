@@ -53,6 +53,20 @@ npm run test:migration-realtime-authz
 npm run test:migration-load
 ```
 
+Or run the orchestrated gate command:
+
+```bash
+# Runtime checks only (build + smoke/authz/realtime/load)
+npm run test:migration-gate
+
+# Include DB compatibility + baseline/candidate parity diff in one run
+QCLICKER_GATE_INCLUDE_DB_COMPAT=true \
+QCLICKER_GATE_INCLUDE_DB_PARITY=true \
+QCLICKER_BASELINE_MONGO_URL='mongodb://localhost:27017/qlicker_legacy_backup?directConnection=true' \
+QCLICKER_CANDIDATE_MONGO_URL='mongodb://localhost:27017/qlicker_candidate?directConnection=true' \
+npm run test:migration-gate
+```
+
 ## Notes
 - `test:migration-db-compat` is read-only and checks collection presence, string `_id` compatibility, and key field-type invariants.
 - `test:migration-db-parity` compares projected document shapes/values across baseline and candidate DBs and highlights missing/changed docs in sampled IDs.
