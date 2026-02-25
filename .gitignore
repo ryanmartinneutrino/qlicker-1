@@ -8,6 +8,8 @@ Dockerfile
 logs.txt
 private/
 
+legacydb/
+
 # New stack build artifacts
 packages/*/dist/
 packages/server/.env
