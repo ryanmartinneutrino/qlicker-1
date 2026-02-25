@@ -66,5 +66,4 @@
 | session grade export | `GET /api/grades/session/:sessionId/export` |
 
 ## Open parity work
-- close remaining instructor run-session edge semantics
-- finalize L6 video/Jitsi edge-matrix parity
+- publish recurring staging evidence for legacy-backup validation + pilot checklist summaries
