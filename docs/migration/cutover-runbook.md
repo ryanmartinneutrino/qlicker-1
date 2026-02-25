@@ -8,6 +8,10 @@
 - parity matrix shows no pilot-blocking open items
 - seeded + backup-based parity checks pass
 - realtime and load tests meet thresholds
+- migration gate command is green on latest `master`:
+  - `npm run test:migration-gate`
+  - plus DB checks in staging:
+    - `QCLICKER_GATE_INCLUDE_DB_COMPAT=true QCLICKER_GATE_INCLUDE_DB_PARITY=true npm run test:migration-gate`
 
 ## Pilot execution
 1. Deploy new stack for pilot cohort only.
