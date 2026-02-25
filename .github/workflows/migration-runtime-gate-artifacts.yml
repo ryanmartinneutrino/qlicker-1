@@ -1,0 +1,152 @@
+name: Migration Runtime Gate Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_realtime_churn:
+        description: Include the realtime churn stage in the runtime migration gate.
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  runtime-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval \"db.adminCommand('ping').ok\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Initialize replica set
+        run: |
+          node <<'NODE'
+          const { MongoClient } = require('mongodb')
+
+          async function waitForMongo(uri, attempts = 30, sleepMs = 1000) {
+            let lastError = null
+            for (let i = 0; i < attempts; i += 1) {
+              try {
+                const client = new MongoClient(uri, { serverSelectionTimeoutMS: 2000 })
+                await client.connect()
+                await client.db('admin').command({ ping: 1 })
+                return client
+              } catch (err) {
+                lastError = err
+                await new Promise((resolve) => setTimeout(resolve, sleepMs))
+              }
+            }
+            throw lastError || new Error('MongoDB did not become ready in time.')
+          }
+
+          async function run() {
+            const uri = 'mongodb://localhost:27017/admin?directConnection=true'
+            const client = await waitForMongo(uri)
+            try {
+              try {
+                await client.db('admin').command({
+                  replSetInitiate: {
+                    _id: 'rs0',
+                    members: [{ _id: 0, host: 'localhost:27017' }],
+                  },
+                })
+              } catch (err) {
+                const message = String(err?.message || '')
+                if (!message.includes('already') && !message.includes('Initialized')) {
+                  throw err
+                }
+              }
+
+              const deadline = Date.now() + 45_000
+              while (Date.now() < deadline) {
+                try {
+                  const status = await client.db('admin').command({ replSetGetStatus: 1 })
+                  if (status?.ok === 1) return
+                } catch {
+                  // keep polling until rs is ready
+                }
+                await new Promise((resolve) => setTimeout(resolve, 1000))
+              }
+              throw new Error('Replica set did not reach ready state in time.')
+            } finally {
+              await client.close()
+            }
+          }
+
+          run().catch((err) => {
+            console.error(err)
+            process.exit(1)
+          })
+          NODE
+
+      - name: Seed migration dataset
+        env:
+          MONGO_URL: mongodb://localhost:27017/qlicker?replicaSet=rs0
+        run: ./seed-mock-db.sh
+
+      - name: Start server
+        run: |
+          mkdir -p artifacts
+          MONGO_URL='mongodb://localhost:27017/qlicker?replicaSet=rs0' \
+          PORT=3211 \
+          DISABLE_CSRF=true \
+          QCLICKER_AUTH_RATE_LIMIT_MAX=200 \
+          npm run start:new > artifacts/server.log 2>&1 &
+          echo $! > artifacts/server.pid
+
+      - name: Wait for server health
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:3211/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server health check timed out."
+          exit 1
+
+      - name: Run runtime migration gate
+        env:
+          QCLICKER_BASE_URL: http://localhost:3211
+          QCLICKER_GATE_SKIP_BUILD: "true"
+          QCLICKER_GATE_INCLUDE_REALTIME_CHURN: ${{ inputs.include_realtime_churn }}
+          QCLICKER_REALTIME_CHURN_CYCLES: "4"
+          QCLICKER_REALTIME_CHURN_BURST_SIZE: "3"
+          QCLICKER_GATE_OUTPUT: artifacts/migration-gate-runtime.json
+        run: npm run test:migration-gate
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f artifacts/server.pid ]; then
+            kill "$(cat artifacts/server.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-runtime-gate-${{ github.run_id }}
+          path: artifacts/
