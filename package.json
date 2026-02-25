@@ -24,7 +24,8 @@
     "start:new": "npm run start --workspace=packages/server",
     "test:migration-smoke": "node scripts/migration-smoke.mjs",
     "test:migration-authz": "node scripts/migration-authz-integration.mjs",
-    "test:migration-load": "node scripts/migration-load-check.mjs"
+    "test:migration-load": "node scripts/migration-load-check.mjs",
+    "test:migration-realtime-authz": "node scripts/migration-realtime-authz.mjs"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.6",
