@@ -26,6 +26,7 @@
     "test:migration-authz": "node scripts/migration-authz-integration.mjs",
     "test:migration-load": "node scripts/migration-load-check.mjs",
     "test:migration-realtime-authz": "node scripts/migration-realtime-authz.mjs",
+    "test:migration-realtime-churn": "node scripts/migration-realtime-churn.mjs",
     "test:migration-db-compat": "node scripts/migration-db-compat-check.mjs",
     "test:migration-db-parity": "node scripts/migration-db-parity-diff.mjs",
     "test:migration-legacy-backup": "node scripts/migration-legacy-backup-validate.mjs",

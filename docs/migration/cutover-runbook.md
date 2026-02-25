@@ -10,6 +10,8 @@
 - realtime and load tests meet thresholds
 - migration gate command is green on latest `master`:
   - `npm run test:migration-gate`
+  - include realtime churn stage for reconnect evidence when required:
+    - `QCLICKER_GATE_INCLUDE_REALTIME_CHURN=true npm run test:migration-gate`
   - plus DB checks in staging:
     - `QCLICKER_GATE_INCLUDE_DB_COMPAT=true QCLICKER_GATE_INCLUDE_DB_PARITY=true npm run test:migration-gate`
   - include real legacy-backup validation when backup is mounted:

@@ -54,6 +54,7 @@ async function writeSummary(outputPath, summary) {
 async function run() {
   const skipBuild = toBool(process.env.QCLICKER_GATE_SKIP_BUILD, false)
   const skipRuntime = toBool(process.env.QCLICKER_GATE_SKIP_RUNTIME, false)
+  const includeRealtimeChurn = toBool(process.env.QCLICKER_GATE_INCLUDE_REALTIME_CHURN, false)
   const includeDbCompat = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_COMPAT, false)
   const includeDbParity = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_PARITY, false)
   const includeLegacyBackup = toBool(process.env.QCLICKER_GATE_INCLUDE_LEGACY_BACKUP, false)
@@ -71,6 +72,9 @@ async function run() {
     plan.push({ key: 'smoke', command: 'npm run test:migration-smoke' })
     plan.push({ key: 'authz', command: 'npm run test:migration-authz' })
     plan.push({ key: 'realtime-authz', command: 'npm run test:migration-realtime-authz' })
+    if (includeRealtimeChurn) {
+      plan.push({ key: 'realtime-churn', command: 'npm run test:migration-realtime-churn' })
+    }
     plan.push({ key: 'load', command: 'npm run test:migration-load' })
   }
 
@@ -120,6 +124,7 @@ async function run() {
     config: {
       skipBuild,
       skipRuntime,
+      includeRealtimeChurn,
       includeDbCompat,
       includeDbParity,
       includeLegacyBackup,
