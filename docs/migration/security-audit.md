@@ -20,6 +20,7 @@
 - Added Socket.IO auth bridging with express-session + passport.
 - Added subscription-level authorization checks on realtime `subscribe:*` channels with a stable `subscription:error` payload contract.
 - Added authorization regression checks to migration smoke and integration scripts.
+- Normalized question-library session-detached semantics (`sessionId` missing/null) to avoid hidden-access/parity drift from legacy documents.
 
 ## Remaining security tasks
 - complete route-level audit for every endpoint and add table-driven policy tests
@@ -33,4 +34,8 @@
   - question mutate/delete
   - response submit/read
 - `scripts/migration-authz-integration.mjs` now includes image ownership delete denial checks.
+- `scripts/migration-authz-integration.mjs` now also verifies export endpoint auth for:
+  - `GET /api/grades/course/:courseId/export`
+  - `GET /api/grades/session/:sessionId/export`
+  - `GET /api/responses/session/:sessionId/export`
 - `scripts/migration-realtime-authz.mjs` verifies unauthorized and unauthenticated realtime subscribe failures.
