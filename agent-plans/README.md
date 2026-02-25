@@ -1,21 +1,19 @@
-# Migration Multi-Agent Runbook
+# Migration Lane Plans
 
-This folder contains ready-to-use task packets for parallel migration work.
+This folder tracks execution-ready lane briefs for the React/Express migration.
 
-## Agents
-- `agent-01-questions-editor.md`
-- `agent-02-quiz-session-parity.md`
-- `agent-03-profile-image-upload.md`
-- `agent-04-video-chat-parity.md`
-- `agent-05-integration-parity-tests.md`
+## Lanes
+- `lane-01-authz.md`
+- `lane-02-session-question-parity.md`
+- `lane-03-course-groups-parity.md`
+- `lane-04-grades-results-exports.md`
+- `lane-05-realtime.md`
+- `lane-06-media-video.md`
+- `lane-07-db-compat-fixtures.md`
+- `lane-08-integration-cutover.md`
 
-## Suggested operating model
-1. Create one git worktree per agent task branch.
-2. Assign exactly one packet per agent.
-3. Require each agent to:
-   - keep `MIGRATION.md` updated for its domain,
-   - run package builds/tests relevant to changed code,
-   - include screenshots for visual changes.
-
-## Quick launch
-Use `./launch-migration-agents.sh` to create local worktrees and branch names for each packet.
+## Required per lane PR
+- Build all workspaces.
+- Run lane-specific tests.
+- Include evidence links (screenshots, logs, or test outputs).
+- Update `MIGRATION.md` and relevant `docs/migration/*` status entries.

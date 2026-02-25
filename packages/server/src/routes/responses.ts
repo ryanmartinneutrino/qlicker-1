@@ -3,9 +3,16 @@ import { generateStringId } from '../utils/id'
 import { getResponses } from '../collections/responses'
 import { getQuestions } from '../collections/questions'
 import { getSessions } from '../collections/sessions'
-import { getCourses } from '../collections/courses'
 import { quizIsActive } from '../collections/sessions'
-import { requireAuth } from '../auth/middleware'
+import {
+  getCourseById,
+  getQuestionById,
+  getSessionById,
+  isAdminUser,
+  isCourseInstructor,
+  isCourseMember,
+  requireAuth,
+} from '../auth/middleware'
 import { responseLimiter } from '../middleware/rate-limit'
 import type { User } from '@qlicker/shared'
 import { responseSchema } from '@qlicker/shared'
@@ -28,23 +35,35 @@ router.get('/', requireAuth, async (req, res, next) => {
     if (!questionId) return res.status(400).json({ error: 'questionId required.' })
 
     const responses = getResponses()
-    const questions = getQuestions()
-    const question = await questions.findOne({ _id: questionId } as Parameters<typeof questions.findOne>[0])
+    const question = await getQuestionById(questionId)
     if (!question) return res.status(404).json({ error: 'Question not found.' })
 
-    const isAdmin = user.profile.roles.includes('admin')
+    const isAdmin = isAdminUser(user)
+    const userId = user._id ?? ''
     let isInstructor = false
+    let isMember = false
 
     if (question.sessionId) {
-      const sessions = getSessions()
-      const session = await sessions.findOne({ _id: question.sessionId } as Parameters<typeof sessions.findOne>[0])
+      const session = await getSessionById(question.sessionId)
       if (session) {
-        const courses = getCourses()
-        const course = await courses.findOne({ _id: session.courseId } as Parameters<typeof courses.findOne>[0])
+        const course = await getCourseById(session.courseId)
         if (course) {
-          isInstructor = course.instructors?.includes(user._id ?? '') ?? false
+          isInstructor = isCourseInstructor(user, course)
+          isMember = isCourseMember(user, course)
         }
       }
+    } else if (question.courseId) {
+      const course = await getCourseById(question.courseId)
+      if (course) {
+        isInstructor = isCourseInstructor(user, course)
+        isMember = isCourseMember(user, course)
+      }
+    } else if (question.creator === userId || question.owner === userId) {
+      isMember = true
+    }
+
+    if (!isAdmin && !isMember) {
+      return res.status(403).json({ error: 'Forbidden.' })
     }
 
     if (isAdmin || isInstructor) {
@@ -91,6 +110,9 @@ router.post('/', requireAuth, responseLimiter, async (req, res, next) => {
     const sessions = getSessions()
     const session = await sessions.findOne({ _id: question.sessionId } as Parameters<typeof sessions.findOne>[0])
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    const course = await getCourseById(session.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
 
     if (session.quiz) {
       if (!quizIsActive(session, user._id)) {
@@ -201,8 +223,20 @@ router.put('/:responseId', requireAuth, responseLimiter, async (req, res, next) 
     const studentUserId = (merged.studentUserId || existing.studentUserId) as string
     const attempt = Number(merged.attempt ?? existing.attempt ?? 1)
     const question = await getQuestions().findOne({ _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0])
-    let sessionId = question?.sessionId
+    if (!question) return res.status(404).json({ error: 'Question not found.' })
+
     let courseId = question?.courseId
+    if (question.sessionId && !courseId) {
+      const owningSession = await getSessionById(question.sessionId)
+      courseId = owningSession?.courseId
+    }
+    if (courseId) {
+      const course = await getCourseById(courseId)
+      if (!course) return res.status(404).json({ error: 'Course not found.' })
+      if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    let sessionId = question?.sessionId
     if (sessionId && !courseId) {
       const session = await getSessions().findOne({ _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0])
       courseId = session?.courseId

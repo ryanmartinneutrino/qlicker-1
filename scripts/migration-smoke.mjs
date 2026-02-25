@@ -190,6 +190,71 @@ async function run() {
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
   assert(!createdCourseQuestions.some((q) => q._id === lifecycleQuestion._id), 'Deleted question still appears in list.')
 
+  // Authorization regression: non-members cannot read/mutate outsider course/session/question paths.
+  await student.request('GET', `/courses/${createdCourse._id}`, undefined, { expectStatus: 403 })
+  await student.request('GET', `/sessions/${createdSession._id}`, undefined, { expectStatus: 403 })
+
+  const outsiderQuestion = await prof.request('POST', '/questions', {
+    plainText: 'Authz outsider question',
+    type: 0,
+    content: 'Authz outsider question',
+    options: [
+      { plainText: 'A', answer: 'A', correct: true },
+      { plainText: 'B', answer: 'B', correct: false },
+    ],
+    owner: profUser._id,
+    sessionId: createdSession._id,
+    courseId: createdCourse._id,
+    public: false,
+    approved: true,
+    tags: [],
+  })
+  await student.request('GET', `/questions/${outsiderQuestion._id}`, undefined, { expectStatus: 403 })
+  await student.request(
+    'PUT',
+    `/questions/${outsiderQuestion._id}`,
+    { plainText: 'student should not edit outsider question' },
+    { expectStatus: 403 }
+  )
+  await student.request('DELETE', `/questions/${outsiderQuestion._id}`, undefined, { expectStatus: 403 })
+  await student.request(
+    'POST',
+    '/responses',
+    {
+      attempt: 1,
+      questionId: outsiderQuestion._id,
+      answer: 'A',
+    },
+    { expectStatus: 403 }
+  )
+  await student.request(
+    'POST',
+    '/questions',
+    {
+      plainText: 'student outsider create should fail',
+      type: 0,
+      content: 'student outsider create should fail',
+      options: [
+        { plainText: 'A', answer: 'A', correct: true },
+        { plainText: 'B', answer: 'B', correct: false },
+      ],
+      owner: studentUser._id,
+      sessionId: createdSession._id,
+      courseId: createdCourse._id,
+      public: false,
+      approved: true,
+      tags: [],
+    },
+    { expectStatus: 403 }
+  )
+  await student.request(
+    'GET',
+    `/responses?questionId=${outsiderQuestion._id}`,
+    undefined,
+    { expectStatus: 403 }
+  )
+  await prof.request('DELETE', `/questions/${outsiderQuestion._id}`)
+
   const quizSession = sessions.find((s) => s.quiz)
   if (!quizSession) throw new Error('Seeded quiz session not found.')
   await prof.request('PUT', `/sessions/${quizSession._id}`, {

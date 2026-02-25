@@ -22,8 +22,6 @@ export class SharedChangeStream extends EventEmitter {
   /** Emit an event to all listeners subscribed to a routing key */
   publish(routingKey: RoutingKey, event: ChangeStreamDocument): void {
     this.emit(routingKey, event)
-    // Also emit to wildcard subscribers for this collection
-    this.emit(`${this.collectionName}:*`, event)
   }
 
   subscribe(routingKey: RoutingKey, handler: (event: ChangeStreamDocument) => void): () => void {

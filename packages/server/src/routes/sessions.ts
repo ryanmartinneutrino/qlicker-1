@@ -2,7 +2,14 @@ import { Router } from 'express'
 import { generateStringId } from '../utils/id'
 import { getSessions, quizIsActive } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
-import { requireAuth, requireInstructor } from '../auth/middleware'
+import {
+  getCourseById,
+  isAdminUser,
+  isCourseMember,
+  requireAuth,
+  requireInstructor,
+  requireSessionMemberAccess,
+} from '../auth/middleware'
 import type { User } from '@qlicker/shared'
 import { sessionSchema } from '@qlicker/shared'
 import { getResponses } from '../collections/responses'
@@ -55,11 +62,41 @@ function adjustQuizWindow(
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
     const { courseId } = req.query as { courseId?: string }
     const sessions = getSessions()
-    const query: Record<string, unknown> = {}
-    if (courseId) query.courseId = courseId
-    const result = await sessions.find(query).toArray()
+
+    if (courseId) {
+      const course = await getCourseById(courseId)
+      if (!course) return res.status(404).json({ error: 'Course not found.' })
+      if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+      const result = await sessions.find({ courseId } as Parameters<typeof sessions.find>[0]).toArray()
+      return res.json(result)
+    }
+
+    if (isAdminUser(user)) {
+      const result = await sessions.find({}).toArray()
+      return res.json(result)
+    }
+
+    const courses = getCourses()
+    const myCourseIds = (
+      await courses
+        .find(
+          {
+            $or: [{ instructors: user._id }, { students: user._id }, { owner: user._id }],
+          } as Parameters<typeof courses.find>[0],
+          { projection: { _id: 1 } }
+        )
+        .toArray()
+    )
+      .map((course) => course._id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+    if (myCourseIds.length < 1) return res.json([])
+    const result = await sessions
+      .find({ courseId: { $in: myCourseIds } } as Parameters<typeof sessions.find>[0])
+      .toArray()
     res.json(result)
   } catch (err) {
     next(err)
@@ -67,7 +104,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 })
 
 /** GET /api/sessions/:sessionId */
-router.get('/:sessionId', requireAuth, async (req, res, next) => {
+router.get('/:sessionId', requireAuth, requireSessionMemberAccess, async (req, res, next) => {
   try {
     const sessions = getSessions()
     const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
@@ -81,7 +118,14 @@ router.get('/:sessionId', requireAuth, async (req, res, next) => {
 /** POST /api/sessions — create session */
 router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalizeSessionPayload(req.body))
+    const parsed = sessionSchema
+      .omit({ _id: true, createdAt: true })
+      .safeParse(
+        normalizeSessionPayload({
+          ...(req.body as Record<string, unknown>),
+          status: (req.body as { status?: string } | undefined)?.status || 'hidden',
+        })
+      )
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const sessions = getSessions()
@@ -202,7 +246,7 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
 })
 
 /** POST /api/sessions/:sessionId/submit — student submits quiz */
-router.post('/:sessionId/submit', requireAuth, async (req, res, next) => {
+router.post('/:sessionId/submit', requireAuth, requireSessionMemberAccess, async (req, res, next) => {
   try {
     const user = req.user as User
     const sessions = getSessions()
@@ -251,7 +295,7 @@ router.post('/:sessionId/submit', requireAuth, async (req, res, next) => {
 })
 
 /** POST /api/sessions/:sessionId/join — track student joining a session */
-router.post('/:sessionId/join', requireAuth, async (req, res, next) => {
+router.post('/:sessionId/join', requireAuth, requireSessionMemberAccess, async (req, res, next) => {
   try {
     const user = req.user as User
     const sessions = getSessions()

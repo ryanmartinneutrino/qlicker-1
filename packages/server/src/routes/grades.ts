@@ -1,6 +1,14 @@
 import { Router } from 'express'
 import { getGrades } from '../collections/grades'
-import { requireAuth, requireInstructor } from '../auth/middleware'
+import {
+  getCourseById,
+  getSessionById,
+  isAdminUser,
+  isCourseInstructor,
+  isCourseMember,
+  requireAuth,
+  requireInstructor,
+} from '../auth/middleware'
 import type { User } from '@qlicker/shared'
 import { gradeSchema } from '@qlicker/shared'
 import { getSessions } from '../collections/sessions'
@@ -103,18 +111,80 @@ router.get('/', requireAuth, async (req, res, next) => {
     const { courseId, sessionId, userId } = req.query as Record<string, string | undefined>
     const grades = getGrades()
     const query: Record<string, unknown> = {}
+    const isAdmin = isAdminUser(user)
+    const isProfessor = user.profile.roles.includes('professor')
+
     if (courseId) query.courseId = courseId
     if (sessionId) query.sessionId = sessionId
 
-    const isInstructor = user.profile.roles.includes('professor') || user.profile.roles.includes('admin')
-    if (userId && isInstructor) {
-      query.userId = userId
-    } else if (!isInstructor) {
-      // Meteor parity: students can only see their own visible grades.
-      query.userId = user._id
-      query.visibleToStudents = true
+    if (isAdmin) {
+      if (userId) query.userId = userId
+      const result = await grades.find(query).toArray()
+      return res.json(result)
     }
 
+    if (courseId) {
+      const course = await getCourseById(courseId)
+      if (!course) return res.status(404).json({ error: 'Course not found.' })
+      if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+
+      if (isProfessor) {
+        if (!isCourseInstructor(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+        if (userId) query.userId = userId
+      } else {
+        if (userId && userId !== user._id) return res.status(403).json({ error: 'Forbidden.' })
+        query.userId = user._id
+        query.visibleToStudents = true
+      }
+      const result = await grades.find(query).toArray()
+      return res.json(result)
+    }
+
+    if (sessionId) {
+      const session = await getSessionById(sessionId)
+      if (!session) return res.status(404).json({ error: 'Session not found.' })
+      const course = await getCourseById(session.courseId)
+      if (!course) return res.status(404).json({ error: 'Course not found.' })
+      if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+
+      if (isProfessor) {
+        if (!isCourseInstructor(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+        if (userId) query.userId = userId
+      } else {
+        if (userId && userId !== user._id) return res.status(403).json({ error: 'Forbidden.' })
+        query.userId = user._id
+        query.visibleToStudents = true
+      }
+      const result = await grades.find(query).toArray()
+      return res.json(result)
+    }
+
+    if (isProfessor) {
+      const courses = getCourses()
+      const myCourseIds = (
+        await courses
+          .find(
+            { $or: [{ instructors: user._id }, { owner: user._id }] } as Parameters<
+              typeof courses.find
+            >[0],
+            { projection: { _id: 1 } }
+          )
+          .toArray()
+      )
+        .map((course) => course._id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+
+      if (myCourseIds.length < 1) return res.json([])
+      query.courseId = { $in: myCourseIds }
+      if (userId) query.userId = userId
+      const result = await grades.find(query).toArray()
+      return res.json(result)
+    }
+
+    if (userId && userId !== user._id) return res.status(403).json({ error: 'Forbidden.' })
+    // Student default: only own visible grades.
+    query.userId = user._id
+    query.visibleToStudents = true
     const result = await grades.find(query).toArray()
     res.json(result)
   } catch (err) {
@@ -130,8 +200,16 @@ router.get('/:gradeId', requireAuth, async (req, res, next) => {
     const grade = await grades.findOne({ _id: req.params.gradeId } as Parameters<typeof grades.findOne>[0])
     if (!grade) return res.status(404).json({ error: 'Grade not found.' })
 
-    const isInstructor = user.profile.roles.includes('professor') || user.profile.roles.includes('admin')
-    if (!isInstructor && (grade.userId !== user._id || !grade.visibleToStudents)) {
+    if (isAdminUser(user)) return res.json(grade)
+
+    if (grade.courseId) {
+      const course = await getCourseById(grade.courseId)
+      if (!course) return res.status(404).json({ error: 'Course not found.' })
+      if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
+      if (isCourseInstructor(user, course)) return res.json(grade)
+    }
+
+    if (grade.userId !== user._id || !grade.visibleToStudents) {
       return res.status(403).json({ error: 'Forbidden.' })
     }
     res.json(grade)
