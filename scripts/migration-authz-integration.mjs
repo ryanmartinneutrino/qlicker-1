@@ -76,6 +76,40 @@ class ApiSession {
     return json
   }
 
+  async upload(path, formData, options = {}) {
+    const { expectStatus } = options
+    if (!this.csrf) {
+      await this.getCsrf()
+    }
+
+    const headers = {
+      'x-csrf-token': this.csrf,
+    }
+    if (this.cookie) headers.cookie = this.cookie
+
+    const res = await fetch(`${baseUrl}/api${path}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+    this.captureCookie(res)
+    const json = await this.parseBody(res)
+
+    if (expectStatus !== undefined) {
+      if (res.status !== expectStatus) {
+        throw new Error(
+          `[${this.label}] POST ${path} expected ${expectStatus}, got ${res.status}: ${JSON.stringify(json)}`
+        )
+      }
+      return json
+    }
+
+    if (!res.ok) {
+      throw new Error(`[${this.label}] POST ${path} failed (${res.status}): ${JSON.stringify(json)}`)
+    }
+    return json
+  }
+
   login(email, password) {
     return this.request('POST', '/auth/login', { email, password })
   }
@@ -242,6 +276,14 @@ async function run() {
     const nowVisible = await student2.request('GET', `/grades/${hiddenGrade._id}`)
     assert(nowVisible._id === hiddenGrade._id, 'Student should read grade after instructor makes it visible.')
   }
+
+  // image ownership auth check
+  const formData = new FormData()
+  formData.append('file', new Blob(['authz-image'], { type: 'image/png' }), 'authz.png')
+  const uploadedImage = await prof.upload('/images', formData)
+  assert(uploadedImage?._id, 'Image upload should succeed for owner test.')
+  await student.request('DELETE', `/images/${uploadedImage._id}`, undefined, { expectStatus: 403 })
+  await admin.request('DELETE', `/images/${uploadedImage._id}`)
 
   // cleanup temp resources
   await prof.request('DELETE', `/sessions/${tempSession._id}`)

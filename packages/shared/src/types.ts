@@ -185,6 +185,7 @@ export interface Image {
   _id?: string
   url: string
   UID: string
+  owner?: string
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

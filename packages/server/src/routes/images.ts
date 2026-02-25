@@ -4,6 +4,7 @@ import multer from 'multer'
 import { getImages } from '../collections/images'
 import { getSettings } from '../collections/settings'
 import { requireAuth } from '../auth/middleware'
+import type { User } from '@qlicker/shared'
 import { deleteStoredImage, storeImage } from '../utils/image-storage'
 
 const router = Router()
@@ -12,8 +13,13 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 /** GET /api/images */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
     const images = getImages()
-    const result = await images.find({}).toArray()
+    const isAdmin = user.profile.roles.includes('admin')
+    const query = isAdmin
+      ? {}
+      : ({ owner: user._id } as Parameters<typeof images.find>[0])
+    const result = await images.find(query).toArray()
     res.json(result)
   } catch (err) {
     next(err)
@@ -27,6 +33,7 @@ router.get('/', requireAuth, async (req, res, next) => {
  */
 router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
   try {
+    const user = req.user as User
     if (!req.file) return res.status(400).json({ error: 'No file uploaded.' })
     if (!req.file.mimetype.startsWith('image/')) {
       return res.status(400).json({ error: 'Only image uploads are allowed.' })
@@ -40,7 +47,7 @@ router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
     const { uid, url } = await storeImage(req.file, settings)
 
     const images = getImages()
-    const doc = { _id: generateStringId('image'), url, UID: uid }
+    const doc = { _id: generateStringId('image'), url, UID: uid, owner: user._id }
     await images.insertOne(doc)
     const created = await images.findOne({ _id: doc._id } as Parameters<typeof images.findOne>[0])
     res.status(201).json(created)
@@ -52,8 +59,15 @@ router.post('/', requireAuth, upload.single('file'), async (req, res, next) => {
 /** DELETE /api/images/:imageId */
 router.delete('/:imageId', requireAuth, async (req, res, next) => {
   try {
+    const user = req.user as User
+    const isAdmin = user.profile.roles.includes('admin')
     const images = getImages()
     const existing = await images.findOne({ _id: req.params.imageId } as Parameters<typeof images.findOne>[0])
+    if (existing && !isAdmin) {
+      if (!existing.owner || existing.owner !== user._id) {
+        return res.status(403).json({ error: 'Forbidden.' })
+      }
+    }
     if (existing) {
       const settings = await getSettings().findOne({})
       await deleteStoredImage(existing.UID, settings)
