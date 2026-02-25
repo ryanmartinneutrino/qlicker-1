@@ -11,6 +11,7 @@
   - `passport.initialize()`
   - `passport.session()`
 - Subscription handlers load authenticated user and authorize by course membership/instructor role.
+- Auth failures now emit structured `subscription:error` payloads (`event`, `code`, `message`) instead of silent drops.
 
 ## Routing keys
 - wildcard: `<collection>:*`
@@ -26,6 +27,6 @@
 - future enhancement: pre-image routing or parent cache for exact scoped delete routing.
 
 ## Remaining work
-- reconnect/resubscribe robustness metrics
-- subscription-level negative test suite in CI
+- reconnect/resubscribe robustness metrics under churn/disconnect scenarios
+- run subscription-level negative test suite in CI (`test:migration-realtime-authz`)
 - load-test validation at target concurrency

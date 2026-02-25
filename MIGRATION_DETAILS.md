@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-25`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `c898abab`
+- Last verified baseline commit before this update: `06236420`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -18,11 +18,11 @@
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management APIs are broader; final behavior/test parity still pending | Agent-01, Agent-06 | `#39`, `#42`, `#44` |
 | `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; runtime parity + smoke/e2e still pending | Agent-02, Agent-03 | `#40`, `#43` |
 | `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow landed; final parity tests still pending | Agent-01, Agent-05 | `#41`, `#42` |
-| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; full runtime parity/load tests still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44` |
+| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; reconnect/load parity evidence still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44`, `#47` |
 | `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44` |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth + routing hardening landed; runtime load validation still pending | Agent-07 | `#37`, `#42` |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth/routing/reconnect hardening landed; runtime churn/load validation still pending | Agent-07 | `#37`, `#42`, `#47` |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Some flows still need final normalization checks | Agent-01, Agent-05 | `#41`, `#43` |
-| Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | End-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | pending |
+| Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | Ownership authz hardening landed; end-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | `#46` |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | `#39`, `#44` |
 
 ## Task Backlog
@@ -155,6 +155,8 @@ Rebase protocol:
 | 2026-02-25 | `8d7bea5` | Agent-01/07/08 | `npm run build` | pass | Merged authz/realtime baseline and lane docs (`PR #42`) after conflict resolution. |
 | 2026-02-25 | `a057b09` | Agent-02 | `npm run build` | pass | Session create parity fix: default `status=hidden`; session status enum validation tightened (`PR #43`). |
 | 2026-02-25 | `c898aba` | Agent-04/L3 | `npm run build` | pass | CSV export parity updates (course grades, session responses, groups) with shared utility (`PR #44`). |
+| 2026-02-25 | `18a5eca` | Agent-01/L8 | `npm run build && node --check scripts/migration-authz-integration.mjs` | pass | Image ownership authz hardening + integration coverage update (`PR #46`). |
+| 2026-02-25 | `0623642` | Agent-05/L8 | `npm run build && node --check scripts/migration-realtime-authz.mjs` | pass | Realtime reconnect resubscribe + standardized subscription auth errors + realtime authz harness (`PR #47`). |
 
 ## Risks and Blockers
 

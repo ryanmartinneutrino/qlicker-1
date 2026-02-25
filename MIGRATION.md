@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `c898abab`
-- Recent merged PRs in this tranche: `#42`, `#43`, `#44`
+- Baseline commit: `06236420`
+- Recent merged PRs in this tranche: `#46`, `#47`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -18,6 +18,13 @@
   - course grades CSV export
   - session responses CSV export
   - groups CSV export refactored to shared utility
+- Image API authz hardened:
+  - non-admin image list is owner-scoped
+  - image delete requires owner or admin
+- Realtime subscription resilience/security hardened:
+  - standardized `subscription:error` contract across `subscribe:*` handlers
+  - auto re-subscribe + refetch on socket reconnect in `useRealtimeCollection`
+  - added realtime authz regression harness `npm run test:migration-realtime-authz`
 
 ### Still open (blocking for pilot)
 - Full Meteor parity validation is incomplete for:
@@ -33,14 +40,14 @@
 
 | Lane | Scope | Status | Evidence | Next gate |
 |---|---|---|---|---|
-| L1 | AuthZ + API policy | 75% | PR `#42`, authz harness present | Close residual endpoint edge-case matrix and rerun authz integration on latest `master` |
+| L1 | AuthZ + API policy | 80% | PR `#42`, `#46`, authz harness present | Close residual endpoint edge-case matrix and rerun authz integration on latest `master` |
 | L2 | Student/prof session-question parity | 65% | PR `#40`, PR `#43` | Finish edge transitions + verify interactive/quiz behavior against Meteor checklist |
 | L3 | Course/groups parity | 60% | PR `#39`, PR `#44` (groups CSV) | Finalize group/category semantics and parity tests |
 | L4 | Grades/results/export parity | 60% | PR `#36`, PR `#44` | Complete remaining grade/review visibility parity + CSV value-order matching checks |
-| L5 | Realtime correctness + scale | 70% | PR `#37`, PR `#42` | Run reconnect/churn/load verification and confirm no unauthorized channels |
+| L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 35% | partial server/client support | Finish Jitsi/group room behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 30% | schema/index safety work landed | Add synthetic-vs-backup diff harness and run staging comparison |
-| L8 | Integration/load/cutover ops | 45% | smoke/authz/load scripts + docs in repo | Execute full gate runs in Docker/CI and complete pilot runbook sign-off |
+| L8 | Integration/load/cutover ops | 52% | smoke/authz/load/realtime-authz scripts + docs in repo | Execute full gate runs in Docker/CI and complete pilot runbook sign-off |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -62,12 +69,13 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~63%** toward pilot-readiness.
+- Current migration completion: **~68%** toward pilot-readiness.
 - Remaining critical path: L6 + L7 + L8 validation closure.
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`
 - Latest tranche summary: `docs/migration-work-summary-2026-02-25.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch2.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
