@@ -2,6 +2,21 @@
 
 This guide is for validating the React/Express stack against an existing Meteor database backup without destructive schema migration.
 
+## Quick path (local legacy backup in repository)
+If `legacydb/` contains a local mongodump backup, run the automated validator:
+
+```bash
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
+npm run test:migration-legacy-backup
+```
+
+Optional knobs:
+- `QCLICKER_LEGACY_SKIP_RESTORE=true` to reuse existing restored DBs.
+- `QCLICKER_DB_COMPAT_STRICT=true` to fail on warnings.
+- `QCLICKER_PARITY_FAIL_ON_DIFF=true` to fail on sampled parity diffs.
+- `QCLICKER_LEGACY_ARTIFACT_DIR=/tmp/qlicker-migration-artifacts` to control report location.
+
 ## 1. Restore a sanitized backup
 - Restore Meteor backup to a staging DB, for example `qlicker_legacy_backup`.
 - Create a candidate DB copy for new-stack runs, for example `qlicker_candidate`.

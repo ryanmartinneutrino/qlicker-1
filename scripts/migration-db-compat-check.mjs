@@ -105,6 +105,10 @@ function checkEmails(doc) {
   })
 }
 
+function checkQuestionText(doc) {
+  return checkString(doc, 'content') || checkString(doc, 'plainText')
+}
+
 function looksLikeAuthSessionStoreDoc(doc) {
   return (
     typeof getPathValue(doc, 'session') === 'string' &&
@@ -134,7 +138,12 @@ const rulesByCollection = {
   ],
   questions: [
     { path: 'type', level: 'error', test: (doc) => checkNumber(doc, 'type'), reason: 'type must be a finite number' },
-    { path: 'content', level: 'warn', test: (doc) => checkString(doc, 'content'), reason: 'content should be a non-empty string' },
+    {
+      path: 'content|plainText',
+      level: 'warn',
+      test: checkQuestionText,
+      reason: 'content or plainText should be a non-empty string',
+    },
     { path: 'owner|creator', level: 'error', test: checkOwnerOrCreator, reason: 'owner or creator must be a non-empty string' },
     { path: 'options', level: 'warn', test: (doc) => checkArray(doc, 'options'), reason: 'options must be an array when present' },
     { path: 'courseId', level: 'warn', test: (doc) => checkOptionalString(doc, 'courseId'), reason: 'courseId must be string when present' },
