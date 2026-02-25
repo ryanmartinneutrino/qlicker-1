@@ -137,7 +137,11 @@ router.get('/:sessionId', requireAuth, async (req, res, next) => {
 /** POST /api/sessions — create session */
 router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalizeSessionPayload(req.body))
+    const normalized = normalizeSessionPayload(req.body as Record<string, unknown>)
+    if (typeof normalized.status !== 'string' || normalized.status.trim().length < 1) {
+      normalized.status = 'hidden'
+    }
+    const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalized)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     const sessions = getSessions()

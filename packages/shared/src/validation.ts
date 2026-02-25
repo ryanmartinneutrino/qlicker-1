@@ -2,12 +2,13 @@
 // Replaces Meteor check/Match patterns from imports/api/*.js
 
 import { z } from 'zod'
-import { QuestionType } from './configs'
+import { QuestionType, SessionStatus } from './configs'
 
 // ─── Reusable primitives ─────────────────────────────────────────────────────
 
 const mongoId = z.string().min(1)
 const nonEmptyString = z.string().min(1)
+const sessionStatusSchema = z.nativeEnum(SessionStatus)
 const email = z.string().email()
 
 // ─── Question ────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ export const sessionSchema = z.object({
   name: nonEmptyString,
   description: z.string(),
   courseId: mongoId,
-  status: nonEmptyString,
+  status: sessionStatusSchema,
   quiz: z.boolean(),
   practiceQuiz: z.boolean().optional(),
   date: z.date().nullable().optional(),
