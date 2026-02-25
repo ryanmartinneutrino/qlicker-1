@@ -1,9 +1,9 @@
 # Qlicker Migration Details
 
 ## Snapshot
-- Date: `2026-02-24`
+- Date: `2026-02-25`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `f8c4bf7`
+- Last verified baseline commit before this update: `c898abab`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -14,16 +14,16 @@
 
 | Meteor artifact | New artifact | Collections/fields touched | Status (done/partial/missing) | Gap | Owner lane | PR |
 |---|---|---|---|---|---|---|
-| `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | pending |
-| `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management persistence APIs and React parity landed in active batch; final behavior/test parity still pending | Agent-01, Agent-06 | pending |
-| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder workflow and delete cleanup (`courses.sessions`, attached question/response/grade cleanup) now landed; full lifecycle smoke/e2e validation pending | Agent-02, Agent-03 | pending |
-| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow + student-safe create/update/delete constraints now landed; final parity tests still pending | Agent-01, Agent-05 | pending |
-| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Live stats-visibility toggles now refresh student response subscriptions correctly; attempt-scoped fetch path parity/perf landed; full runtime parity/load tests still pending | Agent-01, Agent-07, Agent-08 | pending |
-| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Group/category filtering, bulk per-question assignment, and session-selected aggregate `CourseGrades` parity landed; remaining runtime parity checks pending | Agent-01, Agent-04 | pending |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Question-channel invalidation/sanitization and attempt-scoped response fetch hardening landed; runtime load validation still pending | Agent-07 | pending |
-| Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Inconsistent mappings still exist in some pages/flows | Agent-01, Agent-05 | pending |
+| `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | `#42` (indirect) |
+| `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management APIs are broader; final behavior/test parity still pending | Agent-01, Agent-06 | `#39`, `#42`, `#44` |
+| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; runtime parity + smoke/e2e still pending | Agent-02, Agent-03 | `#40`, `#43` |
+| `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow landed; final parity tests still pending | Agent-01, Agent-05 | `#41`, `#42` |
+| `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; full runtime parity/load tests still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44` |
+| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44` |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth + routing hardening landed; runtime load validation still pending | Agent-07 | `#37`, `#42` |
+| Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Some flows still need final normalization checks | Agent-01, Agent-05 | `#41`, `#43` |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | End-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | pending |
-| Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | pending |
+| Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | `#39`, `#44` |
 
 ## Task Backlog
 
@@ -152,13 +152,16 @@ Rebase protocol:
 | 2026-02-24 | `a3ce19e` | Agent-04 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Course-grades parity tranche: session-selected aggregate grade view (`PR #36`). |
 | 2026-02-24 | `4604675` | Agent-07 | `npm run build --workspace=packages/server && npm run build --workspace=packages/client` | pass | Attempt-scoped response hot-path optimization + session results fetch ordering/parallelization (`PR #37`). |
 | 2026-02-24 | `f8c4bf7` | Coordinator | `npm run build --workspace=packages/server && npm run build --workspace=packages/client && node --check scripts/migration-smoke.mjs && node --check scripts/migration-authz-integration.mjs && node --check scripts/migration-load-check.mjs` | pass | Post-merge local verification after PRs #36 and #37 on latest `master`. |
+| 2026-02-25 | `8d7bea5` | Agent-01/07/08 | `npm run build` | pass | Merged authz/realtime baseline and lane docs (`PR #42`) after conflict resolution. |
+| 2026-02-25 | `a057b09` | Agent-02 | `npm run build` | pass | Session create parity fix: default `status=hidden`; session status enum validation tightened (`PR #43`). |
+| 2026-02-25 | `c898aba` | Agent-04/L3 | `npm run build` | pass | CSV export parity updates (course grades, session responses, groups) with shared utility (`PR #44`). |
 
 ## Risks and Blockers
 
 | Severity | Owner | Risk/Blocker | Mitigation | Target date |
 |---|---|---|---|---|
-| high | Agent-01 | Cross-course data access in permissive routes | Harden route-level authz and add integration tests | 2026-02-26 |
-| high | Agent-07 | Realtime fan-out duplicate event delivery and unauthorized subscriptions | Dedup wildcard routing, enforce per-channel auth checks | 2026-02-27 |
+| medium | Agent-01 | Residual cross-course edge-case exposure in non-core paths | Complete endpoint matrix review + authz integration assertions on latest `master` | 2026-02-28 |
+| medium | Agent-07 | Realtime churn/reconnect behavior under load still not fully evidenced | Run dedicated reconnect/load scenarios and capture p95/error metrics | 2026-02-28 |
 | high | Agent-08 | Insufficient parity test depth for cutover confidence | Expand smoke + integration + e2e + manual checklist | 2026-03-02 |
 | medium | Agent-05 | Question type/option mismatch causes behavior drift | Normalize enum handling and option coercion | 2026-02-27 |
 | medium | Agent-06 | Group/video semantics not fully matched | Port and verify category/room workflows | 2026-03-01 |
