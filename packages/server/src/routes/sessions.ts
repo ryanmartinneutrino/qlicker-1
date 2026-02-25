@@ -74,6 +74,17 @@ async function resolveQuestionCourseId(question: Pick<Question, 'courseId' | 'se
   return session?.courseId
 }
 
+async function findCourseSessionById(sessionId: string) {
+  const sessions = getSessions()
+  const session = await sessions.findOne(
+    { _id: sessionId } as Parameters<typeof sessions.findOne>[0]
+  )
+  if (!session || typeof session.courseId !== 'string' || session.courseId.length < 1) {
+    return null
+  }
+  return session
+}
+
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -89,7 +100,9 @@ router.get('/', requireAuth, async (req, res, next) => {
     }
 
     if (isAdmin(user)) {
-      const result = await sessions.find({}).toArray()
+      const result = await sessions
+        .find({ courseId: { $type: 'string' } } as Parameters<typeof sessions.find>[0])
+        .toArray()
       return res.json(result)
     }
 
@@ -121,8 +134,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.get('/:sessionId', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
-    const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const allowed = await canUserAccessCourse(user, session.courseId)
@@ -169,7 +181,7 @@ router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
 router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const sessions = getSessions()
-    const existing = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
     const parsed = sessionSchema.partial().safeParse(normalizeSessionPayload(req.body))
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
@@ -207,7 +219,7 @@ router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next)
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: patch }
     )
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -223,7 +235,7 @@ router.delete('/:sessionId', requireAuth, requireInstructor, async (req, res, ne
     const grades = getGrades()
     const courses = getCourses()
 
-    const existing = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
 
     const questionIds = (existing.questions || []).filter((id): id is string => typeof id === 'string' && id.length > 0)
@@ -251,7 +263,7 @@ router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res,
     const questions = getQuestions()
     const courses = getCourses()
 
-    const source = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const source = await findCourseSessionById(req.params.sessionId)
     if (!source) return res.status(404).json({ error: 'Session not found.' })
 
     const requestedCourseId = typeof req.body?.courseId === 'string' ? req.body.courseId.trim() : ''
@@ -328,7 +340,7 @@ router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res,
       { $addToSet: { sessions: copiedSessionId } }
     )
 
-    const created = await sessions.findOne({ _id: copiedSessionId } as Parameters<typeof sessions.findOne>[0])
+    const created = await findCourseSessionById(copiedSessionId)
     res.status(201).json(created)
   } catch (err) {
     next(err)
@@ -344,7 +356,7 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
       return res.status(400).json({ error: 'Invalid status.' })
     }
     const sessions = getSessions()
-    const existing = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
     if (status === 'running' && (!Array.isArray(existing.questions) || existing.questions.length === 0)) {
       return res.status(400).json({ error: 'Cannot run a session with no questions.' })
@@ -364,7 +376,7 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: patch }
     )
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -376,7 +388,7 @@ router.post('/:sessionId/submit', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
     const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const access = await courseAccessForUser(user, session.courseId)
@@ -432,7 +444,7 @@ router.post('/:sessionId/join', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
     const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const access = await courseAccessForUser(user, session.courseId)
@@ -445,7 +457,7 @@ router.post('/:sessionId/join', requireAuth, async (req, res, next) => {
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $addToSet: { joined: user._id } }
     )
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -459,7 +471,7 @@ router.put('/:sessionId/current', requireAuth, requireInstructor, async (req, re
     if (!questionId) return res.status(400).json({ error: 'questionId required.' })
 
     const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
     if (!(session.questions || []).includes(questionId)) {
       return res.status(400).json({ error: 'Question is not part of this session.' })
@@ -469,7 +481,7 @@ router.put('/:sessionId/current', requireAuth, requireInstructor, async (req, re
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: { currentQuestion: questionId } }
     )
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -483,7 +495,7 @@ router.post('/:sessionId/questions/:questionId/copy', requireAuth, requireInstru
     const sessions = getSessions()
     const questions = getQuestions()
 
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const source = await questions.findOne({ _id: req.params.questionId } as Parameters<typeof questions.findOne>[0])
@@ -507,7 +519,6 @@ router.post('/:sessionId/questions/:questionId/copy', requireAuth, requireInstru
       creator: userId,
       approved: true,
       public: false,
-      studentCopyOfPublic: undefined,
       sessionOptions: defaultQuestionSessionOptions,
       createdAt: new Date(),
     }
@@ -531,7 +542,7 @@ router.delete('/:sessionId/questions/:questionId', requireAuth, requireInstructo
     const sessions = getSessions()
     const questions = getQuestions()
 
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
     if (!(session.questions || []).includes(req.params.questionId)) {
       return res.status(404).json({ error: 'Question is not attached to this session.' })
@@ -549,7 +560,7 @@ router.delete('/:sessionId/questions/:questionId', requireAuth, requireInstructo
       { $set: patch }
     )
 
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -566,7 +577,7 @@ router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, 
       .filter((id): id is string => typeof id === 'string' && id.length > 0)
 
     const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const existingIds = new Set((session.questions || []).filter((id): id is string => typeof id === 'string'))
@@ -584,7 +595,7 @@ router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, 
       { _id: req.params.sessionId } as Parameters<typeof sessions.updateOne>[0],
       { $set: patch }
     )
-    const updated = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const updated = await findCourseSessionById(req.params.sessionId)
     res.json(updated)
   } catch (err) {
     next(err)
@@ -595,7 +606,7 @@ router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, 
 router.get('/:sessionId/extension-candidates', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const sessions = getSessions()
-    const session = await sessions.findOne({ _id: req.params.sessionId } as Parameters<typeof sessions.findOne>[0])
+    const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
 
     const courses = getCourses()

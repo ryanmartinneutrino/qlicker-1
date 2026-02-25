@@ -60,7 +60,8 @@ async function main() {
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({ mongoUrl: MONGO_URL }),
+    // Keep auth session storage separate from course `sessions` documents.
+    store: MongoStore.create({ mongoUrl: MONGO_URL, collectionName: 'authSessions' }),
     cookie: {
       secure: COOKIE_SECURE,
       httpOnly: true,
