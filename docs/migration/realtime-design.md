@@ -23,8 +23,8 @@
 
 ## Delete events
 - delete events rely on `documentKey` and may not include parent identifiers.
-- current strategy forwards collection-level delete events to scoped subscribers to keep client collections in sync.
-- future enhancement: pre-image routing or parent cache for exact scoped delete routing.
+- current strategy uses a bounded in-memory parent-key cache (`sessionId/courseId/questionId`) learned from prior insert/update events so delete routing can remain scoped.
+- fallback still includes document-level and collection wildcard keys to avoid missed invalidations when parent hints are unavailable.
 
 ## Remaining work
 - reconnect/resubscribe robustness metrics under churn/disconnect scenarios

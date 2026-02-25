@@ -19,6 +19,7 @@
 - Authz regression harness expanded for outsider-professor denial checks on course/session/grade management routes.
 - Socket session/passport bridge is wired so realtime channels can use authenticated user context.
 - Realtime routing now handles change-stream delete events via `documentKey` and uses scoped routing keys.
+- Realtime delete routing now includes a bounded parent-hint cache (`sessionId/courseId/questionId`) to keep delete fan-out scoped when `fullDocument` is unavailable.
 - Collection index bootstrap is now called at server startup.
 - Session create parity gap fixed: server defaults `status` to `hidden` when omitted.
 - CSV parity improved with server-backed exports:
@@ -96,7 +97,7 @@
 | L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
-| L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
+| L5 | Realtime correctness + scale | 83% | PR `#37`, `#42`, `#47`; parent-hint delete routing cache landed | Run reconnect/churn verification at target concurrency and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
 | L8 | Integration/load/cutover ops | 92% | PR `#50`, `#57`, `#60`, `#68`, `#70`; smoke/authz/realtime-authz/load gates pass with CSRF enabled | Archive machine-readable gate/backup evidence in CI/staging and close final pilot checklist |
