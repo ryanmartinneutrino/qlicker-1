@@ -17,6 +17,17 @@ Optional knobs:
 - `QCLICKER_PARITY_FAIL_ON_DIFF=true` to fail on sampled parity diffs.
 - `QCLICKER_LEGACY_ARTIFACT_DIR=/tmp/qlicker-migration-artifacts` to control report location.
 
+You can also include this stage in the unified gate runner:
+
+```bash
+QCLICKER_GATE_SKIP_BUILD=true \
+QCLICKER_GATE_SKIP_RUNTIME=true \
+QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
+npm run test:migration-gate
+```
+
 ## 1. Restore a sanitized backup
 - Restore Meteor backup to a staging DB, for example `qlicker_legacy_backup`.
 - Create a candidate DB copy for new-stack runs, for example `qlicker_candidate`.

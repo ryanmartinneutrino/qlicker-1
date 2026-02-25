@@ -47,6 +47,7 @@ async function run() {
   const skipRuntime = toBool(process.env.QCLICKER_GATE_SKIP_RUNTIME, false)
   const includeDbCompat = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_COMPAT, false)
   const includeDbParity = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_PARITY, false)
+  const includeLegacyBackup = toBool(process.env.QCLICKER_GATE_INCLUDE_LEGACY_BACKUP, false)
   const continueOnError = toBool(process.env.QCLICKER_GATE_CONTINUE_ON_ERROR, false)
 
   const plan = []
@@ -68,6 +69,10 @@ async function run() {
 
   if (includeDbParity) {
     plan.push({ key: 'db-parity', command: 'npm run test:migration-db-parity' })
+  }
+
+  if (includeLegacyBackup) {
+    plan.push({ key: 'legacy-backup', command: 'npm run test:migration-legacy-backup' })
   }
 
   if (plan.length < 1) {
