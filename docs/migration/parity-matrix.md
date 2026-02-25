@@ -14,9 +14,9 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Grade calculation | participation + automatic/manual marks | In Progress | calc endpoint exists; parity checks still pending |
 | Session/course results views | clean tables + controls parity | In Progress | results pages improved; final review/visibility parity checks pending |
 | CSV exports | session grades, course grades, group export, response export | In Progress | course grades/groups/session responses CSV exports landed; remaining legacy-column parity checks pending |
-| Realtime auth | authenticated and authorized subscribe channels | In Progress | socket auth bridge + authz checks landed |
+| Realtime auth | authenticated and authorized subscribe channels | In Progress | socket auth bridge + channel auth errors + realtime authz harness landed |
 | Realtime delete updates | client receives relevant deletes | In Progress | wildcard delete relay landed; routing refinement pending |
-| Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters present; parity validation pending |
+| Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters + owner-scoped image authz landed; parity validation pending |
 | Video/Jitsi | course/group room parity + help/clear semantics | In Progress | core endpoints exist; parity validation pending |
 | DB compatibility | string `_id`, collection/field compatibility | In Progress | insert path and schema checks in place; backup diff track pending |
 | Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke extended with authz regression checks |

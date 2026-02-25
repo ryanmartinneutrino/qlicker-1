@@ -14,8 +14,11 @@
   - student-only restrictions for response submission where applicable
 - Restricted broad list reads for non-admin users to membership-scoped data.
 - Hardened question mutation to owner/instructor/admin semantics.
+- Hardened image APIs:
+  - non-admin image listing is owner-scoped
+  - image delete requires owner or admin
 - Added Socket.IO auth bridging with express-session + passport.
-- Added subscription-level authorization checks on realtime `subscribe:*` channels.
+- Added subscription-level authorization checks on realtime `subscribe:*` channels with a stable `subscription:error` payload contract.
 - Added authorization regression checks to migration smoke and integration scripts.
 
 ## Remaining security tasks
@@ -29,3 +32,5 @@
   - course/session/question reads
   - question mutate/delete
   - response submit/read
+- `scripts/migration-authz-integration.mjs` now includes image ownership delete denial checks.
+- `scripts/migration-realtime-authz.mjs` verifies unauthorized and unauthenticated realtime subscribe failures.
