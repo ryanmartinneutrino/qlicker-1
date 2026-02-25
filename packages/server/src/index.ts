@@ -5,6 +5,7 @@ import cors from 'cors'
 import session from 'express-session'
 import passport from 'passport'
 import fs from 'fs'
+import cookieParser from 'cookie-parser'
 import { createServer } from 'http'
 import { Server as SocketIOServer } from 'socket.io'
 import MongoStore from 'connect-mongo'
@@ -51,6 +52,7 @@ async function main() {
   app.use(cors({ origin: ROOT_URL, credentials: true }))
   app.use(express.json({ limit: '10mb' }))
   app.use(express.urlencoded({ extended: true }))
+  app.use(cookieParser(SESSION_SECRET))
   const uploadsDir = resolveUploadsDir()
   fs.mkdirSync(uploadsDir, { recursive: true })
   app.use('/uploads', express.static(uploadsDir))
