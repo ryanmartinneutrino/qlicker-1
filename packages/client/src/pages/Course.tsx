@@ -51,6 +51,8 @@ export default function Course() {
   const [showAllQuizzes, setShowAllQuizzes] = useState(false)
   const [roster, setRoster] = useState<CourseRoster | null>(null)
   const [rosterSearch, setRosterSearch] = useState('')
+  const [newStudentEmail, setNewStudentEmail] = useState('')
+  const [newInstructorEmail, setNewInstructorEmail] = useState('')
   const [optionsSaving, setOptionsSaving] = useState(false)
   const [manageableCourses, setManageableCourses] = useState<CourseType[]>([])
   const [unenrolling, setUnenrolling] = useState(false)
@@ -148,6 +150,16 @@ export default function Course() {
   const courseCode = `${course.deptCode} ${course.courseNumber}-${course.section}`.toUpperCase()
   const copyTargets = manageableCourses.filter((entry) => entry._id && entry._id !== courseId)
 
+  const refreshCourseAndRoster = async () => {
+    if (!courseId) return
+    const [updatedCourse, updatedRoster] = await Promise.all([
+      apiClient.get<CourseType>(`/courses/${courseId}`),
+      apiClient.get<CourseRoster>(`/courses/${courseId}/roster`),
+    ])
+    setCourse(updatedCourse)
+    setRoster(updatedRoster)
+  }
+
   const handleDeleteSession = async (sessionId: string) => {
     if (!window.confirm('Delete this session and all attached questions/responses/grades?')) return
     setBusySessionId(sessionId)
@@ -230,12 +242,56 @@ export default function Course() {
     setCourseError(null)
     try {
       await apiClient.delete(`/courses/${courseId}/students/${studentId}`)
-      const [updatedCourse, updatedRoster] = await Promise.all([
-        apiClient.get<CourseType>(`/courses/${courseId}`),
-        apiClient.get<CourseRoster>(`/courses/${courseId}/roster`),
-      ])
-      setCourse(updatedCourse)
-      setRoster(updatedRoster)
+      await refreshCourseAndRoster()
+    } catch (err) {
+      setCourseError((err as Error).message)
+    } finally {
+      setOptionsSaving(false)
+    }
+  }
+
+  const removeInstructor = async (instructorId: string) => {
+    if (!courseId) return
+    if (!window.confirm('Remove this instructor from the course?')) return
+    setOptionsSaving(true)
+    setCourseError(null)
+    try {
+      await apiClient.delete(`/courses/${courseId}/instructors/${instructorId}`)
+      await refreshCourseAndRoster()
+    } catch (err) {
+      setCourseError((err as Error).message)
+    } finally {
+      setOptionsSaving(false)
+    }
+  }
+
+  const addStudentByEmail = async () => {
+    if (!courseId) return
+    const email = newStudentEmail.trim()
+    if (!email) return
+    setOptionsSaving(true)
+    setCourseError(null)
+    try {
+      await apiClient.post(`/courses/${courseId}/students`, { email })
+      setNewStudentEmail('')
+      await refreshCourseAndRoster()
+    } catch (err) {
+      setCourseError((err as Error).message)
+    } finally {
+      setOptionsSaving(false)
+    }
+  }
+
+  const addInstructorByEmail = async () => {
+    if (!courseId) return
+    const email = newInstructorEmail.trim()
+    if (!email) return
+    setOptionsSaving(true)
+    setCourseError(null)
+    try {
+      await apiClient.post(`/courses/${courseId}/instructors`, { email })
+      setNewInstructorEmail('')
+      await refreshCourseAndRoster()
     } catch (err) {
       setCourseError((err as Error).message)
     } finally {
@@ -392,6 +448,42 @@ export default function Course() {
           <div className="ql-card" style={{ marginTop: '1rem' }}>
             <div className="ql-card-content">
               <h3>Class Roster</h3>
+              <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="email"
+                    className="form-control"
+                    placeholder="Add instructor by email"
+                    value={newInstructorEmail}
+                    onChange={(e) => setNewInstructorEmail(e.target.value)}
+                    style={{ maxWidth: 320 }}
+                  />
+                  <button
+                    className="btn btn-default btn-sm"
+                    onClick={() => void addInstructorByEmail()}
+                    disabled={optionsSaving || !newInstructorEmail.trim()}
+                  >
+                    Add Instructor
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="email"
+                    className="form-control"
+                    placeholder="Add student by email"
+                    value={newStudentEmail}
+                    onChange={(e) => setNewStudentEmail(e.target.value)}
+                    style={{ maxWidth: 320 }}
+                  />
+                  <button
+                    className="btn btn-default btn-sm"
+                    onClick={() => void addStudentByEmail()}
+                    disabled={optionsSaving || !newStudentEmail.trim()}
+                  >
+                    Add Student
+                  </button>
+                </div>
+              </div>
               <input
                 type="text"
                 className="form-control"
@@ -404,9 +496,20 @@ export default function Course() {
                 <strong>Instructors ({roster?.instructors.length || 0})</strong>
                 <div>
                   {(roster?.instructors || []).map((instructor) => (
-                    <div key={instructor._id}>
-                      {`${instructor.lastname}, ${instructor.firstname}`.replace(/^,\s*/, '')} ({instructor.email})
-                      {roster?.owner === instructor._id ? ' [Owner]' : ''}
+                    <div key={instructor._id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <span>
+                        {`${instructor.lastname}, ${instructor.firstname}`.replace(/^,\s*/, '')} ({instructor.email})
+                        {roster?.owner === instructor._id ? ' [Owner]' : ''}
+                      </span>
+                      {roster?.owner !== instructor._id && instructor._id !== user?._id && (
+                        <button
+                          className="btn btn-default btn-sm"
+                          onClick={() => void removeInstructor(instructor._id)}
+                          disabled={optionsSaving}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

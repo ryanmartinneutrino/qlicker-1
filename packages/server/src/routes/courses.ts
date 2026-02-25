@@ -218,6 +218,40 @@ function parseApiOptions(raw: unknown): VideoOptions['apiOptions'] {
   }
 }
 
+function normalizeEmail(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+async function findUserByEmail(emailAddress: string): Promise<User | null> {
+  if (!emailAddress) return null
+  const users = getUsers()
+  const lower = emailAddress.toLowerCase()
+  const exactLower = await users.findOne({ 'emails.address': lower } as Parameters<typeof users.findOne>[0])
+  if (exactLower) return exactLower as User
+
+  const escaped = emailAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const caseInsensitive = await users.findOne(
+    { emails: { $elemMatch: { address: { $regex: `^${escaped}$`, $options: 'i' } } } } as Parameters<
+      typeof users.findOne
+    >[0]
+  )
+  return (caseInsensitive as User) || null
+}
+
+function removeUserFromGroupVideoState(categories: GroupCategory[], userId: string): GroupCategory[] {
+  return categories.map((category) => ({
+    ...category,
+    groups: (category.groups || []).map((group) => {
+      const joinedVideoChat = (group.joinedVideoChat || []).filter((id) => id !== userId)
+      return {
+        ...group,
+        joinedVideoChat,
+        helpVideoChat: joinedVideoChat.length < 1 ? false : Boolean(group.helpVideoChat),
+      }
+    }),
+  }))
+}
+
 function generateEnrollmentCode(length = 6): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz'
   let code = ''
@@ -555,6 +589,149 @@ router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res,
   }
 })
 
+/** POST /api/courses/:courseId/students — add student by userId or email */
+router.post('/:courseId/students', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
+    const requestedStudentId = String(req.body?.studentId || '').trim()
+    const requestedEmail = normalizeEmail(req.body?.email)
+    if (!requestedStudentId && !requestedEmail) {
+      return res.status(400).json({ error: 'studentId or email is required.' })
+    }
+
+    const users = getUsers()
+    const candidate = requestedStudentId
+      ? await users.findOne({ _id: requestedStudentId } as Parameters<typeof users.findOne>[0])
+      : await findUserByEmail(requestedEmail)
+    if (!candidate?._id) return res.status(404).json({ error: 'User not found.' })
+
+    const studentId = candidate._id
+    if ((course.students || []).includes(studentId)) {
+      return res.status(409).json({ error: 'Student already in course.' })
+    }
+    if ((course.instructors || []).includes(studentId) || course.owner === studentId) {
+      return res.status(409).json({ error: 'User is already an instructor for this course.' })
+    }
+
+    const courses = getCourses()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $addToSet: { students: studentId } }
+    )
+    await users.updateOne(
+      { _id: studentId } as Parameters<typeof users.updateOne>[0],
+      { $addToSet: { 'profile.courses': req.params.courseId } }
+    )
+
+    const updated = await getCourseById(req.params.courseId)
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/instructors — add instructor/TA by userId or email */
+router.post('/:courseId/instructors', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
+    const requestedInstructorId = String(req.body?.instructorId || '').trim()
+    const requestedEmail = normalizeEmail(req.body?.email)
+    if (!requestedInstructorId && !requestedEmail) {
+      return res.status(400).json({ error: 'instructorId or email is required.' })
+    }
+
+    const users = getUsers()
+    const candidate = requestedInstructorId
+      ? await users.findOne({ _id: requestedInstructorId } as Parameters<typeof users.findOne>[0])
+      : await findUserByEmail(requestedEmail)
+    if (!candidate?._id) return res.status(404).json({ error: 'User not found.' })
+
+    const instructorId = candidate._id
+    if ((course.instructors || []).includes(instructorId) || course.owner === instructorId) {
+      return res.status(409).json({ error: 'Already instructor for course.' })
+    }
+
+    const nextStudentIds = (course.students || []).filter((id) => id !== instructorId)
+    const nextGroupCategories = normalizeGroupCategories(
+      removeUserFromGroupVideoState(course.groupCategories || [], instructorId),
+      nextStudentIds
+    )
+    const nextCourseVideoJoined = (course.videoChatOptions?.joined || []).filter((id) => id !== instructorId)
+
+    const courses = getCourses()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      {
+        $pull: { students: instructorId },
+        $addToSet: { instructors: instructorId },
+        $set: {
+          groupCategories: nextGroupCategories,
+          ...(course.videoChatOptions ? { 'videoChatOptions.joined': nextCourseVideoJoined } : {}),
+        },
+      }
+    )
+    await users.updateOne(
+      { _id: instructorId } as Parameters<typeof users.updateOne>[0],
+      { $addToSet: { 'profile.courses': req.params.courseId } }
+    )
+
+    const updated = await getCourseById(req.params.courseId)
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/courses/:courseId/instructors/:instructorId — remove instructor/TA */
+router.delete('/:courseId/instructors/:instructorId', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
+    const instructorId = String(req.params.instructorId || '').trim()
+    if (!instructorId) return res.status(400).json({ error: 'instructorId required.' })
+    if (course.owner === instructorId) return res.status(400).json({ error: 'Cannot remove course owner.' })
+    if (user._id === instructorId) return res.status(400).json({ error: 'Cannot remove yourself from instructors.' })
+    if (!(course.instructors || []).includes(instructorId)) {
+      return res.status(404).json({ error: 'Instructor not found in this course.' })
+    }
+
+    const nextGroupCategories = normalizeGroupCategories(
+      removeUserFromGroupVideoState(course.groupCategories || [], instructorId),
+      course.students || []
+    )
+    const nextCourseVideoJoined = (course.videoChatOptions?.joined || []).filter((id) => id !== instructorId)
+
+    const courses = getCourses()
+    const users = getUsers()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      {
+        $pull: { instructors: instructorId },
+        $set: {
+          groupCategories: nextGroupCategories,
+          ...(course.videoChatOptions ? { 'videoChatOptions.joined': nextCourseVideoJoined } : {}),
+        },
+      }
+    )
+    await users.updateOne(
+      { _id: instructorId } as Parameters<typeof users.updateOne>[0],
+      { $pull: { 'profile.courses': req.params.courseId } }
+    )
+
+    res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** DELETE /api/courses/:courseId/students/:studentId — remove a student */
 router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
@@ -563,13 +740,20 @@ router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, 
     if (!course) return
 
     const studentId = req.params.studentId
-    const normalizedCategories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
+    const normalizedCategories = normalizeGroupCategories(
+      removeUserFromGroupVideoState(course.groupCategories || [], studentId),
+      course.students || []
+    )
     normalizedCategories.forEach((category) => {
       category.groups = (category.groups || []).map((group) => ({
         ...group,
         students: (group.students || []).filter((id) => id !== studentId),
         joinedVideoChat: (group.joinedVideoChat || []).filter((id) => id !== studentId),
-        helpVideoChat: (group.students || []).includes(studentId) ? false : Boolean(group.helpVideoChat),
+        helpVideoChat:
+          (group.students || []).includes(studentId) ||
+          ((group.joinedVideoChat || []).filter((id) => id !== studentId).length < 1)
+            ? false
+            : Boolean(group.helpVideoChat),
       }))
     })
 

@@ -20,6 +20,9 @@
 | `courses.edit` | `PUT /api/courses/:courseId` |
 | `courses.delete` | `DELETE /api/courses/:courseId` |
 | `courses.checkAndEnroll` | `POST /api/courses/enroll` |
+| `courses.addStudentByEmail` | `POST /api/courses/:courseId/students` (`email`) |
+| `courses.addTA` | `POST /api/courses/:courseId/instructors` (`email`) |
+| `courses.removeTA` | `DELETE /api/courses/:courseId/instructors/:instructorId` |
 | `courses.removeStudent` | `DELETE /api/courses/:courseId/students/:studentId` |
 | `courses.toggleVideoChat` and related | `/api/courses/:courseId/video-chat/*` |
 
@@ -62,5 +65,4 @@
 | session grade export | `GET /api/grades/session/:sessionId/export` |
 
 ## Open parity work
-- course TA/student-by-email management endpoints
 - session-question order/copy/remove operations

@@ -128,6 +128,7 @@ async function run() {
   const student2 = new ApiSession('student2')
   const admin = new ApiSession('admin')
   const outsiderProf = new ApiSession('outsiderProf')
+  const rosterCandidate = new ApiSession('rosterCandidate')
 
   await prof.login('prof@gmail.com', '12345678')
   await student.login('student1@gmail.com', '12345678')
@@ -168,6 +169,17 @@ async function run() {
   })
   assert(tempSession._id, 'Temp session creation failed.')
 
+  const rosterEmail = `roster.student.${Date.now()}@gmail.com`
+  const rosterPassword = '12345678'
+  await rosterCandidate.request('POST', '/auth/register', {
+    email: rosterEmail,
+    password: rosterPassword,
+    firstname: 'Roster',
+    lastname: 'Candidate',
+  })
+  const rosterIdentity = await rosterCandidate.request('GET', '/auth/me')
+  assert(rosterIdentity?.user?._id, 'Roster candidate user id missing.')
+
   const outsiderEmail = `outsider.prof.${Date.now()}@gmail.com`
   const outsiderPassword = '12345678'
   await outsiderProf.request('POST', '/auth/register', {
@@ -193,9 +205,46 @@ async function run() {
   await outsiderProf.request('POST', `/courses/${tempCourse._id}/enrollment-code/regenerate`, {}, { expectStatus: 403 })
   await outsiderProf.request('GET', `/courses/${tempCourse._id}/roster`, undefined, { expectStatus: 403 })
   await outsiderProf.request('DELETE', `/courses/${tempCourse._id}/students/${meStudent.user._id}`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/courses/${tempCourse._id}/students`, { email: rosterEmail }, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/courses/${tempCourse._id}/instructors`, { email: rosterEmail }, { expectStatus: 403 })
+  await outsiderProf.request('DELETE', `/courses/${tempCourse._id}/instructors/${meProf.user._id}`, undefined, { expectStatus: 403 })
   await outsiderProf.request('GET', `/courses/${tempCourse._id}/groups/manage`, undefined, { expectStatus: 403 })
   await outsiderProf.request('POST', `/courses/${tempCourse._id}/groups/categories`, { categoryName: 'blocked', nGroups: 1 }, { expectStatus: 403 })
   await outsiderProf.request('POST', `/courses/${tempCourse._id}/video-chat/toggle`, { enabled: true }, { expectStatus: 403 })
+
+  // roster parity checks (add student by email, promote to instructor, remove instructor)
+  await prof.request('POST', `/courses/${tempCourse._id}/students`, { email: rosterEmail })
+  const rosterAfterStudentAdd = await prof.request('GET', `/courses/${tempCourse._id}/roster`)
+  assert(
+    rosterAfterStudentAdd.students.some((entry) => entry._id === rosterIdentity.user._id),
+    'Added student should appear in roster students.'
+  )
+
+  await prof.request('POST', `/courses/${tempCourse._id}/instructors`, { email: rosterEmail })
+  const rosterAfterInstructorAdd = await prof.request('GET', `/courses/${tempCourse._id}/roster`)
+  assert(
+    rosterAfterInstructorAdd.instructors.some((entry) => entry._id === rosterIdentity.user._id),
+    'Promoted instructor should appear in roster instructors.'
+  )
+  assert(
+    !rosterAfterInstructorAdd.students.some((entry) => entry._id === rosterIdentity.user._id),
+    'Promoted instructor should be removed from roster students.'
+  )
+
+  await rosterCandidate.login(rosterEmail, rosterPassword)
+  await rosterCandidate.request(
+    'DELETE',
+    `/courses/${tempCourse._id}/instructors/${rosterIdentity.user._id}`,
+    undefined,
+    { expectStatus: 400 }
+  )
+  await prof.request('DELETE', `/courses/${tempCourse._id}/instructors/${meProf.user._id}`, undefined, { expectStatus: 400 })
+  await prof.request('DELETE', `/courses/${tempCourse._id}/instructors/${rosterIdentity.user._id}`)
+  const rosterAfterInstructorRemoval = await prof.request('GET', `/courses/${tempCourse._id}/roster`)
+  assert(
+    !rosterAfterInstructorRemoval.instructors.some((entry) => entry._id === rosterIdentity.user._id),
+    'Removed instructor should no longer appear in roster instructors.'
+  )
 
   const publicQuestion = await prof.request('POST', '/questions', {
     plainText: 'Authz public question',
@@ -404,6 +453,8 @@ async function run() {
   await outsiderProf.request('DELETE', `/courses/${outsiderCourse._id}`)
   await outsiderProf.request('POST', '/auth/logout', {})
   await admin.request('DELETE', `/users/${outsiderIdentity.user._id}`)
+  await rosterCandidate.request('POST', '/auth/logout', {})
+  await admin.request('DELETE', `/users/${rosterIdentity.user._id}`)
 
   await student.request('POST', '/auth/logout', {})
   await student2.request('POST', '/auth/logout', {})
