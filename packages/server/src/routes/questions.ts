@@ -9,6 +9,24 @@ import { questionSchema, UserRole } from '@qlicker/shared'
 
 const router = Router()
 
+function withoutUndefined<T extends Record<string, unknown>>(doc: T): T {
+  return Object.fromEntries(
+    Object.entries(doc).filter(([, value]) => value !== undefined)
+  ) as T
+}
+
+function sessionDetachedFilter(): Record<string, unknown> {
+  return {
+    $or: [{ sessionId: { $exists: false } }, { sessionId: null }],
+  }
+}
+
+function withDetachedSessionFilter(filter: Record<string, unknown>): Record<string, unknown> {
+  return {
+    $and: [filter, sessionDetachedFilter()],
+  }
+}
+
 function isAdmin(user: User): boolean {
   return user.profile.roles.includes(UserRole.admin)
 }
@@ -177,46 +195,42 @@ router.get('/', requireAuth, async (req, res, next) => {
       if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
       if (library === 'public') {
-        const result = await questions.find({
+        const result = await questions.find(withDetachedSessionFilter({
           ...query,
           courseId,
-          sessionId: { $exists: false },
           public: true,
           approved: true,
-        }).toArray()
+        })).toArray()
         return res.json(result)
       }
 
       if (library === 'unapprovedFromStudents') {
         if (!access.canManage) return res.status(403).json({ error: 'Forbidden.' })
-        const result = await questions.find({
+        const result = await questions.find(withDetachedSessionFilter({
           ...query,
           courseId,
-          sessionId: { $exists: false },
           approved: false,
           $or: [{ private: false }, { private: { $exists: false } }],
-        }).toArray()
+        })).toArray()
         return res.json(result)
       }
 
       if (library === 'library') {
         if (access.canManage) {
-          const result = await questions.find({
+          const result = await questions.find(withDetachedSessionFilter({
             ...query,
             courseId,
-            sessionId: { $exists: false },
             approved: true,
             studentCopyOfPublic: { $exists: false },
-          }).toArray()
+          })).toArray()
           return res.json(result)
         }
 
-        const result = await questions.find({
+        const result = await questions.find(withDetachedSessionFilter({
           ...query,
           courseId,
-          sessionId: { $exists: false },
           $or: [{ creator: user._id }, { owner: user._id }],
-        }).toArray()
+        })).toArray()
         return res.json(result)
       }
 
@@ -229,12 +243,11 @@ router.get('/', requireAuth, async (req, res, next) => {
       }
 
       // Default student view without explicit library: own library only.
-      const result = await questions.find({
+      const result = await questions.find(withDetachedSessionFilter({
         ...query,
         courseId,
-        sessionId: { $exists: false },
         $or: [{ creator: user._id }, { owner: user._id }],
-      }).toArray()
+      })).toArray()
       return res.json(result)
     }
 
@@ -346,7 +359,7 @@ router.post('/', requireAuth, async (req, res, next) => {
     }
 
     const userId = user._id ?? ''
-    const doc = {
+    const doc = withoutUndefined({
       _id: generateStringId('question'),
       ...parsed.data,
       courseId: courseIdForQuestion,
@@ -357,7 +370,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       public: access.canManage ? Boolean(parsed.data.public) : false,
       sessionId: isStudentCreation ? undefined : parsed.data.sessionId,
       createdAt: new Date(),
-    }
+    })
 
     const questions = getQuestions()
     await questions.insertOne(doc as Parameters<typeof questions.insertOne>[0])
@@ -444,7 +457,7 @@ router.post('/:questionId/copy', requireAuth, async (req, res, next) => {
     if (!access.canAccess) return res.status(403).json({ error: 'Forbidden.' })
 
     const userId = user._id ?? ''
-    const copy = {
+    const copy = withoutUndefined({
       _id: generateStringId('question'),
       plainText: source.plainText,
       type: source.type,
@@ -466,7 +479,7 @@ router.post('/:questionId/copy', requireAuth, async (req, res, next) => {
       sessionOptions: source.sessionOptions,
       imagePath: source.imagePath,
       studentCopyOfPublic: access.canManage ? undefined : true,
-    }
+    })
 
     await questions.insertOne(copy as Parameters<typeof questions.insertOne>[0])
     const created = await questions.findOne({ _id: copy._id } as Parameters<typeof questions.findOne>[0])

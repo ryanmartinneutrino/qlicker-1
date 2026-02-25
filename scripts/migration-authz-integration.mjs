@@ -153,6 +153,7 @@ async function run() {
     semester: 'Fall 2026',
   })
   assert(tempCourse._id && tempCourse.enrollmentCode, 'Temp course creation failed.')
+  await prof.request('PUT', `/courses/${tempCourse._id}`, { allowStudentQuestions: true })
 
   await student.request('POST', '/courses/enroll', { enrollmentCode: tempCourse.enrollmentCode })
 
