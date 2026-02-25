@@ -85,7 +85,8 @@
 - End-to-end parity verification is incomplete:
   - no latest full Docker smoke/integration/e2e run evidence on current `master`
   - backup parity is now validated locally; CI/staging archival workflow still needs to be formalized
-- Load/perf gate remains red on current head due high error-rate under current default load scenario (`test:migration-load` via gate).
+- Load/perf gate baseline is now green with authenticated rate-limit keying + paced load harness defaults (`test:migration-gate` runtime stages pass on current head).
+- CI/staging evidence archival was manual; gate/legacy-backup summary artifacts were not emitted by orchestration scripts.
 
 ## 8-Lane Progress Matrix
 
@@ -98,7 +99,7 @@
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 88% | PR `#50`, `#57`, `#60`, `#68`; smoke/authz/realtime-authz gates pass with CSRF enabled | Resolve load-gate failures and archive full gate evidence in CI/staging |
+| L8 | Integration/load/cutover ops | 92% | PR `#50`, `#57`, `#60`, `#68`, `#70`; smoke/authz/realtime-authz/load gates pass with CSRF enabled | Archive machine-readable gate/backup evidence in CI/staging and close final pilot checklist |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -121,7 +122,7 @@
 
 ## Completion Estimate
 - Current migration completion: **~91%** toward pilot-readiness.
-- Remaining critical path: L6 parity closure + L8 load-gate stabilization + CI/staging archival evidence.
+- Remaining critical path: L6 parity closure + CI/staging archival evidence + final pilot checklist sign-off.
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`

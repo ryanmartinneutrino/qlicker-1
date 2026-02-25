@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
-import { access } from 'node:fs/promises'
+import { access, mkdir, writeFile } from 'node:fs/promises'
 import { constants as fsConstants } from 'node:fs'
 import path from 'node:path'
 
@@ -76,6 +76,9 @@ async function run() {
   const baselineDb = process.env.QCLICKER_LEGACY_BASELINE_DB || 'qlicker_legacy_backup'
   const candidateDb = process.env.QCLICKER_LEGACY_CANDIDATE_DB || 'qlicker_candidate'
   const artifactDir = process.env.QCLICKER_LEGACY_ARTIFACT_DIR || '/tmp/qlicker-migration-artifacts'
+  const summaryOutput =
+    process.env.QCLICKER_LEGACY_SUMMARY_OUTPUT ||
+    path.join(artifactDir, `legacy-backup-summary-${baselineDb}-vs-${candidateDb}.json`)
   const skipRestore = toBool(process.env.QCLICKER_LEGACY_SKIP_RESTORE, false)
   const strictCompat = toBool(process.env.QCLICKER_DB_COMPAT_STRICT, false)
   const failOnDiff = toBool(process.env.QCLICKER_PARITY_FAIL_ON_DIFF, false)
@@ -175,6 +178,44 @@ async function run() {
     )
   }
   console.log(`[legacy-backup-validate] total duration: ${formatMs(Date.now() - startedAt)}`)
+
+  const summary = {
+    checkedAt: new Date().toISOString(),
+    backupDir,
+    backupNamespace,
+    mongoUri,
+    baselineDb,
+    candidateDb,
+    artifactDir,
+    skipRestore,
+    strictCompat,
+    failOnDiff,
+    baselineMongoUrl,
+    candidateMongoUrl,
+    reports: {
+      baselineCompat: baselineCompatOutput,
+      candidateCompat: candidateCompatOutput,
+      parity: parityOutput,
+    },
+    steps: results.map((result) => ({
+      step: result.step,
+      command: result.command,
+      code: result.code,
+      signal: result.signal,
+      durationMs: result.durationMs,
+      status: result.code === 0 ? 'pass' : 'fail',
+    })),
+    totals: {
+      durationMs: Date.now() - startedAt,
+      passed: results.filter((result) => result.code === 0).length,
+      failed: failed ? 1 : 0,
+    },
+    status: failed ? 'fail' : 'pass',
+  }
+
+  await mkdir(path.dirname(summaryOutput), { recursive: true })
+  await writeFile(summaryOutput, `${JSON.stringify(summary, null, 2)}\n`, 'utf8')
+  console.log(`[legacy-backup-validate] summary artifact: ${summaryOutput}`)
 
   if (failed) {
     throw new Error(`Legacy backup validation failed at step: ${failed.step}`)

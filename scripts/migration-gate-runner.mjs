@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 
 function toBool(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') return defaultValue
@@ -42,6 +44,13 @@ async function runCommand(command) {
   })
 }
 
+async function writeSummary(outputPath, summary) {
+  if (!outputPath) return
+  const dir = path.dirname(outputPath)
+  await mkdir(dir, { recursive: true })
+  await writeFile(outputPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8')
+}
+
 async function run() {
   const skipBuild = toBool(process.env.QCLICKER_GATE_SKIP_BUILD, false)
   const skipRuntime = toBool(process.env.QCLICKER_GATE_SKIP_RUNTIME, false)
@@ -49,6 +58,8 @@ async function run() {
   const includeDbParity = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_PARITY, false)
   const includeLegacyBackup = toBool(process.env.QCLICKER_GATE_INCLUDE_LEGACY_BACKUP, false)
   const continueOnError = toBool(process.env.QCLICKER_GATE_CONTINUE_ON_ERROR, false)
+  const summaryOutput = process.env.QCLICKER_GATE_OUTPUT || ''
+  const summaryLabel = process.env.QCLICKER_GATE_LABEL || 'migration-gate'
 
   const plan = []
 
@@ -103,6 +114,34 @@ async function run() {
 
   const failed = results.filter((result) => result.code !== 0)
   const totalDurationMs = Date.now() - startedAt
+  const summary = {
+    checkedAt: new Date().toISOString(),
+    label: summaryLabel,
+    config: {
+      skipBuild,
+      skipRuntime,
+      includeDbCompat,
+      includeDbParity,
+      includeLegacyBackup,
+      continueOnError,
+    },
+    plannedSteps: plan.map((step) => ({ key: step.key, command: step.command })),
+    results: results.map((result) => ({
+      key: result.key,
+      command: result.command,
+      code: result.code,
+      signal: result.signal,
+      durationMs: result.durationMs,
+      status: result.code === 0 ? 'pass' : 'fail',
+    })),
+    totals: {
+      durationMs: totalDurationMs,
+      passed: results.filter((result) => result.code === 0).length,
+      failed: failed.length,
+    },
+    status: failed.length > 0 ? 'fail' : 'pass',
+  }
+  await writeSummary(summaryOutput, summary)
 
   console.log('\n[migration-gate] summary:')
   for (const result of results) {
@@ -111,6 +150,9 @@ async function run() {
   }
 
   console.log(`[migration-gate] total duration: ${formatMs(totalDurationMs)}`)
+  if (summaryOutput) {
+    console.log(`[migration-gate] summary artifact: ${summaryOutput}`)
+  }
 
   if (failed.length > 0) {
     const failedKeys = failed.map((result) => result.key).join(', ')

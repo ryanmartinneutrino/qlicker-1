@@ -14,6 +14,9 @@
     - `QCLICKER_GATE_INCLUDE_DB_COMPAT=true QCLICKER_GATE_INCLUDE_DB_PARITY=true npm run test:migration-gate`
   - include real legacy-backup validation when backup is mounted:
     - `QCLICKER_GATE_SKIP_BUILD=true QCLICKER_GATE_SKIP_RUNTIME=true QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true QCLICKER_LEGACY_BACKUP_DIR=... npm run test:migration-gate`
+- machine-readable evidence is archived for the latest gate run:
+  - gate summary JSON via `QCLICKER_GATE_OUTPUT=...`
+  - legacy-backup summary JSON + compat/parity reports from `test:migration-legacy-backup`
 
 ## Pilot execution
 1. Deploy new stack for pilot cohort only.

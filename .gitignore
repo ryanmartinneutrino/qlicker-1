@@ -13,5 +13,6 @@ legacydb/
 # New stack build artifacts
 packages/*/dist/
 packages/server/.env
+packages/server/uploads/
 
 .agent-worktrees/
