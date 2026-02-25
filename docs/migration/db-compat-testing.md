@@ -16,6 +16,7 @@ Optional knobs:
 - `QCLICKER_DB_COMPAT_STRICT=true` to fail on warnings.
 - `QCLICKER_PARITY_FAIL_ON_DIFF=true` to fail on sampled parity diffs.
 - `QCLICKER_LEGACY_ARTIFACT_DIR=/tmp/qlicker-migration-artifacts` to control report location.
+- `QCLICKER_LEGACY_SUMMARY_OUTPUT=/tmp/qlicker-migration-artifacts/legacy-summary.json` to control the orchestration summary artifact path.
 
 You can also include this stage in the unified gate runner:
 
@@ -23,6 +24,7 @@ You can also include this stage in the unified gate runner:
 QCLICKER_GATE_SKIP_BUILD=true \
 QCLICKER_GATE_SKIP_RUNTIME=true \
 QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true \
+QCLICKER_GATE_OUTPUT=/tmp/qlicker-migration-artifacts/migration-gate.json \
 QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
 QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
 npm run test:migration-gate
@@ -85,13 +87,26 @@ Or run the orchestrated gate command:
 # Runtime checks only (build + smoke/authz/realtime/load)
 npm run test:migration-gate
 
+# Runtime checks with machine-readable gate artifact
+QCLICKER_GATE_OUTPUT=artifacts/migration-gate.json \
+npm run test:migration-gate
+
 # Include DB compatibility + baseline/candidate parity diff in one run
 QCLICKER_GATE_INCLUDE_DB_COMPAT=true \
 QCLICKER_GATE_INCLUDE_DB_PARITY=true \
+QCLICKER_GATE_OUTPUT=artifacts/migration-gate.json \
 QCLICKER_BASELINE_MONGO_URL='mongodb://localhost:27017/qlicker_legacy_backup?directConnection=true' \
 QCLICKER_CANDIDATE_MONGO_URL='mongodb://localhost:27017/qlicker_candidate?directConnection=true' \
 npm run test:migration-gate
 ```
+
+## 5. Evidence artifacts
+- `test:migration-gate` writes a JSON summary when `QCLICKER_GATE_OUTPUT` is set.
+- `test:migration-legacy-backup` always writes:
+  - compatibility reports for baseline/candidate DBs
+  - parity diff report
+  - a summary JSON (default: `<artifactDir>/legacy-backup-summary-<baseline>-vs-<candidate>.json`, overridable via `QCLICKER_LEGACY_SUMMARY_OUTPUT`)
+- Archive these JSON files in CI/staging for pilot go/no-go evidence.
 
 ## Notes
 - `test:migration-db-compat` is read-only and checks collection presence, string `_id` compatibility, and key field-type invariants.
