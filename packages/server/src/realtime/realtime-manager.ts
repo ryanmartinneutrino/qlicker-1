@@ -212,6 +212,7 @@ export function setupRealtime(io: SocketIOServer): void {
 
     socket.on('unsubscribe:responses', ({ questionId }: { questionId: string }) => {
       if (!questionId) return
+      removeSubscription(`responses:question-stats:${questionId}`)
       removeSubscription(`responses:${questionId}`)
     })
 
