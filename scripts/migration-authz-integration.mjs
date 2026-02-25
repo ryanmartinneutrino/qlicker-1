@@ -188,6 +188,14 @@ async function run() {
     semester: 'Fall 2026',
   })
   assert(outsiderCourse?._id, 'Outsider professor course creation failed.')
+  await outsiderProf.request('PUT', `/courses/${tempCourse._id}`, { name: 'Outsider takeover' }, { expectStatus: 403 })
+  await outsiderProf.request('DELETE', `/courses/${tempCourse._id}`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/courses/${tempCourse._id}/enrollment-code/regenerate`, {}, { expectStatus: 403 })
+  await outsiderProf.request('GET', `/courses/${tempCourse._id}/roster`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('DELETE', `/courses/${tempCourse._id}/students/${meStudent.user._id}`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('GET', `/courses/${tempCourse._id}/groups/manage`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/courses/${tempCourse._id}/groups/categories`, { categoryName: 'blocked', nGroups: 1 }, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/courses/${tempCourse._id}/video-chat/toggle`, { enabled: true }, { expectStatus: 403 })
 
   const publicQuestion = await prof.request('POST', '/questions', {
     plainText: 'Authz public question',

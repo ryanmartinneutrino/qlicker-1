@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Response as ExpressResponse } from 'express'
 import { generateStringId } from '../utils/id'
 import { sendCsvDownload } from '../utils/csv'
 import { getCourses } from '../collections/courses'
@@ -181,6 +181,23 @@ async function getCourseById(courseId: string): Promise<Course | null> {
   return courses.findOne({ _id: courseId } as Parameters<typeof courses.findOne>[0]) as Promise<Course | null>
 }
 
+async function getManagedCourseById(
+  courseId: string,
+  user: User,
+  res: ExpressResponse
+): Promise<Course | null> {
+  const course = await getCourseById(courseId)
+  if (!course) {
+    res.status(404).json({ error: 'Course not found.' })
+    return null
+  }
+  if (!isCourseInstructor(user, course)) {
+    res.status(403).json({ error: 'Forbidden.' })
+    return null
+  }
+  return course
+}
+
 function ensureVideoOptions(videoChatOptions?: VideoOptions | null): VideoOptions {
   return {
     urlId: videoChatOptions?.urlId || generateStringId('video'),
@@ -307,15 +324,19 @@ router.post('/', requireAuth, requireProfOrAdmin, async (req, res, next) => {
 /** PUT /api/courses/:courseId — update a course */
 router.put('/:courseId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
     const courses = getCourses()
     const parsed = courseSchema.partial().safeParse(req.body)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
     await courses.updateOne(
-      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { _id: course._id } as Parameters<typeof courses.updateOne>[0],
       { $set: parsed.data }
     )
-    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    const updated = await courses.findOne({ _id: course._id } as Parameters<typeof courses.findOne>[0])
     res.json(updated)
   } catch (err) {
     next(err)
@@ -325,8 +346,12 @@ router.put('/:courseId', requireAuth, requireInstructor, async (req, res, next) 
 /** DELETE /api/courses/:courseId — delete a course */
 router.delete('/:courseId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
     const courses = getCourses()
-    await courses.deleteOne({ _id: req.params.courseId } as Parameters<typeof courses.deleteOne>[0])
+    await courses.deleteOne({ _id: course._id } as Parameters<typeof courses.deleteOne>[0])
     res.json({ success: true })
   } catch (err) {
     next(err)
@@ -336,13 +361,17 @@ router.delete('/:courseId', requireAuth, requireInstructor, async (req, res, nex
 /** POST /api/courses/:courseId/enrollment-code/regenerate — rotate course enrollment code */
 router.post('/:courseId/enrollment-code/regenerate', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
     const courses = getCourses()
     const nextCode = generateEnrollmentCode()
     await courses.updateOne(
-      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { _id: course._id } as Parameters<typeof courses.updateOne>[0],
       { $set: { enrollmentCode: nextCode } }
     )
-    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    const updated = await courses.findOne({ _id: course._id } as Parameters<typeof courses.findOne>[0])
     res.json(updated)
   } catch (err) {
     next(err)
@@ -469,8 +498,9 @@ router.post('/enroll', requireAuth, async (req, res, next) => {
 /** GET /api/courses/:courseId/roster — instructor roster for course management */
 router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const users = getUsers()
     const studentIds = (course.students || []).filter(
@@ -528,8 +558,9 @@ router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res,
 /** DELETE /api/courses/:courseId/students/:studentId — remove a student */
 router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const studentId = req.params.studentId
     const normalizedCategories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
@@ -568,8 +599,9 @@ router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, 
 /** GET /api/courses/:courseId/groups/manage */
 router.get('/:courseId/groups/manage', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const studentIds = (course.students || []).filter((studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0)
     const users = getUsers()
@@ -608,8 +640,9 @@ router.get('/:courseId/groups/manage', requireAuth, requireInstructor, async (re
 /** GET /api/courses/:courseId/groups/export — instructor CSV export */
 router.get('/:courseId/groups/export', requireAuth, requireInstructor, async (req, res, next) => {
   try {
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const studentIds = (course.students || []).filter(
       (studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0
@@ -667,9 +700,10 @@ router.get('/:courseId/groups/export', requireAuth, requireInstructor, async (re
 /** POST /api/courses/:courseId/groups/categories */
 router.post('/:courseId/groups/categories', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const categoryName = String(req.body?.categoryName || '').trim()
     if (!categoryName) return res.status(400).json({ error: 'categoryName required.' })
@@ -716,9 +750,10 @@ router.delete('/:courseId/groups/categories/:categoryNumber', requireAuth, requi
       return res.status(400).json({ error: 'Invalid category number.' })
     }
 
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const nextCategories = categories.filter((category) => Number(category.categoryNumber) !== categoryNumber)
@@ -746,9 +781,10 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups', requireAuth, 
       return res.status(400).json({ error: 'Invalid category number.' })
     }
 
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
@@ -790,9 +826,10 @@ router.patch('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber',
     const groupName = String(req.body?.groupName || '').trim()
     if (!groupName) return res.status(400).json({ error: 'groupName required.' })
 
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
@@ -829,9 +866,10 @@ router.delete('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber'
       return res.status(400).json({ error: 'Invalid group number.' })
     }
 
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
@@ -877,9 +915,10 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber/st
       return res.status(400).json({ error: 'studentId required.' })
     }
 
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
     if (!(course.students || []).includes(studentId)) {
       return res.status(404).json({ error: 'Student is not enrolled in this course.' })
     }
@@ -962,9 +1001,10 @@ router.get('/:courseId/video-chat-config', requireAuth, async (req, res, next) =
 /** POST /api/courses/:courseId/video-chat/toggle */
 router.post('/:courseId/video-chat/toggle', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const enabled = Boolean(req.body?.enabled)
     if (enabled) {
@@ -990,9 +1030,10 @@ router.post('/:courseId/video-chat/toggle', requireAuth, requireInstructor, asyn
 /** POST /api/courses/:courseId/video-chat/options */
 router.post('/:courseId/video-chat/options', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
     if (!course.videoChatOptions) return res.status(400).json({ error: 'Course video chat is not enabled.' })
 
     const apiOptions = parseApiOptions(req.body?.apiOptions)
@@ -1010,9 +1051,13 @@ router.post('/:courseId/video-chat/options', requireAuth, requireInstructor, asy
 /** POST /api/courses/:courseId/video-chat/clear */
 router.post('/:courseId/video-chat/clear', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
+
     const courses = getCourses()
     await courses.updateOne(
-      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { _id: course._id } as Parameters<typeof courses.updateOne>[0],
       { $set: { 'videoChatOptions.joined': [] } }
     )
     const updated = await getCourseById(req.params.courseId)
@@ -1066,9 +1111,10 @@ router.post('/:courseId/video-chat/leave', requireAuth, async (req, res, next) =
 /** POST /api/courses/:courseId/video-chat/categories/:categoryNumber/toggle */
 router.post('/:courseId/video-chat/categories/:categoryNumber/toggle', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
     const categoryNumber = Number(req.params.categoryNumber)
     const categories = [...(course.groupCategories || [])]
     const category = categories.find((cat) => Number(cat.categoryNumber) === categoryNumber)
@@ -1100,9 +1146,10 @@ router.post('/:courseId/video-chat/categories/:categoryNumber/toggle', requireAu
 /** POST /api/courses/:courseId/video-chat/categories/:categoryNumber/options */
 router.post('/:courseId/video-chat/categories/:categoryNumber/options', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
     const categoryNumber = Number(req.params.categoryNumber)
     const categories = [...(course.groupCategories || [])]
     const category = categories.find((cat) => Number(cat.categoryNumber) === categoryNumber)
@@ -1128,9 +1175,10 @@ router.post('/:courseId/video-chat/categories/:categoryNumber/options', requireA
 /** POST /api/courses/:courseId/video-chat/categories/:categoryNumber/clear */
 router.post('/:courseId/video-chat/categories/:categoryNumber/clear', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
     const categoryNumber = Number(req.params.categoryNumber)
     const categories = [...(course.groupCategories || [])]
     const category = categories.find((cat) => Number(cat.categoryNumber) === categoryNumber)
@@ -1252,9 +1300,10 @@ router.post('/:courseId/video-chat/categories/:categoryNumber/groups/:groupNumbe
 /** POST /api/courses/:courseId/video-chat/categories/:categoryNumber/groups/:groupNumber/clear */
 router.post('/:courseId/video-chat/categories/:categoryNumber/groups/:groupNumber/clear', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
-    const course = await getCourseById(req.params.courseId)
-    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    const course = await getManagedCourseById(req.params.courseId, user, res)
+    if (!course) return
 
     const category = findCategory(course, Number(req.params.categoryNumber))
     if (!category) return res.status(404).json({ error: 'Category not found.' })
