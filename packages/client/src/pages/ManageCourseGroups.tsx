@@ -233,7 +233,24 @@ export default function ManageCourseGroups() {
     }
   }
 
-  const downloadCsv = () => {
+  const downloadCsv = async () => {
+    if (!courseId) return
+    try {
+      const csvText = await apiClient.get<string>(`/courses/${courseId}/groups/export`)
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `groups-${courseId}.csv`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      return
+    } catch {
+      // Fallback to local CSV generation if server-side export endpoint is unavailable.
+    }
+
     const rows: Array<Array<unknown>> = [
       ['CategoryName', 'CategoryNumber', 'GroupName', 'GroupNumber', 'Email', 'LastName', 'FirstName'],
     ]

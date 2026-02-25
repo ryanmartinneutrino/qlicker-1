@@ -106,6 +106,65 @@ function createDefaultGroup(groupNumber: number): Group {
   }
 }
 
+function toUniqueStringArray(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    if (typeof value !== 'string' || value.length < 1) continue
+    if (seen.has(value)) continue
+    seen.add(value)
+    result.push(value)
+  }
+  return result
+}
+
+function normalizeGroup(
+  group: Group,
+  groupNumber: number,
+  allowedStudents: Set<string>
+): Group {
+  const name = String(group.groupName || '').trim() || `Group${groupNumber}`
+  const students = toUniqueStringArray((group.students || []).filter((studentId) => allowedStudents.has(studentId)))
+  const joinedVideoChat = toUniqueStringArray(group.joinedVideoChat || [])
+  return {
+    ...group,
+    groupNumber,
+    groupName: name,
+    students,
+    joinedVideoChat,
+    helpVideoChat: Boolean(group.helpVideoChat),
+  }
+}
+
+function normalizeGroupCategories(
+  categories: GroupCategory[],
+  allowedStudentIds: string[]
+): GroupCategory[] {
+  const allowedStudents = new Set(allowedStudentIds)
+  return categories.map((category, categoryIndex) => {
+    const groups = category.groups || []
+    const normalizedGroups = (groups.length > 0 ? groups : [createDefaultGroup(1)]).map((group, groupIndex) =>
+      normalizeGroup(group, groupIndex + 1, allowedStudents)
+    )
+    const categoryName = String(category.categoryName || '').trim() || `Category ${categoryIndex + 1}`
+    return {
+      ...category,
+      categoryNumber: categoryIndex + 1,
+      categoryName,
+      groups: normalizedGroups,
+    }
+  })
+}
+
+function csvCell(value: unknown): string {
+  const text = value === undefined || value === null ? '' : String(value)
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function toCsv(rows: Array<Array<unknown>>): string {
+  return rows.map((row) => row.map((value) => csvCell(value)).join(',')).join('\n')
+}
+
 function getFilteredGroupCategories(course: Course, user: User, isInstructor: boolean): GroupCategory[] {
   const categories = course.groupCategories || []
   if (isInstructor) return categories
@@ -477,14 +536,35 @@ router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res,
 /** DELETE /api/courses/:courseId/students/:studentId — remove a student */
 router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const studentId = req.params.studentId
+    const normalizedCategories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
+    normalizedCategories.forEach((category) => {
+      category.groups = (category.groups || []).map((group) => ({
+        ...group,
+        students: (group.students || []).filter((id) => id !== studentId),
+        joinedVideoChat: (group.joinedVideoChat || []).filter((id) => id !== studentId),
+        helpVideoChat: (group.students || []).includes(studentId) ? false : Boolean(group.helpVideoChat),
+      }))
+    })
+
+    const nextCourseVideoJoined = (course.videoChatOptions?.joined || []).filter((id) => id !== studentId)
     const courses = getCourses()
     const users = getUsers()
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $pull: { students: req.params.studentId } }
+      {
+        $pull: { students: studentId },
+        $set: {
+          groupCategories: normalizedCategories,
+          ...(course.videoChatOptions ? { 'videoChatOptions.joined': nextCourseVideoJoined } : {}),
+        },
+      }
     )
     await users.updateOne(
-      { _id: req.params.studentId } as Parameters<typeof users.updateOne>[0],
+      { _id: studentId } as Parameters<typeof users.updateOne>[0],
       { $pull: { 'profile.courses': req.params.courseId } }
     )
     res.json({ success: true })
@@ -525,9 +605,72 @@ router.get('/:courseId/groups/manage', requireAuth, requireInstructor, async (re
 
     res.json({
       courseId: req.params.courseId,
-      groupCategories: course.groupCategories || [],
+      groupCategories: normalizeGroupCategories(course.groupCategories || [], course.students || []),
       students,
     })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/courses/:courseId/groups/export — instructor CSV export */
+router.get('/:courseId/groups/export', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const studentIds = (course.students || []).filter(
+      (studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0
+    )
+    const users = getUsers()
+    const studentDocs = studentIds.length > 0
+      ? await users
+          .find(
+            { _id: { $in: studentIds } } as Parameters<typeof users.find>[0],
+            { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+          )
+          .toArray()
+      : []
+
+    const studentById = new Map(
+      studentDocs.map((student) => [
+        student._id,
+        {
+          email: student.emails?.[0]?.address || '',
+          firstname: student.profile.firstname || '',
+          lastname: student.profile.lastname || '',
+        },
+      ])
+    )
+
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
+    const rows: Array<Array<unknown>> = [
+      ['CategoryName', 'CategoryNumber', 'GroupName', 'GroupNumber', 'Email', 'LastName', 'FirstName', 'StudentId'],
+    ]
+
+    categories.forEach((category) => {
+      ;(category.groups || []).forEach((group) => {
+        ;(group.students || []).forEach((studentId) => {
+          const student = studentById.get(studentId)
+          rows.push([
+            category.categoryName || '',
+            category.categoryNumber || '',
+            group.groupName || '',
+            group.groupNumber || '',
+            student?.email || '',
+            student?.lastname || '',
+            student?.firstname || '',
+            studentId,
+          ])
+        })
+      })
+    })
+
+    const csv = toCsv(rows)
+    const fileName = `groups-${req.params.courseId}.csv`
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename=\"${fileName}\"`)
+    res.send(csv)
   } catch (err) {
     next(err)
   }
@@ -544,8 +687,10 @@ router.post('/:courseId/groups/categories', requireAuth, requireInstructor, asyn
     if (!categoryName) return res.status(400).json({ error: 'categoryName required.' })
 
     const nGroups = parsePositiveInteger(req.body?.nGroups, 1)
-    const categories = [...(course.groupCategories || [])]
-    let category = categories.find((entry) => entry.categoryName === categoryName)
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
+    let category = categories.find(
+      (entry) => (entry.categoryName || '').trim().toLowerCase() === categoryName.toLowerCase()
+    )
     if (!category) {
       category = {
         categoryNumber: nextCategoryNumber(categories),
@@ -562,13 +707,14 @@ router.post('/:courseId/groups/categories', requireAuth, requireInstructor, asyn
       groupNumber += 1
     }
     category.groups = groups
+    const nextCategories = normalizeGroupCategories(categories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: categories } }
+      { $set: { groupCategories: nextCategories } }
     )
 
-    res.json({ groupCategories: categories })
+    res.json({ groupCategories: nextCategories })
   } catch (err) {
     next(err)
   }
@@ -586,18 +732,19 @@ router.delete('/:courseId/groups/categories/:categoryNumber', requireAuth, requi
     const course = await getCourseById(req.params.courseId)
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
-    const categories = [...(course.groupCategories || [])]
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const nextCategories = categories.filter((category) => Number(category.categoryNumber) !== categoryNumber)
     if (nextCategories.length === categories.length) {
       return res.status(404).json({ error: 'Category not found.' })
     }
+    const renumberedCategories = normalizeGroupCategories(nextCategories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: nextCategories } }
+      { $set: { groupCategories: renumberedCategories } }
     )
 
-    res.json({ groupCategories: nextCategories })
+    res.json({ groupCategories: renumberedCategories })
   } catch (err) {
     next(err)
   }
@@ -615,7 +762,7 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups', requireAuth, 
     const course = await getCourseById(req.params.courseId)
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
-    const categories = [...(course.groupCategories || [])]
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
     if (!category) return res.status(404).json({ error: 'Category not found.' })
 
@@ -627,13 +774,14 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups', requireAuth, 
       groupNumber += 1
     }
     category.groups = groups
+    const nextCategories = normalizeGroupCategories(categories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: categories } }
+      { $set: { groupCategories: nextCategories } }
     )
 
-    res.json({ groupCategories: categories })
+    res.json({ groupCategories: nextCategories })
   } catch (err) {
     next(err)
   }
@@ -658,7 +806,7 @@ router.patch('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber',
     const course = await getCourseById(req.params.courseId)
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
-    const categories = [...(course.groupCategories || [])]
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
     if (!category) return res.status(404).json({ error: 'Category not found.' })
 
@@ -668,13 +816,14 @@ router.patch('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber',
 
     group.groupName = groupName
     category.groups = groups
+    const nextCategories = normalizeGroupCategories(categories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: categories } }
+      { $set: { groupCategories: nextCategories } }
     )
 
-    res.json({ groupCategories: categories })
+    res.json({ groupCategories: nextCategories })
   } catch (err) {
     next(err)
   }
@@ -696,7 +845,7 @@ router.delete('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber'
     const course = await getCourseById(req.params.courseId)
     if (!course) return res.status(404).json({ error: 'Course not found.' })
 
-    const categories = [...(course.groupCategories || [])]
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
     if (!category) return res.status(404).json({ error: 'Category not found.' })
 
@@ -710,13 +859,14 @@ router.delete('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber'
       return res.status(404).json({ error: 'Group not found.' })
     }
     category.groups = nextGroups
+    const nextCategories = normalizeGroupCategories(categories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: categories } }
+      { $set: { groupCategories: nextCategories } }
     )
 
-    res.json({ groupCategories: categories })
+    res.json({ groupCategories: nextCategories })
   } catch (err) {
     next(err)
   }
@@ -746,7 +896,7 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber/st
       return res.status(404).json({ error: 'Student is not enrolled in this course.' })
     }
 
-    const categories = [...(course.groupCategories || [])]
+    const categories = normalizeGroupCategories(course.groupCategories || [], course.students || [])
     const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
     if (!category) return res.status(404).json({ error: 'Category not found.' })
 
@@ -754,22 +904,33 @@ router.post('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber/st
     const group = groups.find((entry) => Number(entry.groupNumber) === groupNumber)
     if (!group) return res.status(404).json({ error: 'Group not found.' })
 
-    const currentStudents = [...(group.students || [])]
-    const studentIndex = currentStudents.indexOf(studentId)
-    if (studentIndex >= 0) {
-      currentStudents.splice(studentIndex, 1)
+    const isInTargetGroup = (group.students || []).includes(studentId)
+    if (isInTargetGroup) {
+      group.students = (group.students || []).filter((id) => id !== studentId)
+      group.joinedVideoChat = (group.joinedVideoChat || []).filter((id) => id !== studentId)
+      if ((group.joinedVideoChat || []).length < 1) {
+        group.helpVideoChat = false
+      }
     } else {
-      currentStudents.push(studentId)
+      // Exclusive assignment within category: remove from all groups before add.
+      for (const currentGroup of groups) {
+        currentGroup.students = (currentGroup.students || []).filter((id) => id !== studentId)
+        currentGroup.joinedVideoChat = (currentGroup.joinedVideoChat || []).filter((id) => id !== studentId)
+        if ((currentGroup.joinedVideoChat || []).length < 1) {
+          currentGroup.helpVideoChat = false
+        }
+      }
+      group.students = [...(group.students || []), studentId]
     }
-    group.students = currentStudents
     category.groups = groups
+    const nextCategories = normalizeGroupCategories(categories, course.students || [])
 
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
-      { $set: { groupCategories: categories } }
+      { $set: { groupCategories: nextCategories } }
     )
 
-    res.json({ groupCategories: categories })
+    res.json({ groupCategories: nextCategories })
   } catch (err) {
     next(err)
   }
