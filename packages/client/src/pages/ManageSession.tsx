@@ -1,11 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { QuizExtension, Session } from '@qlicker/shared'
+import type { Question, QuizExtension, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import QuizExtensionsModal from '../components/modals/QuizExtensionsModal'
+import { QUESTION_TYPE_LABELS } from '../constants/questionTypes'
 
 type ExtensionRow = QuizExtension & { quizStartInput: string; quizEndInput: string }
 type ExtensionCandidate = { userId: string; name: string; email: string }
+
+function orderSessionQuestions(questions: Question[], sessionDoc: Session | null): Question[] {
+  const ids = (sessionDoc?.questions || []).filter((id): id is string => typeof id === 'string')
+  if (ids.length < 1) return questions
+  const position = new Map(ids.map((id, index) => [id, index]))
+  return [...questions].sort((left, right) => {
+    const leftIndex = position.get(left._id || '') ?? Number.MAX_SAFE_INTEGER
+    const rightIndex = position.get(right._id || '') ?? Number.MAX_SAFE_INTEGER
+    return leftIndex - rightIndex
+  })
+}
 
 export default function ManageSession() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
@@ -19,11 +31,43 @@ export default function ManageSession() {
   const [quizEnd, setQuizEnd] = useState('')
   const [quizExtensions, setQuizExtensions] = useState<ExtensionRow[]>([])
   const [extensionCandidates, setExtensionCandidates] = useState<ExtensionCandidate[]>([])
+  const [courseQuestions, setCourseQuestions] = useState<Question[]>([])
+  const [sessionQuestions, setSessionQuestions] = useState<Question[]>([])
+  const [questionSearch, setQuestionSearch] = useState('')
+  const [questionLoading, setQuestionLoading] = useState(false)
+  const [questionBusyId, setQuestionBusyId] = useState<string | null>(null)
   const [showExtensionModal, setShowExtensionModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+
+  const refreshQuestionLists = async (sessionDoc?: Session | null) => {
+    if (!sessionId) return
+    const activeSession = sessionDoc || session
+    const effectiveCourseId = courseId || activeSession?.courseId
+    if (!effectiveCourseId) return
+
+    setQuestionLoading(true)
+    try {
+      const [library, attached] = await Promise.all([
+        apiClient.get<Question[]>(`/questions?courseId=${effectiveCourseId}&library=library`),
+        apiClient.get<Question[]>(`/questions?sessionId=${sessionId}`),
+      ])
+      setCourseQuestions(
+        [...library]
+          .filter((question) => !question.sessionId)
+          .sort((left, right) => (left.plainText || '').localeCompare(right.plainText || ''))
+      )
+      setSessionQuestions(orderSessionQuestions(attached, activeSession || null))
+    } catch (err) {
+      setError((err as Error).message)
+      setCourseQuestions([])
+      setSessionQuestions([])
+    } finally {
+      setQuestionLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (!sessionId) return
@@ -44,6 +88,7 @@ export default function ManageSession() {
             quizEndInput: entry.quizEnd ? new Date(entry.quizEnd).toISOString().slice(0, 16) : '',
           }))
         )
+        void refreshQuestionLists(s)
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
@@ -58,6 +103,11 @@ export default function ManageSession() {
         setExtensionCandidates([])
       })
   }, [sessionId])
+
+  useEffect(() => {
+    if (!session?._id) return
+    setSessionQuestions((prev) => orderSessionQuestions(prev, session))
+  }, [session?.questions])
 
   const setQuizStartWithParity = (nextValue: string) => {
     setQuizStart(nextValue)
@@ -84,6 +134,76 @@ export default function ManageSession() {
     const fallbackEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16)
     setQuizStart((prev) => prev || fallbackStart)
     setQuizEnd((prev) => prev || fallbackEnd)
+  }
+
+  const filteredCourseQuestions = useMemo(() => {
+    const q = questionSearch.trim().toLowerCase()
+    if (!q) return courseQuestions
+    return courseQuestions.filter((question) => {
+      const text = `${question.plainText || ''} ${question.content || ''}`.toLowerCase()
+      return text.includes(q)
+    })
+  }, [courseQuestions, questionSearch])
+
+  const addQuestionToSession = async (questionId: string) => {
+    if (!sessionId) return
+    setQuestionBusyId(questionId)
+    setError(null)
+    setMessage(null)
+    try {
+      await apiClient.post<Question>(`/sessions/${sessionId}/questions/${questionId}/copy`, {})
+      const updatedSession = await apiClient.get<Session>(`/sessions/${sessionId}`)
+      setSession(updatedSession)
+      await refreshQuestionLists(updatedSession)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setQuestionBusyId(null)
+    }
+  }
+
+  const removeSessionQuestion = async (questionId: string) => {
+    if (!sessionId) return
+    if (!window.confirm('Remove this question from the session?')) return
+    setQuestionBusyId(questionId)
+    setError(null)
+    setMessage(null)
+    try {
+      const updated = await apiClient.delete<Session>(`/sessions/${sessionId}/questions/${questionId}`)
+      setSession(updated)
+      await refreshQuestionLists(updated)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setQuestionBusyId(null)
+    }
+  }
+
+  const moveSessionQuestion = async (questionId: string, direction: -1 | 1) => {
+    if (!sessionId || !session) return
+    const orderedIds = (session.questions || []).filter((id): id is string => typeof id === 'string')
+    const currentIndex = orderedIds.indexOf(questionId)
+    const targetIndex = currentIndex + direction
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= orderedIds.length) return
+
+    const nextOrder = [...orderedIds]
+    const [moved] = nextOrder.splice(currentIndex, 1)
+    nextOrder.splice(targetIndex, 0, moved)
+
+    setQuestionBusyId(questionId)
+    setError(null)
+    setMessage(null)
+    try {
+      const updated = await apiClient.put<Session>(`/sessions/${sessionId}/questions`, {
+        questionIds: nextOrder,
+      })
+      setSession(updated)
+      await refreshQuestionLists(updated)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setQuestionBusyId(null)
+    }
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -212,6 +332,105 @@ export default function ManageSession() {
             </button>
           </div>
         </form>
+
+        <hr style={{ margin: '1.5rem 0' }} />
+
+        <div className="row">
+          <div className="col-md-6">
+            <h3>Course Library</h3>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search questions..."
+              value={questionSearch}
+              onChange={(e) => setQuestionSearch(e.target.value)}
+              style={{ marginBottom: '0.5rem' }}
+            />
+            {questionLoading ? (
+              <p>Loading questions...</p>
+            ) : filteredCourseQuestions.length < 1 ? (
+              <p>No library questions found.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.5rem', maxHeight: 360, overflowY: 'auto' }}>
+                {filteredCourseQuestions.map((question) => (
+                  <div key={question._id} className="ql-card" style={{ marginBottom: 0 }}>
+                    <div className="ql-card-content" style={{ padding: '0.6rem 0.75rem' }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {question.plainText || 'Untitled question'}
+                      </div>
+                      <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                        {QUESTION_TYPE_LABELS[question.type] ?? `Type ${question.type}`}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ marginTop: '0.5rem' }}
+                        disabled={!question._id || questionBusyId === question._id}
+                        onClick={() => addQuestionToSession(question._id || '')}
+                      >
+                        {questionBusyId === question._id ? 'Adding...' : 'Add to Session'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="col-md-6">
+            <h3>Session Questions ({sessionQuestions.length})</h3>
+            {questionLoading ? (
+              <p>Loading questions...</p>
+            ) : sessionQuestions.length < 1 ? (
+              <p>No questions attached to this session yet.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.5rem', maxHeight: 360, overflowY: 'auto' }}>
+                {sessionQuestions.map((question, index) => (
+                  <div key={question._id} className="ql-card" style={{ marginBottom: 0 }}>
+                    <div className="ql-card-content" style={{ padding: '0.6rem 0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>
+                            {index + 1}. {question.plainText || 'Untitled question'}
+                          </div>
+                          <div style={{ fontSize: '0.85em', opacity: 0.8 }}>
+                            {QUESTION_TYPE_LABELS[question.type] ?? `Type ${question.type}`}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={!question._id || index === 0 || questionBusyId === question._id}
+                            onClick={() => moveSessionQuestion(question._id || '', -1)}
+                          >
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            disabled={!question._id || index === sessionQuestions.length - 1 || questionBusyId === question._id}
+                            onClick={() => moveSessionQuestion(question._id || '', 1)}
+                          >
+                            Down
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            disabled={!question._id || questionBusyId === question._id}
+                            onClick={() => removeSessionQuestion(question._id || '')}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       <QuizExtensionsModal
         open={showExtensionModal}

@@ -128,6 +128,91 @@ async function run() {
   const questions = await prof.request('GET', `/questions?courseId=${course._id}`)
   if (questions.length < 5) throw new Error('Expected seeded questions to exist.')
 
+  const studentLibrary = await student.request('GET', `/questions?courseId=${course._id}&library=library`)
+  assert(Array.isArray(studentLibrary), 'Student library query should return a list.')
+  const seededPublicQuestion =
+    questions.find((q) => !q.sessionId && q.public && q.approved) ||
+    (await prof.request('POST', '/questions', {
+      plainText: `Smoke public question ${Date.now()}`,
+      type: 0,
+      content: 'Smoke public question',
+      options: [
+        { plainText: 'True', answer: 'True', correct: true },
+        { plainText: 'False', answer: 'False', correct: false },
+      ],
+      owner: profUser._id,
+      courseId: course._id,
+      public: true,
+      approved: true,
+      tags: [],
+    }))
+
+  const studentPublic = await student.request('GET', `/questions?courseId=${course._id}&library=public`)
+  assert(
+    studentPublic.some((question) => question._id === seededPublicQuestion._id),
+    'Student public query should include approved public questions.'
+  )
+
+  const copiedPublic = await student.request(
+    'POST',
+    `/questions/${seededPublicQuestion._id}/copy`,
+    {}
+  )
+  assert(copiedPublic.owner === studentUser._id, 'Copied question should belong to the student.')
+  assert(copiedPublic.approved === false, 'Student copy should be unapproved.')
+  assert(copiedPublic.public === false, 'Student copy should not be public.')
+
+  await student.request(
+    'PUT',
+    `/questions/${copiedPublic._id}`,
+    { approved: true, public: true },
+    { expectStatus: 403 }
+  )
+
+  const instructorStudentQueue = await prof.request(
+    'GET',
+    `/questions?courseId=${course._id}&library=unapprovedFromStudents`
+  )
+  assert(
+    instructorStudentQueue.some((question) => question._id === copiedPublic._id),
+    'Instructor queue should include newly copied student question.'
+  )
+
+  const groupManageBefore = await prof.request('GET', `/courses/${course._id}/groups/manage`)
+  assert(Array.isArray(groupManageBefore.students), 'Group management endpoint should return students array.')
+  const groupCategoryName = `SmokeCategory_${Date.now()}`
+  const addedCategoryResponse = await prof.request('POST', `/courses/${course._id}/groups/categories`, {
+    categoryName: groupCategoryName,
+    nGroups: 2,
+  })
+  const addedCategory = (addedCategoryResponse.groupCategories || []).find(
+    (entry) => entry.categoryName === groupCategoryName
+  )
+  assert(addedCategory, 'Expected newly created category in response.')
+  assert((addedCategory.groups || []).length >= 2, 'Expected category to contain created groups.')
+  const firstGroup = (addedCategory.groups || [])[0]
+  assert(firstGroup?.groupNumber, 'Expected first group number in created category.')
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/groups/categories/${addedCategory.categoryNumber}/groups/${firstGroup.groupNumber}/students/${studentUser._id}/toggle`,
+    {}
+  )
+  const groupManageAfter = await prof.request('GET', `/courses/${course._id}/groups/manage`)
+  const categoryAfterToggle = (groupManageAfter.groupCategories || []).find(
+    (entry) => entry.categoryName === groupCategoryName
+  )
+  const toggledGroup = (categoryAfterToggle?.groups || []).find(
+    (entry) => Number(entry.groupNumber) === Number(firstGroup.groupNumber)
+  )
+  assert(
+    (toggledGroup?.students || []).includes(studentUser._id),
+    'Expected toggled student to be in selected group.'
+  )
+  await prof.request(
+    'DELETE',
+    `/courses/${course._id}/groups/categories/${addedCategory.categoryNumber}`
+  )
+
   const createdCourse = await prof.request('POST', '/courses', {
     name: `Smoke Course ${Date.now()}`,
     deptCode: 'CISC',
@@ -150,6 +235,8 @@ async function run() {
   assert(editedCourse.name === 'Smoke Course Edited', 'Updated course name mismatch.')
   assert(editedCourse.section === '002', 'Updated course section mismatch.')
   assert(editedCourse.allowStudentQuestions === false, 'Updated course allowStudentQuestions mismatch.')
+  await student.request('GET', `/courses/${createdCourse._id}`, undefined, { expectStatus: 403 })
+  await student.request('GET', `/sessions?courseId=${createdCourse._id}`, undefined, { expectStatus: 403 })
 
   const createdSession = await prof.request('POST', '/sessions', {
     name: 'Smoke Managed Session',
@@ -160,10 +247,12 @@ async function run() {
     questions: [],
   })
   assert(createdSession._id, 'Created session missing _id.')
+  await student.request('POST', `/sessions/${createdSession._id}/join`, {}, { expectStatus: 403 })
+
   const visibleSession = await prof.request('PUT', `/sessions/${createdSession._id}/status`, { status: 'visible' })
   assert(visibleSession.status === 'visible', 'Session status update failed.')
 
-  const lifecycleQuestion = await prof.request('POST', '/questions', {
+  const lifecycleLibraryQuestion = await prof.request('POST', '/questions', {
     plainText: 'Smoke lifecycle question',
     type: 0,
     content: 'Smoke lifecycle question',
@@ -172,23 +261,171 @@ async function run() {
       { plainText: 'No', answer: 'No', correct: false },
     ],
     owner: profUser._id,
-    sessionId: createdSession._id,
     courseId: createdCourse._id,
     public: false,
     approved: true,
     tags: [],
   })
-  assert(lifecycleQuestion._id, 'Created question missing _id.')
-  const updatedQuestion = await prof.request('PUT', `/questions/${lifecycleQuestion._id}`, {
+  assert(lifecycleLibraryQuestion._id, 'Created library question missing _id.')
+
+  const lifecycleLibraryQuestion2 = await prof.request('POST', '/questions', {
+    plainText: 'Smoke lifecycle question 2',
+    type: 1,
+    content: 'Smoke lifecycle question 2',
+    options: [
+      { plainText: 'True', answer: 'True', correct: true },
+      { plainText: 'False', answer: 'False', correct: false },
+    ],
+    owner: profUser._id,
+    courseId: createdCourse._id,
+    public: false,
+    approved: true,
+    tags: [],
+  })
+  assert(lifecycleLibraryQuestion2._id, 'Created secondary library question missing _id.')
+
+  const copiedQuestionA = await prof.request(
+    'POST',
+    `/sessions/${createdSession._id}/questions/${lifecycleLibraryQuestion._id}/copy`,
+    {}
+  )
+  const copiedQuestionB = await prof.request(
+    'POST',
+    `/sessions/${createdSession._id}/questions/${lifecycleLibraryQuestion2._id}/copy`,
+    {}
+  )
+  assert(copiedQuestionA._id && copiedQuestionB._id, 'Expected copied session questions to be created.')
+
+  const sessionAfterCopy = await prof.request('GET', `/sessions/${createdSession._id}`)
+  assert(
+    (sessionAfterCopy.questions || []).includes(copiedQuestionA._id) &&
+      (sessionAfterCopy.questions || []).includes(copiedQuestionB._id),
+    'Copied questions were not attached to the session.'
+  )
+
+  const reorderedIds = [copiedQuestionB._id, copiedQuestionA._id]
+  const reorderedSession = await prof.request('PUT', `/sessions/${createdSession._id}/questions`, {
+    questionIds: reorderedIds,
+  })
+  assert(
+    JSON.stringify(reorderedSession.questions || []) === JSON.stringify(reorderedIds),
+    'Session question order update did not persist.'
+  )
+
+  await student.request('GET', `/questions/${copiedQuestionA._id}`, undefined, { expectStatus: 403 })
+  await student.request(
+    'POST',
+    '/responses',
+    {
+      attempt: 1,
+      questionId: copiedQuestionA._id,
+      answer: 'Yes',
+    },
+    { expectStatus: 403 }
+  )
+  const updatedQuestion = await prof.request('PUT', `/questions/${copiedQuestionA._id}`, {
     plainText: 'Smoke lifecycle question (edited)',
   })
   assert(updatedQuestion.plainText === 'Smoke lifecycle question (edited)', 'Question update did not persist.')
-  const fetchedQuestion = await prof.request('GET', `/questions/${lifecycleQuestion._id}`)
-  assert(fetchedQuestion._id === lifecycleQuestion._id, 'Question fetch by id mismatch.')
-  const deletedQuestion = await prof.request('DELETE', `/questions/${lifecycleQuestion._id}`)
-  assert(deletedQuestion.success === true, 'Question delete did not report success.')
+  const fetchedQuestion = await prof.request('GET', `/questions/${copiedQuestionA._id}`)
+  assert(fetchedQuestion._id === copiedQuestionA._id, 'Question fetch by id mismatch.')
+  const sessionAfterRemove = await prof.request(
+    'DELETE',
+    `/sessions/${createdSession._id}/questions/${copiedQuestionA._id}`
+  )
+  assert(
+    !(sessionAfterRemove.questions || []).includes(copiedQuestionA._id),
+    'Session question delete endpoint did not remove question.'
+  )
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
-  assert(!createdCourseQuestions.some((q) => q._id === lifecycleQuestion._id), 'Deleted question still appears in list.')
+  assert(!createdCourseQuestions.some((q) => q._id === copiedQuestionA._id), 'Deleted session copy still appears in course list.')
+  const deletedSession = await prof.request('DELETE', `/sessions/${createdSession._id}`)
+  assert(deletedSession.success === true, 'Session delete endpoint did not report success.')
+  const createdCourseSessionsAfterDelete = await prof.request('GET', `/sessions?courseId=${createdCourse._id}`)
+  assert(
+    !createdCourseSessionsAfterDelete.some((entry) => entry._id === createdSession._id),
+    'Deleted session still appears in course session list.'
+  )
+  const createdCourseDocAfterDelete = await prof.request('GET', `/courses/${createdCourse._id}`)
+  assert(
+    !(createdCourseDocAfterDelete.sessions || []).includes(createdSession._id),
+    'Deleted session id still appears in course.sessions.'
+  )
+
+  const runningSession = sessions.find((entry) => !entry.quiz && entry.status === 'running')
+  if (!runningSession) throw new Error('Expected seeded running interactive session.')
+  const visibilityProbeQuestion = await prof.request('POST', '/questions', {
+    plainText: 'Smoke visibility probe',
+    type: 0,
+    content: 'Smoke visibility probe',
+    options: [
+      { plainText: 'A', answer: 'A', correct: true },
+      { plainText: 'B', answer: 'B', correct: false },
+    ],
+    owner: profUser._id,
+    sessionId: runningSession._id,
+    courseId: course._id,
+    public: false,
+    approved: true,
+    tags: [],
+    sessionOptions: {
+      hidden: false,
+      stats: false,
+      correct: false,
+      points: 1,
+      maxAttempts: 1,
+      attemptWeights: [1],
+      attempts: [{ number: 1, closed: false }],
+    },
+  })
+  const studentSessionQuestionsHidden = await student.request(
+    'GET',
+    `/questions?sessionId=${runningSession._id}`
+  )
+  const hiddenVersion = studentSessionQuestionsHidden.find(
+    (entry) => entry._id === visibilityProbeQuestion._id
+  )
+  assert(hiddenVersion, 'Student should receive session question payload.')
+  assert(
+    (hiddenVersion.options || []).every(
+      (option) => !Object.prototype.hasOwnProperty.call(option, 'correct')
+    ),
+    'Student session payload should hide option.correct when not visible.'
+  )
+  assert(
+    !Object.prototype.hasOwnProperty.call(hiddenVersion, 'correctNumerical'),
+    'Student session payload should hide correctNumerical when not visible.'
+  )
+
+  await prof.request('PUT', `/questions/${visibilityProbeQuestion._id}`, {
+    sessionOptions: {
+      hidden: false,
+      stats: false,
+      correct: true,
+      points: 1,
+      maxAttempts: 1,
+      attemptWeights: [1],
+      attempts: [{ number: 1, closed: false }],
+    },
+  })
+
+  const studentSessionQuestionsVisible = await student.request(
+    'GET',
+    `/questions?sessionId=${runningSession._id}`
+  )
+  const visibleVersion = studentSessionQuestionsVisible.find(
+    (entry) => entry._id === visibilityProbeQuestion._id
+  )
+  assert(
+    Boolean(
+      visibleVersion &&
+        (visibleVersion.options || []).some((option) =>
+          Object.prototype.hasOwnProperty.call(option, 'correct')
+        )
+    ),
+    'Student session payload should include option.correct when instructor enables visibility.'
+  )
+  await prof.request('DELETE', `/questions/${visibilityProbeQuestion._id}`)
 
   // Authorization regression: non-members cannot read/mutate outsider course/session/question paths.
   await student.request('GET', `/courses/${createdCourse._id}`, undefined, { expectStatus: 403 })
@@ -362,6 +599,8 @@ async function run() {
   if (enrolledCourse._id !== createdCourse._id) {
     throw new Error('Enrollment by code should return the enrolled course.')
   }
+  await student.request('GET', `/courses/${createdCourse._id}`)
+  await student.request('GET', `/sessions?courseId=${createdCourse._id}`)
   const studentCourses = await student.request('GET', '/courses')
   if (!studentCourses.some((c) => c._id === createdCourse._id)) {
     throw new Error('Enrolled course was not visible in student course list.')

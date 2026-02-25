@@ -10,7 +10,7 @@ import {
   requireProfOrAdmin,
 } from '../auth/middleware'
 import type { Course, Group, GroupCategory, User, VideoOptions } from '@qlicker/shared'
-import { courseSchema } from '@qlicker/shared'
+import { courseSchema, UserRole } from '@qlicker/shared'
 
 const router = Router()
 const defaultVideoChatApiOptions = {
@@ -41,8 +41,9 @@ const defaultJitsiInterfaceConfigOverwrite = {
 }
 
 function isCourseInstructor(user: User, course: Course): boolean {
-  if (user.profile.roles.includes('admin')) return true
-  return Boolean(user._id && course.instructors?.includes(user._id))
+  if (user.profile.roles.includes(UserRole.admin)) return true
+  const userId = user._id ?? ''
+  return Boolean(course.owner === userId || course.instructors?.includes(userId))
 }
 
 function isCourseStudent(user: User, course: Course): boolean {
@@ -77,6 +78,37 @@ function getJitsiCourseRoomName(course: Course): string | null {
 function getJitsiGroupRoomName(course: Course, category: GroupCategory, group: Group): string | null {
   if (!course._id || !category.categoryName || !group.groupName || !category.catVideoChatOptions?.urlId) return null
   return `Ql_C_${course._id}cat_${category.categoryName}${category.catVideoChatOptions.urlId}grp_${group.groupName}`
+}
+
+function parsePositiveInteger(value: unknown, defaultValue = 1): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return defaultValue
+  const normalized = Math.floor(parsed)
+  return normalized >= 1 ? normalized : defaultValue
+}
+
+function nextCategoryNumber(categories: GroupCategory[]): number {
+  const existing = categories
+    .map((category) => Number(category.categoryNumber))
+    .filter((number) => Number.isFinite(number) && number > 0)
+  if (existing.length < 1) return 1
+  return Math.max(...existing) + 1
+}
+
+function nextGroupNumber(groups: Group[]): number {
+  const existing = groups
+    .map((group) => Number(group.groupNumber))
+    .filter((number) => Number.isFinite(number) && number > 0)
+  if (existing.length < 1) return 1
+  return Math.max(...existing) + 1
+}
+
+function createDefaultGroup(groupNumber: number): Group {
+  return {
+    groupNumber,
+    groupName: `Group${groupNumber}`,
+    students: [],
+  }
 }
 
 function getFilteredGroupCategories(course: Course, user: User, isInstructor: boolean): GroupCategory[] {
@@ -156,9 +188,11 @@ router.get('/', requireAuth, async (req, res, next) => {
 /** GET /api/courses/:courseId */
 router.get('/:courseId', requireAuth, requireCourseMember, async (req, res, next) => {
   try {
+    const user = req.user as User
     const courses = getCourses()
     const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
     if (!course) return res.status(404).json({ error: 'Course not found.' })
+    if (!isCourseMember(user, course)) return res.status(403).json({ error: 'Forbidden.' })
     res.json(course)
   } catch (err) {
     next(err)
@@ -253,6 +287,22 @@ router.delete('/:courseId', requireAuth, requireInstructor, async (req, res, nex
   }
 })
 
+/** POST /api/courses/:courseId/enrollment-code/regenerate — rotate course enrollment code */
+router.post('/:courseId/enrollment-code/regenerate', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const courses = getCourses()
+    const nextCode = generateEnrollmentCode()
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { enrollmentCode: nextCode } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** POST /api/courses/:courseId/enroll — student self-enroll via enrollment code */
 router.post('/:courseId/enroll', requireAuth, async (req, res, next) => {
   try {
@@ -290,6 +340,37 @@ router.post('/:courseId/enroll', requireAuth, async (req, res, next) => {
       { $addToSet: { 'profile.courses': req.params.courseId } }
     )
     res.json(await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0]))
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/unenroll — student self-unenroll */
+router.post('/:courseId/unenroll', requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user as User
+    const userId = user._id ?? ''
+    const courses = getCourses()
+    const users = getUsers()
+    const course = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const isInstructor = course.instructors?.includes(userId) ?? false
+    const isOwner = course.owner === userId
+    if (isInstructor || isOwner) {
+      return res.status(403).json({ error: 'Instructors cannot self-unenroll.' })
+    }
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $pull: { students: userId } }
+    )
+    await users.updateOne(
+      { _id: userId } as Parameters<typeof users.updateOne>[0],
+      { $pull: { 'profile.courses': req.params.courseId } }
+    )
+    const updated = await courses.findOne({ _id: req.params.courseId } as Parameters<typeof courses.findOne>[0])
+    res.json(updated)
   } catch (err) {
     next(err)
   }
@@ -339,15 +420,361 @@ router.post('/enroll', requireAuth, async (req, res, next) => {
   }
 })
 
+/** GET /api/courses/:courseId/roster — instructor roster for course management */
+router.get('/:courseId/roster', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const users = getUsers()
+    const studentIds = (course.students || []).filter(
+      (studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0
+    )
+    const instructorIds = (course.instructors || []).filter(
+      (instructorId): instructorId is string => typeof instructorId === 'string' && instructorId.length > 0
+    )
+
+    const [students, instructors] = await Promise.all([
+      studentIds.length > 0
+        ? users
+            .find(
+              { _id: { $in: studentIds } } as Parameters<typeof users.find>[0],
+              { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+      instructorIds.length > 0
+        ? users
+            .find(
+              { _id: { $in: instructorIds } } as Parameters<typeof users.find>[0],
+              { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+            )
+            .toArray()
+        : Promise.resolve([]),
+    ])
+
+    const mapUser = (entry: Awaited<(typeof students)[number]>) => ({
+      _id: entry._id,
+      firstname: entry.profile.firstname || '',
+      lastname: entry.profile.lastname || '',
+      email: entry.emails?.[0]?.address || '',
+    })
+
+    res.json({
+      courseId: req.params.courseId,
+      owner: course.owner,
+      students: students.map(mapUser).sort((a, b) => {
+        const byLast = a.lastname.localeCompare(b.lastname)
+        if (byLast !== 0) return byLast
+        return a.firstname.localeCompare(b.firstname)
+      }),
+      instructors: instructors.map(mapUser).sort((a, b) => {
+        const byLast = a.lastname.localeCompare(b.lastname)
+        if (byLast !== 0) return byLast
+        return a.firstname.localeCompare(b.firstname)
+      }),
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
 /** DELETE /api/courses/:courseId/students/:studentId — remove a student */
 router.delete('/:courseId/students/:studentId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
     const courses = getCourses()
+    const users = getUsers()
     await courses.updateOne(
       { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
       { $pull: { students: req.params.studentId } }
     )
+    await users.updateOne(
+      { _id: req.params.studentId } as Parameters<typeof users.updateOne>[0],
+      { $pull: { 'profile.courses': req.params.courseId } }
+    )
     res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** GET /api/courses/:courseId/groups/manage */
+router.get('/:courseId/groups/manage', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const studentIds = (course.students || []).filter((studentId): studentId is string => typeof studentId === 'string' && studentId.length > 0)
+    const users = getUsers()
+    const studentDocs = studentIds.length > 0
+      ? await users
+          .find(
+            { _id: { $in: studentIds } } as Parameters<typeof users.find>[0],
+            { projection: { _id: 1, emails: 1, 'profile.firstname': 1, 'profile.lastname': 1 } }
+          )
+          .toArray()
+      : []
+
+    const students = studentDocs
+      .map((student) => ({
+        _id: student._id,
+        firstname: student.profile.firstname || '',
+        lastname: student.profile.lastname || '',
+        email: student.emails?.[0]?.address || '',
+      }))
+      .sort((a, b) => {
+        const byLast = a.lastname.localeCompare(b.lastname)
+        if (byLast !== 0) return byLast
+        return a.firstname.localeCompare(b.firstname)
+      })
+
+    res.json({
+      courseId: req.params.courseId,
+      groupCategories: course.groupCategories || [],
+      students,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/groups/categories */
+router.post('/:courseId/groups/categories', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const categoryName = String(req.body?.categoryName || '').trim()
+    if (!categoryName) return res.status(400).json({ error: 'categoryName required.' })
+
+    const nGroups = parsePositiveInteger(req.body?.nGroups, 1)
+    const categories = [...(course.groupCategories || [])]
+    let category = categories.find((entry) => entry.categoryName === categoryName)
+    if (!category) {
+      category = {
+        categoryNumber: nextCategoryNumber(categories),
+        categoryName,
+        groups: [],
+      }
+      categories.push(category)
+    }
+
+    const groups = category.groups || []
+    let groupNumber = nextGroupNumber(groups)
+    for (let index = 0; index < nGroups; index += 1) {
+      groups.push(createDefaultGroup(groupNumber))
+      groupNumber += 1
+    }
+    category.groups = groups
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: categories } }
+    )
+
+    res.json({ groupCategories: categories })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/courses/:courseId/groups/categories/:categoryNumber */
+router.delete('/:courseId/groups/categories/:categoryNumber', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const categoryNumber = Number(req.params.categoryNumber)
+    if (!Number.isFinite(categoryNumber) || categoryNumber < 1) {
+      return res.status(400).json({ error: 'Invalid category number.' })
+    }
+
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const categories = [...(course.groupCategories || [])]
+    const nextCategories = categories.filter((category) => Number(category.categoryNumber) !== categoryNumber)
+    if (nextCategories.length === categories.length) {
+      return res.status(404).json({ error: 'Category not found.' })
+    }
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: nextCategories } }
+    )
+
+    res.json({ groupCategories: nextCategories })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/groups/categories/:categoryNumber/groups */
+router.post('/:courseId/groups/categories/:categoryNumber/groups', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const categoryNumber = Number(req.params.categoryNumber)
+    if (!Number.isFinite(categoryNumber) || categoryNumber < 1) {
+      return res.status(400).json({ error: 'Invalid category number.' })
+    }
+
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const categories = [...(course.groupCategories || [])]
+    const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
+    if (!category) return res.status(404).json({ error: 'Category not found.' })
+
+    const nGroups = parsePositiveInteger(req.body?.nGroups, 1)
+    const groups = category.groups || []
+    let groupNumber = nextGroupNumber(groups)
+    for (let index = 0; index < nGroups; index += 1) {
+      groups.push(createDefaultGroup(groupNumber))
+      groupNumber += 1
+    }
+    category.groups = groups
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: categories } }
+    )
+
+    res.json({ groupCategories: categories })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** PATCH /api/courses/:courseId/groups/categories/:categoryNumber/groups/:groupNumber */
+router.patch('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const categoryNumber = Number(req.params.categoryNumber)
+    const groupNumber = Number(req.params.groupNumber)
+    if (!Number.isFinite(categoryNumber) || categoryNumber < 1) {
+      return res.status(400).json({ error: 'Invalid category number.' })
+    }
+    if (!Number.isFinite(groupNumber) || groupNumber < 1) {
+      return res.status(400).json({ error: 'Invalid group number.' })
+    }
+
+    const groupName = String(req.body?.groupName || '').trim()
+    if (!groupName) return res.status(400).json({ error: 'groupName required.' })
+
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const categories = [...(course.groupCategories || [])]
+    const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
+    if (!category) return res.status(404).json({ error: 'Category not found.' })
+
+    const groups = category.groups || []
+    const group = groups.find((entry) => Number(entry.groupNumber) === groupNumber)
+    if (!group) return res.status(404).json({ error: 'Group not found.' })
+
+    group.groupName = groupName
+    category.groups = groups
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: categories } }
+    )
+
+    res.json({ groupCategories: categories })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** DELETE /api/courses/:courseId/groups/categories/:categoryNumber/groups/:groupNumber */
+router.delete('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const categoryNumber = Number(req.params.categoryNumber)
+    const groupNumber = Number(req.params.groupNumber)
+    if (!Number.isFinite(categoryNumber) || categoryNumber < 1) {
+      return res.status(400).json({ error: 'Invalid category number.' })
+    }
+    if (!Number.isFinite(groupNumber) || groupNumber < 1) {
+      return res.status(400).json({ error: 'Invalid group number.' })
+    }
+
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+
+    const categories = [...(course.groupCategories || [])]
+    const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
+    if (!category) return res.status(404).json({ error: 'Category not found.' })
+
+    const groups = [...(category.groups || [])]
+    if (groups.length < 2) {
+      return res.status(400).json({ error: 'Must have at least one group in category.' })
+    }
+
+    const nextGroups = groups.filter((entry) => Number(entry.groupNumber) !== groupNumber)
+    if (nextGroups.length === groups.length) {
+      return res.status(404).json({ error: 'Group not found.' })
+    }
+    category.groups = nextGroups
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: categories } }
+    )
+
+    res.json({ groupCategories: categories })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/courses/:courseId/groups/categories/:categoryNumber/groups/:groupNumber/students/:studentId/toggle */
+router.post('/:courseId/groups/categories/:categoryNumber/groups/:groupNumber/students/:studentId/toggle', requireAuth, requireInstructor, async (req, res, next) => {
+  try {
+    const categoryNumber = Number(req.params.categoryNumber)
+    const groupNumber = Number(req.params.groupNumber)
+    const studentId = String(req.params.studentId || '')
+
+    if (!Number.isFinite(categoryNumber) || categoryNumber < 1) {
+      return res.status(400).json({ error: 'Invalid category number.' })
+    }
+    if (!Number.isFinite(groupNumber) || groupNumber < 1) {
+      return res.status(400).json({ error: 'Invalid group number.' })
+    }
+    if (!studentId) {
+      return res.status(400).json({ error: 'studentId required.' })
+    }
+
+    const courses = getCourses()
+    const course = await getCourseById(req.params.courseId)
+    if (!course) return res.status(404).json({ error: 'Course not found.' })
+    if (!(course.students || []).includes(studentId)) {
+      return res.status(404).json({ error: 'Student is not enrolled in this course.' })
+    }
+
+    const categories = [...(course.groupCategories || [])]
+    const category = categories.find((entry) => Number(entry.categoryNumber) === categoryNumber)
+    if (!category) return res.status(404).json({ error: 'Category not found.' })
+
+    const groups = category.groups || []
+    const group = groups.find((entry) => Number(entry.groupNumber) === groupNumber)
+    if (!group) return res.status(404).json({ error: 'Group not found.' })
+
+    const currentStudents = [...(group.students || [])]
+    const studentIndex = currentStudents.indexOf(studentId)
+    if (studentIndex >= 0) {
+      currentStudents.splice(studentIndex, 1)
+    } else {
+      currentStudents.push(studentId)
+    }
+    group.students = currentStudents
+    category.groups = groups
+
+    await courses.updateOne(
+      { _id: req.params.courseId } as Parameters<typeof courses.updateOne>[0],
+      { $set: { groupCategories: categories } }
+    )
+
+    res.json({ groupCategories: categories })
   } catch (err) {
     next(err)
   }

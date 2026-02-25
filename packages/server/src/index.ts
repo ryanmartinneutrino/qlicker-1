@@ -26,6 +26,7 @@ import imagesRouter from './routes/images'
 import settingsRouter from './routes/settings'
 import usersRouter from './routes/users'
 import { resolveUploadsDir } from './utils/image-storage'
+import { initAllCollections } from './collections/indexes'
 
 const PORT = process.env.PORT ? (parseInt(process.env.PORT, 10) || 3001) : 3001
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/qlicker'
@@ -40,6 +41,9 @@ const CSRF_ENABLED = process.env.DISABLE_CSRF !== 'true'
 async function main() {
   // 1. Connect to MongoDB
   await connectDB(MONGO_URL)
+  await initAllCollections()
+
+  // 1b. Ensure indexes for all collections
   await initAllCollections()
 
   // 2. Create Express app

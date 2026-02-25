@@ -25,6 +25,7 @@ export default function ReplaySession() {
     subscribePayload: { sessionId: sessionId || '' },
     changeEvent: 'questions:change',
     enabled: Boolean(sessionId),
+    refetchOnChange: true,
   })
 
   useEffect(() => {

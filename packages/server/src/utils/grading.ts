@@ -2,6 +2,7 @@ import { getGrades } from '../collections/grades'
 import { getQuestions } from '../collections/questions'
 import { generateStringId } from './id'
 import type { Grade, Mark, Question, Response } from '@qlicker/shared'
+import { QuestionType } from '@qlicker/shared'
 
 interface EvaluationResult {
   correct?: boolean
@@ -41,7 +42,7 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     if (option.correct) correctIndexes.add(idx)
   })
 
-  if (question.type === 0 || question.type === 1) {
+  if (question.type === QuestionType.MC || question.type === QuestionType.TF) {
     const raw = asArrayAnswer(response.answer)[0] || ''
     const idx = optionIndexMap.get(normalizeText(raw))
     const correct = idx !== undefined && correctIndexes.has(idx)
@@ -54,7 +55,7 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     }
   }
 
-  if (question.type === 3) {
+  if (question.type === QuestionType.MS) {
     const rawSelections = asArrayAnswer(response.answer)
     const selectedIndexes = new Set<number>()
     rawSelections.forEach((selection) => {
@@ -76,7 +77,7 @@ function evaluateResponse(question: Question, response: Pick<Response, 'answer'>
     }
   }
 
-  if (question.type === 4) {
+  if (question.type === QuestionType.NU) {
     const raw = asArrayAnswer(response.answer)[0] || ''
     const numericAnswer = Number(raw)
     const expected = Number(question.correctNumerical ?? NaN)

@@ -2,6 +2,7 @@
 // Replaces Meteor check/Match patterns from imports/api/*.js
 
 import { z } from 'zod'
+import { QuestionType } from './configs'
 
 // ─── Reusable primitives ─────────────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ const email = z.string().email()
 const questionOptionSchema = z.object({
   wysiwyg: z.boolean().optional(),
   correct: z.boolean().optional(),
-  answer: nonEmptyString.optional(),
+  answer: z.string().optional(),
   content: z.string().optional(),
   plainText: z.string().optional(),
 })
@@ -38,7 +39,7 @@ const questionTagSchema = z.object({
 export const questionSchema = z.object({
   _id: mongoId.optional(),
   plainText: z.string(),
-  type: z.number(),
+  type: z.nativeEnum(QuestionType),
   content: z.string(),
   options: z.array(questionOptionSchema),
   toleranceNumerical: z.number().optional(),

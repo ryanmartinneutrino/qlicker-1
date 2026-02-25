@@ -11,12 +11,9 @@ type RoutingKey = string
  * exhaust the MongoDB oplog cursor budget at high scale.
  */
 export class SharedChangeStream extends EventEmitter {
-  private collectionName: string
-
-  constructor(collectionName: string) {
+  constructor() {
     super()
     this.setMaxListeners(0) // unlimited listeners (one per subscription)
-    this.collectionName = collectionName
   }
 
   /** Emit an event to all listeners subscribed to a routing key */

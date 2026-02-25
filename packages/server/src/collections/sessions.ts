@@ -10,6 +10,8 @@ export async function initSessions(): Promise<Collection<Session>> {
   const col = getSessions()
   await col.createIndex({ courseId: 1 })
   await col.createIndex({ status: 1 })
+  await col.createIndex({ courseId: 1, status: 1 })
+  await col.createIndex({ courseId: 1, quiz: 1, status: 1 })
   return col
 }
 
