@@ -7,7 +7,7 @@ import { AnswerDistribution } from '../components/AnswerDistribution'
 import { ShortAnswerList } from '../components/ShortAnswerList'
 import { Histogram } from '../components/Histogram'
 import { sanitizeHtml } from '../utils/sanitizeHtml'
-import { downloadCsvFile } from '../utils/csv'
+import { downloadCsvFile, downloadCsvText } from '../utils/csv'
 
 interface QuestionStats {
   questionId: string
@@ -43,6 +43,7 @@ export default function SessionResults() {
   const [session, setSession] = useState<Session | null>(null)
   const [stats, setStats] = useState<QuestionStats[]>([])
   const [responseCsvRows, setResponseCsvRows] = useState<Array<Array<unknown>>>([])
+  const [downloadingCsv, setDownloadingCsv] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -163,10 +164,22 @@ export default function SessionResults() {
           <button
             type="button"
             className="btn btn-default"
-            disabled={responseCsvRows.length < 2}
-            onClick={() => downloadCsvFile(`session-responses-${sessionId || 'session'}.csv`, responseCsvRows)}
+            disabled={responseCsvRows.length < 2 || downloadingCsv}
+            onClick={() => {
+              void (async () => {
+                setDownloadingCsv(true)
+                try {
+                  const csvText = await apiClient.get<string>(`/responses/session/${sessionId}/export`)
+                  downloadCsvText(`session-responses-${sessionId || 'session'}.csv`, csvText)
+                } catch {
+                  downloadCsvFile(`session-responses-${sessionId || 'session'}.csv`, responseCsvRows)
+                } finally {
+                  setDownloadingCsv(false)
+                }
+              })()
+            }}
           >
-            Download Responses CSV
+            {downloadingCsv ? 'Downloading...' : 'Download Responses CSV'}
           </button>
         </div>
 

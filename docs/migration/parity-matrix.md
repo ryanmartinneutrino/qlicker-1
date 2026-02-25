@@ -13,7 +13,7 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Group categories | category/group CRUD + assignments + CSV export | In Progress | CRUD and CSV export landed; cleanup/renumber parity pending |
 | Grade calculation | participation + automatic/manual marks | In Progress | calc endpoint exists; parity checks still pending |
 | Session/course results views | clean tables + controls parity | In Progress | results pages improved; final review/visibility parity checks pending |
-| CSV exports | session grades, course grades, group export, response export | In Progress | course grades/groups/session responses CSV exports landed; remaining legacy-column parity checks pending |
+| CSV exports | session grades, course grades, group export, response export | In Progress | server-backed exports landed for groups, course grades, session grades, and session responses; legacy column/value ordering checks against Meteor still pending |
 | Realtime auth | authenticated and authorized subscribe channels | In Progress | socket auth bridge + channel auth errors + realtime authz harness landed |
 | Realtime delete updates | client receives relevant deletes | In Progress | wildcard delete relay landed; routing refinement pending |
 | Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters + owner-scoped image authz landed; parity validation pending |

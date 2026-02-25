@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import type { Course, Grade, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
-import { downloadCsvFile } from '../utils/csv'
+import { downloadCsvFile, downloadCsvText } from '../utils/csv'
 
 interface ManagedStudent {
   _id: string
@@ -54,6 +54,7 @@ export default function CourseGrades() {
   const [studentsById, setStudentsById] = useState<Record<string, ManagedStudent>>({})
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
   const [allSelected, setAllSelected] = useState(false)
+  const [downloadingCsv, setDownloadingCsv] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -302,9 +303,26 @@ export default function CourseGrades() {
               <button
                 type="button"
                 className="btn btn-default"
-                onClick={() => downloadCsvFile(`course-grades-${courseId || 'course'}.csv`, csvRows)}
+                disabled={downloadingCsv}
+                onClick={() => {
+                  void (async () => {
+                    setDownloadingCsv(true)
+                    try {
+                      const query =
+                        !allSelected && selectedSessionIds.length > 0
+                          ? `?sessionIds=${encodeURIComponent(selectedSessionIds.join(','))}`
+                          : ''
+                      const csvText = await apiClient.get<string>(`/grades/course/${courseId}/export${query}`)
+                      downloadCsvText(`course-grades-${courseId || 'course'}.csv`, csvText)
+                    } catch {
+                      downloadCsvFile(`course-grades-${courseId || 'course'}.csv`, csvRows)
+                    } finally {
+                      setDownloadingCsv(false)
+                    }
+                  })()
+                }}
               >
-                Download Grades CSV
+                {downloadingCsv ? 'Downloading...' : 'Download Grades CSV'}
               </button>
             </div>
             <table className="ql-grade-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
