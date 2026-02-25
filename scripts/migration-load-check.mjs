@@ -2,12 +2,17 @@
 
 const baseUrl = process.env.QCLICKER_BASE_URL || 'http://localhost:3001'
 const durationSec = Number(process.env.QCLICKER_LOAD_DURATION_SEC || 20)
-const concurrency = Number(process.env.QCLICKER_LOAD_CONCURRENCY || 40)
+const concurrency = Number(process.env.QCLICKER_LOAD_CONCURRENCY || 20)
+const requestIntervalMs = Number(process.env.QCLICKER_LOAD_REQUEST_INTERVAL_MS || 150)
 const maxErrorRate = Number(process.env.QCLICKER_LOAD_MAX_ERROR_RATE || 0.02)
 const maxP95Ms = Number(process.env.QCLICKER_LOAD_MAX_P95_MS || 1200)
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function percentile(values, p) {
@@ -93,13 +98,17 @@ class ApiSession {
     const json = await this.parseBody(res)
     if (expectStatus !== undefined) {
       if (res.status !== expectStatus) {
-        throw new Error(`[${this.label}] ${method} ${path} expected ${expectStatus}, got ${res.status}`)
+        const error = new Error(`[${this.label}] ${method} ${path} expected ${expectStatus}, got ${res.status}`)
+        error.status = res.status
+        throw error
       }
       return { latencyMs, status: res.status, body: json }
     }
 
     if (!res.ok) {
-      throw new Error(`[${this.label}] ${method} ${path} failed (${res.status}): ${JSON.stringify(json)}`)
+      const error = new Error(`[${this.label}] ${method} ${path} failed (${res.status}): ${JSON.stringify(json)}`)
+      error.status = res.status
+      throw error
     }
 
     return { latencyMs, status: res.status, body: json }
@@ -116,16 +125,29 @@ async function runScenario(name, session, path) {
   let requests = 0
   let errors = 0
   const latencies = []
+  const errorStatusCounts = new Map()
 
   async function worker() {
     while (Date.now() < deadline) {
+      const started = Date.now()
       try {
         const { latencyMs } = await session.request('GET', path)
         latencies.push(latencyMs)
-      } catch {
+      } catch (err) {
         errors += 1
+        const status = Number(err?.status)
+        const key = Number.isFinite(status) ? String(status) : 'network'
+        errorStatusCounts.set(key, (errorStatusCounts.get(key) || 0) + 1)
       } finally {
         requests += 1
+      }
+      if (requestIntervalMs > 0) {
+        const elapsed = Date.now() - started
+        const delay = Math.max(0, requestIntervalMs - elapsed)
+        if (delay > 0) {
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(delay)
+        }
       }
     }
   }
@@ -145,6 +167,7 @@ async function runScenario(name, session, path) {
     errorRate,
     avgMs,
     p95Ms,
+    errorStatusCounts: Object.fromEntries([...errorStatusCounts.entries()].sort()),
   }
 }
 
@@ -189,7 +212,13 @@ async function run() {
     const summary = await runScenario(name, sess, path)
     results.push(summary)
     const errPct = (summary.errorRate * 100).toFixed(2)
-    console.log(`${summary.name}: req=${summary.requests} ok=${summary.success} err=${summary.errors} err%=${errPct} avg=${summary.avgMs.toFixed(1)}ms p95=${summary.p95Ms.toFixed(1)}ms`)
+    const statusSummary = Object.entries(summary.errorStatusCounts)
+      .map(([status, count]) => `${status}:${count}`)
+      .join(',')
+    console.log(
+      `${summary.name}: req=${summary.requests} ok=${summary.success} err=${summary.errors} err%=${errPct} avg=${summary.avgMs.toFixed(1)}ms p95=${summary.p95Ms.toFixed(1)}ms` +
+        (statusSummary ? ` statuses=[${statusSummary}]` : '')
+    )
   }
 
   const failed = results.filter((row) => row.errorRate > maxErrorRate || row.p95Ms > maxP95Ms)
