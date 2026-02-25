@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import type { Course as CourseType, GroupCategory, Group } from '@qlicker/shared'
 import { apiClient } from '../api/client'
+import { downloadCsvFile } from '../utils/csv'
 
 interface ManagedStudent {
   _id: string
@@ -233,8 +234,9 @@ export default function ManageCourseGroups() {
   }
 
   const downloadCsv = () => {
-    const rows: string[] = []
-    rows.push('CategoryName,CategoryNumber,GroupName,GroupNumber,Email,LastName,FirstName')
+    const rows: Array<Array<unknown>> = [
+      ['CategoryName', 'CategoryNumber', 'GroupName', 'GroupNumber', 'Email', 'LastName', 'FirstName'],
+    ]
 
     const studentById = new Map(students.map((student) => [student._id, student]))
 
@@ -252,21 +254,12 @@ export default function ManageCourseGroups() {
             student.lastname,
             student.firstname,
           ]
-          const escaped = values.map((value) => `"${String(value).replace(/"/g, '""')}"`)
-          rows.push(escaped.join(','))
+          rows.push(values)
         })
       })
     })
 
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'groups.csv'
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(url)
+    downloadCsvFile('groups.csv', rows)
   }
 
   const studentsInCategory = useMemo(() => {

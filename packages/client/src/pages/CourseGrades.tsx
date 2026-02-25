@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import type { Course, Grade, Session } from '@qlicker/shared'
 import { apiClient } from '../api/client'
 import { useAuth } from '../hooks/useAuth'
+import { downloadCsvFile } from '../utils/csv'
 
 interface ManagedStudent {
   _id: string
@@ -178,6 +179,41 @@ export default function CourseGrades() {
   }, [grades, selectedSessionIdSet, studentsById])
 
   const totalSelectedSessions = selectedSessions.length
+  const csvRows = useMemo(() => {
+    const header: Array<unknown> = ['LastName', 'FirstName', 'Email', 'UserId']
+    selectedSessions.forEach((session) => {
+      const label = sessionLabel(session)
+      header.push(`${label} (%)`)
+      header.push(`${label} (Points)`)
+      header.push(`${label} (OutOf)`)
+    })
+    header.push('Total (%)')
+    header.push('TotalPoints')
+    header.push('TotalOutOf')
+    header.push('Answered')
+    header.push('Questions')
+
+    const rows: Array<Array<unknown>> = [header]
+    gradeRows.forEach((row) => {
+      const totalPercent = row.totalOutOf > 0 ? Math.round((1000 * row.totalPoints) / row.totalOutOf) / 10 : 0
+      const values: Array<unknown> = [row.lastname, row.firstname, row.email, row.userId]
+      selectedSessions.forEach((session, index) => {
+        const sessionId = session._id || `session-${index}`
+        const grade = row.bySessionId[sessionId]
+        if (!grade) {
+          values.push('', '', '')
+          return
+        }
+        const points = Number(grade.points ?? 0)
+        const outOf = Number(grade.outOf ?? 0)
+        const pct = outOf > 0 ? Math.round((1000 * points) / outOf) / 10 : 0
+        values.push(pct, points.toFixed(1), outOf.toFixed(1))
+      })
+      values.push(totalPercent, row.totalPoints.toFixed(1), row.totalOutOf.toFixed(1), row.totalAnswered, row.totalQuestions)
+      rows.push(values)
+    })
+    return rows
+  }, [gradeRows, selectedSessions])
 
   if (loading) return <div className="page">Loading...</div>
   if (error) return <div className="page">Error: {error}</div>
@@ -262,6 +298,15 @@ export default function CourseGrades() {
           <p>No grades found for the selected sessions.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <button
+                type="button"
+                className="btn btn-default"
+                onClick={() => downloadCsvFile(`course-grades-${courseId || 'course'}.csv`, csvRows)}
+              >
+                Download Grades CSV
+              </button>
+            </div>
             <table className="ql-grade-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>

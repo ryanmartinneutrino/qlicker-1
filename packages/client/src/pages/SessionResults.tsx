@@ -7,6 +7,7 @@ import { AnswerDistribution } from '../components/AnswerDistribution'
 import { ShortAnswerList } from '../components/ShortAnswerList'
 import { Histogram } from '../components/Histogram'
 import { sanitizeHtml } from '../utils/sanitizeHtml'
+import { downloadCsvFile } from '../utils/csv'
 
 interface QuestionStats {
   questionId: string
@@ -25,11 +26,23 @@ function optionValue(option: { answer?: string; plainText?: string; content?: st
   return option.answer || option.plainText || option.content || `Option ${index + 1}`
 }
 
+function formatResponseAnswer(answer: string | string[]): string {
+  return Array.isArray(answer) ? answer.join(' | ') : answer
+}
+
+function formatTimestamp(value: unknown): string {
+  if (!value) return ''
+  const parsed = new Date(value as string)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString()
+}
+
 export default function SessionResults() {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
 
   const [session, setSession] = useState<Session | null>(null)
   const [stats, setStats] = useState<QuestionStats[]>([])
+  const [responseCsvRows, setResponseCsvRows] = useState<Array<Array<unknown>>>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,8 +82,24 @@ export default function SessionResults() {
         const responsesByQuestion = new Map<string, QResponse[]>(responseRows)
 
         const questionStats: QuestionStats[] = []
+        const csvRows: Array<Array<unknown>> = [
+          ['QuestionIndex', 'QuestionId', 'QuestionPlainText', 'QuestionType', 'Attempt', 'StudentUserId', 'Answer', 'Correct', 'CreatedAt'],
+        ]
         for (const q of orderedQuestions) {
           const responses = responsesByQuestion.get(q._id) || []
+          responses.forEach((response) => {
+            csvRows.push([
+              questionStats.length + 1,
+              q._id,
+              q.plainText || '',
+              q.type,
+              response.attempt,
+              response.studentUserId || '',
+              formatResponseAnswer(response.answer),
+              typeof response.correct === 'boolean' ? String(response.correct) : '',
+              formatTimestamp(response.createdAt),
+            ])
+          })
 
           const optionCounts: Record<string, number> = {}
           let correctCount = 0
@@ -110,6 +139,7 @@ export default function SessionResults() {
           })
         }
         setStats(questionStats)
+        setResponseCsvRows(csvRows)
       })
       .catch((err) => setError((err as Error).message))
       .finally(() => setLoading(false))
@@ -129,6 +159,16 @@ export default function SessionResults() {
         <Link className="btn btn-secondary" to={`/course/${courseId}`} style={{ marginBottom: '1rem', display: 'inline-block' }}>
           Back to Course
         </Link>
+        <div style={{ marginBottom: '0.75rem' }}>
+          <button
+            type="button"
+            className="btn btn-default"
+            disabled={responseCsvRows.length < 2}
+            onClick={() => downloadCsvFile(`session-responses-${sessionId || 'session'}.csv`, responseCsvRows)}
+          >
+            Download Responses CSV
+          </button>
+        </div>
 
         {stats.length === 0 ? (
           <p>No questions or responses for this session.</p>
