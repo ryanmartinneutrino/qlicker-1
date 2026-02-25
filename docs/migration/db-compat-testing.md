@@ -70,3 +70,4 @@ npm run test:migration-gate
 ## Notes
 - `test:migration-db-compat` is read-only and checks collection presence, string `_id` compatibility, and key field-type invariants.
 - `test:migration-db-parity` compares projected document shapes/values across baseline and candidate DBs and highlights missing/changed docs in sampled IDs.
+- Auth/session-store docs must not be written into the course `sessions` collection. The new server stores auth sessions in `authSessions`; if compatibility output flags `sessions._collection` with auth-session docs, treat that as a blocking configuration/data-hygiene issue before parity runs.

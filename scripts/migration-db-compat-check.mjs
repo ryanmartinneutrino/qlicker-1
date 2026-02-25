@@ -105,6 +105,16 @@ function checkEmails(doc) {
   })
 }
 
+function looksLikeAuthSessionStoreDoc(doc) {
+  return (
+    typeof getPathValue(doc, 'session') === 'string' &&
+    getPathValue(doc, 'courseId') === undefined &&
+    getPathValue(doc, 'status') === undefined &&
+    getPathValue(doc, 'quiz') === undefined &&
+    isDateLike(getPathValue(doc, 'expires'))
+  )
+}
+
 const rulesByCollection = {
   courses: [
     { path: 'owner', level: 'error', test: (doc) => checkString(doc, 'owner'), reason: 'owner must be a non-empty string' },
@@ -252,6 +262,19 @@ async function run() {
       const cursor = col.find({}, { limit: sampleLimit })
       for await (const doc of cursor) {
         sampled += 1
+        if (collectionName === 'sessions' && looksLikeAuthSessionStoreDoc(doc)) {
+          addIssue(
+            issueMap,
+            {
+              level: 'error',
+              collection: collectionName,
+              path: '_collection',
+              reason: 'contains auth-session store documents; session store must not use collection "sessions"',
+            },
+            typeof doc._id === 'string' ? doc._id : ''
+          )
+          continue
+        }
         for (const rule of rules) {
           if (!rule.test(doc)) {
             addIssue(
