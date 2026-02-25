@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, type Response } from 'express'
 import { generateStringId } from '../utils/id'
 import { getSessions, quizIsActive } from '../collections/sessions'
 import { getCourses } from '../collections/courses'
@@ -85,6 +85,44 @@ async function findCourseSessionById(sessionId: string) {
   return session
 }
 
+async function ensureCourseManageAccess(
+  user: User,
+  courseId: string | undefined,
+  res: Response
+): Promise<boolean> {
+  if (!courseId) {
+    res.status(400).json({ error: 'courseId required.' })
+    return false
+  }
+
+  const course = await getCourses().findOne(
+    { _id: courseId } as Parameters<ReturnType<typeof getCourses>['findOne']>[0],
+    { projection: { _id: 1 } }
+  )
+  if (!course) {
+    res.status(404).json({ error: 'Course not found.' })
+    return false
+  }
+
+  if (isAdmin(user)) return true
+
+  const access = await courseAccessForUser(user, courseId)
+  if (!access.canManage) {
+    res.status(403).json({ error: 'Forbidden.' })
+    return false
+  }
+
+  return true
+}
+
+async function ensureSessionManageAccess(
+  user: User,
+  session: Pick<NonNullable<Awaited<ReturnType<typeof findCourseSessionById>>>, 'courseId'>,
+  res: Response
+): Promise<boolean> {
+  return ensureCourseManageAccess(user, session.courseId, res)
+}
+
 /** GET /api/sessions?courseId=... */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
@@ -149,12 +187,14 @@ router.get('/:sessionId', requireAuth, async (req, res, next) => {
 /** POST /api/sessions — create session */
 router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const normalized = normalizeSessionPayload(req.body as Record<string, unknown>)
     if (typeof normalized.status !== 'string' || normalized.status.trim().length < 1) {
       normalized.status = 'hidden'
     }
     const parsed = sessionSchema.omit({ _id: true, createdAt: true }).safeParse(normalized)
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
+    if (!(await ensureCourseManageAccess(user, parsed.data.courseId, res))) return
 
     const sessions = getSessions()
     const doc = {
@@ -180,9 +220,11 @@ router.post('/', requireAuth, requireInstructor, async (req, res, next) => {
 /** PUT /api/sessions/:sessionId — update session */
 router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, existing, res))) return
     const parsed = sessionSchema.partial().safeParse(normalizeSessionPayload(req.body))
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors })
 
@@ -229,6 +271,7 @@ router.put('/:sessionId', requireAuth, requireInstructor, async (req, res, next)
 /** DELETE /api/sessions/:sessionId */
 router.delete('/:sessionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const questions = getQuestions()
     const responses = getResponses()
@@ -237,6 +280,7 @@ router.delete('/:sessionId', requireAuth, requireInstructor, async (req, res, ne
 
     const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, existing, res))) return
 
     const questionIds = (existing.questions || []).filter((id): id is string => typeof id === 'string' && id.length > 0)
     if (questionIds.length > 0) {
@@ -265,18 +309,14 @@ router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res,
 
     const source = await findCourseSessionById(req.params.sessionId)
     if (!source) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, source, res))) return
 
     const requestedCourseId = typeof req.body?.courseId === 'string' ? req.body.courseId.trim() : ''
     const targetCourseId = requestedCourseId || source.courseId
 
     if (targetCourseId !== source.courseId) {
-      const targetAccess = await courseAccessForUser(user, targetCourseId)
-      if (!targetAccess.exists) return res.status(404).json({ error: 'Course not found.' })
-      if (!targetAccess.canManage) return res.status(403).json({ error: 'Forbidden.' })
+      if (!(await ensureCourseManageAccess(user, targetCourseId, res))) return
     }
-
-    const targetCourse = await courses.findOne({ _id: targetCourseId } as Parameters<typeof courses.findOne>[0])
-    if (!targetCourse) return res.status(404).json({ error: 'Course not found.' })
 
     const sourceQuestionIds = (source.questions || []).filter(
       (questionId): questionId is string => typeof questionId === 'string' && questionId.length > 0
@@ -350,6 +390,7 @@ router.post('/:sessionId/copy', requireAuth, requireInstructor, async (req, res,
 /** PUT /api/sessions/:sessionId/status — change session status */
 router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const { status } = req.body as { status: string }
     const validStatuses = ['hidden', 'visible', 'running', 'done']
     if (!validStatuses.includes(status)) {
@@ -358,6 +399,7 @@ router.put('/:sessionId/status', requireAuth, requireInstructor, async (req, res
     const sessions = getSessions()
     const existing = await findCourseSessionById(req.params.sessionId)
     if (!existing) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, existing, res))) return
     if (status === 'running' && (!Array.isArray(existing.questions) || existing.questions.length === 0)) {
       return res.status(400).json({ error: 'Cannot run a session with no questions.' })
     }
@@ -467,12 +509,14 @@ router.post('/:sessionId/join', requireAuth, async (req, res, next) => {
 /** PUT /api/sessions/:sessionId/current — set the current question for a running session */
 router.put('/:sessionId/current', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const { questionId } = req.body as { questionId?: string }
     if (!questionId) return res.status(400).json({ error: 'questionId required.' })
 
     const sessions = getSessions()
     const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
     if (!(session.questions || []).includes(questionId)) {
       return res.status(400).json({ error: 'Question is not part of this session.' })
     }
@@ -497,6 +541,7 @@ router.post('/:sessionId/questions/:questionId/copy', requireAuth, requireInstru
 
     const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
 
     const source = await questions.findOne({ _id: req.params.questionId } as Parameters<typeof questions.findOne>[0])
     if (!source) return res.status(404).json({ error: 'Question not found.' })
@@ -539,11 +584,13 @@ router.post('/:sessionId/questions/:questionId/copy', requireAuth, requireInstru
 /** DELETE /api/sessions/:sessionId/questions/:questionId — remove question from session */
 router.delete('/:sessionId/questions/:questionId', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const questions = getQuestions()
 
     const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
     if (!(session.questions || []).includes(req.params.questionId)) {
       return res.status(404).json({ error: 'Question is not attached to this session.' })
     }
@@ -570,6 +617,7 @@ router.delete('/:sessionId/questions/:questionId', requireAuth, requireInstructo
 /** PUT /api/sessions/:sessionId/questions — reorder attached questions */
 router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     if (!Array.isArray((req.body as { questionIds?: unknown[] }).questionIds)) {
       return res.status(400).json({ error: 'questionIds required.' })
     }
@@ -579,6 +627,7 @@ router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, 
     const sessions = getSessions()
     const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
 
     const existingIds = new Set((session.questions || []).filter((id): id is string => typeof id === 'string'))
     const incomingIds = new Set(questionIds)
@@ -605,9 +654,11 @@ router.put('/:sessionId/questions', requireAuth, requireInstructor, async (req, 
 /** GET /api/sessions/:sessionId/extension-candidates — session students for extension modal */
 router.get('/:sessionId/extension-candidates', requireAuth, requireInstructor, async (req, res, next) => {
   try {
+    const user = req.user as User
     const sessions = getSessions()
     const session = await findCourseSessionById(req.params.sessionId)
     if (!session) return res.status(404).json({ error: 'Session not found.' })
+    if (!(await ensureSessionManageAccess(user, session, res))) return
 
     const courses = getCourses()
     const course = await courses.findOne({ _id: session.courseId } as Parameters<typeof courses.findOne>[0])

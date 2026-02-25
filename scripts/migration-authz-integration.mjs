@@ -127,6 +127,7 @@ async function run() {
   const student = new ApiSession('student')
   const student2 = new ApiSession('student2')
   const admin = new ApiSession('admin')
+  const outsiderProf = new ApiSession('outsiderProf')
 
   await prof.login('prof@gmail.com', '12345678')
   await student.login('student1@gmail.com', '12345678')
@@ -166,6 +167,27 @@ async function run() {
     questions: [],
   })
   assert(tempSession._id, 'Temp session creation failed.')
+
+  const outsiderEmail = `outsider.prof.${Date.now()}@gmail.com`
+  const outsiderPassword = '12345678'
+  await outsiderProf.request('POST', '/auth/register', {
+    email: outsiderEmail,
+    password: outsiderPassword,
+    firstname: 'Outsider',
+    lastname: 'Professor',
+  })
+  const outsiderIdentity = await outsiderProf.request('GET', '/auth/me')
+  assert(outsiderIdentity?.user?._id, 'Outsider professor user id missing.')
+  await admin.request('PUT', `/users/${outsiderIdentity.user._id}/role`, { role: 'professor' })
+  await outsiderProf.login(outsiderEmail, outsiderPassword)
+  const outsiderCourse = await outsiderProf.request('POST', '/courses', {
+    name: `Authz Outsider ${Date.now()}`,
+    deptCode: 'CISC',
+    courseNumber: '399',
+    section: '001',
+    semester: 'Fall 2026',
+  })
+  assert(outsiderCourse?._id, 'Outsider professor course creation failed.')
 
   const publicQuestion = await prof.request('POST', '/questions', {
     plainText: 'Authz public question',
@@ -241,6 +263,14 @@ async function run() {
   // export surface checks (course/session grades + session responses)
   await prof.request('POST', `/grades/calc-session/${tempSession._id}`, {})
 
+  await outsiderProf.request('PUT', `/sessions/${tempSession._id}/status`, { status: 'visible' }, { expectStatus: 403 })
+  await outsiderProf.request('PUT', `/sessions/${tempSession._id}/questions`, { questionIds: [sessionQuestion._id] }, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/sessions/${tempSession._id}/questions/${publicQuestion._id}/copy`, {}, { expectStatus: 403 })
+  await outsiderProf.request('GET', `/sessions/${tempSession._id}/extension-candidates`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('POST', `/grades/calc-session/${tempSession._id}`, {}, { expectStatus: 403 })
+  await outsiderProf.request('GET', `/grades/session/${tempSession._id}/export`, undefined, { expectStatus: 403 })
+  await outsiderProf.request('PUT', `/grades/session/${tempSession._id}/visible`, { visible: true }, { expectStatus: 403 })
+
   const courseGradesCsv = await prof.request(
     'GET',
     `/grades/course/${tempCourse._id}/export?sessionIds=${encodeURIComponent(tempSession._id)}`
@@ -255,6 +285,12 @@ async function run() {
   assert(typeof sessionGradesCsv === 'string', 'Session grades export should return CSV text.')
   assert(sessionGradesCsv.includes('"Grade (%)"'), 'Session grades export header mismatch.')
   await student.request('GET', `/grades/session/${tempSession._id}/export`, undefined, { expectStatus: 403 })
+
+  const tempStudentGrades = await prof.request('GET', `/grades?courseId=${tempCourse._id}&sessionId=${tempSession._id}&userId=${meStudent.user._id}`)
+  const tempGrade = tempStudentGrades.find((grade) => grade.userId === meStudent.user._id)
+  assert(tempGrade?._id, 'Expected generated temp grade for outsider authz checks.')
+  await outsiderProf.request('PUT', `/grades/${tempGrade._id}`, { participation: 77 }, { expectStatus: 403 })
+  await outsiderProf.request('PUT', `/grades/${tempGrade._id}/visible`, { visible: true }, { expectStatus: 403 })
 
   const sessionResponsesCsv = await prof.request('GET', `/responses/session/${tempSession._id}/export`)
   assert(typeof sessionResponsesCsv === 'string', 'Session responses export should return CSV text.')
@@ -357,6 +393,9 @@ async function run() {
   await prof.request('DELETE', `/sessions/${tempSession._id}`)
   await prof.request('DELETE', `/courses/${tempCourse._id}`)
   await prof.request('DELETE', `/courses/${tempCourse2._id}`)
+  await outsiderProf.request('DELETE', `/courses/${outsiderCourse._id}`)
+  await outsiderProf.request('POST', '/auth/logout', {})
+  await admin.request('DELETE', `/users/${outsiderIdentity.user._id}`)
 
   await student.request('POST', '/auth/logout', {})
   await student2.request('POST', '/auth/logout', {})
