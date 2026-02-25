@@ -12,28 +12,34 @@ Each component in `imports/ui/` needs to be migrated following these steps:
 4. **Convert class components to function components** using React hooks.
 5. **Replace Iron Router navigation** with React Router's `useNavigate` and `Link`.
 
-## Component Map
+## Component Map (Current)
+
+Feature parity is tracked at the workflow level, not strict 1:1 filename parity. Some legacy UI pieces were consolidated into page-level components.
 
 | Old Meteor component (`imports/ui/`) | New component location |
 |--------------------------------------|------------------------|
-| `LoginBox.jsx` | `components/LoginBox.tsx` |
 | `QuestionDisplay.jsx` | `components/QuestionDisplay.tsx` |
 | `QuestionEditItem.jsx` | `components/QuestionEditItem.tsx` |
 | `ResponseDisplay.jsx` | `components/ResponseDisplay.tsx` |
 | `SessionDetails.jsx` | `components/SessionDetails.tsx` |
 | `SessionListItem.jsx` | `components/SessionListItem.tsx` |
 | `CourseListItem.jsx` | `components/CourseListItem.tsx` |
-| `GradeView.jsx` | `components/GradeView.tsx` |
 | `Histogram.jsx` | `components/Histogram.tsx` |
 | `Editor.jsx` | `components/Editor.tsx` |
-| `ManageUsers.jsx` | `components/ManageUsers.tsx` |
-| `ProfileCard.jsx` | `components/ProfileCard.tsx` |
-| `QuizSession.jsx` | `components/QuizSession.tsx` |
-| All modals (`imports/ui/modals/`) | `components/modals/` |
+| `AnswerDistribution.jsx` | `components/AnswerDistribution.tsx` |
+| `QuestionSidebar.jsx` | `components/QuestionSidebar.tsx` |
+| `ResponseList.jsx` | `components/ResponseList.tsx` |
+| `ShortAnswerList.jsx` | `components/ShortAnswerList.tsx` |
 | `modals/CreateSessionModal.jsx` | `components/modals/CreateSessionModal.tsx` |
 | `modals/CreateQuestionModal.jsx` | `components/modals/CreateQuestionModal.tsx` |
 | `modals/ChangeEmailModal.jsx` | `components/modals/ChangeEmailModal.tsx` |
 | `modals/ChangePasswordModal.jsx` | `components/modals/ChangePasswordModal.tsx` |
+| `modals/EnrollCourseModal.jsx` | `components/modals/EnrollCourseModal.tsx` |
+| `modals/QuizExtensionsModal.jsx` | `components/modals/QuizExtensionsModal.tsx` |
+
+Consolidated/inline examples:
+- legacy roster modals (`AddStudentModal`, `AddTAModal`) are now inline controls in `pages/Course.tsx`
+- legacy wrapper/table components (`CleanPageContainer`, `Clean*Table`) were replaced by React Router + page-local render logic
 
 ## Key Pattern Changes
 
@@ -58,4 +64,3 @@ function MyComponent({ sessionId }: { sessionId: string }) {
   // ...
 }
 ```
-

@@ -27,6 +27,8 @@ import CourseResults from './pages/CourseResults'
 import ResetPassword from './pages/ResetPassword'
 import VideoChat from './pages/VideoChat'
 import JitsiWindow from './pages/JitsiWindow'
+import Logout from './pages/Logout'
+import VerifyEmail from './pages/VerifyEmail'
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { user, loading } = useAuth()
@@ -49,6 +51,9 @@ export default function App() {
             <Route path="/login/email" element={<Login allowEmail />} />
             <Route path="/reset" element={<ResetPassword />} />
             <Route path="/reset/:token" element={<ResetPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
+            <Route path="/logout" element={<Logout />} />
 
             {/* Authenticated routes — migrated from imports/startup/client/routes.jsx */}
             <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
@@ -66,6 +71,7 @@ export default function App() {
             <Route path="/course/:courseId" element={<ProtectedRoute><Course /></ProtectedRoute>} />
             <Route path="/course/:courseId/results" element={<ProtectedRoute roles={['professor', 'admin']}><CourseResults /></ProtectedRoute>} />
             <Route path="/course/:courseId/video" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
+            <Route path="/course/:courseId/videochat" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
             <Route path="/course/:courseId/videochatwindow" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
             <Route path="/course/:courseId/categoryvideochatwindow/:catNumber/:gNumber" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
             <Route path="/course/:courseId/groups" element={<ProtectedRoute><ManageCourseGroups /></ProtectedRoute>} />
@@ -75,6 +81,7 @@ export default function App() {
             {/* Session management */}
             <Route path="/course/:courseId/session/edit/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><ManageSession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/run/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><RunSession /></ProtectedRoute>} />
+            <Route path="/course/:courseId/session/run/:sessionId/mobile" element={<ProtectedRoute roles={['professor', 'admin']}><RunSession mobile /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/replay/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><ReplaySession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/:sessionId/grade" element={<ProtectedRoute roles={['professor', 'admin']}><GradeSession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/:sessionId/results" element={<ProtectedRoute><SessionResults /></ProtectedRoute>} />

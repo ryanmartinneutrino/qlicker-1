@@ -59,7 +59,7 @@ function ensureSessionOptions(question: Question): SessionOptionsShape {
   }
 }
 
-export default function RunSession() {
+export default function RunSession({ mobile = false }: { mobile?: boolean }) {
   const { courseId, sessionId } = useParams<{ courseId: string; sessionId: string }>()
   const navigate = useNavigate()
   const { socket } = useRealtimeContext()
@@ -321,6 +321,16 @@ export default function RunSession() {
     )
   }
 
+  const routeDesktop = () => {
+    if (!courseId || !sessionId) return
+    navigate(`/course/${courseId}/session/run/${sessionId}`)
+  }
+
+  const routeMobile = () => {
+    if (!courseId || !sessionId) return
+    navigate(`/course/${courseId}/session/run/${sessionId}/mobile`)
+  }
+
   const activeAttempt = currentAttempt(currentQuestion)
   const attemptResponses = responses.filter(
     (response) => Number(response.attempt) === activeAttempt.number
@@ -404,6 +414,11 @@ export default function RunSession() {
           <button className="btn btn-secondary" onClick={() => setPresenting((value) => !value)}>
             {presenting ? 'Instructor Mode' : 'Presentation Mode'}
           </button>
+          {mobile ? (
+            <button className="btn btn-secondary" onClick={routeDesktop}>Desktop View</button>
+          ) : (
+            <button className="btn btn-secondary" onClick={routeMobile}>Mobile View</button>
+          )}
           <button className="btn btn-secondary" onClick={openSecondDisplay}>Open 2nd Display</button>
         </div>
 
@@ -468,7 +483,7 @@ export default function RunSession() {
             </div>
 
             <div className="row">
-              {!presenting && (
+              {!presenting && !mobile && (
                 <div className="col-md-3">
                   <QuestionSidebar
                     questions={orderedQuestions}
@@ -484,7 +499,7 @@ export default function RunSession() {
                 </div>
               )}
 
-              <div className={presenting ? 'col-md-12' : 'col-md-9'}>
+              <div className={presenting || mobile ? 'col-md-12' : 'col-md-9'}>
                 <QuestionDisplay
                   question={currentQuestion}
                   readonly
