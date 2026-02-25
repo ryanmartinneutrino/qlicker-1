@@ -20,6 +20,9 @@
 - Socket session/passport bridge is wired so realtime channels can use authenticated user context.
 - Realtime routing now handles change-stream delete events via `documentKey` and uses scoped routing keys.
 - Realtime delete routing now includes a bounded parent-hint cache (`sessionId/courseId/questionId`) to keep delete fan-out scoped when `fullDocument` is unavailable.
+- Realtime churn/reconnect harness landed:
+  - `npm run test:migration-realtime-churn`
+  - optional gate inclusion via `QCLICKER_GATE_INCLUDE_REALTIME_CHURN=true`
 - Collection index bootstrap is now called at server startup.
 - Session create parity gap fixed: server defaults `status` to `hidden` when omitted.
 - CSV parity improved with server-backed exports:
@@ -103,7 +106,7 @@
 | L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
-| L5 | Realtime correctness + scale | 85% | PR `#37`, `#42`, `#47`, `#72`; parent-hint delete routing cache landed | Run reconnect/churn verification at target concurrency and confirm no unauthorized channels |
+| L5 | Realtime correctness + scale | 88% | PR `#37`, `#42`, `#47`, `#72`; parent-hint delete routing cache + churn harness landed | Publish recurring churn/load evidence in CI/staging and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 84% | PR `#49`, `#55`, `#57`, `#71`; real backup restore/compat/parity run passes locally with summary artifacts | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
 | L8 | Integration/load/cutover ops | 94% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`; smoke/authz/realtime-authz/load gates pass with machine-readable summaries | Wire artifact publishing in CI/staging and close final pilot checklist |

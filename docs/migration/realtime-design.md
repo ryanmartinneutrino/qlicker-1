@@ -27,6 +27,8 @@
 - fallback still includes document-level and collection wildcard keys to avoid missed invalidations when parent hints are unavailable.
 
 ## Remaining work
-- reconnect/resubscribe robustness metrics under churn/disconnect scenarios
+- maintain reconnect/churn evidence under load:
+  - `npm run test:migration-realtime-churn`
+  - optional unified-gate stage via `QCLICKER_GATE_INCLUDE_REALTIME_CHURN=true`
 - run subscription-level negative test suite in CI (`test:migration-realtime-authz`)
 - load-test validation at target concurrency
