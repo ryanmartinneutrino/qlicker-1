@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-25`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `06236420`
+- Last verified baseline commit before this update: `21733d47`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -21,6 +21,7 @@
 | `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; reconnect/load parity evidence still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44`, `#47` |
 | `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44` |
 | Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth/routing/reconnect hardening landed; runtime churn/load validation still pending | Agent-07 | `#37`, `#42`, `#47` |
+| Legacy collection compatibility (cross-cutting) | DB compatibility + parity scripts (`migration-db-compat-check`, `migration-db-parity-diff`) | `courses`, `sessions`, `questions`, `responses`, `grades`, `users`, `settings`, `images` | partial | Tooling landed; must execute against sanitized backup baseline/candidate before pilot | Agent-07, Agent-08 | `#49`, `#50` |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Some flows still need final normalization checks | Agent-01, Agent-05 | `#41`, `#43` |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | Ownership authz hardening landed; end-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | `#46` |
 | Legacy video/group workflows | `/api/courses/*video*`, `ManageCourseGroups` | `courses.groupCategories`, `courses.videoChatOptions` | partial | Behavior parity and test coverage incomplete | Agent-06, Agent-08 | `#39`, `#44` |
@@ -52,6 +53,9 @@
 | MIG-042 | Add client e2e parity tests for student/prof/admin | Agent-08 | MIG-020..024 | E2E suite verifies top workflows | pending |
 | MIG-043 | Execute manual parity checklist vs Meteor behaviors | Agent-08 | MIG-040..042 | Signed checklist attached | in-progress |
 | MIG-044 | Final cutover checklist + rollback runbook | Agent-08 | MIG-043 | Decision-ready cutover/runback docs | in-progress |
+| MIG-045 | Add DB compatibility audit harness for existing Meteor backups | Agent-07 | MIG-014 | Read-only compatibility report for legacy/candidate DB | done |
+| MIG-046 | Add baseline-vs-candidate DB parity diff harness | Agent-07 | MIG-045 | Sampled parity diff output + fail-on-diff option | done |
+| MIG-047 | Add unified migration gate runner command | Agent-08 | MIG-040..046 | One command orchestrates build/runtime + optional DB gates | done |
 
 ## Agent Packets
 
@@ -157,6 +161,8 @@ Rebase protocol:
 | 2026-02-25 | `c898aba` | Agent-04/L3 | `npm run build` | pass | CSV export parity updates (course grades, session responses, groups) with shared utility (`PR #44`). |
 | 2026-02-25 | `18a5eca` | Agent-01/L8 | `npm run build && node --check scripts/migration-authz-integration.mjs` | pass | Image ownership authz hardening + integration coverage update (`PR #46`). |
 | 2026-02-25 | `0623642` | Agent-05/L8 | `npm run build && node --check scripts/migration-realtime-authz.mjs` | pass | Realtime reconnect resubscribe + standardized subscription auth errors + realtime authz harness (`PR #47`). |
+| 2026-02-25 | `390bf0e` | Agent-07 | `npm run build && node --check scripts/migration-db-compat-check.mjs && node --check scripts/migration-db-parity-diff.mjs` | pass | Added DB compatibility + baseline/candidate parity diff harnesses (`PR #49`). |
+| 2026-02-25 | `21733d4` | Agent-08 | `npm run build && node --check scripts/migration-gate-runner.mjs` | pass | Added unified migration gate runner and updated DB/cutover docs (`PR #50`). |
 
 ## Risks and Blockers
 
@@ -164,6 +170,7 @@ Rebase protocol:
 |---|---|---|---|---|
 | medium | Agent-01 | Residual cross-course edge-case exposure in non-core paths | Complete endpoint matrix review + authz integration assertions on latest `master` | 2026-02-28 |
 | medium | Agent-07 | Realtime churn/reconnect behavior under load still not fully evidenced | Run dedicated reconnect/load scenarios and capture p95/error metrics | 2026-02-28 |
+| medium | Agent-07/08 | DB compatibility/parity harnesses not yet executed on sanitized Meteor backup | Run `test:migration-db-compat` and `test:migration-db-parity` on staging backup + archive outputs | 2026-02-28 |
 | high | Agent-08 | Insufficient parity test depth for cutover confidence | Expand smoke + integration + e2e + manual checklist | 2026-03-02 |
 | medium | Agent-05 | Question type/option mismatch causes behavior drift | Normalize enum handling and option coercion | 2026-02-27 |
 | medium | Agent-06 | Group/video semantics not fully matched | Port and verify category/room workflows | 2026-03-01 |

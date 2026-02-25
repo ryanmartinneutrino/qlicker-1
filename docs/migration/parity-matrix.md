@@ -18,5 +18,5 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Realtime delete updates | client receives relevant deletes | In Progress | wildcard delete relay landed; routing refinement pending |
 | Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters + owner-scoped image authz landed; parity validation pending |
 | Video/Jitsi | course/group room parity + help/clear semantics | In Progress | core endpoints exist; parity validation pending |
-| DB compatibility | string `_id`, collection/field compatibility | In Progress | insert path and schema checks in place; backup diff track pending |
-| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke extended with authz regression checks |
+| DB compatibility | string `_id`, collection/field compatibility | In Progress | `test:migration-db-compat` + `test:migration-db-parity` harnesses landed; backup staging execution pending |
+| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke/authz/realtime-authz/load + unified `test:migration-gate` landed; full Docker/CI evidence pending |
