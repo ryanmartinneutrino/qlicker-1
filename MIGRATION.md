@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `d44474a4`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`
+- Baseline commit: `bf1b44a8`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -81,10 +81,10 @@
 |---|---|---|---|---|
 | L1 | AuthZ + API policy | 93% | PR `#42`, `#46`, `#54`, `#55`, `#58`, `#59`; outsider-prof authz integration checks green | Close residual endpoint edge-case matrix and rerun authz/realtime authz suites on latest Docker baseline |
 | L2 | Student/prof session-question parity | 65% | PR `#40`, PR `#43` | Finish edge transitions + verify interactive/quiz behavior against Meteor checklist |
-| L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), lane `migration/lane-03-roster-email-parity` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
+| L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 76% | PR `#36`, `#44`, `#53` | Complete remaining grade/review visibility edge semantics + CSV value-order parity checks against Meteor outputs |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
-| L6 | Media + video/chat parity | 45% | core server/client endpoints + smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
+| L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
 | L8 | Integration/load/cutover ops | 78% | PR `#50`, `#57`, `#60`; gate runner now supports legacy-backup stage | Run full gate in Docker/CI and archive evidence for pilot decision |
 
@@ -119,6 +119,7 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch4.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch5.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch6.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch7.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
