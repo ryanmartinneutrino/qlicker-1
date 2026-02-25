@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `bf1b44a8`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`
+- Baseline commit: `bfabb139`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -64,29 +64,41 @@
   - `npm run test:migration-gate` to run build/runtime checks
   - optional DB stages via `QCLICKER_GATE_INCLUDE_DB_COMPAT=true` and `QCLICKER_GATE_INCLUDE_DB_PARITY=true`
   - optional legacy backup stage via `QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true`
+- Reviewability parity milestone landed:
+  - `PUT /api/sessions/:sessionId/reviewable` now supports Meteor-equivalent review toggle semantics
+  - enabling review recalculates session grades; disabling review hides grades from students
+  - instructor course UI now exposes `Allow Review`/`Disable Review` for done sessions
+  - student done-session behavior now matches reviewability gates (`Review` route and messaging)
+  - coverage added in `migration-smoke` and `migration-authz-integration`
+- CSRF correctness milestone landed:
+  - `/api/csrf-token` now issues tokens successfully with CSRF enabled
+  - server now wires cookie parsing middleware for CSRF token/cookie validation path
+- Migration harness robustness milestone landed:
+  - all migration `ApiSession` harnesses now keep a cookie jar (session + CSRF cookie), eliminating intermittent CSRF-related 403s during runtime checks
+  - CSRF-enabled runs now pass for smoke/authz/realtime-authz paths
 
 ### Still open (blocking for pilot)
 - Full Meteor parity validation is incomplete for:
   - instructor run-session edge workflows
-  - grading edge cases and visibility/review toggles
+  - grading edge cases beyond current reviewability closure
   - full groups/video/Jitsi behavior parity
 - End-to-end parity verification is incomplete:
   - no latest full Docker smoke/integration/e2e run evidence on current `master`
   - backup parity is now validated locally; CI/staging archival workflow still needs to be formalized
-- Load/perf gate is not yet signed off on current head commit.
+- Load/perf gate remains red on current head due high error-rate under current default load scenario (`test:migration-load` via gate).
 
 ## 8-Lane Progress Matrix
 
 | Lane | Scope | Status | Evidence | Next gate |
 |---|---|---|---|---|
-| L1 | AuthZ + API policy | 93% | PR `#42`, `#46`, `#54`, `#55`, `#58`, `#59`; outsider-prof authz integration checks green | Close residual endpoint edge-case matrix and rerun authz/realtime authz suites on latest Docker baseline |
-| L2 | Student/prof session-question parity | 65% | PR `#40`, PR `#43` | Finish edge transitions + verify interactive/quiz behavior against Meteor checklist |
+| L1 | AuthZ + API policy | 96% | PR `#42`, `#46`, `#54`, `#55`, `#58`, `#59`, `#67`; authz integration checks green with CSRF enabled | Close residual endpoint edge-case matrix and rerun full authz suite in Docker/CI |
+| L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
-| L4 | Grades/results/export parity | 76% | PR `#36`, `#44`, `#53` | Complete remaining grade/review visibility edge semantics + CSV value-order parity checks against Meteor outputs |
+| L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 78% | PR `#50`, `#57`, `#60`; gate runner now supports legacy-backup stage | Run full gate in Docker/CI and archive evidence for pilot decision |
+| L8 | Integration/load/cutover ops | 88% | PR `#50`, `#57`, `#60`, `#68`; smoke/authz/realtime-authz gates pass with CSRF enabled | Resolve load-gate failures and archive full gate evidence in CI/staging |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -108,8 +120,8 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~86%** toward pilot-readiness.
-- Remaining critical path: L6 + L7 + L8 validation closure.
+- Current migration completion: **~91%** toward pilot-readiness.
+- Remaining critical path: L6 parity closure + L8 load-gate stabilization + CI/staging archival evidence.
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`
@@ -120,6 +132,7 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch5.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch6.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch7.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch8.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
