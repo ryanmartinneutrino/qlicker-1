@@ -3,7 +3,7 @@
 ## Snapshot
 - Date: `2026-02-25`
 - Branch baseline: `master`
-- Last verified baseline commit before this update: `6347321a`
+- Last verified baseline commit before this update: `bfabb139`
 - Environment assumptions:
   - MongoDB replica set is available (`rs0`) for change streams.
   - Docker compose environment remains canonical for parity checks.
@@ -14,13 +14,13 @@
 
 | Meteor artifact | New artifact | Collections/fields touched | Status (done/partial/missing) | Gap | Owner lane | PR |
 |---|---|---|---|---|---|---|
-| `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present, edge-case parity coverage still incomplete | Agent-01, Agent-08 | `#42` (indirect) |
+| `imports/api/users*`, `Accounts.*` | `packages/server/src/routes/auth.ts`, `packages/server/src/routes/users.ts`, `packages/client/src/pages/Login.tsx` | `users`, `settings`, `services.password.bcrypt`, verification/reset token fields | partial | Broad parity present; CSRF token path now fixed; edge-case parity coverage still incomplete | Agent-01, Agent-08 | `#42` (indirect), `#67` |
 | `imports/api/courses.js` methods | `packages/server/src/routes/courses.ts`, `packages/client/src/pages/Course.tsx` | `courses`, `users.profile.courses`, `groupCategories`, `videoChatOptions` | partial | Group management APIs are broader; final behavior/test parity still pending | Agent-01, Agent-06 | `#39`, `#42`, `#44` |
-| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; auth-session collection separation + non-course session filtering landed; runtime parity + smoke/e2e still pending | Agent-02, Agent-03 | `#40`, `#43`, `#55` |
+| `imports/api/sessions.js` methods | `packages/server/src/routes/sessions.ts`, session pages in client | `sessions`, `courses.sessions` | partial | Session question attach/remove/reorder/delete cleanup landed; auth-session collection separation + non-course session filtering landed; reviewability toggle parity now landed; remaining instructor runtime edge parity pending | Agent-02, Agent-03 | `#40`, `#43`, `#55`, `#66` |
 | `imports/api/questions.js` methods | `packages/server/src/routes/questions.ts`, `QuestionsLibrary` + `CreateQuestionModal` | `questions`, `sessionOptions`, type/options fields | partial | Library/public/unapproved views + copy workflow landed; detached-session null/missing normalization landed; final parity tests still pending | Agent-01, Agent-05 | `#41`, `#42`, `#54` |
 | `imports/api/responses.js` methods/publications | `packages/server/src/routes/responses.ts`, realtime subscriptions, `SessionResults` | `responses`, `questions.sessionOptions.stats`, response privacy fields | partial | Response privacy/realtime hardening landed; reconnect/load parity evidence still pending | Agent-01, Agent-07, Agent-08 | `#37`, `#42`, `#44`, `#47` |
-| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and server-backed CSV export surfaces improved; remaining review/visibility edge parity pending | Agent-01, Agent-04 | `#36`, `#44`, `#53` |
-| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth/routing/reconnect hardening landed; runtime churn/load validation still pending | Agent-07 | `#37`, `#42`, `#47` |
+| `imports/api/grades.js` methods/publications | `packages/server/src/routes/grades.ts`, grade pages | `grades.marks`, visibility fields | partial | Aggregate and server-backed CSV export surfaces improved; session reviewability side-effects now landed; remaining edge-case grading parity pending | Agent-01, Agent-04 | `#36`, `#44`, `#53`, `#66` |
+| Meteor publications (`withTracker`) | `useRealtimeCollection`, Socket.IO + shared change streams | `courses`, `sessions`, `questions`, `responses`, `grades` | partial | Channel auth/routing/reconnect hardening landed; runtime authz harness now CSRF-stable; load validation remains pending closure | Agent-07 | `#37`, `#42`, `#47`, `#68` |
 | Legacy collection compatibility (cross-cutting) | DB compatibility + parity scripts (`migration-db-compat-check`, `migration-db-parity-diff`) | `courses`, `sessions`, `questions`, `responses`, `grades`, `users`, `settings`, `images`, `authSessions` | partial | Tooling landed; explicit detection for auth-session/session-collection collision landed; must execute against sanitized backup baseline/candidate before pilot | Agent-07, Agent-08 | `#49`, `#50`, `#55` |
 | Meteor question type semantics (`MC=0, TF=1, SA=2, MS=3, NU=4`) | shared configs/types + client/server usage | `questions.type`, option handling | partial | Some flows still need final normalization checks | Agent-01, Agent-05 | `#41`, `#43` |
 | Legacy image storage and profile image flow | `/api/images`, image storage adapters, profile page | `images`, `users.profile.profileImage`, settings storage fields | partial | Ownership authz hardening landed; end-to-end parity + failure-mode tests pending | Agent-05, Agent-08 | `#46` |
@@ -170,13 +170,17 @@ Rebase protocol:
 | 2026-02-25 | `bdc94bf` | Agent-01/L8 | `npm run build && ./seed-mock-db.sh && QCLICKER_BASE_URL=http://localhost:3101 node scripts/migration-authz-integration.mjs` | pass | Hardened session/grade instructor routes with per-course management checks and outsider-professor authz regressions (`PR #58`). |
 | 2026-02-25 | `ad33077` | Agent-01/L8 | `npm run build && ./seed-mock-db.sh && QCLICKER_BASE_URL=http://localhost:3101 node scripts/migration-authz-integration.mjs` | pass | Hardened course-management instructor routes (course/group/video management) with per-course instructor checks and authz regressions (`PR #59`). |
 | 2026-02-25 | `6768bbc` | Agent-08/L7 | `QCLICKER_GATE_SKIP_BUILD=true QCLICKER_GATE_SKIP_RUNTIME=true QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true QCLICKER_LEGACY_BACKUP_DIR=... npm run test:migration-gate` | pass | Added legacy-backup stage support to unified gate runner and documented gate usage (`PR #60`). |
+| 2026-02-25 | `a7f54be` | Agent-02/04/08 | `npm run build && ./seed-mock-db.sh && PORT=3211 DISABLE_CSRF=true npm run start:new && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-authz && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-smoke` | pass | Added session reviewability parity endpoint + grade side-effects + client review flows + harness coverage (`PR #66`). |
+| 2026-02-25 | `1686274` | Agent-01 | `npm run build && PORT=3211 npm run start:new && curl http://localhost:3211/api/csrf-token` | pass | Fixed CSRF token generation path by wiring cookie-parser middleware (`PR #67`). |
+| 2026-02-25 | `a9753ab` | Agent-08 | `node --check scripts/migration-{smoke,authz-integration,realtime-authz,load-check}.mjs && ./seed-mock-db.sh && PORT=3211 npm run start:new && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-smoke && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-authz && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-realtime-authz` | pass | Stabilized migration harness cookie-jar handling for CSRF-enabled runs (`PR #68`). |
+| 2026-02-25 | `bfabb139` | Coordinator | `QCLICKER_BASE_URL=http://localhost:3211 QCLICKER_GATE_SKIP_BUILD=true npm run test:migration-gate` | partial | Smoke/authz/realtime-authz stages pass; load stage fails with high error-rate under current default workload profile (open L5/L8 item). |
 
 ## Risks and Blockers
 
 | Severity | Owner | Risk/Blocker | Mitigation | Target date |
 |---|---|---|---|---|
 | medium | Agent-01 | Residual cross-course edge-case exposure in non-core paths | Complete endpoint matrix review + authz integration assertions on latest `master` | 2026-02-28 |
-| medium | Agent-07 | Realtime churn/reconnect behavior under load still not fully evidenced | Run dedicated reconnect/load scenarios and capture p95/error metrics | 2026-02-28 |
+| high | Agent-07 | Load gate currently fails default scenario with high error-rate (rate-limit saturation) | Tune load profile + rate-limit strategy, then rerun `test:migration-load` and gate | 2026-02-28 |
 | medium | Agent-07/08 | DB compatibility/parity harnesses not yet executed on sanitized Meteor backup | Run `test:migration-db-compat` and `test:migration-db-parity` on staging backup + archive outputs | 2026-02-28 |
 | high | Agent-08 | Insufficient parity test depth for cutover confidence | Expand smoke + integration + e2e + manual checklist | 2026-03-02 |
 | medium | Agent-05 | Question type/option mismatch causes behavior drift | Normalize enum handling and option coercion | 2026-02-27 |
