@@ -15,8 +15,8 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Session/course results views | clean tables + controls parity | In Progress | results pages improved; final review/visibility parity checks pending |
 | CSV exports | session grades, course grades, group export, response export | In Progress | server-backed exports landed for groups, course grades, session grades, and session responses; legacy column/value ordering checks against Meteor still pending |
 | Realtime auth | authenticated and authorized subscribe channels | In Progress | socket auth bridge + channel auth errors + realtime authz harness landed |
-| Realtime delete updates | client receives relevant deletes | In Progress | wildcard delete relay landed; routing refinement pending |
+| Realtime delete updates | client receives relevant deletes | In Progress | parent-hint delete routing cache landed; pre-image/exact-route refinement pending |
 | Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters + owner-scoped image authz landed; parity validation pending |
 | Video/Jitsi | course/group room parity + help/clear semantics | In Progress | core endpoints exist; migration smoke now validates course/group connection, join/leave, help-toggle, and clear/reset flows; full Meteor behavior matrix still pending |
 | DB compatibility | string `_id`, collection/field compatibility | In Progress | `test:migration-db-compat` + `test:migration-db-parity` + `test:migration-legacy-backup` passed on local Meteor dump; explicit auth-session/session-collection collision detection added; CI/staging artifact evidence pending |
-| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke/authz/realtime-authz/load + unified `test:migration-gate` landed; gate supports legacy-backup stage; full Docker/CI evidence pending |
+| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke/authz/realtime-authz/load + unified `test:migration-gate` landed; gate/legacy-backup now emit JSON summaries; full Docker/CI evidence pending |

@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `bfabb139`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`
+- Baseline commit: `656443e4`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`, `#70`, `#71`, `#72`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -65,6 +65,14 @@
   - `npm run test:migration-gate` to run build/runtime checks
   - optional DB stages via `QCLICKER_GATE_INCLUDE_DB_COMPAT=true` and `QCLICKER_GATE_INCLUDE_DB_PARITY=true`
   - optional legacy backup stage via `QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true`
+- Load/perf gate stabilization milestone landed:
+  - authenticated requests are rate-limited by user id (fallback to IP) to avoid shared-IP saturation
+  - migration load harness now uses paced defaults and reports per-status error breakdown
+  - runtime gate (`smoke/authz/realtime-authz/load`) passes on latest `master`
+- Evidence artifact automation milestone landed:
+  - `test:migration-gate` writes JSON summary when `QCLICKER_GATE_OUTPUT` is set
+  - `test:migration-legacy-backup` writes JSON summary + compat/parity report paths
+  - docs/runbook now define artifact archival workflow for CI/staging pilot evidence
 - Reviewability parity milestone landed:
   - `PUT /api/sessions/:sessionId/reviewable` now supports Meteor-equivalent review toggle semantics
   - enabling review recalculates session grades; disabling review hides grades from students
@@ -85,9 +93,7 @@
   - full groups/video/Jitsi behavior parity
 - End-to-end parity verification is incomplete:
   - no latest full Docker smoke/integration/e2e run evidence on current `master`
-  - backup parity is now validated locally; CI/staging archival workflow still needs to be formalized
-- Load/perf gate baseline is now green with authenticated rate-limit keying + paced load harness defaults (`test:migration-gate` runtime stages pass on current head).
-- CI/staging evidence archival was manual; gate/legacy-backup summary artifacts were not emitted by orchestration scripts.
+  - backup parity is validated locally; CI/staging still needs to publish and retain the new JSON evidence artifacts per gate run
 
 ## 8-Lane Progress Matrix
 
@@ -97,10 +103,10 @@
 | L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
-| L5 | Realtime correctness + scale | 83% | PR `#37`, `#42`, `#47`; parent-hint delete routing cache landed | Run reconnect/churn verification at target concurrency and confirm no unauthorized channels |
+| L5 | Realtime correctness + scale | 85% | PR `#37`, `#42`, `#47`, `#72`; parent-hint delete routing cache landed | Run reconnect/churn verification at target concurrency and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
-| L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 92% | PR `#50`, `#57`, `#60`, `#68`, `#70`; smoke/authz/realtime-authz/load gates pass with CSRF enabled | Archive machine-readable gate/backup evidence in CI/staging and close final pilot checklist |
+| L7 | DB compatibility + parity fixtures | 84% | PR `#49`, `#55`, `#57`, `#71`; real backup restore/compat/parity run passes locally with summary artifacts | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
+| L8 | Integration/load/cutover ops | 94% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`; smoke/authz/realtime-authz/load gates pass with machine-readable summaries | Wire artifact publishing in CI/staging and close final pilot checklist |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -122,7 +128,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~91%** toward pilot-readiness.
+- Current migration completion: **~93%** toward pilot-readiness.
 - Remaining critical path: L6 parity closure + CI/staging archival evidence + final pilot checklist sign-off.
 
 ## References
@@ -135,6 +141,7 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch6.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch7.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch8.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch9.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`

@@ -44,8 +44,9 @@
 | `questions.insert` | `POST /api/questions` |
 | `questions.update` | `PUT /api/questions/:questionId` |
 | `questions.delete` | `DELETE /api/questions/:questionId` |
-| `questions.show/hide stats/correct/question` | Open parity gap |
-| `questions.copy/copyToSession/copyToLibrary` | Open parity gap |
+| `questions.show/hide stats/correct/question` | `PUT /api/questions/:questionId` (`sessionOptions.*` toggles used by run-session controls) |
+| `questions.copy/copyToLibrary` | `POST /api/questions/:questionId/copy` |
+| `questions.copyToSession` | `POST /api/sessions/:sessionId/questions/:questionId/copy` |
 
 ### Responses
 | Meteor method | New endpoint |
@@ -65,4 +66,5 @@
 | session grade export | `GET /api/grades/session/:sessionId/export` |
 
 ## Open parity work
-- session-question order/copy/remove operations
+- close remaining instructor run-session edge semantics
+- finalize L6 video/Jitsi edge-matrix parity
