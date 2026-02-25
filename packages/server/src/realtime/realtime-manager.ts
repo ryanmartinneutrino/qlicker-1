@@ -10,6 +10,8 @@ import { courseAccessForUser, isAdmin } from '../auth/course-access'
 // One SharedChangeStream per collection
 const streams: Record<string, SharedChangeStream> = {}
 
+type SubscriptionErrorCode = 'bad_request' | 'not_authenticated' | 'not_found' | 'forbidden'
+
 /** Extract authenticated user ID from socket session */
 function getUserIdFromSocket(socket: Socket): string | undefined {
   return (socket.request as { session?: { passport?: { user?: string } } }).session?.passport?.user
@@ -38,6 +40,15 @@ function sanitizeQuestionForStudent(question: Record<string, unknown>): Record<s
 function stripFullDocument(event: Record<string, unknown>): Record<string, unknown> {
   const { fullDocument: _omit, ...rest } = event
   return rest
+}
+
+function emitSubscriptionError(
+  socket: Socket,
+  event: string,
+  code: SubscriptionErrorCode,
+  message: string
+): void {
+  socket.emit('subscription:error', { event, code, message })
 }
 
 /**
@@ -120,18 +131,29 @@ export function setupRealtime(io: SocketIOServer): void {
      * without other students' IDs.
      */
     socket.on('subscribe:responses', async ({ questionId }: { questionId: string }) => {
-      if (!questionId) return
+      if (!questionId) {
+        emitSubscriptionError(socket, 'subscribe:responses', 'bad_request', 'questionId is required.')
+        return
+      }
 
       const user = await loadSocketUser(socket)
       if (!user) {
-        socket.emit('error', { message: 'Not authenticated.' })
+        emitSubscriptionError(
+          socket,
+          'subscribe:responses',
+          'not_authenticated',
+          'Authentication required.'
+        )
         return
       }
 
       const question = await getQuestions().findOne(
         { _id: questionId } as Parameters<ReturnType<typeof getQuestions>['findOne']>[0]
       )
-      if (!question) return
+      if (!question) {
+        emitSubscriptionError(socket, 'subscribe:responses', 'not_found', 'Question not found.')
+        return
+      }
 
       let sessionCourseId = question.courseId
       if (!sessionCourseId && question.sessionId) {
@@ -144,7 +166,7 @@ export function setupRealtime(io: SocketIOServer): void {
 
       const access = await courseAccessForUser(user, sessionCourseId)
       if (!access.canAccess && !isAdmin(user)) {
-        socket.emit('error', { message: 'Forbidden.' })
+        emitSubscriptionError(socket, 'subscribe:responses', 'forbidden', 'Forbidden.')
         return
       }
 
@@ -195,19 +217,36 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to session updates */
     socket.on('subscribe:session', async ({ sessionId }: { sessionId: string }) => {
-      if (!sessionId) return
+      if (!sessionId) {
+        emitSubscriptionError(socket, 'subscribe:session', 'bad_request', 'sessionId is required.')
+        return
+      }
 
       const user = await loadSocketUser(socket)
-      if (!user) return
+      if (!user) {
+        emitSubscriptionError(
+          socket,
+          'subscribe:session',
+          'not_authenticated',
+          'Authentication required.'
+        )
+        return
+      }
 
       const session = await getSessions().findOne(
         { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
         { projection: { courseId: 1 } }
       )
-      if (!session) return
+      if (!session) {
+        emitSubscriptionError(socket, 'subscribe:session', 'not_found', 'Session not found.')
+        return
+      }
 
       const access = await courseAccessForUser(user, session.courseId)
-      if (!access.canAccess && !isAdmin(user)) return
+      if (!access.canAccess && !isAdmin(user)) {
+        emitSubscriptionError(socket, 'subscribe:session', 'forbidden', 'Forbidden.')
+        return
+      }
 
       registerSubscription(`session:${sessionId}`, () =>
         streams.sessions.subscribe(`sessions:${sessionId}`, (event) => {
@@ -223,19 +262,36 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to question updates within a session */
     socket.on('subscribe:questions', async ({ sessionId }: { sessionId: string }) => {
-      if (!sessionId) return
+      if (!sessionId) {
+        emitSubscriptionError(socket, 'subscribe:questions', 'bad_request', 'sessionId is required.')
+        return
+      }
 
       const user = await loadSocketUser(socket)
-      if (!user) return
+      if (!user) {
+        emitSubscriptionError(
+          socket,
+          'subscribe:questions',
+          'not_authenticated',
+          'Authentication required.'
+        )
+        return
+      }
 
       const session = await getSessions().findOne(
         { _id: sessionId } as Parameters<ReturnType<typeof getSessions>['findOne']>[0],
         { projection: { courseId: 1 } }
       )
-      if (!session) return
+      if (!session) {
+        emitSubscriptionError(socket, 'subscribe:questions', 'not_found', 'Session not found.')
+        return
+      }
 
       const access = await courseAccessForUser(user, session.courseId)
-      if (!access.canAccess && !isAdmin(user)) return
+      if (!access.canAccess && !isAdmin(user)) {
+        emitSubscriptionError(socket, 'subscribe:questions', 'forbidden', 'Forbidden.')
+        return
+      }
 
       registerSubscription(`questions:session:${sessionId}`, () =>
         streams.questions.subscribe(`questions:session:${sessionId}`, async (event) => {
@@ -282,13 +338,27 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to question updates within a course */
     socket.on('subscribe:questions-course', async ({ courseId }: { courseId: string }) => {
-      if (!courseId) return
+      if (!courseId) {
+        emitSubscriptionError(socket, 'subscribe:questions-course', 'bad_request', 'courseId is required.')
+        return
+      }
 
       const user = await loadSocketUser(socket)
-      if (!user) return
+      if (!user) {
+        emitSubscriptionError(
+          socket,
+          'subscribe:questions-course',
+          'not_authenticated',
+          'Authentication required.'
+        )
+        return
+      }
 
       const access = await courseAccessForUser(user, courseId)
-      if (!access.canAccess && !isAdmin(user)) return
+      if (!access.canAccess && !isAdmin(user)) {
+        emitSubscriptionError(socket, 'subscribe:questions-course', 'forbidden', 'Forbidden.')
+        return
+      }
 
       registerSubscription(`questions:course:${courseId}`, () =>
         streams.questions.subscribe(`questions:course:${courseId}`, (event) => {
@@ -310,13 +380,27 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to session updates within a course */
     socket.on('subscribe:sessions', async ({ courseId }: { courseId: string }) => {
-      if (!courseId) return
+      if (!courseId) {
+        emitSubscriptionError(socket, 'subscribe:sessions', 'bad_request', 'courseId is required.')
+        return
+      }
 
       const user = await loadSocketUser(socket)
-      if (!user) return
+      if (!user) {
+        emitSubscriptionError(
+          socket,
+          'subscribe:sessions',
+          'not_authenticated',
+          'Authentication required.'
+        )
+        return
+      }
 
       const access = await courseAccessForUser(user, courseId)
-      if (!access.canAccess && !isAdmin(user)) return
+      if (!access.canAccess && !isAdmin(user)) {
+        emitSubscriptionError(socket, 'subscribe:sessions', 'forbidden', 'Forbidden.')
+        return
+      }
 
       registerSubscription(`sessions:course:${courseId}`, () =>
         streams.sessions.subscribe(`sessions:course:${courseId}`, (event) => {
@@ -332,11 +416,27 @@ export function setupRealtime(io: SocketIOServer): void {
 
     /** Subscribe to grade updates for a user */
     socket.on('subscribe:grades', async ({ userId: targetUserId }: { userId: string }) => {
+      if (!targetUserId) {
+        emitSubscriptionError(socket, 'subscribe:grades', 'bad_request', 'userId is required.')
+        return
+      }
+
       const user = await loadSocketUser(socket)
-      if (!user || !targetUserId) return
+      if (!user) {
+        emitSubscriptionError(
+          socket,
+          'subscribe:grades',
+          'not_authenticated',
+          'Authentication required.'
+        )
+        return
+      }
 
       const own = user._id === targetUserId
-      if (!own && !isAdmin(user)) return
+      if (!own && !isAdmin(user)) {
+        emitSubscriptionError(socket, 'subscribe:grades', 'forbidden', 'Forbidden.')
+        return
+      }
 
       registerSubscription(`grades:${targetUserId}`, () =>
         streams.grades.subscribe('grades:*', (event) => {

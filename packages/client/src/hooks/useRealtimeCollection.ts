@@ -102,8 +102,6 @@ export function useRealtimeCollection<T extends { _id?: string }>(
     if (!socket) return
     if (!enabled) return
 
-    socket.emit(subscribeEvent, payload)
-
     const upsertById = (rows: T[], next: T): T[] => {
       const nextId = next._id
       if (!nextId) return [...rows, next]
@@ -124,6 +122,10 @@ export function useRealtimeCollection<T extends { _id?: string }>(
       }, refetchDebounceMs)
     }
 
+    const subscribe = () => {
+      socket.emit(subscribeEvent, payload)
+    }
+
     const handler = (event: { operationType: string; fullDocument?: T; documentKey?: { _id: string } }) => {
       if (refetchOnChange) {
         scheduleRefetch()
@@ -140,9 +142,24 @@ export function useRealtimeCollection<T extends { _id?: string }>(
       }
     }
 
+    const handleReconnect = () => {
+      subscribe()
+      scheduleRefetch()
+    }
+
+    const handleSubscriptionError = (event: { event?: string; message?: string }) => {
+      if (event?.event && event.event !== subscribeEvent) return
+      setError(event?.message || 'Realtime subscription failed.')
+    }
+
+    subscribe()
     socket.on(changeEvent, handler)
+    socket.on('connect', handleReconnect)
+    socket.on('subscription:error', handleSubscriptionError)
     return () => {
       socket.off(changeEvent, handler)
+      socket.off('connect', handleReconnect)
+      socket.off('subscription:error', handleSubscriptionError)
       if (refetchTimerRef.current) {
         clearTimeout(refetchTimerRef.current)
         refetchTimerRef.current = null
