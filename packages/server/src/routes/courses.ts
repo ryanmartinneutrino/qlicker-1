@@ -3,12 +3,7 @@ import { generateStringId } from '../utils/id'
 import { getCourses } from '../collections/courses'
 import { getSettings } from '../collections/settings'
 import { getUsers } from '../collections/users'
-import {
-  requireAuth,
-  requireCourseMember,
-  requireInstructor,
-  requireProfOrAdmin,
-} from '../auth/middleware'
+import { requireAuth, requireInstructor, requireProfOrAdmin } from '../auth/middleware'
 import type { Course, Group, GroupCategory, User, VideoOptions } from '@qlicker/shared'
 import { courseSchema, UserRole } from '@qlicker/shared'
 
@@ -186,7 +181,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 })
 
 /** GET /api/courses/:courseId */
-router.get('/:courseId', requireAuth, requireCourseMember, async (req, res, next) => {
+router.get('/:courseId', requireAuth, async (req, res, next) => {
   try {
     const user = req.user as User
     const courses = getCourses()
