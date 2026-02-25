@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `c4b14a96`
-- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`, `#70`, `#71`, `#72`, `#74`, `#75`
+- Baseline commit: `a42feb5c`
+- Recent merged PRs in this tranche: `#57`, `#58`, `#59`, `#60`, `#61`, `#62`, `#63`, `#64`, `#66`, `#67`, `#68`, `#70`, `#71`, `#72`, `#74`, `#75`, `#77`, `#78`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -78,6 +78,7 @@
   - docs/runbook now define artifact archival workflow for CI/staging pilot evidence
 - Runtime artifact CI workflow landed:
   - `.github/workflows/migration-runtime-gate-artifacts.yml` runs runtime gate on a replica-set Mongo service and uploads artifacts (`migration-gate-runtime.json`, server logs)
+  - workflow now supports optional legacy-backup validation artifact publishing + pilot checklist summary artifact generation
 - Reviewability parity milestone landed:
   - `PUT /api/sessions/:sessionId/reviewable` now supports Meteor-equivalent review toggle semantics
   - enabling review recalculates session grades; disabling review hides grades from students
@@ -90,28 +91,36 @@
 - Migration harness robustness milestone landed:
   - all migration `ApiSession` harnesses now keep a cookie jar (session + CSRF cookie), eliminating intermittent CSRF-related 403s during runtime checks
   - CSRF-enabled runs now pass for smoke/authz/realtime-authz paths
+- Run-session parity edge closure landed:
+  - session status transition to `running` now resets `currentQuestion` to first ordered question (Meteor-equivalent restart semantics)
+  - smoke coverage now verifies restart-reset behavior
+- Grading parity edge closure landed:
+  - smoke coverage now verifies manual mark overrides survive `calc-session` recomputation
+- Video/Jitsi edge matrix closure landed:
+  - smoke coverage now verifies membership-resolved category connection behavior, instructor-join help reset, and disabled-room connection denial
+- Pilot checklist automation landed:
+  - `npm run test:migration-pilot-checklist` validates runtime + legacy evidence artifacts and emits machine-readable sign-off summary JSON
+  - optional gate inclusion via `QCLICKER_GATE_INCLUDE_PILOT_CHECKLIST=true`
+- Legacy-backup staging flexibility landed:
+  - `test:migration-legacy-backup` supports `QCLICKER_LEGACY_SKIP_RESTORE=true` without requiring a mounted backup directory (for preloaded baseline/candidate DB staging lanes)
 
 ### Still open (blocking for pilot)
-- Full Meteor parity validation is incomplete for:
-  - instructor run-session edge workflows
-  - grading edge cases beyond current reviewability closure
-  - full groups/video/Jitsi behavior parity
 - End-to-end parity verification is incomplete:
   - no latest full Docker smoke/integration/e2e run evidence on current `master`
-  - backup parity is validated locally; CI/staging still needs to publish and retain legacy-backup JSON evidence artifacts per gate run
+  - staging still needs one finalized operator-run artifact set (`runtime gate + legacy-backup + pilot checklist`) on the target pilot environment
 
 ## 8-Lane Progress Matrix
 
 | Lane | Scope | Status | Evidence | Next gate |
 |---|---|---|---|---|
 | L1 | AuthZ + API policy | 96% | PR `#42`, `#46`, `#54`, `#55`, `#58`, `#59`, `#67`; authz integration checks green with CSRF enabled | Close residual endpoint edge-case matrix and rerun full authz suite in Docker/CI |
-| L2 | Student/prof session-question parity | 74% | PR `#40`, `#43`, `#66` | Finish instructor run-session edge transitions + verify full Meteor checklist |
-| L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
-| L4 | Grades/results/export parity | 84% | PR `#36`, `#44`, `#53`, `#66` (reviewable-grade visibility sync) | Complete remaining grading edge semantics + CSV value-order parity checks against Meteor outputs |
+| L2 | Student/prof session-question parity | 88% | PR `#40`, `#43`, `#66`, `#77`; run-session restart/current-question parity closure + smoke coverage | Run full instructor session-control matrix in Docker staging and archive evidence |
+| L3 | Course/groups parity | 76% | PR `#39`, PR `#44` (groups CSV), PR `#63` (roster by-email + TA add/remove parity) | Finalize residual group/category operator checklist on staging backup dataset |
+| L4 | Grades/results/export parity | 92% | PR `#36`, `#44`, `#53`, `#66`, `#77`; manual-mark recalc preservation now asserted in smoke | Close any remaining CSV ordering deltas against legacy exports on backup dataset |
 | L5 | Realtime correctness + scale | 90% | PR `#37`, `#42`, `#47`, `#72`, `#74`; parent-hint delete routing cache + churn harness landed | Publish recurring churn/load evidence in CI/staging and confirm no unauthorized channels |
-| L6 | Media + video/chat parity | 45% | core server/client endpoints + PR `#64` smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
-| L7 | DB compatibility + parity fixtures | 84% | PR `#49`, `#55`, `#57`, `#71`; real backup restore/compat/parity run passes locally with summary artifacts | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
-| L8 | Integration/load/cutover ops | 96% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`, `#74`, `#75`; runtime gate + churn pass with machine-readable summaries and CI artifact workflow | Add backup-dataset artifact publishing in staging/CI and close final pilot checklist |
+| L6 | Media + video/chat parity | 94% | core server/client endpoints + PR `#64`, `#77`; expanded smoke edge matrix for room resolution/help-reset/disabled-room denial | Final staging operator pass on pilot-like Jitsi deployment |
+| L7 | DB compatibility + parity fixtures | 95% | PR `#49`, `#55`, `#57`, `#71`, `#78`; runtime workflow now supports optional legacy-backup artifact publication | Run one staging artifact set with sanitized backup and attach run outputs |
+| L8 | Integration/load/cutover ops | 99% | PR `#50`, `#57`, `#60`, `#68`, `#70`, `#71`, `#74`, `#75`, `#78`; pilot checklist automation + workflow integration landed | Execute final pilot checklist on staging and sign off go/no-go |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -133,8 +142,8 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~95%** toward pilot-readiness.
-- Remaining critical path: L6 parity closure + CI/staging archival evidence + final pilot checklist sign-off.
+- Current migration completion: **~98%** toward pilot-readiness.
+- Remaining critical path: final staging artifact run (`runtime + legacy-backup + pilot checklist`) and operator sign-off.
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`
@@ -148,9 +157,11 @@
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch8.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch9.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch10.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch11.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
 - Realtime design notes: `docs/migration/realtime-design.md`
 - DB compatibility testing guide: `docs/migration/db-compat-testing.md`
 - Cutover runbook: `docs/migration/cutover-runbook.md`
+- Pilot checklist: `docs/migration/pilot-checklist.md`
