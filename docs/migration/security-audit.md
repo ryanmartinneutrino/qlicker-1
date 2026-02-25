@@ -8,18 +8,15 @@
 - socket subscription auth depended on missing session bridge
 
 ## Fixes implemented
-- Added centralized guards:
-  - `requireCourseMember`
-  - `requireCourseInstructorOrAdmin`
-  - `requireSessionMemberAccess`
-  - `requireQuestionAccess`
-- Applied guards and membership checks in key routes:
-  - courses/sessions/questions/responses/grades read/write paths
+- Added shared course-access helpers and applied membership/role checks across core routes:
+  - `courses/sessions/questions/responses/grades` read/write paths
+  - instructor/admin checks for course-managed mutations
+  - student-only restrictions for response submission where applicable
 - Restricted broad list reads for non-admin users to membership-scoped data.
 - Hardened question mutation to owner/instructor/admin semantics.
 - Added Socket.IO auth bridging with express-session + passport.
-- Added subscription-level authorization checks and standardized `subscription:error` events.
-- Added authorization regression checks to migration smoke tests.
+- Added subscription-level authorization checks on realtime `subscribe:*` channels.
+- Added authorization regression checks to migration smoke and integration scripts.
 
 ## Remaining security tasks
 - complete route-level audit for every endpoint and add table-driven policy tests
