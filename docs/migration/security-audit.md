@@ -12,6 +12,10 @@
   - `courses/sessions/questions/responses/grades` read/write paths
   - instructor/admin checks for course-managed mutations
   - student-only restrictions for response submission where applicable
+- Added explicit per-course manager checks on instructor-only mutation/export routes:
+  - `sessions`: create/update/delete/status/current/reorder/copy/extension-candidates
+  - `grades`: calc/update/visibility/session-export endpoints
+  - `courses`: management, roster/student removal, groups/category CRUD, instructor video-chat control endpoints
 - Restricted broad list reads for non-admin users to membership-scoped data.
 - Hardened question mutation to owner/instructor/admin semantics.
 - Hardened image APIs:
@@ -20,6 +24,7 @@
 - Added Socket.IO auth bridging with express-session + passport.
 - Added subscription-level authorization checks on realtime `subscribe:*` channels with a stable `subscription:error` payload contract.
 - Added authorization regression checks to migration smoke and integration scripts.
+- Added outsider-professor regression checks to ensure non-owner professors cannot manage unrelated course/session/grade resources.
 - Normalized question-library session-detached semantics (`sessionId` missing/null) to avoid hidden-access/parity drift from legacy documents.
 
 ## Remaining security tasks
@@ -38,4 +43,8 @@
   - `GET /api/grades/course/:courseId/export`
   - `GET /api/grades/session/:sessionId/export`
   - `GET /api/responses/session/:sessionId/export`
+- `scripts/migration-authz-integration.mjs` now verifies outsider-professor denial on instructor-only management endpoints for:
+  - `courses` (`PUT/DELETE`, enrollment-code regenerate, roster, group/category manage, video-chat toggle)
+  - `sessions` (`status`, question attach/reorder, extension candidates)
+  - `grades` (`calc-session`, session export, grade visibility/update)
 - `scripts/migration-realtime-authz.mjs` verifies unauthorized and unauthenticated realtime subscribe failures.
