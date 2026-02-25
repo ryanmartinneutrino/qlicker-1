@@ -47,4 +47,8 @@
   - `courses` (`PUT/DELETE`, enrollment-code regenerate, roster, group/category manage, video-chat toggle)
   - `sessions` (`status`, question attach/reorder, extension candidates)
   - `grades` (`calc-session`, session export, grade visibility/update)
-- `scripts/migration-realtime-authz.mjs` verifies unauthorized and unauthenticated realtime subscribe failures.
+- `scripts/migration-realtime-authz.mjs` now verifies realtime subscribe authz/error contracts across all `subscribe:*` channels:
+  - outsider `forbidden`
+  - anonymous `not_authenticated`
+  - missing payload `bad_request`
+  - missing resources `not_found` where applicable
