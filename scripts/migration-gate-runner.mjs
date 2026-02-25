@@ -58,6 +58,7 @@ async function run() {
   const includeDbCompat = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_COMPAT, false)
   const includeDbParity = toBool(process.env.QCLICKER_GATE_INCLUDE_DB_PARITY, false)
   const includeLegacyBackup = toBool(process.env.QCLICKER_GATE_INCLUDE_LEGACY_BACKUP, false)
+  const includePilotChecklist = toBool(process.env.QCLICKER_GATE_INCLUDE_PILOT_CHECKLIST, false)
   const continueOnError = toBool(process.env.QCLICKER_GATE_CONTINUE_ON_ERROR, false)
   const summaryOutput = process.env.QCLICKER_GATE_OUTPUT || ''
   const summaryLabel = process.env.QCLICKER_GATE_LABEL || 'migration-gate'
@@ -88,6 +89,10 @@ async function run() {
 
   if (includeLegacyBackup) {
     plan.push({ key: 'legacy-backup', command: 'npm run test:migration-legacy-backup' })
+  }
+
+  if (includePilotChecklist) {
+    plan.push({ key: 'pilot-checklist', command: 'npm run test:migration-pilot-checklist' })
   }
 
   if (plan.length < 1) {
@@ -128,6 +133,7 @@ async function run() {
       includeDbCompat,
       includeDbParity,
       includeLegacyBackup,
+      includePilotChecklist,
       continueOnError,
     },
     plannedSteps: plan.map((step) => ({ key: step.key, command: step.command })),

@@ -8,6 +8,36 @@ on:
         required: true
         default: true
         type: boolean
+      include_legacy_backup:
+        description: Run legacy-backup validation and publish backup parity artifacts.
+        required: true
+        default: false
+        type: boolean
+      legacy_backup_dir:
+        description: Path to the legacy mongodump backup root (required unless legacy_skip_restore=true).
+        required: false
+        default: ''
+        type: string
+      legacy_backup_namespace:
+        description: Mongo namespace name inside the backup directory.
+        required: false
+        default: qlickerdb
+        type: string
+      legacy_skip_restore:
+        description: Skip mongorestore and validate against preloaded baseline/candidate databases.
+        required: true
+        default: false
+        type: boolean
+      legacy_baseline_db:
+        description: Baseline DB name for legacy validation.
+        required: false
+        default: qlicker_legacy_backup
+        type: string
+      legacy_candidate_db:
+        description: Candidate DB name for legacy validation.
+        required: false
+        default: qlicker_candidate
+        type: string
 
 jobs:
   runtime-gate:
@@ -136,6 +166,28 @@ jobs:
           QCLICKER_REALTIME_CHURN_BURST_SIZE: "3"
           QCLICKER_GATE_OUTPUT: artifacts/migration-gate-runtime.json
         run: npm run test:migration-gate
+
+      - name: Run legacy-backup validation
+        if: ${{ inputs.include_legacy_backup }}
+        env:
+          QCLICKER_LEGACY_BACKUP_DIR: ${{ inputs.legacy_backup_dir }}
+          QCLICKER_LEGACY_BACKUP_NAMESPACE: ${{ inputs.legacy_backup_namespace }}
+          QCLICKER_LEGACY_SKIP_RESTORE: ${{ inputs.legacy_skip_restore }}
+          QCLICKER_LEGACY_BASELINE_DB: ${{ inputs.legacy_baseline_db }}
+          QCLICKER_LEGACY_CANDIDATE_DB: ${{ inputs.legacy_candidate_db }}
+          QCLICKER_LEGACY_MONGO_URI: mongodb://localhost:27017/?directConnection=true
+          QCLICKER_LEGACY_ARTIFACT_DIR: artifacts
+          QCLICKER_LEGACY_SUMMARY_OUTPUT: artifacts/legacy-backup-summary.json
+        run: npm run test:migration-legacy-backup
+
+      - name: Build pilot checklist summary
+        if: ${{ inputs.include_legacy_backup }}
+        env:
+          QCLICKER_PILOT_RUNTIME_GATE_JSON: artifacts/migration-gate-runtime.json
+          QCLICKER_PILOT_LEGACY_SUMMARY_JSON: artifacts/legacy-backup-summary.json
+          QCLICKER_PILOT_REQUIRE_REALTIME_CHURN: ${{ inputs.include_realtime_churn }}
+          QCLICKER_PILOT_OUTPUT: artifacts/pilot-checklist-summary.json
+        run: npm run test:migration-pilot-checklist
 
       - name: Stop server
         if: always()

@@ -83,8 +83,10 @@ async function run() {
   const strictCompat = toBool(process.env.QCLICKER_DB_COMPAT_STRICT, false)
   const failOnDiff = toBool(process.env.QCLICKER_PARITY_FAIL_ON_DIFF, false)
 
-  await assertPathExists(backupDir, 'Legacy backup directory')
-  await assertPathExists(path.join(backupDir, backupNamespace), 'Legacy backup namespace directory')
+  if (!skipRestore) {
+    await assertPathExists(backupDir, 'Legacy backup directory')
+    await assertPathExists(path.join(backupDir, backupNamespace), 'Legacy backup namespace directory')
+  }
 
   const baselineCompatOutput = path.join(artifactDir, `db-compat-${baselineDb}.json`)
   const candidateCompatOutput = path.join(artifactDir, `db-compat-${candidateDb}.json`)

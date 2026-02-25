@@ -106,6 +106,10 @@ npm run test:migration-gate
   - compatibility reports for baseline/candidate DBs
   - parity diff report
   - a summary JSON (default: `<artifactDir>/legacy-backup-summary-<baseline>-vs-<candidate>.json`, overridable via `QCLICKER_LEGACY_SUMMARY_OUTPUT`)
+- `test:migration-pilot-checklist` writes a pilot sign-off summary when:
+  - `QCLICKER_PILOT_RUNTIME_GATE_JSON` points to runtime gate summary JSON
+  - `QCLICKER_PILOT_LEGACY_SUMMARY_JSON` points to legacy-backup summary JSON
+  - output path is set via `QCLICKER_PILOT_OUTPUT` (defaults near runtime summary)
 - Archive these JSON files in CI/staging for pilot go/no-go evidence.
 
 ## 6. GitHub Actions runtime artifact workflow
@@ -116,8 +120,30 @@ npm run test:migration-gate
   - builds workspaces
   - seeds migration dataset
   - runs runtime migration gate with artifact output
-  - uploads `artifacts/` (including `migration-gate-runtime.json` and server logs)
-- Toggle churn stage at dispatch time via `include_realtime_churn` input.
+  - optionally runs legacy-backup validation and pilot checklist summary generation
+  - uploads `artifacts/` (including runtime gate JSON, server logs, and optional legacy/pilot summaries)
+- Dispatch inputs:
+  - `include_realtime_churn`: include realtime churn stage in runtime gate.
+  - `include_legacy_backup`: run legacy-backup compat/parity validator.
+  - `legacy_backup_dir`: path to mounted backup (required unless `legacy_skip_restore=true`).
+  - `legacy_skip_restore`: skip restore and validate against preloaded baseline/candidate DBs.
+  - `legacy_backup_namespace`, `legacy_baseline_db`, `legacy_candidate_db`: override default names.
+
+Example local orchestration with explicit pilot checklist artifact:
+
+```bash
+QCLICKER_GATE_SKIP_BUILD=true \
+QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true \
+QCLICKER_GATE_INCLUDE_PILOT_CHECKLIST=true \
+QCLICKER_GATE_OUTPUT=artifacts/migration-gate.json \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
+QCLICKER_LEGACY_SUMMARY_OUTPUT=artifacts/legacy-backup-summary.json \
+QCLICKER_PILOT_RUNTIME_GATE_JSON=artifacts/migration-gate.json \
+QCLICKER_PILOT_LEGACY_SUMMARY_JSON=artifacts/legacy-backup-summary.json \
+QCLICKER_PILOT_OUTPUT=artifacts/pilot-checklist-summary.json \
+npm run test:migration-gate
+```
 
 ## Notes
 - `test:migration-db-compat` is read-only and checks collection presence, string `_id` compatibility, and key field-type invariants.
