@@ -14,6 +14,7 @@ import { connectDB } from './db'
 import { setupPassport } from './auth/setup'
 import { setupRealtime } from './realtime/realtime-manager'
 import { generalLimiter } from './middleware/rate-limit'
+import { initAllCollections } from './collections/indexes'
 
 import authRouter from './routes/auth'
 import coursesRouter from './routes/courses'
@@ -25,7 +26,6 @@ import imagesRouter from './routes/images'
 import settingsRouter from './routes/settings'
 import usersRouter from './routes/users'
 import { resolveUploadsDir } from './utils/image-storage'
-import { initAllCollections } from './collections/indexes'
 
 const PORT = process.env.PORT ? (parseInt(process.env.PORT, 10) || 3001) : 3001
 const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/qlicker'
@@ -40,8 +40,6 @@ const CSRF_ENABLED = process.env.DISABLE_CSRF !== 'true'
 async function main() {
   // 1. Connect to MongoDB
   await connectDB(MONGO_URL)
-
-  // 1b. Ensure indexes for all collections
   await initAllCollections()
 
   // 2. Create Express app
@@ -58,20 +56,19 @@ async function main() {
   app.use('/uploads', express.static(uploadsDir))
 
   // 4. Session
-  app.use(
-    session({
-      secret: SESSION_SECRET,
-      resave: false,
-      saveUninitialized: false,
-      store: MongoStore.create({ mongoUrl: MONGO_URL }),
-      cookie: {
-        secure: COOKIE_SECURE,
-        httpOnly: true,
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      },
-    })
-  )
+  const sessionMiddleware = session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({ mongoUrl: MONGO_URL }),
+    cookie: {
+      secure: COOKIE_SECURE,
+      httpOnly: true,
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    },
+  })
+  app.use(sessionMiddleware)
 
   // 5. Passport authentication
   setupPassport()
@@ -129,6 +126,14 @@ async function main() {
   const io = new SocketIOServer(httpServer, {
     cors: { origin: ROOT_URL, credentials: true },
   })
+
+  // Share Express session + Passport auth state with Socket.IO connections.
+  const wrap = (middleware: (req: unknown, res: unknown, next: (err?: Error) => void) => void) =>
+    (socket: { request: unknown }, next: (err?: Error) => void) =>
+      middleware(socket.request, {} as unknown, next)
+  io.use(wrap(sessionMiddleware as unknown as (req: unknown, res: unknown, next: (err?: Error) => void) => void) as unknown as Parameters<typeof io.use>[0])
+  io.use(wrap(passport.initialize() as unknown as (req: unknown, res: unknown, next: (err?: Error) => void) => void) as unknown as Parameters<typeof io.use>[0])
+  io.use(wrap(passport.session() as unknown as (req: unknown, res: unknown, next: (err?: Error) => void) => void) as unknown as Parameters<typeof io.use>[0])
   setupRealtime(io)
 
   httpServer.listen(PORT, () => {
