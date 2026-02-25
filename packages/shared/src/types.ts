@@ -1,4 +1,4 @@
-import { QuestionType } from './configs'
+import { QuestionType, SessionStatus } from './configs'
 
 // Shared TypeScript interfaces for all Qlicker collections.
 // Migrated from the *Pattern objects in imports/api/*.js
@@ -114,7 +114,7 @@ export interface Session {
   name: string
   description: string
   courseId: string
-  status: string
+  status: SessionStatus
   quiz: boolean
   practiceQuiz?: boolean
   date?: Date | null
