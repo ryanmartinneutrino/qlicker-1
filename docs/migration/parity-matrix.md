@@ -5,7 +5,7 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Area | Legacy Meteor behavior | New stack status | Validation source |
 |---|---|---|---|
 | Auth login/register/reset | Shared bcrypt + role-based auth | Done | smoke + build |
-| Course membership isolation | Course/session/question reads constrained by membership | In Progress | route hardening landed, question detached-session normalization landed, and non-course session docs are filtered; broader endpoint sweep pending |
+| Course membership isolation | Course/session/question reads constrained by membership | In Progress | route hardening landed, question detached-session normalization landed, non-course session docs are filtered, and instructor mutation guards were expanded for courses/sessions/grades; broader endpoint sweep pending |
 | Interactive session (student) | One live question, reactive current question | In Progress | realtime session subscribe + response submit landed |
 | Quiz flow | All questions, deadline/extensions, submit lock | In Progress | submit path exists; full UX parity pending |
 | Manage session question workflow | attach/reorder/remove/copy | In Progress | session question API + management UI landed; edge parity checks pending |
@@ -18,5 +18,5 @@ Legend: `Done` = implemented and validated, `In Progress` = partially implemente
 | Realtime delete updates | client receives relevant deletes | In Progress | wildcard delete relay landed; routing refinement pending |
 | Image upload/storage | local/S3/Azure adapters, profile lifecycle | In Progress | adapters + owner-scoped image authz landed; parity validation pending |
 | Video/Jitsi | course/group room parity + help/clear semantics | In Progress | core endpoints exist; parity validation pending |
-| DB compatibility | string `_id`, collection/field compatibility | In Progress | `test:migration-db-compat` + `test:migration-db-parity` harnesses landed; explicit auth-session/session-collection collision detection added; backup staging execution pending |
-| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke/authz/realtime-authz/load + unified `test:migration-gate` landed; full Docker/CI evidence pending |
+| DB compatibility | string `_id`, collection/field compatibility | In Progress | `test:migration-db-compat` + `test:migration-db-parity` + `test:migration-legacy-backup` passed on local Meteor dump; explicit auth-session/session-collection collision detection added; CI/staging artifact evidence pending |
+| Integration parity tests | multi-role end-to-end parity suite | In Progress | smoke/authz/realtime-authz/load + unified `test:migration-gate` landed; gate supports legacy-backup stage; full Docker/CI evidence pending |

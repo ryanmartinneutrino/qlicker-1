@@ -166,6 +166,10 @@ Rebase protocol:
 | 2026-02-25 | `2b43ca1` | Agent-04/L1 | `npm run build && node --check scripts/migration-authz-integration.mjs` | pass | Added server-backed course/session/response CSV exports + UI wiring + export authz checks (`PR #53`). |
 | 2026-02-25 | `de2e3fd` | Agent-01/L8 | `npm run build && QCLICKER_BASE_URL=http://localhost:3211 npm run test:migration-authz` | pass | Fixed question-library detached session null/missing handling; normalized temp-course authz harness setup (`PR #54`). |
 | 2026-02-25 | `6347321` | Agent-01/L7 | `npm run build && npm run test:migration-db-compat` | pass/fail (expected) | Separated auth sessions into `authSessions`; db compat now emits explicit `sessions._collection` collision errors for polluted DBs (`PR #55`). |
+| 2026-02-25 | `4d7a9a8` | Agent-07 | `npm run build && QCLICKER_LEGACY_BACKUP_DIR=... npm run test:migration-legacy-backup` | pass | Added automated local backup restore+compat+parity workflow and ignore rule for `legacydb/` (`PR #57`). |
+| 2026-02-25 | `bdc94bf` | Agent-01/L8 | `npm run build && ./seed-mock-db.sh && QCLICKER_BASE_URL=http://localhost:3101 node scripts/migration-authz-integration.mjs` | pass | Hardened session/grade instructor routes with per-course management checks and outsider-professor authz regressions (`PR #58`). |
+| 2026-02-25 | `ad33077` | Agent-01/L8 | `npm run build && ./seed-mock-db.sh && QCLICKER_BASE_URL=http://localhost:3101 node scripts/migration-authz-integration.mjs` | pass | Hardened course-management instructor routes (course/group/video management) with per-course instructor checks and authz regressions (`PR #59`). |
+| 2026-02-25 | `6768bbc` | Agent-08/L7 | `QCLICKER_GATE_SKIP_BUILD=true QCLICKER_GATE_SKIP_RUNTIME=true QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true QCLICKER_LEGACY_BACKUP_DIR=... npm run test:migration-gate` | pass | Added legacy-backup stage support to unified gate runner and documented gate usage (`PR #60`). |
 
 ## Risks and Blockers
 
