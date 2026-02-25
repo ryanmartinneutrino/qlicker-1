@@ -50,6 +50,10 @@
   - outsider-professor denied for student/instructor roster mutations
   - add student by email -> promote to instructor by email -> remove instructor flow verified
   - owner/self instructor-removal safeguards verified
+- Video/chat parity validation expanded in smoke coverage:
+  - course-level connection + join/leave flow
+  - category/group room resolution checks
+  - group help-toggle and instructor clear/reset semantics
 - DB-readiness tooling milestone landed:
   - `npm run test:migration-db-compat` (read-only compatibility audit)
   - `npm run test:migration-db-parity` (baseline-vs-candidate DB diff harness)
@@ -80,7 +84,7 @@
 | L3 | Course/groups parity | 72% | PR `#39`, PR `#44` (groups CSV), lane `migration/lane-03-roster-email-parity` (roster by-email + TA add/remove parity) | Finalize remaining group/category edge semantics and parity tests |
 | L4 | Grades/results/export parity | 76% | PR `#36`, `#44`, `#53` | Complete remaining grade/review visibility edge semantics + CSV value-order parity checks against Meteor outputs |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
-| L6 | Media + video/chat parity | 35% | partial server/client support | Finish Jitsi/group room behavior and cleanup parity |
+| L6 | Media + video/chat parity | 45% | core server/client endpoints + smoke validation for join/leave/help/clear behavior | Finish remaining Jitsi/group room edge behavior and cleanup parity |
 | L7 | DB compatibility + parity fixtures | 80% | PR `#49`, `#55`, `#57`; real backup restore/compat/parity run passes locally | Add CI/staging artifact archival + backup-dataset parity checklist sign-off |
 | L8 | Integration/load/cutover ops | 78% | PR `#50`, `#57`, `#60`; gate runner now supports legacy-backup stage | Run full gate in Docker/CI and archive evidence for pilot decision |
 
@@ -104,7 +108,7 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~85%** toward pilot-readiness.
+- Current migration completion: **~86%** toward pilot-readiness.
 - Remaining critical path: L6 + L7 + L8 validation closure.
 
 ## References

@@ -339,18 +339,6 @@ async function run() {
   )
   const createdCourseQuestions = await prof.request('GET', `/questions?courseId=${createdCourse._id}`)
   assert(!createdCourseQuestions.some((q) => q._id === copiedQuestionA._id), 'Deleted session copy still appears in course list.')
-  const deletedSession = await prof.request('DELETE', `/sessions/${createdSession._id}`)
-  assert(deletedSession.success === true, 'Session delete endpoint did not report success.')
-  const createdCourseSessionsAfterDelete = await prof.request('GET', `/sessions?courseId=${createdCourse._id}`)
-  assert(
-    !createdCourseSessionsAfterDelete.some((entry) => entry._id === createdSession._id),
-    'Deleted session still appears in course session list.'
-  )
-  const createdCourseDocAfterDelete = await prof.request('GET', `/courses/${createdCourse._id}`)
-  assert(
-    !(createdCourseDocAfterDelete.sessions || []).includes(createdSession._id),
-    'Deleted session id still appears in course.sessions.'
-  )
 
   const runningSession = sessions.find((entry) => !entry.quiz && entry.status === 'running')
   if (!runningSession) throw new Error('Expected seeded running interactive session.')
@@ -491,6 +479,18 @@ async function run() {
     { expectStatus: 403 }
   )
   await prof.request('DELETE', `/questions/${outsiderQuestion._id}`)
+  const deletedSession = await prof.request('DELETE', `/sessions/${createdSession._id}`)
+  assert(deletedSession.success === true, 'Session delete endpoint did not report success.')
+  const createdCourseSessionsAfterDelete = await prof.request('GET', `/sessions?courseId=${createdCourse._id}`)
+  assert(
+    !createdCourseSessionsAfterDelete.some((entry) => entry._id === createdSession._id),
+    'Deleted session still appears in course session list.'
+  )
+  const createdCourseDocAfterDelete = await prof.request('GET', `/courses/${createdCourse._id}`)
+  assert(
+    !(createdCourseDocAfterDelete.sessions || []).includes(createdSession._id),
+    'Deleted session id still appears in course.sessions.'
+  )
 
   const quizSession = sessions.find((s) => s.quiz)
   if (!quizSession) throw new Error('Seeded quiz session not found.')
@@ -552,6 +552,99 @@ async function run() {
   if (!Object.prototype.hasOwnProperty.call(videoConfig, 'enabled')) {
     throw new Error('Video config endpoint missing expected shape.')
   }
+
+  const videoCategoryName = `SmokeVideo-${Date.now()}`
+  const videoCategoryCreate = await prof.request('POST', `/courses/${course._id}/groups/categories`, {
+    categoryName: videoCategoryName,
+    nGroups: 2,
+  })
+  const videoCategory = (videoCategoryCreate.groupCategories || []).find(
+    (entry) => entry.categoryName === videoCategoryName
+  )
+  assert(videoCategory, 'Video test category should be created.')
+  const groupOneNumber = Number(videoCategory.groups?.[0]?.groupNumber || 0)
+  const groupTwoNumber = Number(videoCategory.groups?.[1]?.groupNumber || 0)
+  assert(groupOneNumber > 0 && groupTwoNumber > 0, 'Video test groups should exist.')
+
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/groups/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/students/${studentUser._id}/toggle`,
+    {}
+  )
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/groups/categories/${videoCategory.categoryNumber}/groups/${groupTwoNumber}/students/${student2User._id}/toggle`,
+    {}
+  )
+
+  await prof.request('POST', `/courses/${course._id}/video-chat/toggle`, { enabled: true })
+  const courseVideoConnection = await student.request('GET', `/courses/${course._id}/video-chat/connection`)
+  assert(courseVideoConnection?.connectionInfo?.options?.roomName, 'Course video connection payload missing roomName.')
+  await student.request('POST', `/courses/${course._id}/video-chat/join`, {})
+  await student.request('POST', `/courses/${course._id}/video-chat/leave`, {})
+
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/toggle`,
+    { enabled: true }
+  )
+  const categoryVideoConnection = await student.request(
+    'GET',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/connection`
+  )
+  assert(
+    Number(categoryVideoConnection?.connectionInfo?.groupNumber) === groupOneNumber,
+    'Student should resolve to assigned group video room.'
+  )
+
+  await student.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/join`,
+    {}
+  )
+  await student.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupTwoNumber}/help/toggle`,
+    {},
+    { expectStatus: 403 }
+  )
+  const helpToggled = await student.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/help/toggle`,
+    {}
+  )
+  const helpCategory = (helpToggled.groupCategories || []).find(
+    (entry) => Number(entry.categoryNumber) === Number(videoCategory.categoryNumber)
+  )
+  const helpGroup = (helpCategory?.groups || []).find((entry) => Number(entry.groupNumber) === groupOneNumber)
+  assert(helpGroup?.helpVideoChat === true, 'Group help flag should be enabled after student toggle.')
+
+  const clearedGroup = await prof.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/clear`,
+    {}
+  )
+  const clearedCategory = (clearedGroup.groupCategories || []).find(
+    (entry) => Number(entry.categoryNumber) === Number(videoCategory.categoryNumber)
+  )
+  const clearedGroupState = (clearedCategory?.groups || []).find(
+    (entry) => Number(entry.groupNumber) === groupOneNumber
+  )
+  assert(
+    (clearedGroupState?.joinedVideoChat || []).length === 0 && clearedGroupState?.helpVideoChat === false,
+    'Instructor clear group should reset joined/help state.'
+  )
+  await student.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/groups/${groupOneNumber}/leave`,
+    {}
+  )
+  await prof.request(
+    'POST',
+    `/courses/${course._id}/video-chat/categories/${videoCategory.categoryNumber}/clear`,
+    {}
+  )
+  await prof.request('POST', `/courses/${course._id}/video-chat/clear`, {})
 
   const verifyResponse = await student.request('POST', '/users/verify-email', {})
   if (!Object.prototype.hasOwnProperty.call(verifyResponse, 'success')) {

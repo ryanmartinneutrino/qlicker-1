@@ -2,6 +2,7 @@
 
 ## Lane milestone
 - L3 course-roster parity moved forward with by-email and instructor-management workflows.
+- L6 validation moved forward with executable smoke checks for video/group chat behaviors.
 
 ## What landed
 - Added course roster management APIs in Express:
@@ -19,16 +20,22 @@
   - outsider-professor denial for new roster mutation endpoints
   - successful add-student-by-email, promote-to-instructor-by-email, and remove-instructor flow
   - owner/self removal guard checks
+- Expanded migration smoke coverage for video/group parity:
+  - course chat connection + join/leave
+  - category/group connection routing
+  - group help toggle and instructor clear/reset semantics
 
 ## Validation evidence
 - `npm run build`
 - `./seed-mock-db.sh`
 - `PORT=3101 ROOT_URL=http://localhost:3101 DISABLE_CSRF=true npm run start --workspace=packages/server`
 - `QCLICKER_BASE_URL=http://localhost:3101 node scripts/migration-authz-integration.mjs`
+- `QCLICKER_BASE_URL=http://localhost:3102 node scripts/migration-smoke.mjs`
 
 ## Net progress by lane
 - L3: roster management parity is now materially closer to Meteor behavior for TA/student workflows.
-- L1/L8: authz regression evidence expanded for course-management endpoints.
+- L6: video/group parity validation now has concrete smoke evidence for help/clear/join flows.
+- L1/L8: authz and smoke regression evidence expanded for course-management/video endpoints.
 
 ## Remaining high-priority gaps
 - Finish full L3 behavior matrix (group/category edge semantics + instructor/student lifecycle corner cases).
