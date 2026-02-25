@@ -2,8 +2,8 @@
 
 ## Snapshot (2026-02-25)
 - Baseline branch: `master`
-- Baseline commit: `06236420`
-- Recent merged PRs in this tranche: `#46`, `#47`
+- Baseline commit: `21733d47`
+- Recent merged PRs in this tranche: `#49`, `#50`
 - Pilot gate remains: **full legacy parity + security + realtime/load verification**
 
 ## Verified Review Results
@@ -25,6 +25,13 @@
   - standardized `subscription:error` contract across `subscribe:*` handlers
   - auto re-subscribe + refetch on socket reconnect in `useRealtimeCollection`
   - added realtime authz regression harness `npm run test:migration-realtime-authz`
+- DB-readiness tooling milestone landed:
+  - `npm run test:migration-db-compat` (read-only compatibility audit)
+  - `npm run test:migration-db-parity` (baseline-vs-candidate DB diff harness)
+  - `docs/migration/db-compat-testing.md` workflow for sanitized Meteor backup testing
+- Integration gate orchestration milestone landed:
+  - `npm run test:migration-gate` to run build/runtime checks
+  - optional DB stages via `QCLICKER_GATE_INCLUDE_DB_COMPAT=true` and `QCLICKER_GATE_INCLUDE_DB_PARITY=true`
 
 ### Still open (blocking for pilot)
 - Full Meteor parity validation is incomplete for:
@@ -46,8 +53,8 @@
 | L4 | Grades/results/export parity | 60% | PR `#36`, PR `#44` | Complete remaining grade/review visibility parity + CSV value-order matching checks |
 | L5 | Realtime correctness + scale | 78% | PR `#37`, `#42`, `#47` | Run reconnect/churn/load verification and confirm no unauthorized channels |
 | L6 | Media + video/chat parity | 35% | partial server/client support | Finish Jitsi/group room behavior and cleanup parity |
-| L7 | DB compatibility + parity fixtures | 30% | schema/index safety work landed | Add synthetic-vs-backup diff harness and run staging comparison |
-| L8 | Integration/load/cutover ops | 52% | smoke/authz/load/realtime-authz scripts + docs in repo | Execute full gate runs in Docker/CI and complete pilot runbook sign-off |
+| L7 | DB compatibility + parity fixtures | 58% | PR `#49` DB compatibility + parity diff harnesses | Execute baseline-vs-candidate runs on sanitized Meteor backup staging |
+| L8 | Integration/load/cutover ops | 66% | PR `#50` unified gate runner + updated runbook/testing docs | Run full gate in Docker/CI and archive evidence for pilot decision |
 
 ## Parallel Execution Plan (Decision-Complete)
 
@@ -69,15 +76,17 @@
 - Maintain one unmerged rolling summary PR for operator review before each pilot-gate decision.
 
 ## Completion Estimate
-- Current migration completion: **~68%** toward pilot-readiness.
+- Current migration completion: **~74%** toward pilot-readiness.
 - Remaining critical path: L6 + L7 + L8 validation closure.
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`
 - Latest tranche summary: `docs/migration-work-summary-2026-02-25.md`
 - Latest batch summary: `docs/migration-work-summary-2026-02-25-batch2.md`
+- Latest batch summary: `docs/migration-work-summary-2026-02-25-batch3.md`
 - Parity matrix: `docs/migration/parity-matrix.md`
 - API mapping: `docs/migration/api-parity-map.md`
 - Security audit checklist: `docs/migration/security-audit.md`
 - Realtime design notes: `docs/migration/realtime-design.md`
+- DB compatibility testing guide: `docs/migration/db-compat-testing.md`
 - Cutover runbook: `docs/migration/cutover-runbook.md`
