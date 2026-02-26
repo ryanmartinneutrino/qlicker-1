@@ -27,9 +27,11 @@ async function run() {
   const meProf = await prof.request('GET', '/auth/me')
   const meStudent = await student.request('GET', '/auth/me')
   const meStudent2 = await student2.request('GET', '/auth/me')
+  const meAdmin = await admin.request('GET', '/auth/me')
   assert(meProf?.user?._id, 'Professor user id missing.')
   assert(meStudent?.user?._id, 'Student user id missing.')
   assert(meStudent2?.user?._id, 'Student2 user id missing.')
+  assert(meAdmin?.user?._id, 'Admin user id missing.')
 
   const baseCourses = await prof.request('GET', '/courses')
   const seededCourse = baseCourses.find((course) => course.name === 'Migration Test Course')
@@ -68,6 +70,40 @@ async function run() {
   })
   const rosterIdentity = await rosterCandidate.request('GET', '/auth/me')
   assert(rosterIdentity?.user?._id, 'Roster candidate user id missing.')
+
+  // promote/canPromote parity checks
+  await student.request(
+    'PATCH',
+    `/users/${meProf.user._id}/can-promote`,
+    { canPromote: true },
+    { expectStatus: 403 }
+  )
+  await admin.request('PATCH', `/users/${meProf.user._id}/can-promote`, { canPromote: true })
+
+  const profAfterPromoteToggle = await prof.request('GET', `/users/${meProf.user._id}`)
+  assert(profAfterPromoteToggle?.profile?.canPromote === true, 'Professor canPromote toggle should persist.')
+
+  await student.request('POST', '/users/promote', { email: rosterEmail }, { expectStatus: 403 })
+  await student.request('POST', `/users/${rosterIdentity.user._id}/promote`, {}, { expectStatus: 403 })
+  await prof.request('POST', '/users/promote', { email: rosterEmail })
+
+  await rosterCandidate.login(rosterEmail, rosterPassword)
+  const rosterPromotedByEmail = await rosterCandidate.request('GET', '/auth/me')
+  assert(
+    (rosterPromotedByEmail?.user?.profile?.roles || []).includes('professor'),
+    'Promote-by-email should set role to professor.'
+  )
+
+  await admin.request('PUT', `/users/${rosterIdentity.user._id}/role`, { role: 'student' })
+  await admin.request('POST', `/users/${rosterIdentity.user._id}/promote`, {})
+  await rosterCandidate.login(rosterEmail, rosterPassword)
+  const rosterPromotedById = await rosterCandidate.request('GET', '/auth/me')
+  assert(
+    (rosterPromotedById?.user?.profile?.roles || []).includes('professor'),
+    'Promote-by-id should set role to professor.'
+  )
+
+  await prof.request('POST', `/users/${meAdmin.user._id}/promote`, {}, { expectStatus: 400 })
 
   const outsiderEmail = `outsider.prof.${Date.now()}@gmail.com`
   const outsiderPassword = '12345678'
@@ -376,6 +412,7 @@ async function run() {
   await admin.request('DELETE', `/users/${outsiderIdentity.user._id}`)
   await rosterCandidate.request('POST', '/auth/logout', {})
   await admin.request('DELETE', `/users/${rosterIdentity.user._id}`)
+  await admin.request('PATCH', `/users/${meProf.user._id}/can-promote`, { canPromote: false })
 
   await student.request('POST', '/auth/logout', {})
   await student2.request('POST', '/auth/logout', {})
