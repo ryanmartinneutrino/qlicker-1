@@ -70,9 +70,19 @@ async function assertPathExists(location, label) {
 }
 
 async function run() {
+  const mongoPort = Number(process.env.MONGO_PORT || process.env.QCLICKER_MONGO_PORT || 0)
+  const mongoFromPort =
+    Number.isFinite(mongoPort) && mongoPort > 0
+      ? `mongodb://localhost:${Math.floor(mongoPort)}/?directConnection=true`
+      : ''
   const backupDir = process.env.QCLICKER_LEGACY_BACKUP_DIR || 'legacydb/backup_2023-09-14_05-03-01'
   const backupNamespace = process.env.QCLICKER_LEGACY_BACKUP_NAMESPACE || 'qlickerdb'
-  const mongoUri = process.env.QCLICKER_LEGACY_MONGO_URI || 'mongodb://localhost:27018/?directConnection=true'
+  const mongoUri =
+    process.env.QCLICKER_LEGACY_MONGO_URI ||
+    process.env.QCLICKER_MONGO_URI ||
+    process.env.MONGO_URL ||
+    mongoFromPort ||
+    'mongodb://localhost:27018/?directConnection=true'
   const baselineDb = process.env.QCLICKER_LEGACY_BASELINE_DB || 'qlicker_legacy_backup'
   const candidateDb = process.env.QCLICKER_LEGACY_CANDIDATE_DB || 'qlicker_candidate'
   const artifactDir = process.env.QCLICKER_LEGACY_ARTIFACT_DIR || '/tmp/qlicker-migration-artifacts'

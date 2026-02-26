@@ -1,151 +1,23 @@
 #!/usr/bin/env node
 
-const baseUrl = process.env.QCLICKER_BASE_URL || 'http://localhost:3001'
+import {
+  ApiSession,
+  assert,
+  assertQlickerApiReachable,
+  resolveApiBaseUrl,
+} from './migration-runtime-utils.mjs'
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message)
-}
-
-class ApiSession {
-  constructor(label) {
-    this.label = label
-    this.cookie = ''
-    this.csrf = ''
-    this.cookies = new Map()
-  }
-
-  captureCookie(res) {
-    const setCookies =
-      typeof res.headers.getSetCookie === 'function'
-        ? res.headers.getSetCookie()
-        : (() => {
-            const single = res.headers.get('set-cookie')
-            return single ? [single] : []
-          })()
-
-    if (!Array.isArray(setCookies) || setCookies.length < 1) return
-    for (const rawCookie of setCookies) {
-      if (!rawCookie) continue
-      const firstPart = rawCookie.split(';')[0]?.trim()
-      if (!firstPart) continue
-      const separator = firstPart.indexOf('=')
-      if (separator < 1) continue
-      const name = firstPart.slice(0, separator).trim()
-      this.cookies.set(name, firstPart)
-    }
-    this.cookie = [...this.cookies.values()].join('; ')
-  }
-
-  async parseBody(res) {
-    const raw = await res.text()
-    if (!raw) return null
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return raw
-    }
-  }
-
-  async getCsrf() {
-    const res = await fetch(`${baseUrl}/api/csrf-token`, {
-      method: 'GET',
-      headers: this.cookie ? { cookie: this.cookie } : {},
-    })
-    this.captureCookie(res)
-    const body = await this.parseBody(res)
-    if (!body || typeof body !== 'object' || !body.csrfToken) {
-      throw new Error(`[${this.label}] could not retrieve CSRF token`)
-    }
-    this.csrf = body.csrfToken
-  }
-
-  async request(method, path, body, options = {}) {
-    const { expectStatus } = options
-    if (method !== 'GET' && !this.csrf) {
-      await this.getCsrf()
-    }
-
-    const headers = {}
-    if (this.cookie) headers.cookie = this.cookie
-    if (method !== 'GET') headers['x-csrf-token'] = this.csrf
-    if (body !== undefined) headers['content-type'] = 'application/json'
-
-    const res = await fetch(`${baseUrl}/api${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
-    this.captureCookie(res)
-    const json = await this.parseBody(res)
-
-    if (expectStatus !== undefined) {
-      if (res.status !== expectStatus) {
-        throw new Error(
-          `[${this.label}] ${method} ${path} expected ${expectStatus}, got ${res.status}: ${JSON.stringify(json)}`
-        )
-      }
-      return json
-    }
-
-    if (!res.ok) {
-      throw new Error(`[${this.label}] ${method} ${path} failed (${res.status}): ${JSON.stringify(json)}`)
-    }
-    return json
-  }
-
-  async upload(path, formData, options = {}) {
-    const { expectStatus } = options
-    if (!this.csrf) {
-      await this.getCsrf()
-    }
-
-    const headers = {
-      'x-csrf-token': this.csrf,
-    }
-    if (this.cookie) headers.cookie = this.cookie
-
-    const res = await fetch(`${baseUrl}/api${path}`, {
-      method: 'POST',
-      headers,
-      body: formData,
-    })
-    this.captureCookie(res)
-    const json = await this.parseBody(res)
-
-    if (expectStatus !== undefined) {
-      if (res.status !== expectStatus) {
-        throw new Error(
-          `[${this.label}] POST ${path} expected ${expectStatus}, got ${res.status}: ${JSON.stringify(json)}`
-        )
-      }
-      return json
-    }
-
-    if (!res.ok) {
-      throw new Error(`[${this.label}] POST ${path} failed (${res.status}): ${JSON.stringify(json)}`)
-    }
-    return json
-  }
-
-  login(email, password) {
-    return this.request('POST', '/auth/login', { email, password })
-  }
-}
+const baseUrl = resolveApiBaseUrl()
 
 async function run() {
-  try {
-    const health = await fetch(`${baseUrl}/health`)
-    if (!health.ok) throw new Error(`health check status ${health.status}`)
-  } catch {
-    throw new Error(`Cannot reach ${baseUrl}. Start the API server first.`)
-  }
+  await assertQlickerApiReachable({ baseUrl, requireFingerprint: true })
 
-  const prof = new ApiSession('prof')
-  const student = new ApiSession('student')
-  const student2 = new ApiSession('student2')
-  const admin = new ApiSession('admin')
-  const outsiderProf = new ApiSession('outsiderProf')
-  const rosterCandidate = new ApiSession('rosterCandidate')
+  const prof = new ApiSession('prof', baseUrl)
+  const student = new ApiSession('student', baseUrl)
+  const student2 = new ApiSession('student2', baseUrl)
+  const admin = new ApiSession('admin', baseUrl)
+  const outsiderProf = new ApiSession('outsiderProf', baseUrl)
+  const rosterCandidate = new ApiSession('rosterCandidate', baseUrl)
 
   await prof.login('prof@gmail.com', '12345678')
   await student.login('student1@gmail.com', '12345678')

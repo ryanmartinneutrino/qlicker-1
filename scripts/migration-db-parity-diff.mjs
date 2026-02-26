@@ -3,8 +3,19 @@
 import { MongoClient } from 'mongodb'
 import { writeFile } from 'node:fs/promises'
 
-const baselineUrl = process.env.QCLICKER_BASELINE_MONGO_URL || ''
-const candidateUrl = process.env.QCLICKER_CANDIDATE_MONGO_URL || process.env.QCLICKER_MONGO_URL || process.env.MONGO_URL || ''
+const mongoPort = Number(process.env.MONGO_PORT || process.env.QCLICKER_MONGO_PORT || 0)
+const mongoFromPort =
+  Number.isFinite(mongoPort) && mongoPort > 0
+    ? `mongodb://localhost:${Math.floor(mongoPort)}/qlicker?directConnection=true`
+    : ''
+const baselineUrl = process.env.QCLICKER_BASELINE_MONGO_URL || process.env.BASELINE_MONGO_URL || ''
+const candidateUrl =
+  process.env.QCLICKER_CANDIDATE_MONGO_URL ||
+  process.env.CANDIDATE_MONGO_URL ||
+  process.env.QCLICKER_MONGO_URL ||
+  process.env.MONGO_URL ||
+  mongoFromPort ||
+  ''
 const samplePerCollection = Number(process.env.QCLICKER_PARITY_SAMPLE_PER_COLLECTION || 300)
 const failOnDiff = process.env.QCLICKER_PARITY_FAIL_ON_DIFF === 'true'
 const outputPath = process.env.QCLICKER_PARITY_OUTPUT || ''
