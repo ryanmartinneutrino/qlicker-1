@@ -68,7 +68,7 @@ Optional legacy backup restore during startup:
 
 ```bash
 QCLICKER_RESTORE_LEGACY=true \
-QCLICKER_LEGACY_BACKUP_DIR=./legacydb/backup_2023-09-14_05-03-01 \
+QCLICKER_LEGACY_BACKUP_DIR=./legacydb/<backup-dir> \
 npm run dev:migration:up
 ```
 
@@ -171,6 +171,5 @@ docker run -d \
 -e MAIL_URL=${MAIL_URL}\
 -p 3000:3000 yourname/qlicker:v1.2.3
 ```
-
 
 

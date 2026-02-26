@@ -94,11 +94,11 @@
 - Bring up local migration stack (non-conflicting ports by default):
   - `npm run dev:migration:up`
 - Optional restore from local legacy backup during bring-up:
-  - `QCLICKER_RESTORE_LEGACY=true QCLICKER_LEGACY_BACKUP_DIR=./legacydb/backup_2023-09-14_05-03-01 npm run dev:migration:up`
+  - `QCLICKER_RESTORE_LEGACY=true QCLICKER_LEGACY_BACKUP_DIR=./legacydb/<backup-dir> npm run dev:migration:up`
 - Runtime gate with deterministic API preflight:
   - `API_BASE_URL=http://localhost:3211 npm run test:migration-gate`
 - Legacy backup parity validator:
-  - `QCLICKER_LEGACY_BACKUP_DIR=legacydb/backup_2023-09-14_05-03-01 QCLICKER_LEGACY_MONGO_URI=mongodb://localhost:27018/?directConnection=true npm run test:migration-legacy-backup`
+  - `QCLICKER_LEGACY_BACKUP_DIR=legacydb/<backup-dir> QCLICKER_LEGACY_MONGO_URI=mongodb://localhost:27018/?directConnection=true npm run test:migration-legacy-backup`
 
 ## References
 - Detailed matrix/backlog/evidence: `MIGRATION_DETAILS.md`

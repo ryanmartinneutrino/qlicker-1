@@ -75,7 +75,7 @@ async function run() {
     Number.isFinite(mongoPort) && mongoPort > 0
       ? `mongodb://localhost:${Math.floor(mongoPort)}/?directConnection=true`
       : ''
-  const backupDir = process.env.QCLICKER_LEGACY_BACKUP_DIR || 'legacydb/backup_2023-09-14_05-03-01'
+  const backupDir = process.env.QCLICKER_LEGACY_BACKUP_DIR || 'legacydb/<backup-dir>'
   const backupNamespace = process.env.QCLICKER_LEGACY_BACKUP_NAMESPACE || 'qlickerdb'
   const mongoUri =
     process.env.QCLICKER_LEGACY_MONGO_URI ||
