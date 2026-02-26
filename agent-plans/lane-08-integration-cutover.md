@@ -1,17 +1,18 @@
 # Lane 08 - Integration, Load, and Cutover Ops
 
 ## Scope
-- Expand end-to-end test coverage and prepare pilot-to-cutover operations.
+- final parity gate execution and pilot/cutover readiness evidence
 
-## Deliverables
-- full multi-role parity integration suite.
-- authorization regression suite as merge gate.
-- load tests for interactive session concurrency.
-- pilot/cutover/rollback runbooks and monitoring gates.
+## Completed
+- unified migration gate + pilot checklist artifacts
+- runtime gate preflight determinism improvements (PR `#81`)
 
-## Acceptance
-- pilot readiness gates pass and rollback playbook is validated.
+## Next checklist
+- run final staged pilot bundle and archive outputs
+- verify go/no-go checklist with no unresolved P0/P1 items
+- keep rollback runbook aligned to latest lane merges
 
 ## Mandatory checks
-- full migration smoke + integration suite
-- load test reports with threshold pass/fail summary
+- `npm run test:migration-gate`
+- `npm run test:migration-pilot-checklist`
+- `docs/migration/cutover-runbook.md` and `docs/migration/pilot-checklist.md` updated in PR

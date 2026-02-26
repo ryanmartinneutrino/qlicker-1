@@ -26,6 +26,13 @@
 | `courses.removeStudent` | `DELETE /api/courses/:courseId/students/:studentId` |
 | `courses.toggleVideoChat` and related | `/api/courses/:courseId/video-chat/*` |
 
+### Users
+| Meteor method | New endpoint |
+|---|---|
+| `users.promote` | `POST /api/users/promote` (email) and `POST /api/users/:userId/promote` |
+| `users.toggleCanPromote` | `PATCH /api/users/:userId/can-promote` |
+| `users.changeRole` | `PUT /api/users/:userId/role` |
+
 ### Sessions
 | Meteor method | New endpoint |
 |---|---|
@@ -66,4 +73,5 @@
 | session grade export | `GET /api/grades/session/:sessionId/export` |
 
 ## Open parity work
-- publish recurring staging evidence for legacy-backup validation + pilot checklist summaries
+- publish recurring staging evidence for runtime gate + legacy-backup validation + pilot checklist summaries
+- close residual UI workflow matrix mismatches tied to session/quiz/grading surfaces

@@ -27,6 +27,8 @@
 - fallback still includes document-level and collection wildcard keys to avoid missed invalidations when parent hints are unavailable.
 
 ## Remaining work
+- keep runtime test environments deterministic with API fingerprint preflight:
+  - `npm run test:migration-runtime-preflight`
 - maintain reconnect/churn evidence under load:
   - `npm run test:migration-realtime-churn`
   - optional unified-gate stage via `QCLICKER_GATE_INCLUDE_REALTIME_CHURN=true`
