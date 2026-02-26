@@ -2,12 +2,13 @@
 
 ## Snapshot (2026-02-26)
 - Baseline branch: `master`
-- Baseline commit: `9576b004`
+- Baseline commit: `eaa03581`
 - Latest merged migration PRs:
   - `#81` deterministic runtime gate preflight + env normalization
   - `#82` users promote/canPromote parity
   - `#83` configurable Docker + legacy backup restore workflow
   - `#84` global app shell parity + dead React duplicate cleanup
+  - `#85` migration docs and lane-plan sync
 - Pilot gate remains: **full legacy parity + security + realtime/load + backup-dataset evidence**
 
 ## Confirmed Status (Current)
