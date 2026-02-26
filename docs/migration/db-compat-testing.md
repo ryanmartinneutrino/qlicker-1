@@ -3,6 +3,29 @@
 This guide is for validating the React/Express stack against an existing Meteor database backup without destructive schema migration.
 
 ## Quick path (local legacy backup in repository)
+Bring up local stack with non-conflicting default ports:
+
+```bash
+npm run dev:migration:up
+```
+
+or restore from mounted legacy backup in the same flow:
+
+```bash
+QCLICKER_RESTORE_LEGACY=true \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+npm run dev:migration:up
+```
+
+Then export runtime envs expected by migration scripts:
+
+```bash
+export API_BASE_URL='http://localhost:3211'
+export CLIENT_BASE_URL='http://localhost:3200'
+export MONGO_PORT='27018'
+export MONGO_URL='mongodb://localhost:27018/qlicker?directConnection=true'
+```
+
 If `legacydb/` contains a local mongodump backup, run the automated validator:
 
 ```bash
