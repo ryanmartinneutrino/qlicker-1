@@ -1411,6 +1411,132 @@ textarea.form-control,
   font-weight: bold;
 }
 
+/* App shell parity wrapper */
+.ql-app-shell {
+  min-height: 100vh;
+}
+
+.ql-app-nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #676A6C;
+  color: #fff;
+  padding: 8px 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+}
+
+.ql-app-logo {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
+.ql-app-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.ql-app-nav-spacer {
+  flex: 1;
+}
+
+.ql-app-link.btn.btn-link {
+  border: none;
+  background: transparent;
+  color: #fff;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.ql-app-link.btn.btn-link:hover,
+.ql-app-link.btn.btn-link:focus {
+  color: #E4F4FC;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+.ql-app-menu {
+  position: relative;
+}
+
+.ql-app-menu summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  color: #fff;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 2px;
+}
+
+.ql-app-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.ql-app-menu[open] summary,
+.ql-app-menu summary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ql-app-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 240px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ql-app-menu-panel .ql-app-link.btn.btn-link {
+  color: #212121;
+  text-align: left;
+  border-radius: 2px;
+}
+
+.ql-app-menu-panel .ql-app-link.btn.btn-link:hover,
+.ql-app-menu-panel .ql-app-link.btn.btn-link:focus {
+  color: #212121;
+  background: #F2F2F2;
+}
+
+.ql-app-content {
+  min-height: calc(100vh - 52px);
+}
+
+@media (max-width: 900px) {
+  .ql-app-nav {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .ql-app-nav-spacer {
+    display: none;
+  }
+
+  .ql-app-menu-panel {
+    left: 0;
+    right: auto;
+    min-width: 220px;
+  }
+}
+
 /* ==========================================================================
    20. Navbar (from bootstrap-style)
    ========================================================================== */

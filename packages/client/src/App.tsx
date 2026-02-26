@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { useAuth } from './hooks/useAuth'
+import { AppShell } from './components/AppShell'
 
 // Pages migrated from imports/ui/pages/ (Meteor) to React 18 + TypeScript
 import Home from './pages/Home'
@@ -30,14 +31,23 @@ import JitsiWindow from './pages/JitsiWindow'
 import Logout from './pages/Logout'
 import VerifyEmail from './pages/VerifyEmail'
 
-function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
+function ProtectedRoute({
+  children,
+  roles,
+  shell = true,
+}: {
+  children: React.ReactNode
+  roles?: string[]
+  shell?: boolean
+}) {
   const { user, loading } = useAuth()
   if (loading) return <div>Loading...</div>
   if (!user) return <Navigate to="/login" replace />
   if (roles && !roles.some((r) => user.profile.roles.includes(r))) {
     return <Navigate to="/" replace />
   }
-  return <>{children}</>
+  if (!shell) return <>{children}</>
+  return <AppShell>{children}</AppShell>
 }
 
 export default function App() {
@@ -72,8 +82,8 @@ export default function App() {
             <Route path="/course/:courseId/results" element={<ProtectedRoute roles={['professor', 'admin']}><CourseResults /></ProtectedRoute>} />
             <Route path="/course/:courseId/video" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
             <Route path="/course/:courseId/videochat" element={<ProtectedRoute><VideoChat /></ProtectedRoute>} />
-            <Route path="/course/:courseId/videochatwindow" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
-            <Route path="/course/:courseId/categoryvideochatwindow/:catNumber/:gNumber" element={<ProtectedRoute><JitsiWindow /></ProtectedRoute>} />
+            <Route path="/course/:courseId/videochatwindow" element={<ProtectedRoute shell={false}><JitsiWindow /></ProtectedRoute>} />
+            <Route path="/course/:courseId/categoryvideochatwindow/:catNumber/:gNumber" element={<ProtectedRoute shell={false}><JitsiWindow /></ProtectedRoute>} />
             <Route path="/course/:courseId/groups" element={<ProtectedRoute><ManageCourseGroups /></ProtectedRoute>} />
             <Route path="/course/:courseId/grades" element={<ProtectedRoute><CourseGrades /></ProtectedRoute>} />
             <Route path="/course/:courseId/questions" element={<ProtectedRoute><QuestionsLibrary /></ProtectedRoute>} />
@@ -81,7 +91,7 @@ export default function App() {
             {/* Session management */}
             <Route path="/course/:courseId/session/edit/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><ManageSession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/run/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><RunSession /></ProtectedRoute>} />
-            <Route path="/course/:courseId/session/run/:sessionId/mobile" element={<ProtectedRoute roles={['professor', 'admin']}><RunSession mobile /></ProtectedRoute>} />
+            <Route path="/course/:courseId/session/run/:sessionId/mobile" element={<ProtectedRoute roles={['professor', 'admin']} shell={false}><RunSession mobile /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/replay/:sessionId" element={<ProtectedRoute roles={['professor', 'admin']}><ReplaySession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/:sessionId/grade" element={<ProtectedRoute roles={['professor', 'admin']}><GradeSession /></ProtectedRoute>} />
             <Route path="/course/:courseId/session/:sessionId/results" element={<ProtectedRoute><SessionResults /></ProtectedRoute>} />
