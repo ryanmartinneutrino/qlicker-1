@@ -1,17 +1,19 @@
 # Lane 05 - Realtime Correctness + Scale
 
 ## Scope
-- Ensure socket authentication/authorization correctness and resilient event routing.
+- realtime auth correctness, reconnect reliability, and fan-out consistency
 
-## Deliverables
-- Session/passport socket bridge and channel authz checks.
-- Delete/update routing correctness under subscription scopes.
-- Reconnect/resubscribe reliability and instrumentation.
+## Completed
+- socket auth bridge + subscription authz harness
+- deterministic runtime preflight and runtime env normalization (PR `#81`)
 
-## Acceptance
-- authorized users receive correct updates; unauthorized subscriptions are denied.
-- no duplicate or missed updates in parity tests.
+## Next checklist
+- publish refreshed churn/load artifacts from latest master
+- confirm no unauthorized channel regressions under reconnect churn
+- keep delete/update routing scoped under sampled high-traffic sessions
 
 ## Mandatory checks
-- server build
-- realtime integration tests
+- `npm run build`
+- `API_BASE_URL=... npm run test:migration-realtime-authz`
+- `API_BASE_URL=... npm run test:migration-realtime-churn`
+- `API_BASE_URL=... npm run test:migration-load`

@@ -1,16 +1,19 @@
 # Lane 04 - Grades, Results, and Exports
 
 ## Scope
-- Session/course grade and results parity, including CSV exports.
+- session/course grading/results behavior
+- export output parity (columns/order/values)
 
-## Deliverables
-- Session results parity table (student rows + per-question marks/answers).
-- Course grades parity table with selected session controls.
-- CSV exports for session grades, course grades, groups, and response data.
+## Completed
+- server-backed exports for groups/session/course/responses
+- grading recalculation/manual-mark preservation checks in smoke
 
-## Acceptance
-- CSV output columns/order/value semantics match legacy behavior.
+## Next checklist
+- compare all CSV outputs to Meteor on backup dataset
+- close ordering/value deltas and add deterministic regression assertions
+- verify visibility toggles + reviewability interactions in UI
 
 ## Mandatory checks
-- client + server build
-- export parity tests with fixed fixtures
+- `npm run build`
+- `API_BASE_URL=... npm run test:migration-smoke`
+- export diff evidence attached to PR

@@ -1,17 +1,23 @@
 # Lane 02 - Student/Professor Session + Question Parity
 
 ## Scope
-- Complete live session and quiz parity workflows.
-- Complete manage-session question attach/reorder/remove/copy behaviors.
+- close strict session/quiz UI workflow parity vs Meteor
+- verify run/manage/present/review flows end-to-end on backup dataset
 
-## Deliverables
-- Student interactive flow parity (attempts, lock rules, quiz submit path).
-- Professor manage-session parity with legacy behavior.
-- Realtime current-question synchronization verification.
+## Completed
+- route parity closure and aliases
+- global app shell parity added for authenticated workflows (PR `#84`)
+- legacy fullscreen/no-shell routes preserved for mobile run + Jitsi windows
 
-## Acceptance
-- Meteor-equivalent student/professor session behavior for interactive and quiz modes.
+## Next checklist
+- execute route/workflow matrix for:
+  - student live attempts + editability
+  - quiz timing/extensions/submit lock
+  - instructor manage-session edge transitions
+- fix any P0/P1 mismatches from matrix runs
+- attach evidence from backup-dataset walkthrough
 
 ## Mandatory checks
-- client + server build
-- parity scenario tests for live + quiz
+- `npm run build`
+- `API_BASE_URL=... npm run test:migration-smoke`
+- targeted manual UI matrix evidence linked in PR

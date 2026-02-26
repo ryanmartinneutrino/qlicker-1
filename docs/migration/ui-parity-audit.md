@@ -1,6 +1,6 @@
 # UI Parity Audit (Meteor -> React)
 
-Date: 2026-02-25
+Date: 2026-02-26
 
 ## Scope
 - Legacy source: `imports/startup/client/routes.jsx`, `imports/ui/pages/**`, `imports/ui/modals/**`, `imports/ui/*.jsx`
@@ -8,16 +8,27 @@ Date: 2026-02-25
 
 ## Route parity
 
-All legacy user-facing routes now have React route coverage, including legacy alias paths:
+All legacy user-facing routes have React route coverage, including compatibility aliases:
 - `/logout`
 - `/verify-email/:token`
 - `/course/:courseId/videochat`
 - `/course/:courseId/session/run/:sessionId/mobile`
-- `/reset-password/:token` (compat alias alongside `/reset/:token`)
+- `/reset-password/:token`
 
 Notes:
-- Legacy `/_id` route param naming was normalized to `:sessionId` on React routes where applicable.
-- `/course/:courseId/video` remains as the canonical new path; `/videochat` is now an alias.
+- Legacy `/_id` route param naming is normalized to `:sessionId`.
+- `/course/:courseId/video` remains canonical; `/videochat` is an alias.
+
+## Global shell parity
+
+Implemented in PR `#84`:
+- authenticated app shell wrapper for protected routes
+- course switcher dropdown
+- profile dropdown with user profile + user guide + logout surfaces
+- promote-account modal entry for capable users (`canPromote`/admin)
+- fullscreen/no-shell preserved for legacy-like standalone routes:
+  - run-session mobile
+  - videochat window routes
 
 ## Page-level migration status
 
@@ -29,13 +40,24 @@ Core student/professor/admin pages are present in React:
 
 ## Component-level migration status
 
-Migration is feature-parity focused, not 1:1 file parity. Many legacy UI pieces were intentionally consolidated:
-- legacy modal workflows like add-student/add-TA are now inline actions on the `Course` page
-- several old `Clean*` wrappers/tables were replaced by page-local React rendering patterns
-- route wrappers from Iron Router were replaced by React Router + `ProtectedRoute`
+Migration remains feature-parity oriented rather than 1:1 file parity.
+Recent cleanup:
+- removed dead duplicate `pages_impl` routes/components not used by the active router
 
-## Residual UI checks
+## Strict parity checklist (remaining)
 
-UI is not a strict component-by-component port. Remaining checks are verification-focused:
-- run backup-dataset UAT pass for edge visual workflows (groups, grading tables, exports)
-- keep validating role-based visibility and affordances against legacy behavior matrix
+### Student workflows
+- live session: attempt open/close, answer editability, transitions
+- quiz sessions: start/end/extension windows, submit lock, post-submit messaging
+- session review visibility behavior after instructor toggles
+
+### Professor workflows
+- course management + roster flows on backup dataset
+- session management controls + attach/reorder/remove/copy flows
+- grading/results screens + export entry points
+
+### Admin workflows
+- users/settings pages with promote/canPromote actions and role transitions
+
+### Evidence requirement
+- close route/workflow matrix with backup-dataset test evidence and no unresolved P0/P1 UI mismatches.

@@ -1,16 +1,19 @@
 # Lane 07 - DB Compatibility + Fixtures
 
 ## Scope
-- Maintain strict Meteor DB compatibility and parity validation datasets.
+- strict Meteor DB compatibility and parity-diff evidence maintenance
 
-## Deliverables
-- synthetic fixture baseline for CI parity checks.
-- sanitized legacy DB backup validation path for staging.
-- parity diff tooling for grades/session states/exports.
+## Completed
+- backup validator + pilot checklist automation
+- local compose restore workflow + confidentiality guard (`legacydb`) (PR `#83`)
 
-## Acceptance
-- no schema-breaking writes and no incompatible field mutations.
+## Next checklist
+- run one full staging artifact bundle (runtime + backup + pilot checklist)
+- attach compat/parity diff outputs for final pilot gate review
+- keep fixture/parity docs synchronized with latest merged lanes
 
 ## Mandatory checks
-- fixture seed validation
-- parity diff reports in CI/staging
+- `npm run test:migration-legacydb-guard`
+- `npm run test:migration-legacy-backup`
+- `npm run test:migration-db-compat`
+- `npm run test:migration-db-parity`

@@ -1,16 +1,19 @@
 # Lane 06 - Media Upload + Video/Jitsi Parity
 
 ## Scope
-- Complete image/profile lifecycle parity and video chat parity.
+- image/profile lifecycle parity
+- video/chat (course/category/group) parity and edge behavior
 
-## Deliverables
-- Validate local/S3/Azure image behavior with settings-driven backend selection.
-- Ensure profile image update/replace/delete consistency.
-- Finalize course/group Jitsi parity paths and edge behavior.
+## Completed
+- video/Jitsi edge checks in migration smoke
+- app shell parity integration with video routes (PR `#84`)
 
-## Acceptance
-- instructor/student media and video workflows match legacy outcomes.
+## Next checklist
+- run backup-dataset UI pass for profile image lifecycle and room flows
+- verify no shell/navigation regression on video entry/exit routes
+- finalize any environment-specific Jitsi option parity notes
 
 ## Mandatory checks
-- client + server build
-- end-to-end media/video scenario tests
+- `npm run build`
+- `API_BASE_URL=... npm run test:migration-smoke`
+- media/video manual matrix evidence linked in PR

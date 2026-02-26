@@ -1,26 +1,19 @@
 # Lane 03 - Course Management + Groups Parity
 
 ## Scope
-- Course management parity (student/TA add/remove, by-email actions, copy sessions, options).
-- Group/category CRUD and student assignment parity.
+- course roster/management parity
+- group/category parity and cleanup semantics
 
-## Deliverables
-- API + UI for TA/student by-email and membership management.
-- Group category/group operations and assignment/unassignment parity.
-- Groups CSV export parity.
+## Completed
+- roster by-email add/remove/promote flows
+- users promote/canPromote parity endpoints + admin UI controls (PR `#82`)
 
-## Progress
-- Done: roster parity APIs for by-email membership management:
-  - `POST /api/courses/:courseId/students`
-  - `POST /api/courses/:courseId/instructors`
-  - `DELETE /api/courses/:courseId/instructors/:instructorId`
-- Done: course roster UI now supports add-student/add-instructor by email and instructor removal controls.
-- Done: authz integration script covers outsider denial + roster lifecycle flow checks.
-- Pending: remaining group/category cleanup/renumber edge-case parity matrix closure.
-
-## Acceptance
-- Legacy manage-course and manage-course-groups workflows are fully reproducible.
+## Next checklist
+- close remaining group/category cleanup/renumber edge cases on backup dataset
+- confirm TA/student management affordances match Meteor wording/behavior
+- lock groups CSV parity against legacy ordering
 
 ## Mandatory checks
-- client + server build
-- group management integration tests
+- `npm run build`
+- `API_BASE_URL=... npm run test:migration-authz`
+- group-management evidence matrix in PR notes

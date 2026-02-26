@@ -21,6 +21,10 @@
 - Hardened image APIs:
   - non-admin image listing is owner-scoped
   - image delete requires owner or admin
+- Restored legacy promotion capability policy with explicit API checks:
+  - `POST /api/users/promote` and `POST /api/users/:userId/promote` require admin or `profile.canPromote`
+  - `PATCH /api/users/:userId/can-promote` remains admin-only
+  - admin target promotion is rejected with safe error semantics
 - Added Socket.IO auth bridging with express-session + passport.
 - Added subscription-level authorization checks on realtime `subscribe:*` channels with a stable `subscription:error` payload contract.
 - Added authorization regression checks to migration smoke and integration scripts.
@@ -51,6 +55,11 @@
   - add student by email
   - promote student to instructor by email
   - enforce owner/self instructor-removal safeguards
+- `scripts/migration-authz-integration.mjs` now verifies promote-capability regressions:
+  - non-admin without `canPromote` cannot promote users
+  - admin can toggle `canPromote`
+  - `canPromote` users can promote by email/id
+  - admin users cannot be promoted/demoted via promote endpoints
 - `scripts/migration-realtime-authz.mjs` now verifies realtime subscribe authz/error contracts across all `subscribe:*` channels:
   - outsider `forbidden`
   - anonymous `not_authenticated`
