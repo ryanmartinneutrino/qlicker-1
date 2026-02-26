@@ -44,20 +44,45 @@ To run tests locally
 
 ## New Framework Migration (React + Express)
 
-For the migrated stack (`docker-compose.yml` + `Dockerfile.new`):
+For the migrated stack (`docker-compose.yml` + `Dockerfile.new`) use the migration bring-up script:
 
 ```bash
-docker compose up -d mongo1 mongo-init
-./seed-mock-db.sh
+npm run dev:migration:up
 ```
 
-Seeded users:
+Defaults avoid common local conflicts:
+- client: `http://localhost:3200`
+- server: `http://localhost:3211`
+- mongo: `localhost:27018`
+
+Override ports as needed:
+
+```bash
+QCLICKER_CLIENT_PORT=4200 \
+QCLICKER_SERVER_PORT=4211 \
+QCLICKER_MONGO_PORT=37018 \
+npm run dev:migration:up
+```
+
+Optional legacy backup restore during startup:
+
+```bash
+QCLICKER_RESTORE_LEGACY=true \
+QCLICKER_LEGACY_BACKUP_DIR=./legacydb/backup_2023-09-14_05-03-01 \
+npm run dev:migration:up
+```
+
+When mock seeding is enabled (`QCLICKER_SEED_MOCK=true`, default), seeded users are:
 - `prof@gmail.com`
 - `student1@gmail.com`
 - `student2@gmail.com`
 - `admin@gmail.com`
 
 All seeded users use password `12345678`.
+
+Confidential backup guard:
+- `legacydb/` is intentionally git-ignored.
+- verify at any time with `npm run test:migration-legacydb-guard`.
 
 ## Development and Contributing
 
@@ -146,7 +171,6 @@ docker run -d \
 -e MAIL_URL=${MAIL_URL}\
 -p 3000:3000 yourname/qlicker:v1.2.3
 ```
-
 
 
 

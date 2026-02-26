@@ -1,0 +1,10 @@
+.git
+.gitignore
+node_modules
+legacydb
+uploads
+dist
+coverage
+artifacts
+.agent-worktrees
+**/*.log

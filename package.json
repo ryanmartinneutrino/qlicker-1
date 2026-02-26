@@ -20,6 +20,7 @@
     "dev:server": "npm run dev --workspace=packages/server",
     "dev:client": "npm run dev --workspace=packages/client",
     "dev": "npm run dev:server & npm run dev:client",
+    "dev:migration:up": "./scripts/migration-compose-up.sh",
     "build": "npm run build --prefix packages/shared && npm run build --prefix packages/server && npm run build --prefix packages/client",
     "start:new": "npm run start --workspace=packages/server",
     "test:migration-smoke": "node scripts/migration-smoke.mjs",
@@ -31,6 +32,7 @@
     "test:migration-db-compat": "node scripts/migration-db-compat-check.mjs",
     "test:migration-db-parity": "node scripts/migration-db-parity-diff.mjs",
     "test:migration-legacy-backup": "node scripts/migration-legacy-backup-validate.mjs",
+    "test:migration-legacydb-guard": "./scripts/guard-legacydb.sh",
     "test:migration-pilot-checklist": "node scripts/migration-pilot-checklist.mjs",
     "test:migration-gate": "node scripts/migration-gate-runner.mjs"
   },
