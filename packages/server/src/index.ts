@@ -122,8 +122,16 @@ async function main() {
   app.use('/api/settings', settingsRouter)
   app.use('/api/users', usersRouter)
 
-  // 9. Health check
-  app.get('/health', (_req, res) => res.json({ status: 'ok' }))
+  // 9. Health check + API fingerprint for migration preflight checks.
+  app.get('/health', (_req, res) => {
+    res.setHeader('x-qlicker-api', '1')
+    res.json({
+      status: 'ok',
+      app: 'qlicker',
+      service: 'qlicker-api',
+      version: process.env.npm_package_version || null,
+    })
+  })
 
   // 10. Socket.IO + Change Streams
   const io = new SocketIOServer(httpServer, {

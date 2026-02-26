@@ -52,6 +52,31 @@ async function writeSummary(outputPath, summary) {
 }
 
 async function run() {
+  const apiBaseUrl =
+    process.env.API_BASE_URL ||
+    process.env.QCLICKER_API_BASE_URL ||
+    process.env.QCLICKER_BASE_URL ||
+    'http://localhost:3001'
+  const clientBaseUrl =
+    process.env.CLIENT_BASE_URL ||
+    process.env.QCLICKER_CLIENT_BASE_URL ||
+    process.env.QCLICKER_CLIENT_URL ||
+    process.env.CLIENT_URL ||
+    'http://localhost:3000'
+  const mongoPort = process.env.MONGO_PORT || process.env.QCLICKER_MONGO_PORT || ''
+  const mongoUrl =
+    process.env.MONGO_URL ||
+    process.env.QCLICKER_MONGO_URL ||
+    (mongoPort ? `mongodb://localhost:${mongoPort}/qlicker?directConnection=true` : '')
+
+  // Normalize env aliases so all scripts receive consistent values.
+  if (!process.env.API_BASE_URL) process.env.API_BASE_URL = apiBaseUrl
+  if (!process.env.QCLICKER_BASE_URL) process.env.QCLICKER_BASE_URL = apiBaseUrl
+  if (!process.env.CLIENT_BASE_URL) process.env.CLIENT_BASE_URL = clientBaseUrl
+  if (!process.env.QCLICKER_CLIENT_URL) process.env.QCLICKER_CLIENT_URL = clientBaseUrl
+  if (mongoUrl && !process.env.MONGO_URL) process.env.MONGO_URL = mongoUrl
+  if (mongoPort && !process.env.MONGO_PORT) process.env.MONGO_PORT = mongoPort
+
   const skipBuild = toBool(process.env.QCLICKER_GATE_SKIP_BUILD, false)
   const skipRuntime = toBool(process.env.QCLICKER_GATE_SKIP_RUNTIME, false)
   const includeRealtimeChurn = toBool(process.env.QCLICKER_GATE_INCLUDE_REALTIME_CHURN, false)
@@ -70,6 +95,7 @@ async function run() {
   }
 
   if (!skipRuntime) {
+    plan.push({ key: 'runtime-preflight', command: 'npm run test:migration-runtime-preflight' })
     plan.push({ key: 'smoke', command: 'npm run test:migration-smoke' })
     plan.push({ key: 'authz', command: 'npm run test:migration-authz' })
     plan.push({ key: 'realtime-authz', command: 'npm run test:migration-realtime-authz' })
@@ -127,6 +153,10 @@ async function run() {
     checkedAt: new Date().toISOString(),
     label: summaryLabel,
     config: {
+      apiBaseUrl,
+      clientBaseUrl,
+      mongoUrl,
+      mongoPort,
       skipBuild,
       skipRuntime,
       includeRealtimeChurn,

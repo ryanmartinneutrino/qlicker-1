@@ -6,10 +6,17 @@ import { writeFile } from 'node:fs/promises'
 const sampleLimit = Number(process.env.QCLICKER_DB_COMPAT_SAMPLE || 5000)
 const strictMode = process.env.QCLICKER_DB_COMPAT_STRICT === 'true'
 const outputPath = process.env.QCLICKER_DB_COMPAT_OUTPUT || ''
+const mongoPort = Number(process.env.MONGO_PORT || process.env.QCLICKER_MONGO_PORT || 0)
+const mongoFromPort =
+  Number.isFinite(mongoPort) && mongoPort > 0
+    ? [`mongodb://localhost:${Math.floor(mongoPort)}/qlicker?directConnection=true`]
+    : []
 
 const mongoCandidates = [
-  process.env.QCLICKER_MONGO_URL,
   process.env.MONGO_URL,
+  process.env.QCLICKER_MONGO_URL,
+  process.env.QCLICKER_MONGO_URI,
+  ...mongoFromPort,
   'mongodb://localhost:27017/qlicker?replicaSet=rs0',
   'mongodb://localhost:27017/qlicker?directConnection=true',
   'mongodb://127.0.0.1:27017/qlicker?directConnection=true',
