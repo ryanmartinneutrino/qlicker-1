@@ -8,7 +8,9 @@ Dockerfile
 logs.txt
 private/
 
+# Confidential local legacy database backups must never be committed.
 legacydb/
+legacydb/**
 
 # New stack build artifacts
 packages/*/dist/

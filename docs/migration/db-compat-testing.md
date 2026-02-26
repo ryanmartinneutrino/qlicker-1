@@ -13,7 +13,7 @@ or restore from mounted legacy backup in the same flow:
 
 ```bash
 QCLICKER_RESTORE_LEGACY=true \
-QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/<backup-dir>' \
 npm run dev:migration:up
 ```
 
@@ -29,7 +29,7 @@ export MONGO_URL='mongodb://localhost:27018/qlicker?directConnection=true'
 If `legacydb/` contains a local mongodump backup, run the automated validator:
 
 ```bash
-QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/<backup-dir>' \
 QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
 npm run test:migration-legacy-backup
 ```
@@ -48,7 +48,7 @@ QCLICKER_GATE_SKIP_BUILD=true \
 QCLICKER_GATE_SKIP_RUNTIME=true \
 QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true \
 QCLICKER_GATE_OUTPUT=/tmp/qlicker-migration-artifacts/migration-gate.json \
-QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/<backup-dir>' \
 QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
 npm run test:migration-gate
 ```
@@ -159,7 +159,7 @@ QCLICKER_GATE_SKIP_BUILD=true \
 QCLICKER_GATE_INCLUDE_LEGACY_BACKUP=true \
 QCLICKER_GATE_INCLUDE_PILOT_CHECKLIST=true \
 QCLICKER_GATE_OUTPUT=artifacts/migration-gate.json \
-QCLICKER_LEGACY_BACKUP_DIR='legacydb/backup_2023-09-14_05-03-01' \
+QCLICKER_LEGACY_BACKUP_DIR='legacydb/<backup-dir>' \
 QCLICKER_LEGACY_MONGO_URI='mongodb://localhost:27018/?directConnection=true' \
 QCLICKER_LEGACY_SUMMARY_OUTPUT=artifacts/legacy-backup-summary.json \
 QCLICKER_PILOT_RUNTIME_GATE_JSON=artifacts/migration-gate.json \
