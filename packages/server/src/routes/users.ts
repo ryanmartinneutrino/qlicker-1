@@ -4,6 +4,7 @@ import { randomBytes, timingSafeEqual } from 'crypto'
 import { getUsers } from '../collections/users'
 import { requireAuth, requireAdmin } from '../auth/middleware'
 import type { User } from '@qlicker/shared'
+import { UserRole } from '@qlicker/shared'
 import { sendVerificationEmail } from '../utils/email-delivery'
 
 const router = Router()
@@ -19,6 +20,32 @@ function tokenEquals(a: string, b: string): boolean {
   const right = Buffer.from(b)
   if (left.length !== right.length) return false
   return timingSafeEqual(left, right)
+}
+
+function normalizeEmail(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+async function findUserByEmail(emailAddress: string): Promise<User | null> {
+  if (!emailAddress) return null
+  const users = getUsers()
+  const lower = emailAddress.toLowerCase()
+  const exactLower = await users.findOne({ 'emails.address': lower } as Parameters<typeof users.findOne>[0])
+  if (exactLower) return exactLower as User
+
+  const escaped = emailAddress.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const caseInsensitive = await users.findOne(
+    { emails: { $elemMatch: { address: { $regex: `^${escaped}$`, $options: 'i' } } } } as Parameters<
+      typeof users.findOne
+    >[0]
+  )
+  return (caseInsensitive as User) || null
+}
+
+function canPromoteUsers(actor: User): boolean {
+  if (!actor) return false
+  if (actor.profile.roles.includes(UserRole.admin)) return true
+  return Boolean(actor.profile.canPromote)
 }
 
 /** GET /api/users — list all users (admin only) */
@@ -218,6 +245,100 @@ router.put('/:userId/role', requireAuth, requireAdmin, async (req, res, next) =>
       { $set: { 'profile.roles': [role] } }
     )
     res.json({ success: true })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/users/promote — promote account to professor by email */
+router.post('/promote', requireAuth, async (req, res, next) => {
+  try {
+    const actor = req.user as User
+    if (!canPromoteUsers(actor)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const email = normalizeEmail(req.body?.email)
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email required.' })
+    }
+
+    const target = await findUserByEmail(email)
+    if (!target?._id) return res.status(404).json({ error: 'User not found.' })
+    if (target.profile.roles.includes(UserRole.admin)) {
+      return res.status(400).json({ error: 'Cannot demote an admin to professor.' })
+    }
+
+    const users = getUsers()
+    await users.updateOne(
+      { _id: target._id } as Parameters<typeof users.updateOne>[0],
+      { $set: { 'profile.roles': [UserRole.prof] } }
+    )
+
+    const updated = await users.findOne(
+      { _id: target._id } as Parameters<typeof users.findOne>[0],
+      { projection: { 'services.password': 0 } }
+    )
+    res.json({ success: true, user: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** POST /api/users/:userId/promote — promote account to professor by user id */
+router.post('/:userId/promote', requireAuth, async (req, res, next) => {
+  try {
+    const actor = req.user as User
+    if (!canPromoteUsers(actor)) {
+      return res.status(403).json({ error: 'Forbidden.' })
+    }
+
+    const targetId = String(req.params.userId || '').trim()
+    if (!targetId) return res.status(400).json({ error: 'userId required.' })
+
+    const users = getUsers()
+    const target = await users.findOne({ _id: targetId } as Parameters<typeof users.findOne>[0])
+    if (!target?._id) return res.status(404).json({ error: 'User not found.' })
+    if (target.profile.roles.includes(UserRole.admin)) {
+      return res.status(400).json({ error: 'Cannot demote an admin to professor.' })
+    }
+
+    await users.updateOne(
+      { _id: targetId } as Parameters<typeof users.updateOne>[0],
+      { $set: { 'profile.roles': [UserRole.prof] } }
+    )
+    const updated = await users.findOne(
+      { _id: targetId } as Parameters<typeof users.findOne>[0],
+      { projection: { 'services.password': 0 } }
+    )
+    res.json({ success: true, user: updated })
+  } catch (err) {
+    next(err)
+  }
+})
+
+/** PATCH /api/users/:userId/can-promote — update promote capability (admin only) */
+router.patch('/:userId/can-promote', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const targetId = String(req.params.userId || '').trim()
+    if (!targetId) return res.status(400).json({ error: 'userId required.' })
+    const requested = req.body?.canPromote
+
+    const users = getUsers()
+    const existing = await users.findOne({ _id: targetId } as Parameters<typeof users.findOne>[0])
+    if (!existing?._id) return res.status(404).json({ error: 'User not found.' })
+
+    const nextValue = typeof requested === 'boolean' ? requested : !Boolean(existing.profile.canPromote)
+    await users.updateOne(
+      { _id: targetId } as Parameters<typeof users.updateOne>[0],
+      { $set: { 'profile.canPromote': nextValue } }
+    )
+
+    const updated = await users.findOne(
+      { _id: targetId } as Parameters<typeof users.findOne>[0],
+      { projection: { 'services.password': 0 } }
+    )
+    res.json({ success: true, user: updated })
   } catch (err) {
     next(err)
   }
