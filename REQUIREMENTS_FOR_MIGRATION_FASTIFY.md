@@ -50,7 +50,6 @@ On the local copy of the repository, there is directory legacydb/ - leave that u
 
 - Organize the work into a larger framework that allows you to make detailed plans for every lane of work. As much as possible, plan on this work being done by multiple agents that you launch in parallel. Each agent would have sub tasks and documentation that they update. The main lane always cross checks that everything is following the master plan derived from this file. 
 
-
 ## Things to ensure:
 - Image uploads still need to work (Amazon S3, Azure, local)
 
@@ -62,10 +61,26 @@ On the local copy of the repository, there is directory legacydb/ - leave that u
 
 - Keep detailed documentation on the migration up to date. It should show the original plan, progress, future works and details. The migration should be done in multiple parallel lanes to speed it up. 
 
+## Some milestones to aim for (that are testable by a human using the UI):
 
-## Obvious improvements to make:
-- The admin interface in the meteorjs version is super slow because it loads all the users. It also looks super clunky, you can revamp that using modern/new react components. Retain functionality, but the look should be updated (and remain consistent with the rest of the app)
+1) Login works - user on an empty database can create an account, becomes admin and has access to the admin panel. Other users can create accounts, and admins can change them to prof and allow profs to promote other accounts. Users can login, change their password, logout. They can request a password reset by email that works. 
 
+2) Users can log in and update their profile pics. The admin interface correctly connects the app to an upload service and works for Azure, S3, and local storage. Preliminary testing of SAML indicate that it works. 
+
+3) Prof users can create a course with all its properties. Students can join the course based on the enrollment code. Profs and students can un-enroll. Guards in place to prevent courses having no profs. TA roles exist. 
+
+4) Prof can create interactive sessions and quizzes, the editors work as before. The status of a quiz can be set (draft, live, etc.). Questions can be edited as before, including with graphics and MathJax equations. The Question library and all question types work. 
+
+5) Interactive sessions and quizzes now work, students can answer questions in interactive sessions and profs can see the answers update in real time. They can choose to show the distribution of responses (stats) and/or the correct answer. They can create a new attempt. All responses are being recorded in the database. 
+
+6) Grading works. Profs and TAs can open the session grading pages and modals. The grade table works and correctly calculates grades. The data can be downloaded in CSV. One can also review sessions, and download the CSV data for a specific session. 
+
+7) Grouping and video chat work. SSO login with SAML is confirmed to work and roles can be assigned based on the SAML login information. Everything works and the documentation, in particular user and develop manuals, are up to date. Robust testing is in place. All packages are up to date and there are no known security vulnerabilities.
+
+8) Any remaining functionality is restored. The app works as before when restored from the existing data base. It also looks better and is snappier. The app is ready to be deployed in a load-balanced collection of servers started with a docker compose file. Robust utilities are in place to help set things up and keep regular backups. The documentation is up to date.
+
+## Things to change compared to the meteorjs app:
+1) The admin interface in the meteorjs version is super slow because it loads all the users. It also looks super clunky, you can revamp that using modern/new react components. Retain functionality, but the look should be updated (and remain consistent with the rest of the app).
 
 ## Testing:
 - I want to have unit tests from the onset. Introduce tests to make sure that everything works (e.g. api routes) based on best practices every time you introduce new functionality. You should develop a series of tests that have to pass on each PR and gradually implement them as the code gets updated. In general, when features are added, tests are also added for those features.
@@ -74,5 +89,9 @@ On the local copy of the repository, there is directory legacydb/ - leave that u
 
 
 ## Next steps:
-- Once you understand this document and the existing meteorjs version of the app in detail, start mapping out a plan for the work that can be carried out in multiple parallel lanes (aim for 7-8 parallel agents working at once). Keep a master document, MIGRATION.md, up to date with the current migration plan and a current status. It should refer to more detailed plans for the individual tasks to be run by parallel agents, and it should refer to this document as well. Work on the migration will be initiated by telling an agent to look at MIGRATION.md and resume the work, so MIGRATION.md has to have all of the required information to resume the work, as well as ensure that it aligns with what is described here. It should be explicit in MIGRATION.md to cross-check this file. This file might be updated from time to time, but only by a human user.
+- Once you understand this document and the existing meteorjs version of the app in detail, start mapping out a plan for the work that can be carried out in multiple parallel lanes (aim for 7-8 parallel agents working at once). Divide this up into small manageable sets of instructions so that agents can focus on well-defined tasks.
+
+- Keep a master document, MIGRATION.md, up to date with the current migration plan and a current status. It should refer to more detailed plans for the individual tasks to be run by parallel agents, and it should refer to this document as well. 
+
+- Work on the migration will be initiated by telling an agent to look at MIGRATION.md and resume the work, so MIGRATION.md has to have all of the required information to resume the work (including pointing towards more detailed plans), as well as ensure that it aligns with what is described here. It should be explicit in MIGRATION.md to cross-check this file regularly to ensure alignment. This file should only be updated by a human user.
 
