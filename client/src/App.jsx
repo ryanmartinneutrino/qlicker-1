@@ -12,7 +12,9 @@ import SSOCallback from './pages/SSOCallback';
 import Profile from './pages/Profile';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ProfDashboard from './pages/professor/ProfDashboard';
+import ProfCourseDetail from './pages/professor/CourseDetail';
 import StudentDashboard from './pages/student/StudentDashboard';
+import StudentCourseDetail from './pages/student/CourseDetail';
 
 export default function App() {
   return (
@@ -29,7 +31,9 @@ export default function App() {
               <Route path="/profile" element={<Profile />} />
               <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
               <Route path="/manage" element={<RequireRole role="professor"><ProfDashboard /></RequireRole>} />
+              <Route path="/manage/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
+              <Route path="/student/course/:id" element={<StudentCourseDetail />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
