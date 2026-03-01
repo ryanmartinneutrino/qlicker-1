@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
-  List, ListItem, ListItemText, ListItemSecondaryAction, IconButton,
+  List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar,
 } from '@mui/material';
@@ -252,14 +252,7 @@ export default function CourseDetail() {
                 <Box key={s._id || i}>
                   {i > 0 && <Divider />}
                   <ListItem>
-                    <ListItemText
-                      primary={`${s.profile?.firstname || ''} ${s.profile?.lastname || ''}`.trim() || 'Unknown'}
-                      secondary={s.emails?.[0]?.address || s.email || ''}
-                    />
-                    <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <IconButton edge="end" color="error" size="small" onClick={() => setRemoveStudentTarget(s)}>
-                        <PersonRemoveIcon fontSize="small" />
-                      </IconButton>
+                    <ListItemAvatar>
                       <Avatar
                         src={s.profile?.profileThumbnail || s.profile?.profileImage || ''}
                         sx={{ width: 36, height: 36, cursor: (s.profile?.profileImage) ? 'pointer' : 'default' }}
@@ -269,6 +262,15 @@ export default function CourseDetail() {
                       >
                         {(s.profile?.firstname?.[0] || '').toUpperCase()}
                       </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={`${s.profile?.firstname || ''} ${s.profile?.lastname || ''}`.trim() || 'Unknown'}
+                      secondary={s.emails?.[0]?.address || s.email || ''}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton edge="end" color="error" size="small" onClick={() => setRemoveStudentTarget(s)}>
+                        <PersonRemoveIcon fontSize="small" />
+                      </IconButton>
                     </ListItemSecondaryAction>
                   </ListItem>
                 </Box>
@@ -295,11 +297,22 @@ export default function CourseDetail() {
                 <Box key={inst._id || i}>
                   {i > 0 && <Divider />}
                   <ListItem>
+                    <ListItemAvatar>
+                      <Avatar
+                        src={inst.profile?.profileThumbnail || inst.profile?.profileImage || ''}
+                        sx={{ width: 36, height: 36, cursor: (inst.profile?.profileImage) ? 'pointer' : 'default' }}
+                        onClick={() => {
+                          if (inst.profile?.profileImage) setImageViewUrl(inst.profile.profileImage);
+                        }}
+                      >
+                        {(inst.profile?.firstname?.[0] || '').toUpperCase()}
+                      </Avatar>
+                    </ListItemAvatar>
                     <ListItemText
                       primary={`${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Unknown'}
                       secondary={inst.emails?.[0]?.address || inst.email || ''}
                     />
-                    <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ListItemSecondaryAction>
                       <Tooltip title={instructors.length <= 1 ? 'Cannot remove the last instructor' : 'Remove instructor'}>
                         <span>
                           <IconButton
@@ -313,15 +326,6 @@ export default function CourseDetail() {
                           </IconButton>
                         </span>
                       </Tooltip>
-                      <Avatar
-                        src={inst.profile?.profileThumbnail || inst.profile?.profileImage || ''}
-                        sx={{ width: 36, height: 36, cursor: (inst.profile?.profileImage) ? 'pointer' : 'default' }}
-                        onClick={() => {
-                          if (inst.profile?.profileImage) setImageViewUrl(inst.profile.profileImage);
-                        }}
-                      >
-                        {(inst.profile?.firstname?.[0] || '').toUpperCase()}
-                      </Avatar>
                     </ListItemSecondaryAction>
                   </ListItem>
                 </Box>
