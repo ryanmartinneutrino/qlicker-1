@@ -15,6 +15,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import settingsRoutes from './routes/settings.js';
 import imageRoutes from './routes/images.js';
+import courseRoutes from './routes/courses.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -84,6 +85,7 @@ export async function buildApp(opts = {}) {
   await app.register(userRoutes, { prefix: '/api/v1/users' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
   await app.register(imageRoutes, { prefix: '/api/v1/images' });
+  await app.register(courseRoutes, { prefix: '/api/v1/courses' });
 
   return app;
 }
