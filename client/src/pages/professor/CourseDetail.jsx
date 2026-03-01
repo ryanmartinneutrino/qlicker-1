@@ -300,6 +300,38 @@ export default function CourseDetail() {
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
             label={course.inactive ? 'Course is inactive' : 'Course is active'}
           />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={!!course.requireVerified}
+                onChange={async () => {
+                  try {
+                    await apiClient.patch(`/courses/${id}`, { requireVerified: !course.requireVerified });
+                    fetchCourse();
+                  } catch {
+                    setMsg({ severity: 'error', text: 'Failed to update setting' });
+                  }
+                }}
+              />
+            }
+            label="Require verified email to enroll"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={!!course.allowStudentQuestions}
+                onChange={async () => {
+                  try {
+                    await apiClient.patch(`/courses/${id}`, { allowStudentQuestions: !course.allowStudentQuestions });
+                    fetchCourse();
+                  } catch {
+                    setMsg({ severity: 'error', text: 'Failed to update setting' });
+                  }
+                }}
+              />
+            }
+            label="Allow students to submit questions"
+          />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2">Enrollment Code: <strong>{course.enrollmentCode}</strong></Typography>
             <Button size="small" startIcon={<RefreshIcon />} onClick={handleRegenerateCode}>
