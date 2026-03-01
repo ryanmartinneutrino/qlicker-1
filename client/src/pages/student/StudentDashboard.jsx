@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, TextField, Card, CardContent, CardActions,
+  Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Grid,
 } from '@mui/material';
@@ -85,7 +85,6 @@ export default function StudentDashboard() {
                     {course.semester}
                   </Typography>
                 </CardContent>
-                <CardActions />
               </Card>
             </Grid>
           ))}

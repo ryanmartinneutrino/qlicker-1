@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, TextField, Card, CardContent, CardActions,
+  Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Chip, InputAdornment, Grid, Select, MenuItem,
   FormControl, InputLabel,
@@ -20,11 +20,11 @@ function getSuggestedSemester() {
     // November-February → Winter
     return { season: 'Winter', year: month >= 10 ? year + 1 : year };
   }
-  if (month >= 1 && month <= 6) {
-    // February-July → Summer
+  if (month <= 6) {
+    // March-July → Summer
     return { season: 'Summer', year };
   }
-  // July-November → Fall
+  // August-October → Fall
   return { season: 'Fall', year };
 }
 
@@ -152,7 +152,6 @@ export default function ProfDashboard() {
                     </Box>
                   )}
                 </CardContent>
-                <CardActions />
               </Card>
             </Grid>
           ))}
@@ -181,7 +180,7 @@ export default function ProfDashboard() {
                 <MenuItem value="Spring/Summer">Spring/Summer</MenuItem>
               </Select>
             </FormControl>
-            <TextField label="Year" value={newCourse.year} onChange={(e) => setNewCourse((s) => ({ ...s, year: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label="Year" placeholder="e.g. 2025" value={newCourse.year} onChange={(e) => setNewCourse((s) => ({ ...s, year: e.target.value }))} sx={{ flex: 1 }} />
           </Box>
         </DialogContent>
         <DialogActions>
