@@ -8,6 +8,15 @@ function generateEnrollmentCode() {
   return code;
 }
 
+async function generateUniqueEnrollmentCode() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateEnrollmentCode();
+    const existing = await Course.findOne({ enrollmentCode: code });
+    if (!existing) return code;
+  }
+  throw new Error('Failed to generate a unique enrollment code');
+}
+
 const createCourseSchema = {
   body: {
     type: 'object',
@@ -53,7 +62,7 @@ export default async function courseRoutes(app) {
       const { name, deptCode, courseNumber, section, semester } = request.body;
       const userId = request.user.userId;
 
-      const enrollmentCode = generateEnrollmentCode();
+      const enrollmentCode = await generateUniqueEnrollmentCode();
 
       const course = await Course.create({
         name,
@@ -455,7 +464,7 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const enrollmentCode = generateEnrollmentCode();
+      const enrollmentCode = await generateUniqueEnrollmentCode();
       const updated = await Course.findByIdAndUpdate(
         course._id,
         { $set: { enrollmentCode } },
