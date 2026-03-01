@@ -98,6 +98,13 @@ echo "--- Port Configuration ---"
 read -r -p "Client port [3000]: " APP_PORT
 APP_PORT=${APP_PORT:-3000}
 
+# Check for openssl (needed for secret generation)
+if ! command -v openssl &>/dev/null; then
+  echo "[ERROR] openssl is required to generate JWT secrets but was not found."
+  echo "  Install it (e.g., sudo apt-get install openssl) and re-run."
+  exit 1
+fi
+
 read -r -p "API/Server port [3001]: " API_PORT
 API_PORT=${API_PORT:-3001}
 

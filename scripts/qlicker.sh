@@ -29,9 +29,12 @@ start() {
   # Start MongoDB if mongod is available and not already running
   if command -v mongod &>/dev/null; then
     if ! pgrep -x mongod &>/dev/null; then
+      MONGO_DATA="$PROJECT_ROOT/.data/mongodb"
+      MONGO_LOG="$PROJECT_ROOT/.data/mongodb.log"
+      mkdir -p "$MONGO_DATA"
       echo "  Starting MongoDB on port $MONGO_PORT..."
-      mongod --port "$MONGO_PORT" --dbpath /tmp/qlicker-mongo --fork --logpath /tmp/qlicker-mongo.log 2>/dev/null || \
-        (mkdir -p /tmp/qlicker-mongo && mongod --port "$MONGO_PORT" --dbpath /tmp/qlicker-mongo --fork --logpath /tmp/qlicker-mongo.log)
+      mongod --port "$MONGO_PORT" --dbpath "$MONGO_DATA" --fork --logpath "$MONGO_LOG" 2>/dev/null || \
+        mongod --port "$MONGO_PORT" --dbpath "$MONGO_DATA" --fork --logpath "$MONGO_LOG"
       MONGO_PID=$(pgrep -x mongod | tail -1)
       if [ -n "$MONGO_PID" ]; then
         PIDS+=("mongo:$MONGO_PID")
