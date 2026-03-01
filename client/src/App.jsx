@@ -14,6 +14,7 @@ import Profile from './pages/Profile';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ProfDashboard from './pages/professor/ProfDashboard';
 import ProfCourseDetail from './pages/professor/CourseDetail';
+import SessionEditor from './pages/professor/SessionEditor';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseDetail from './pages/student/CourseDetail';
 
@@ -34,6 +35,7 @@ export default function App() {
               <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
               <Route path="/manage" element={<RequireRole role="professor"><ProfDashboard /></RequireRole>} />
               <Route path="/manage/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
+              <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />
             </Route>
