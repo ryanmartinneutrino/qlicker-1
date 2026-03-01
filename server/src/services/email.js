@@ -16,7 +16,8 @@ function parseMailUrl(mailUrl) {
         : undefined,
     };
   } catch (err) {
-    console.warn('Failed to parse MAIL_URL:', err.message);
+    console.error('Failed to parse MAIL_URL:', err.message);
+    console.error('  Expected format: smtp://user:password@smtp.example.com:587');
     return null;
   }
 }
@@ -25,7 +26,8 @@ function getTransporter() {
   if (transporter) return transporter;
   const smtpConfig = parseMailUrl(config.mailUrl);
   if (!smtpConfig) {
-    console.warn('MAIL_URL not configured – emails will not be sent');
+    console.warn('MAIL_URL not configured — emails will not be sent.');
+    console.warn('  Set MAIL_URL in .env to enable email verification and password reset.');
     return null;
   }
   transporter = nodemailer.createTransport(smtpConfig);
@@ -35,13 +37,13 @@ function getTransporter() {
 export async function sendVerificationEmail(user, token) {
   const t = getTransporter();
   if (!t) {
-    console.warn('Email transport not available, skipping verification email');
+    console.warn('Email transport not available — skipping verification email for', user.emails?.[0]?.address);
     return;
   }
   const verifyUrl = `${config.rootUrl}/verify-email/${token}`;
   const emailAddress = user.emails?.[0]?.address;
   await t.sendMail({
-    from: config.mailUrl ? undefined : 'noreply@qlicker.app',
+    from: `"Qlicker" <noreply@qlicker.app>`,
     to: emailAddress,
     subject: 'Verify your Qlicker email',
     html: `<p>Hello ${user.profile?.firstname || ''},</p>
@@ -53,13 +55,13 @@ export async function sendVerificationEmail(user, token) {
 export async function sendPasswordResetEmail(user, token) {
   const t = getTransporter();
   if (!t) {
-    console.warn('Email transport not available, skipping password reset email');
+    console.warn('Email transport not available — skipping password reset email for', user.emails?.[0]?.address);
     return;
   }
   const resetUrl = `${config.rootUrl}/reset-password/${token}`;
   const emailAddress = user.emails?.[0]?.address;
   await t.sendMail({
-    from: config.mailUrl ? undefined : 'noreply@qlicker.app',
+    from: `"Qlicker" <noreply@qlicker.app>`,
     to: emailAddress,
     subject: 'Reset your Qlicker password',
     html: `<p>Hello ${user.profile?.firstname || ''},</p>

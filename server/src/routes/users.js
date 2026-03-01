@@ -77,6 +77,24 @@ export default async function userRoutes(app) {
     }
   );
 
+  // PATCH /me/image — Update profile image
+  app.patch('/me/image', { preHandler: authenticate }, async (request, reply) => {
+    const { profileImage } = request.body || {};
+    if (typeof profileImage !== 'string') {
+      return reply.code(400).send({ error: 'Bad Request', message: 'profileImage URL string is required' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      request.user.userId,
+      { $set: { 'profile.profileImage': profileImage } },
+      { new: true }
+    );
+    if (!user) {
+      return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+    }
+    return sanitizeUser(user);
+  });
+
   // GET / (admin only - paginated user list)
   app.get(
     '/',
@@ -93,6 +111,7 @@ export default async function userRoutes(app) {
           { 'profile.firstname': regex },
           { 'profile.lastname': regex },
           { 'emails.address': regex },
+          { 'profile.studentNumber': regex },
         ];
       }
       if (role) {

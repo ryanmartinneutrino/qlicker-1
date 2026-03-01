@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert,
+  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
+import apiClient from '../api/client';
 
 export default function Login() {
   const [tab, setTab] = useState(0);
@@ -13,7 +14,14 @@ export default function Login() {
   const [lastname, setLastname] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
   const { login, register } = useAuth();
+
+  useEffect(() => {
+    apiClient.get('/settings/public').then(({ data }) => {
+      if (data.SSO_enabled) setSsoEnabled(true);
+    }).catch(() => { /* ignore */ });
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -72,6 +80,19 @@ export default function Login() {
               <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
                 {loading ? 'Logging in...' : 'Login'}
               </Button>
+              {ssoEnabled && (
+                <>
+                  <Divider sx={{ my: 2 }}>or</Divider>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    // Full page redirect required — SSO login is an external IdP redirect, not an API call
+                    onClick={() => { window.location.href = '/api/v1/auth/sso/login'; }}
+                  >
+                    Login with SSO
+                  </Button>
+                </>
+              )}
             </Box>
           ) : (
             <Box component="form" onSubmit={handleRegister}>

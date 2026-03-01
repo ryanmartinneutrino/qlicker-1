@@ -40,3 +40,6 @@ mongo-data/
 # Temporary files
 tmp/
 .tmp/
+
+# Uploaded files
+server/uploads/

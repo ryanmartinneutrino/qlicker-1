@@ -284,19 +284,104 @@ function UsersTab() {
   );
 }
 
+// ── Storage Tab ─────────────────────────────────────────────────────────────
+function StorageTab() {
+  const [storageType, setStorageType] = useState('local');
+  const [s3, setS3] = useState({ AWS_bucket: '', AWS_region: '', AWS_accessKeyId: '', AWS_secretAccessKey: '' });
+  const [azure, setAzure] = useState({ Azure_storageAccount: '', Azure_storageAccessKey: '', Azure_storageContainer: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    apiClient.get('/settings').then(({ data }) => {
+      setStorageType(data.storageType ?? 'local');
+      setS3({
+        AWS_bucket: data.AWS_bucket ?? '',
+        AWS_region: data.AWS_region ?? '',
+        AWS_accessKeyId: data.AWS_accessKeyId ?? '',
+        AWS_secretAccessKey: data.AWS_secretAccessKey ?? '',
+      });
+      setAzure({
+        Azure_storageAccount: data.Azure_storageAccount ?? '',
+        Azure_storageAccessKey: data.Azure_storageAccessKey ?? '',
+        Azure_storageContainer: data.Azure_storageContainer ?? '',
+      });
+    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load storage settings' }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const payload = { storageType };
+      if (storageType === 's3') Object.assign(payload, s3);
+      if (storageType === 'azure') Object.assign(payload, azure);
+      await apiClient.patch('/settings', payload);
+      setMsg({ severity: 'success', text: 'Storage settings saved' });
+    } catch {
+      setMsg({ severity: 'error', text: 'Failed to save storage settings' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <CircularProgress />;
+
+  return (
+    <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <FormControl fullWidth>
+        <InputLabel>Storage Type</InputLabel>
+        <Select value={storageType} label="Storage Type" onChange={(e) => setStorageType(e.target.value)}>
+          <MenuItem value="local">Local</MenuItem>
+          <MenuItem value="s3">Amazon S3</MenuItem>
+          <MenuItem value="azure">Azure Blob Storage</MenuItem>
+        </Select>
+      </FormControl>
+
+      {storageType === 's3' && (
+        <>
+          <TextField label="Bucket" value={s3.AWS_bucket} onChange={(e) => setS3((s) => ({ ...s, AWS_bucket: e.target.value }))} fullWidth />
+          <TextField label="Region" value={s3.AWS_region} onChange={(e) => setS3((s) => ({ ...s, AWS_region: e.target.value }))} fullWidth />
+          <TextField label="Access Key ID" value={s3.AWS_accessKeyId} onChange={(e) => setS3((s) => ({ ...s, AWS_accessKeyId: e.target.value }))} fullWidth />
+          <TextField label="Secret Access Key" type="password" value={s3.AWS_secretAccessKey} onChange={(e) => setS3((s) => ({ ...s, AWS_secretAccessKey: e.target.value }))} fullWidth />
+        </>
+      )}
+
+      {storageType === 'azure' && (
+        <>
+          <TextField label="Storage Account" value={azure.Azure_storageAccount} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccount: e.target.value }))} fullWidth />
+          <TextField label="Storage Access Key" type="password" value={azure.Azure_storageAccessKey} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccessKey: e.target.value }))} fullWidth />
+          <TextField label="Storage Container" value={azure.Azure_storageContainer} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageContainer: e.target.value }))} fullWidth />
+        </>
+      )}
+
+      <Button variant="contained" onClick={handleSave} disabled={saving}>
+        {saving ? 'Saving…' : 'Save Storage Settings'}
+      </Button>
+      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+    </Box>
+  );
+}
+
 // ── SSO Tab ─────────────────────────────────────────────────────────────────
 function SSOTab() {
   const ssoFields = [
     { key: 'SSO_enabled', label: 'Enable SSO', type: 'checkbox' },
-    { key: 'SSO_entrypoint', label: 'SSO Entrypoint URL' },
-    { key: 'SSO_cert', label: 'SSO Certificate', type: 'textarea' },
-    { key: 'SSO_EntityId', label: 'Entity ID' },
+    { key: 'SSO_entrypoint', label: 'IDP Entry Point URL' },
+    { key: 'SSO_logoutUrl', label: 'IDP Logout URL' },
+    { key: 'SSO_EntityId', label: 'Entity ID (e.g. qlicker)' },
+    { key: 'SSO_identifierFormat', label: 'Identifier Format' },
+    { key: 'SSO_institutionName', label: 'Institution Name' },
     { key: 'SSO_emailIdentifier', label: 'Email Identifier' },
     { key: 'SSO_firstNameIdentifier', label: 'First Name Identifier' },
     { key: 'SSO_lastNameIdentifier', label: 'Last Name Identifier' },
     { key: 'SSO_roleIdentifier', label: 'Role Identifier' },
-    { key: 'SSO_roleProfName', label: 'Role Professor Name' },
-    { key: 'SSO_logoutUrl', label: 'Logout URL' },
+    { key: 'SSO_roleProfName', label: 'Name of professor role for auto-promote' },
+    { key: 'SSO_studentNumberIdentifier', label: 'Student Number Identifier' },
+    { key: 'SSO_cert', label: 'IDP Certificate (single string, no BEGIN-END)', type: 'textarea' },
+    { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
+    { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
   ];
 
   const [settings, setSettings] = useState(() =>
@@ -379,11 +464,13 @@ export default function AdminDashboard() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         <Tab label="Settings" />
         <Tab label="Users" />
+        <Tab label="Storage" />
         <Tab label="SSO Configuration" />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab /></TabPanel>
-      <TabPanel value={tab} index={2}><SSOTab /></TabPanel>
+      <TabPanel value={tab} index={2}><StorageTab /></TabPanel>
+      <TabPanel value={tab} index={3}><SSOTab /></TabPanel>
     </Box>
   );
 }

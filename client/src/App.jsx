@@ -8,6 +8,7 @@ import AppLayout from './components/layout/AppLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
+import SSOCallback from './pages/SSOCallback';
 import Profile from './pages/Profile';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ProfDashboard from './pages/professor/ProfDashboard';
@@ -22,6 +23,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/sso-callback" element={<SSOCallback />} />
             <Route path="/reset/:token" element={<ResetPassword />} />
             <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
               <Route path="/profile" element={<Profile />} />

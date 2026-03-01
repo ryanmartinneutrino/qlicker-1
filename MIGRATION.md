@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: PHASE 1 IN PROGRESS — Foundation, Auth, Frontend, and Testing Infrastructure Complete
+## Status: PHASE 2 IN PROGRESS — Profile Images, File Upload, SAML SSO
 
 ---
 
@@ -463,8 +463,8 @@ See [agents/AGENT_1_FOUNDATION.md](agents/AGENT_1_FOUNDATION.md)
 - [x] `qlicker.sh` start/stop/restart/status script
 - [x] `seed-db.sh` and `seed-db-docker.sh` scripts
 - [x] `.env.example` file
-- [ ] File upload plugin (S3, Azure, local)
-- [ ] Image routes
+- [x] File upload plugin (S3, Azure, local)
+- [x] Image routes
 - [x] CORS and security headers
 - [x] Production Docker Compose with load balancing (Nginx)
 
@@ -482,8 +482,8 @@ See [agents/AGENT_2_AUTH.md](agents/AGENT_2_AUTH.md)
 - [x] User CRUD routes (admin)
 - [x] Role management (admin changes roles, prof promotes)
 - [x] Profile update routes
-- [ ] SAML SSO plugin (passport-saml)
-- [ ] SSO routes (login, callback, metadata, logout)
+- [x] SAML SSO plugin (node-saml with encrypted logout handling)
+- [x] SSO routes (login, callback, metadata, logout)
 - [ ] Legacy user compatibility (Meteor password format)
 - [x] Auth middleware (role guards)
 
@@ -711,8 +711,8 @@ The existing MongoDB database uses Meteor's conventions:
 
 | Milestone | Status | Target Phase |
 |-----------|--------|-------------|
-| 1. Login works | 🟡 In progress | Phase 1 |
-| 2. Profile & uploads | ⬜ Not started | Phase 2 |
+| 1. Login works | ✅ Complete | Phase 1 |
+| 2. Profile & uploads | 🟡 In progress | Phase 2 |
 | 3. Course management | ⬜ Not started | Phase 3 |
 | 4. Session editor | ⬜ Not started | Phase 4 |
 | 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
@@ -724,14 +724,14 @@ The existing MongoDB database uses Meteor's conventions:
 
 | Agent | Current Task | Status |
 |-------|-------------|--------|
-| 1 - Foundation | Tasks 1.1-1.4 complete | ✅ Phase 1 done |
-| 2 - Auth | Tasks 2.1-2.4 complete | ✅ Phase 1 done |
-| 3 - Courses | Waiting for Phase 1 | ⬜ Not started |
-| 4 - Sessions | Waiting for Phase 1 | ⬜ Not started |
-| 5 - Responses | Waiting for Phase 1 | ⬜ Not started |
-| 6 - Grading | Waiting for Phase 1 | ⬜ Not started |
-| 7 - Frontend | Tasks 7.1-7.4 complete | ✅ Phase 1 done |
-| 8 - Testing | Tasks 8.1-8.2 complete | ✅ Phase 1 done |
+| 1 - Foundation | File upload plugin (local, S3 stub, Azure stub) | ✅ Phase 2 done |
+| 2 - Auth | SAML SSO plugin with encrypted logout handling | ✅ Phase 2 done |
+| 3 - Courses | Waiting for Phase 2 | ⬜ Not started |
+| 4 - Sessions | Waiting for Phase 2 | ⬜ Not started |
+| 5 - Responses | Waiting for Phase 2 | ⬜ Not started |
+| 6 - Grading | Waiting for Phase 2 | ⬜ Not started |
+| 7 - Frontend | Profile image upload, admin storage/SSO UI | ✅ Phase 2 done |
+| 8 - Testing | Pending profile/image tests | 🟡 In progress |
 
 ---
 

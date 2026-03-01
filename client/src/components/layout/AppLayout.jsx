@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container,
 } from '@mui/material';
@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
@@ -38,21 +39,24 @@ export default function AppLayout() {
     return '/student';
   };
 
+  const currentPath = location.pathname;
+  const dashboardPath = getDashboardPath();
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
           <Typography
-            variant="h6"
-            sx={{ flexGrow: 1, cursor: 'pointer' }}
-            onClick={() => navigate(getDashboardPath())}
+            variant="h4"
+            sx={{ flexGrow: 1, cursor: 'pointer', fontWeight: 500 }}
+            onClick={() => navigate(dashboardPath)}
           >
             Qlicker
           </Typography>
           <IconButton onClick={handleMenuOpen} color="inherit">
             <Avatar
               src={user?.profile?.profileImage}
-              sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}
+              sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
             >
               {getInitials()}
             </Avatar>
@@ -61,8 +65,13 @@ export default function AppLayout() {
             <MenuItem disabled>
               {user?.profile?.firstname} {user?.profile?.lastname}
             </MenuItem>
-            <MenuItem onClick={handleProfile}>Profile</MenuItem>
-            {user?.profile?.roles?.includes('admin') && (
+            {currentPath !== dashboardPath && (
+              <MenuItem onClick={() => { handleMenuClose(); navigate(dashboardPath); }}>Dashboard</MenuItem>
+            )}
+            {currentPath !== '/profile' && (
+              <MenuItem onClick={handleProfile}>Profile</MenuItem>
+            )}
+            {user?.profile?.roles?.includes('admin') && currentPath !== '/admin' && (
               <MenuItem onClick={() => { handleMenuClose(); navigate('/admin'); }}>Admin Panel</MenuItem>
             )}
             <MenuItem onClick={handleLogout}>Logout</MenuItem>

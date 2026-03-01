@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  Box, Typography, TextField, Button, Alert, CircularProgress, Divider, Paper,
+  Box, Typography, TextField, Button, Alert, CircularProgress, Divider, Paper, Avatar,
 } from '@mui/material';
+import { PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 
@@ -14,6 +15,11 @@ export default function Profile() {
   const [pwMsg, setPwMsg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
+  const numberLabel = isStaff ? 'Employee Number' : 'Student Number';
 
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {
@@ -66,6 +72,30 @@ export default function Profile() {
     }
   };
 
+  const initials = `${user?.profile?.firstname?.[0] ?? ''}${user?.profile?.lastname?.[0] ?? ''}`.toUpperCase();
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { data } = await apiClient.post('/images', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await apiClient.patch('/users/me/image', { profileImage: data.image.url });
+      await loadUser();
+      setMsg({ severity: 'success', text: 'Profile photo updated' });
+    } catch {
+      setMsg({ severity: 'error', text: 'Failed to upload photo' });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
 
   return (
@@ -76,11 +106,40 @@ export default function Profile() {
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Profile Photo</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar
+            src={user?.profile?.profileImage}
+            sx={{ width: 80, height: 80, fontSize: 32 }}
+          >
+            {initials}
+          </Avatar>
+          <Box>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={handleImageUpload}
+            />
+            <Button
+              variant="outlined"
+              startIcon={uploading ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? 'Uploading…' : 'Upload Photo'}
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>Personal Information</Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField label="First Name" value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth />
           <TextField label="Last Name" value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth />
-          <TextField label="Student Number" value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
+          <TextField label={numberLabel} value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
           <Button variant="contained" onClick={handleSaveProfile} disabled={saving}>
             {saving ? 'Saving…' : 'Save Profile'}
           </Button>

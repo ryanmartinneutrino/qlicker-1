@@ -16,6 +16,7 @@ fi
 echo "Copying seed script to server container..."
 docker cp "$SCRIPT_DIR/seed-db.js" "$CONTAINER:/app/seed-db.js"
 
+# Pass MONGO_URI from the container's environment
 echo "Running seed script inside container..."
 docker exec "$CONTAINER" node /app/seed-db.js "$@"
 
