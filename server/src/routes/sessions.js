@@ -345,9 +345,14 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const { questionId } = request.body;
+      if (!session.questions.includes(questionId)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this session' });
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { currentQuestion: request.body.questionId } },
+        { $set: { currentQuestion: questionId } },
         { new: true }
       );
 
