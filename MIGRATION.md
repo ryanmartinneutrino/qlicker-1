@@ -770,6 +770,19 @@ The following issues were identified during testing and have been resolved:
 | Admin: no last login tracking | Added lastLogin field to User model, displayed in admin table | ✅ Fixed |
 | SSO users email not auto-verified | SSO login now marks email as verified for existing users | ✅ Fixed |
 | Course missing verified enrollment setting | Added requireVerified toggle in course settings, enforced on enrollment | ✅ Fixed |
+| lastLogin breaks legacy DB users | Field is optional (no default/required), UI shows 'Never' for missing values | ✅ Verified |
+| Legacy DB agent instructions needed | Created AGENT_LEGACY_DB.md with instructions for discovering legacydb/ structure and updating seed scripts | ✅ Created |
+| Password reset modal UX | Modal auto-closes after 5s on success, warns user to check spam/junk folder | ✅ Fixed |
+| Admin can change their own role | Server returns 403 for self-role-change; UI disables dropdown with tooltip | ✅ Fixed |
+| Cross-tab login not synced | Added localStorage 'storage' event listener in AuthContext for cross-tab auth sync | ✅ Fixed |
+| Prof course page: no avatars | Avatar shown at far right of each student/instructor row, clickable for full-size dialog | ✅ Fixed |
+| Prof course page: no removal confirmation | Added confirmation dialogs before removing students or instructors | ✅ Fixed |
+| Prof course page: no reactive updates | Added 15-second polling interval for auto-refresh of member lists | ✅ Fixed |
+| Student unenroll: "Insufficient permissions" | Server now allows students to remove themselves (self-unenroll) | ✅ Fixed |
+| Create course: "Season" label | Changed label from "Season" to "Semester" | ✅ Fixed |
+| Create course: Fall/Winter year format | Fall/Winter now generates year/year+1 format (e.g., 2025/2026) | ✅ Fixed |
+| Course tiles: inconsistent sizing | Fixed card sizes with minHeight, uniform layout across dashboards | ✅ Fixed |
+| Course tiles: layout order | Now shows: bold dept+number → semester → name (wrapped) → section | ✅ Fixed |
 
 ### Phase 4 Progress
 
@@ -793,13 +806,13 @@ The following issues were identified during testing and have been resolved:
 | Agent | Current Task | Status |
 |-------|-------------|--------|
 | 1 - Foundation | Port configuration cleanup, Docker improvements | ✅ Phase 3 done |
-| 2 - Auth | SSO auto-verify, lastLogin tracking, verify-email endpoint | ✅ Phase 4 done |
-| 3 - Courses | Course CRUD + enrollment verification + user population | ✅ Phase 4 done |
+| 2 - Auth | SSO auto-verify, lastLogin tracking, verify-email endpoint, admin self-role protection | ✅ Phase 4 done |
+| 3 - Courses | Course CRUD + enrollment verification + user population + student self-unenroll | ✅ Phase 4 done |
 | 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 4 backend done |
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
-| 7 - Frontend | Dashboards, course pages, admin enhancements, VerifyEmail page | ✅ Phase 3 done |
-| 8 - Testing | All route tests passing (89 tests: auth 18, courses 21, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
+| 7 - Frontend | Dashboards, course pages, admin enhancements, course tile layout, member list improvements, cross-tab auth | ✅ Phase 4 UI fixes done |
+| 8 - Testing | All route tests passing (92 tests: auth 19, courses 23, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
 
 ---
 
@@ -814,23 +827,30 @@ The following issues were identified during testing and have been resolved:
 
 ### Current Next Steps (Phase 4 → Phase 5)
 
-Phase 4 backend work is complete. Session and Question CRUD routes are implemented and tested. The following should happen next:
+Phase 4 backend work is complete and all Comments.md issues have been resolved. Session and Question CRUD routes are implemented and tested. The following should happen next:
 
-1. **Phase 4 Frontend:** Session editor page, session list on course pages, question editor components (Agent 7)
-2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
-3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
-4. **Phase 6 Prep:** Grade calculation service (Agent 6)
-5. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
+1. **Legacy DB Discovery:** Run the agent instructions in [AGENT_LEGACY_DB.md](AGENT_LEGACY_DB.md) to discover the legacy database structure and update seed scripts with restore-from-dump capability.
+2. **Phase 4 Frontend:** Session editor page, session list on course pages, question editor components (Agent 7)
+3. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
+4. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+5. **Phase 6 Prep:** Grade calculation service (Agent 6)
+6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
+7. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
 
-**Testable by human (Phase 3 & 4 backend):**
+**Testable by human (all phases through Phase 4):**
 - Log in as professor → create a course → click course title to view
 - Students can enroll → student sees course in dashboard → click title to view
-- Professor: add/remove students with full name display (no more "Unknown")
+- Professor: add/remove students with confirmation dialog, avatars shown at far right
 - Professor: toggle requireVerified and allowStudentQuestions settings
 - Admin: see Verified column, click to verify email, see Last Login column
-- Forgot password: click "Forgot Password?" → receive email with correct link → reset works
+- Admin: **cannot change their own role** (dropdown is disabled with tooltip)
+- Forgot password: click "Forgot Password?" → receive email → modal auto-closes with spam warning
 - Email verification: click link in email → /verify-email/:token page → email marked verified
-- Smart semester: create course dialog pre-fills season + year based on current date
+- Smart semester: create course dialog uses "Semester" label, Fall/Winter shows 2025/2026
+- Course tiles: uniform size, bold dept+number, semester, wrapped name, section line
+- Cross-tab auth: login in one tab → other tabs automatically show logged-in state
+- Student can unenroll from a course (no more "Insufficient permissions" error)
+- Student/instructor lists auto-refresh every 15 seconds
 - API: POST/GET/PATCH/DELETE sessions and questions via REST endpoints
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.
