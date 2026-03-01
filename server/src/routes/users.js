@@ -93,6 +93,7 @@ export default async function userRoutes(app) {
           { 'profile.firstname': regex },
           { 'profile.lastname': regex },
           { 'emails.address': regex },
+          { 'profile.studentNumber': regex },
         ];
       }
       if (role) {

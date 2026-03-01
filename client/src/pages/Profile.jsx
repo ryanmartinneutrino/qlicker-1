@@ -15,6 +15,9 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
 
+  const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
+  const numberLabel = isStaff ? 'Employee Number' : 'Student Number';
+
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {
       const u = data.user || data;
@@ -80,7 +83,7 @@ export default function Profile() {
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField label="First Name" value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth />
           <TextField label="Last Name" value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth />
-          <TextField label="Student Number" value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
+          <TextField label={numberLabel} value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
           <Button variant="contained" onClick={handleSaveProfile} disabled={saving}>
             {saving ? 'Saving…' : 'Save Profile'}
           </Button>

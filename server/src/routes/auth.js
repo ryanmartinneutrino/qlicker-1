@@ -92,6 +92,21 @@ export default async function authRoutes(app) {
       createdAt: new Date(),
     });
 
+    // Send verification email
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.services.email.verificationTokens.push({
+      token: verificationToken,
+      address: normalizedEmail,
+      when: new Date(),
+    });
+    await user.save();
+
+    try {
+      await sendVerificationEmail(user, verificationToken);
+    } catch (err) {
+      request.log.error('Failed to send verification email:', err);
+    }
+
     const token = signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 

@@ -49,6 +49,21 @@ read -r -p "MongoDB port [27017]: " MONGO_PORT
 MONGO_PORT=${MONGO_PORT:-27017}
 
 # --------------------------------------------------
+# Ask for MAIL_URL
+# --------------------------------------------------
+echo ""
+echo "--- Email Configuration ---"
+echo "  MAIL_URL is required for email verification and password reset."
+echo "  Format: smtp://user:password@smtp.example.com:587"
+echo "  Leave blank to skip (emails will not be sent until configured)."
+read -r -p "MAIL_URL []: " MAIL_URL
+MAIL_URL=${MAIL_URL:-}
+if [ -z "$MAIL_URL" ]; then
+  echo "[WARN] MAIL_URL not set — email features (verification, password reset) will not work."
+  echo "       Set MAIL_URL in the .env file later to enable email."
+fi
+
+# --------------------------------------------------
 # Generate .env file for Docker Compose
 # --------------------------------------------------
 echo ""
@@ -70,7 +85,7 @@ MONGO_PORT=$MONGO_PORT
 JWT_SECRET=$JWT_SECRET
 JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 ROOT_URL=http://localhost:$APP_PORT
-MAIL_URL=
+MAIL_URL=$MAIL_URL
 NODE_ENV=production
 EOF
 
