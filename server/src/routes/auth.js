@@ -437,6 +437,9 @@ export default async function authRoutes(app) {
         return reply.redirect(`${app.config.rootUrl}/login`);
       }
 
+      // Log for audit since we cannot cryptographically validate the source
+      request.log.info('SSO logout POST received from %s', request.ip);
+
       // Decode the base64 SAMLRequest and extract sessionIndex
       const xml = Buffer.from(samlRequest, 'base64').toString('utf8');
 

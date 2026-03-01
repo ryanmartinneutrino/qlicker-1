@@ -2,6 +2,7 @@
 
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
 import { config } from 'dotenv';
@@ -76,7 +77,7 @@ function generateMeteorId() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTWXYZabcdefghijkmnopqrstuvwxyz';
   let result = '';
   const bytes = new Uint8Array(17);
-  globalThis.crypto?.getRandomValues?.(bytes) || require('crypto').randomFillSync(bytes);
+  crypto.randomFillSync(bytes);
   for (let i = 0; i < 17; i++) {
     result += chars[bytes[i] % chars.length];
   }

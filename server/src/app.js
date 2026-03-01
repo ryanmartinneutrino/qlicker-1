@@ -58,7 +58,11 @@ export async function buildApp(opts = {}) {
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       return reply.code(400).send({ error: 'Bad Request', message: 'Invalid filename' });
     }
-    const filePath = path.join(app.uploadsDir, filename);
+    const filePath = path.resolve(app.uploadsDir, filename);
+    // Ensure resolved path is still within uploads directory (prevents symlink attacks)
+    if (!filePath.startsWith(path.resolve(app.uploadsDir))) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'Invalid filename' });
+    }
     if (!fs.existsSync(filePath)) {
       return reply.code(404).send({ error: 'Not Found', message: 'File not found' });
     }
