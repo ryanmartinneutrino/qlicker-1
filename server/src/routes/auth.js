@@ -143,6 +143,9 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
+    user.lastLogin = new Date();
+    await user.save();
+
     const token = signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
@@ -375,6 +378,8 @@ export default async function authRoutes(app) {
         },
         createdAt: new Date(),
       });
+      user.lastLogin = new Date();
+      await user.save();
     } else {
       // Existing user — update profile from SSO attributes
       if (firstname) user.profile.firstname = firstname;
@@ -395,6 +400,14 @@ export default async function authRoutes(app) {
       user.services.sso.email = email;
       user.services.sso.SSORole = roleValue;
       user.services.sso.studentNumber = studentNumber;
+
+      // SSO users should have verified emails
+      const emailEntry = user.emails.find(e => e.address === email);
+      if (emailEntry && !emailEntry.verified) {
+        emailEntry.verified = true;
+      }
+
+      user.lastLogin = new Date();
       await user.save();
     }
 

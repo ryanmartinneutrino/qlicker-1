@@ -200,6 +200,23 @@ export default async function userRoutes(app) {
     }
   );
 
+  // PATCH /:id/verify-email (admin only)
+  app.patch(
+    '/:id/verify-email',
+    { preHandler: requireRole(['admin']) },
+    async (request, reply) => {
+      const user = await User.findById(request.params.id);
+      if (!user) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+      if (user.emails && user.emails.length > 0) {
+        user.emails[0].verified = true;
+        await user.save();
+      }
+      return sanitizeUser(user);
+    }
+  );
+
   // DELETE /:id (admin only)
   app.delete(
     '/:id',
