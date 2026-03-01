@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 2 Complete — Phase 3 Ready
+## Status: Phase 3 In Progress — Course Management
 
 ---
 
@@ -492,12 +492,12 @@ See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
 
 **Summary of tasks:**
 - [x] Course Mongoose model
-- [ ] Course CRUD routes
-- [ ] Enrollment (by code, by email, by admin add)
-- [ ] Student management (add, remove)
-- [ ] TA management (add, remove)
-- [ ] Enrollment code generation/regeneration
-- [ ] Course settings (active/inactive, verification, student questions)
+- [x] Course CRUD routes
+- [x] Enrollment (by code, by email, by admin add)
+- [x] Student management (add, remove)
+- [x] TA management (add, remove)
+- [x] Enrollment code generation/regeneration
+- [x] Course settings (active/inactive, verification, student questions)
 - [ ] Group category CRUD
 - [ ] Group management (add/remove students, rename)
 - [ ] Video chat integration (Jitsi room management)
@@ -564,8 +564,8 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 - [x] Login/Register page
 - [x] Admin panel (settings, users, images, SSO)
 - [x] Profile page
-- [ ] Professor dashboard and course pages
-- [ ] Student dashboard and course pages
+- [x] Professor dashboard and course pages
+- [x] Student dashboard and course pages
 - [ ] Session editor page
 - [ ] Run session page (professor)
 - [ ] Present session page (student)
@@ -712,26 +712,56 @@ The existing MongoDB database uses Meteor's conventions:
 | Milestone | Status | Target Phase |
 |-----------|--------|-------------|
 | 1. Login works | ✅ Complete | Phase 1 |
-| 2. Profile & uploads | ✅ Complete | Phase 2 |
-| 3. Course management | ⬜ Not started | Phase 3 |
+| 2. Profile & uploads | ✅ Complete (bugs fixed) | Phase 2 |
+| 3. Course management | 🟡 In progress | Phase 3 |
 | 4. Session editor | ⬜ Not started | Phase 4 |
 | 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
 | 7. Grading | ⬜ Not started | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
 
+### Phase 2 Bug Fixes (from Comments.md)
+
+The following issues were identified during Phase 2 testing and have been resolved:
+
+| Issue | Fix | Status |
+|-------|-----|--------|
+| No "Forgot Password" button on login | Added forgot password dialog to Login.jsx | ✅ Fixed |
+| ResetPassword page was a stub | Implemented full reset password flow | ✅ Fixed |
+| Profile picture upload not working in dev | Added /uploads proxy to vite.config.js and nginx.conf | ✅ Fixed |
+| SSO users could change their name | Server blocks name changes for SSO users; UI disables fields | ✅ Fixed |
+| Hardcoded port numbers throughout | All ports now use env variables with fallback defaults | ✅ Fixed |
+
+### Phase 3 Progress
+
+| Component | Task | Status |
+|-----------|------|--------|
+| Backend | Course CRUD routes (create, read, update, delete) | ✅ Complete |
+| Backend | Enrollment by code | ✅ Complete |
+| Backend | Student management (add/remove) | ✅ Complete |
+| Backend | Instructor/TA management (add/remove) | ✅ Complete |
+| Backend | Enrollment code regeneration | ✅ Complete |
+| Backend | Active/inactive toggle | ✅ Complete |
+| Frontend | Professor Dashboard with course list and create dialog | ✅ Complete |
+| Frontend | Student Dashboard with enrollment | ✅ Complete |
+| Frontend | Professor Course Detail (students, instructors, settings tabs) | ✅ Complete |
+| Frontend | Student Course Detail with unenroll | ✅ Complete |
+| Frontend | App.jsx routes for course pages | ✅ Complete |
+| Testing | Course routes unit tests (21 tests) | ✅ Complete |
+| Testing | Course management E2E tests | ⬜ Not started |
+
 ### Agent Status
 
 | Agent | Current Task | Status |
 |-------|-------------|--------|
-| 1 - Foundation | File upload plugin (local, S3 stub, Azure stub) | ✅ Phase 2 done |
-| 2 - Auth | SAML SSO plugin with encrypted logout handling | ✅ Phase 2 done |
-| 3 - Courses | Course Mongoose model complete | ✅ Phase 2 done |
+| 1 - Foundation | Port configuration cleanup, Docker improvements | ✅ Phase 3 done |
+| 2 - Auth | SSO name-edit prevention, forgot password UI | ✅ Phase 3 done |
+| 3 - Courses | Course CRUD routes, enrollment, student/TA management | ✅ Phase 3 done |
 | 4 - Sessions | Session & Question Mongoose models complete | ✅ Phase 2 done |
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
-| 7 - Frontend | Profile image upload, admin storage/SSO UI | ✅ Phase 2 done |
-| 8 - Testing | Pending profile/image tests | 🟡 In progress |
+| 7 - Frontend | Professor/Student dashboards, course detail pages | ✅ Phase 3 done |
+| 8 - Testing | Course routes tests (21 tests passing) | 🟡 In progress |
 
 ---
 
@@ -743,5 +773,21 @@ The existing MongoDB database uses Meteor's conventions:
 4. Read the relevant agent file in [agents/](agents/) for detailed task instructions
 5. Complete the next pending task, update the agent file, and update this file's status tables
 6. Submit a PR with your changes
+
+### Current Next Steps (Phase 3 → Phase 4)
+
+Phase 3 core work is complete. The following should happen next:
+
+1. **Phase 3 Remaining:** E2E tests for course management flow (Agent 8)
+2. **Phase 4 Start:** Session and question CRUD routes (Agent 4), session editor UI (Agent 7)
+3. **Phase 4 Start:** WebSocket events for live session status on course pages (Agent 5)
+4. **Ongoing:** Role guard refinements, script updates (Agents 1, 2)
+
+**Testable by human (Phase 3):** 
+- Log in as professor → create a course → see enrollment code → go to course detail page
+- Log in as student → enroll using enrollment code → see course in dashboard
+- Professor: add/remove students, add/remove instructors, toggle active, regenerate code
+- Professor: delete course
+- Forgot password flow: click "Forgot Password?" on login → enter email → receive reset link
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.
