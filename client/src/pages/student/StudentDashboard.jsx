@@ -43,7 +43,7 @@ export default function StudentDashboard() {
       fetchCourses();
       setMsg({ severity: 'success', text: 'Successfully enrolled in course' });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to enroll' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to enroll' });
     } finally {
       setEnrolling(false);
     }

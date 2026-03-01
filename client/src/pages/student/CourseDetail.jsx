@@ -37,7 +37,7 @@ export default function StudentCourseDetail() {
       await apiClient.delete(`/courses/${id}/students/${user._id}`);
       navigate('/student');
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to unenroll' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to unenroll' });
       setUnenrolling(false);
       setUnenrollOpen(false);
     }

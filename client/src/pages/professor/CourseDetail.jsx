@@ -79,7 +79,7 @@ export default function CourseDetail() {
       fetchCourse();
       setMsg({ severity: 'success', text: 'Student added' });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to add student' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to add student' });
     } finally {
       setAddingStudent(false);
     }
@@ -106,7 +106,7 @@ export default function CourseDetail() {
       fetchCourse();
       setMsg({ severity: 'success', text: 'Instructor added' });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to add instructor' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to add instructor' });
     } finally {
       setAddingInstructor(false);
     }
@@ -155,7 +155,7 @@ export default function CourseDetail() {
       fetchCourse();
       setMsg({ severity: 'success', text: 'Course updated' });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to update course' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update course' });
     } finally {
       setSavingSettings(false);
     }

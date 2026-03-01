@@ -48,7 +48,7 @@ export default function ProfDashboard() {
       fetchCourses();
       setMsg({ severity: 'success', text: 'Course created' });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to create course' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to create course' });
     } finally {
       setCreating(false);
     }
