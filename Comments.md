@@ -1,21 +1,26 @@
-# Comments based on user testing after PR #92
+# Comments based on user testing after PR #93
+- Make sure that the fields that you added, such as lastLogin won't be an issue when starting up from the legacy database, where users may not have this property (refer to the meteorjs version of the app, in meteorjs_version/ to double check expected fields in the existing database). In general, make sure that requirements have not drifted in terms of being able to start with a legacy database and read the correct fields. 
 
-- The instructors part of the prof's course management page should list students and instructors in the course (including themselves). It just has "Unknown" for now, but maybe that's just because the corresponding component doesn't exist to display a name. When a user is removed from a course, the data from that user associated with the course (e.g responses for a student) should NOT be deleted, so that students and TAs that un-enroll by mistake don't lose their work.
+- Write instructions for a local agent to read the folder legacydb/ (which cannot be uploaded to github) and discover the structure of the legacy database from a mongodump. From that, it should update the seed-db scripts to give the user the possibility to restore the db from such a mongodump (even in dev mode). In particular, the script should search the legacydb/ directory  and propose the directory therein from which to read the mongodump (in case there are several). The script should never have explicit filenames in it, the contents of legacydb/ including names of files are never to be uploaded to github. The instructions for the agent should also have it update, if applicable, the details about the legacy database organization so that future work remains aligned with it. Put those instructions in the top level of the repository.
 
-- Eventually, when you implement the list of instructors and students, there should be a search bar (that autocompletes based on First name, Last name, and email). Clicking on a user displays their profile picture and name (not in thumbnail version, but limited to fit in the screen). There should be controls on the list elements to remove specific users from a course.
+- The modal for sending a password reset should have a way to close it and should close by itself after it confirms sending an email (and warns user to check spam).
 
-- Prof course management website should have a setting to choose that only users with verified email addresses can enroll. Check with the settings in the meteorjs version of the app to make sure that the possible settings are captured.  
+- It should not be possible for the admin to change their own role, guaranteeing that there is always at least one admin user!
 
-- In both the student and prof dashboards that show the list of existing courses, make the title of the course clickable (instead of "view/manage course" links)
+- If the user is logged-in in one tab, then the user should be considered logged-in in all tabs of a browser. Currently, if one is logged in and opens a new tab (e.g. localhost:3000), the user is shown a login screen and can log in as a separate user. We don't want that. A logged-in user that open a new tab should have it go straight to their dashboard.
 
-- The password reset doesn't work. It currently sends the email with a link, but then the link just opens a splash page about Qlicker (with a "get started button") instead of a dialog to update the password. Is this landing page necessary?
+- In the profs page to manage a course, list of people (students, instructors) should have the avatar at the far right (clickable for a full size version of the picture that was uploaded). The button to remove a student or instructor must have the user confirm. Also, check that when uploading pictures both a thumbnail and full size version are saved.
 
-- Clicking on the link to verify email address also goes to the landing page that doesn't do anything (it should just login the user), but at least it correctly sends out the email.
+- The list of students and instructors displayed in prof course management page needs to update if the database changes (say a student enrolls or drops).
 
-- Note that if a user logs in by SSO, their email address is obtained from SAML and should be automatically marked as verified.
+- If a student tries to unenroll themselves, they get an error "Insufficient permissions"
 
-- In the admin interface, admin user should have a button to verify someone's email address. A column should show if the user is verified (and just make it clickable to verify an email address). There should also be a column that shows the last date a user was logged in (and sort by that by default, latest first), and a column that shows if a user is currently logged in. Clicking on a user should show their profile picture, what courses their enrolled in (or instructing - show the latest 5 by course creation date)
+- The create course modal should say "semester" instead of "season". If the user chooses Fall/Winter, then the year will be 2025/2026 (use the current year as the first year, update this option if the user chooses Fall/Winter) 
 
-- In the create a course  modal, pre-fill the text boxes with some examples, e.g. Course Name: e.g. Calculus-based physics, Dept Code: e.g. PHYS, Course Number: e.g. 101, Section: e.g. 001, Semester (pre-fill with Fall/Winter/Summer 20XX) where XX depends on the current year, and the season is chosen as follows (and Spring is not suggested), between Nov and Feb it suggests Winter, between Feb and July is suggests Summer, and betwen July and November it suggests "Fall". Make it so that the user must select one of Fall, Winter, Fall/Winter, Spring, Summer, Spring/Summer as the season and a year. The admin interface can have a setting to allow additional semester labels (so add this functionality, fill it with the above for the default). Keep in mind that this app will have to work when restored from a database that doesn't have these properties in it, since it will be the database that the meteorjs app is currently using in production.    
+- The tiles that show different courses (in dashboards) should have a uniform size, currently, they are wider if the course has a longer title. Wrap the title if needed. Make the dept and course number the big bold part (so that it's always the same size), then put in the semester and year, then write in the course name, then another line that says Section: 001 (as applicable).
+
+
+
+
 
  
