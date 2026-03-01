@@ -58,7 +58,7 @@ export async function sendPasswordResetEmail(user, token) {
     console.warn('Email transport not available — skipping password reset email for', user.emails?.[0]?.address);
     return;
   }
-  const resetUrl = `${config.rootUrl}/reset-password/${token}`;
+  const resetUrl = `${config.rootUrl}/reset/${token}`;
   const emailAddress = user.emails?.[0]?.address;
   await t.sendMail({
     from: `"Qlicker" <noreply@qlicker.app>`,

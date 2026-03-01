@@ -5,9 +5,9 @@ import {
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  CircularProgress,
+  CircularProgress, Tooltip,
 } from '@mui/material';
-import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
 import apiClient from '../../api/client';
 
 function TabPanel({ children, value, index }) {
@@ -139,6 +139,16 @@ function UsersTab() {
     }
   };
 
+  const handleVerifyEmail = async (userId) => {
+    try {
+      await apiClient.patch(`/users/${userId}/verify-email`);
+      fetchUsers();
+      setMsg({ severity: 'success', text: 'Email verified' });
+    } catch {
+      setMsg({ severity: 'error', text: 'Failed to verify email' });
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
@@ -195,20 +205,40 @@ function UsersTab() {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Email</TableCell>
+              <TableCell>Verified</TableCell>
+              <TableCell>Last Login</TableCell>
               <TableCell>Role</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={4} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
             ) : users.length === 0 ? (
-              <TableRow><TableCell colSpan={4} align="center">No users found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center">No users found</TableCell></TableRow>
             ) : (
               users.map((u) => (
                 <TableRow key={u._id}>
                   <TableCell>{u.profile?.firstname} {u.profile?.lastname}</TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
+                  <TableCell>
+                    {u.emails?.[0]?.verified ? (
+                      <Tooltip title="Verified">
+                        <CheckCircle color="success" fontSize="small" />
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Click to verify">
+                        <IconButton size="small" onClick={() => handleVerifyEmail(u._id)}>
+                          <Cancel color="error" fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {u.lastLogin
+                      ? new Date(u.lastLogin).toLocaleString()
+                      : 'Never'}
+                  </TableCell>
                   <TableCell>
                     <Select
                       size="small"

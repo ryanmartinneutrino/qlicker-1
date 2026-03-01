@@ -16,6 +16,8 @@ import userRoutes from './routes/users.js';
 import settingsRoutes from './routes/settings.js';
 import imageRoutes from './routes/images.js';
 import courseRoutes from './routes/courses.js';
+import sessionRoutes from './routes/sessions.js';
+import questionRoutes from './routes/questions.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -86,6 +88,8 @@ export async function buildApp(opts = {}) {
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
   await app.register(imageRoutes, { prefix: '/api/v1/images' });
   await app.register(courseRoutes, { prefix: '/api/v1/courses' });
+  await app.register(sessionRoutes, { prefix: '/api/v1' });
+  await app.register(questionRoutes, { prefix: '/api/v1' });
 
   return app;
 }

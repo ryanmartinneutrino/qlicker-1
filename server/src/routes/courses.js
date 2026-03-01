@@ -156,10 +156,22 @@ export default async function courseRoutes(app) {
 
       const obj = course.toObject();
 
+      // Populate instructor data for any authenticated viewer
+      if (obj.instructors && obj.instructors.length > 0) {
+        const instructorUsers = await User.find({ _id: { $in: obj.instructors } })
+          .select('_id profile emails').lean();
+        obj.instructors = instructorUsers.map(u => ({ _id: u._id, profile: u.profile, emails: u.emails }));
+      }
+
       // Students only see course info, not other students' details
       if (!isAdmin && !isInstructor) {
         delete obj.students;
         delete obj.groupCategories;
+      } else if (obj.students && obj.students.length > 0) {
+        // Populate student data for instructors and admins
+        const studentUsers = await User.find({ _id: { $in: obj.students } })
+          .select('_id profile emails').lean();
+        obj.students = studentUsers.map(u => ({ _id: u._id, profile: u.profile, emails: u.emails }));
       }
 
       return { course: obj };
@@ -257,6 +269,13 @@ export default async function courseRoutes(app) {
       const course = await Course.findOne({ enrollmentCode });
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Invalid enrollment code' });
+      }
+
+      if (course.requireVerified) {
+        const enrollingUser = await User.findById(userId);
+        if (!enrollingUser?.emails?.[0]?.verified) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Email verification required to enroll in this course' });
+        }
       }
 
       if (course.instructors.includes(userId)) {

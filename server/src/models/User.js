@@ -103,6 +103,7 @@ const UserSchema = new mongoose.Schema(
     services: { type: ServicesSchema, default: () => ({}) },
     profile: { type: ProfileSchema, default: () => ({}) },
     createdAt: { type: Date, default: Date.now },
+    lastLogin: { type: Date },
   },
   {
     collection: 'users',

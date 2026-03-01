@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, TextField, Card, CardContent, CardActions,
+  Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Grid,
 } from '@mui/material';
@@ -77,7 +77,7 @@ export default function StudentDashboard() {
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
               <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" gutterBottom noWrap>{course.name}</Typography>
+                  <Typography variant="h6" gutterBottom noWrap sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate(`/student/course/${course._id}`)}>{course.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''}
                   </Typography>
@@ -85,11 +85,6 @@ export default function StudentDashboard() {
                     {course.semester}
                   </Typography>
                 </CardContent>
-                <CardActions>
-                  <Button size="small" onClick={() => navigate(`/student/course/${course._id}`)}>
-                    View Course
-                  </Button>
-                </CardActions>
               </Card>
             </Grid>
           ))}

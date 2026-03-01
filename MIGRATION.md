@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 3 In Progress — Course Management
+## Status: Phase 4 In Progress — Sessions & Questions
 
 ---
 
@@ -509,16 +509,16 @@ See [agents/AGENT_4_SESSIONS.md](agents/AGENT_4_SESSIONS.md)
 **Summary of tasks:**
 - [x] Session Mongoose model
 - [x] Question Mongoose model
-- [ ] Session CRUD routes
-- [ ] Question CRUD routes
-- [ ] Session lifecycle (start, end, set current question)
-- [ ] Quiz configuration (dates, extensions)
-- [ ] Question ordering within sessions
-- [ ] Question types (SA, MC, TF, MS, NU)
-- [ ] Question sessionOptions (attempts, stats, correct, visibility)
-- [ ] Question library (personal, public, course)
-- [ ] Question tagging
-- [ ] Copy questions/sessions
+- [x] Session CRUD routes (create, read, update, delete, list)
+- [x] Question CRUD routes (create, read, update, delete)
+- [x] Session lifecycle (start, end, set current question)
+- [x] Quiz configuration (dates, extensions)
+- [x] Question ordering within sessions
+- [x] Question types (SA, MC, TF, MS, NU)
+- [x] Question sessionOptions (attempts, stats, correct, visibility)
+- [x] Question library (personal, public, course) — copy to library, copy to session
+- [x] Question tagging
+- [x] Copy questions/sessions
 - [ ] Question approval (student submissions)
 
 ### Agent 5: Responses & Real-Time
@@ -713,8 +713,8 @@ The existing MongoDB database uses Meteor's conventions:
 |-----------|--------|-------------|
 | 1. Login works | ✅ Complete | Phase 1 |
 | 2. Profile & uploads | ✅ Complete (bugs fixed) | Phase 2 |
-| 3. Course management | 🟡 In progress | Phase 3 |
-| 4. Session editor | ⬜ Not started | Phase 4 |
+| 3. Course management | ✅ Complete | Phase 3 |
+| 4. Session editor | 🟡 In progress (backend routes done, frontend pending) | Phase 4 |
 | 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
 | 7. Grading | ⬜ Not started | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
@@ -742,26 +742,64 @@ The following issues were identified during Phase 2 testing and have been resolv
 | Backend | Instructor/TA management (add/remove) | ✅ Complete |
 | Backend | Enrollment code regeneration | ✅ Complete |
 | Backend | Active/inactive toggle | ✅ Complete |
+| Backend | Populate user data in course detail endpoint | ✅ Complete |
+| Backend | Enforce requireVerified on enrollment | ✅ Complete |
 | Frontend | Professor Dashboard with course list and create dialog | ✅ Complete |
 | Frontend | Student Dashboard with enrollment | ✅ Complete |
 | Frontend | Professor Course Detail (students, instructors, settings tabs) | ✅ Complete |
 | Frontend | Student Course Detail with unenroll | ✅ Complete |
 | Frontend | App.jsx routes for course pages | ✅ Complete |
+| Frontend | Clickable course titles in dashboards | ✅ Complete |
+| Frontend | Smart semester pre-fill with season dropdown | ✅ Complete |
+| Frontend | Course settings: requireVerified, allowStudentQuestions toggles | ✅ Complete |
 | Testing | Course routes unit tests (21 tests) | ✅ Complete |
 | Testing | Course management E2E tests | ⬜ Not started |
+
+### Comments.md Bug Fixes
+
+The following issues were identified during testing and have been resolved:
+
+| Issue | Fix | Status |
+|-------|-----|--------|
+| Password reset URL mismatch | Email now sends `/reset/:token` matching App.jsx route | ✅ Fixed |
+| Email verification route missing | Added `/verify-email/:token` route and VerifyEmail page | ✅ Fixed |
+| Course members showing "Unknown" | Backend populates student/instructor data in GET /courses/:id | ✅ Fixed |
+| Course titles not clickable | Titles now navigate to course detail page in both dashboards | ✅ Fixed |
+| Create course: no semester pre-fill | Smart season suggestion + dropdown (Fall/Winter/Summer etc.) | ✅ Fixed |
+| Admin: no email verified column | Added Verified column with clickable verify toggle | ✅ Fixed |
+| Admin: no last login tracking | Added lastLogin field to User model, displayed in admin table | ✅ Fixed |
+| SSO users email not auto-verified | SSO login now marks email as verified for existing users | ✅ Fixed |
+| Course missing verified enrollment setting | Added requireVerified toggle in course settings, enforced on enrollment | ✅ Fixed |
+
+### Phase 4 Progress
+
+| Component | Task | Status |
+|-----------|------|--------|
+| Backend | Session CRUD routes (create, read, update, delete, list) | ✅ Complete |
+| Backend | Session lifecycle (start, end, current question) | ✅ Complete |
+| Backend | Session copy, reviewable toggle, quiz extensions | ✅ Complete |
+| Backend | Question CRUD routes (create, read, update, delete) | ✅ Complete |
+| Backend | Question session management (add/remove/reorder) | ✅ Complete |
+| Backend | Question session options (attempts, visibility, stats, correct) | ✅ Complete |
+| Backend | Question library (copy to library, copy to session) | ✅ Complete |
+| Testing | Session routes unit tests (20 tests) | ✅ Complete |
+| Testing | Question routes unit tests (19 tests) | ✅ Complete |
+| Frontend | Session editor page | ⬜ Not started |
+| Frontend | Session list on course pages | ⬜ Not started |
+| Frontend | Question editor components | ⬜ Not started |
 
 ### Agent Status
 
 | Agent | Current Task | Status |
 |-------|-------------|--------|
 | 1 - Foundation | Port configuration cleanup, Docker improvements | ✅ Phase 3 done |
-| 2 - Auth | SSO name-edit prevention, forgot password UI | ✅ Phase 3 done |
-| 3 - Courses | Course CRUD routes, enrollment, student/TA management | ✅ Phase 3 done |
-| 4 - Sessions | Session & Question Mongoose models complete | ✅ Phase 2 done |
+| 2 - Auth | SSO auto-verify, lastLogin tracking, verify-email endpoint | ✅ Phase 4 done |
+| 3 - Courses | Course CRUD + enrollment verification + user population | ✅ Phase 4 done |
+| 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 4 backend done |
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
-| 7 - Frontend | Professor/Student dashboards, course detail pages | ✅ Phase 3 done |
-| 8 - Testing | Course routes tests (21 tests passing) | 🟡 In progress |
+| 7 - Frontend | Dashboards, course pages, admin enhancements, VerifyEmail page | ✅ Phase 3 done |
+| 8 - Testing | All route tests passing (89 tests: auth 18, courses 21, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
 
 ---
 
@@ -774,20 +812,25 @@ The following issues were identified during Phase 2 testing and have been resolv
 5. Complete the next pending task, update the agent file, and update this file's status tables
 6. Submit a PR with your changes
 
-### Current Next Steps (Phase 3 → Phase 4)
+### Current Next Steps (Phase 4 → Phase 5)
 
-Phase 3 core work is complete. The following should happen next:
+Phase 4 backend work is complete. Session and Question CRUD routes are implemented and tested. The following should happen next:
 
-1. **Phase 3 Remaining:** E2E tests for course management flow (Agent 8)
-2. **Phase 4 Start:** Session and question CRUD routes (Agent 4), session editor UI (Agent 7)
-3. **Phase 4 Start:** WebSocket events for live session status on course pages (Agent 5)
-4. **Ongoing:** Role guard refinements, script updates (Agents 1, 2)
+1. **Phase 4 Frontend:** Session editor page, session list on course pages, question editor components (Agent 7)
+2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
+3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+4. **Phase 6 Prep:** Grade calculation service (Agent 6)
+5. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
 
-**Testable by human (Phase 3):** 
-- Log in as professor → create a course → see enrollment code → go to course detail page
-- Log in as student → enroll using enrollment code → see course in dashboard
-- Professor: add/remove students, add/remove instructors, toggle active, regenerate code
-- Professor: delete course
-- Forgot password flow: click "Forgot Password?" on login → enter email → receive reset link
+**Testable by human (Phase 3 & 4 backend):**
+- Log in as professor → create a course → click course title to view
+- Students can enroll → student sees course in dashboard → click title to view
+- Professor: add/remove students with full name display (no more "Unknown")
+- Professor: toggle requireVerified and allowStudentQuestions settings
+- Admin: see Verified column, click to verify email, see Last Login column
+- Forgot password: click "Forgot Password?" → receive email with correct link → reset works
+- Email verification: click link in email → /verify-email/:token page → email marked verified
+- Smart semester: create course dialog pre-fills season + year based on current date
+- API: POST/GET/PATCH/DELETE sessions and questions via REST endpoints
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.
