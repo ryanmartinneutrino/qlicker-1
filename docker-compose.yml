@@ -19,6 +19,9 @@ services:
       - ROOT_URL=${ROOT_URL:-http://localhost:3000}
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=${NODE_ENV:-production}
+      - STORAGE_TYPE=${STORAGE_TYPE:-local}
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       - mongo
     restart: unless-stopped
@@ -33,3 +36,4 @@ services:
 
 volumes:
   mongo-data:
+  uploads:

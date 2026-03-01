@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: PHASE 2 IN PROGRESS — Profile Images, File Upload, SAML SSO
+## Status: Phase 2 Complete — Phase 3 Ready
 
 ---
 
@@ -491,7 +491,7 @@ See [agents/AGENT_2_AUTH.md](agents/AGENT_2_AUTH.md)
 See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
 
 **Summary of tasks:**
-- [ ] Course Mongoose model
+- [x] Course Mongoose model
 - [ ] Course CRUD routes
 - [ ] Enrollment (by code, by email, by admin add)
 - [ ] Student management (add, remove)
@@ -507,8 +507,8 @@ See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
 See [agents/AGENT_4_SESSIONS.md](agents/AGENT_4_SESSIONS.md)
 
 **Summary of tasks:**
-- [ ] Session Mongoose model
-- [ ] Question Mongoose model
+- [x] Session Mongoose model
+- [x] Question Mongoose model
 - [ ] Session CRUD routes
 - [ ] Question CRUD routes
 - [ ] Session lifecycle (start, end, set current question)
@@ -525,11 +525,11 @@ See [agents/AGENT_4_SESSIONS.md](agents/AGENT_4_SESSIONS.md)
 See [agents/AGENT_5_RESPONSES.md](agents/AGENT_5_RESPONSES.md)
 
 **Summary of tasks:**
-- [ ] Response Mongoose model
+- [x] Response Mongoose model
 - [ ] Response submission routes
 - [ ] Response update (quiz editable responses)
-- [ ] WebSocket infrastructure (@fastify/websocket)
-- [ ] WebSocket authentication
+- [x] WebSocket infrastructure (@fastify/websocket)
+- [x] WebSocket authentication
 - [ ] Live session events (question changed, response added, status changed)
 - [ ] Course page events (session status, student list)
 - [ ] Response statistics calculation
@@ -540,7 +540,7 @@ See [agents/AGENT_5_RESPONSES.md](agents/AGENT_5_RESPONSES.md)
 See [agents/AGENT_6_GRADING.md](agents/AGENT_6_GRADING.md)
 
 **Summary of tasks:**
-- [ ] Grade Mongoose model
+- [x] Grade Mongoose model
 - [ ] Grade calculation service (auto-grade MC/TF/MS/NU)
 - [ ] Manual grade/mark editing
 - [ ] Feedback per mark
@@ -712,7 +712,7 @@ The existing MongoDB database uses Meteor's conventions:
 | Milestone | Status | Target Phase |
 |-----------|--------|-------------|
 | 1. Login works | ✅ Complete | Phase 1 |
-| 2. Profile & uploads | 🟡 In progress | Phase 2 |
+| 2. Profile & uploads | ✅ Complete | Phase 2 |
 | 3. Course management | ⬜ Not started | Phase 3 |
 | 4. Session editor | ⬜ Not started | Phase 4 |
 | 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
@@ -726,10 +726,10 @@ The existing MongoDB database uses Meteor's conventions:
 |-------|-------------|--------|
 | 1 - Foundation | File upload plugin (local, S3 stub, Azure stub) | ✅ Phase 2 done |
 | 2 - Auth | SAML SSO plugin with encrypted logout handling | ✅ Phase 2 done |
-| 3 - Courses | Waiting for Phase 2 | ⬜ Not started |
-| 4 - Sessions | Waiting for Phase 2 | ⬜ Not started |
-| 5 - Responses | Waiting for Phase 2 | ⬜ Not started |
-| 6 - Grading | Waiting for Phase 2 | ⬜ Not started |
+| 3 - Courses | Course Mongoose model complete | ✅ Phase 2 done |
+| 4 - Sessions | Session & Question Mongoose models complete | ✅ Phase 2 done |
+| 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
+| 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
 | 7 - Frontend | Profile image upload, admin storage/SSO UI | ✅ Phase 2 done |
 | 8 - Testing | Pending profile/image tests | 🟡 In progress |
 

@@ -9,6 +9,7 @@ import config from './config/index.js';
 import dbPlugin from './plugins/db.js';
 import uploadPlugin from './plugins/upload.js';
 import samlPlugin from './plugins/saml.js';
+import websocketPlugin from './plugins/websocket.js';
 import { authenticate, requireRole } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
@@ -47,6 +48,11 @@ export async function buildApp(opts = {}) {
 
   // SAML SSO plugin
   await app.register(samlPlugin);
+
+  // WebSocket plugin (skip in test if opts.skipWs)
+  if (!opts.skipWs) {
+    await app.register(websocketPlugin);
+  }
 
   // Health check
   app.get('/api/v1/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
