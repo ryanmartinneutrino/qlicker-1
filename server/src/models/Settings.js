@@ -37,6 +37,8 @@ const SettingsSchema = new mongoose.Schema(
     SSO_firstNameIdentifier: { type: String, default: '' },
     SSO_lastNameIdentifier: { type: String, default: '' },
     SSO_studentNumberIdentifier: { type: String, default: '' },
+    SSO_roleIdentifier: { type: String, default: '' },
+    SSO_roleProfName: { type: String, default: '' },
 
     // Storage config
     storageType: {

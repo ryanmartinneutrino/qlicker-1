@@ -50,12 +50,20 @@ const ResetPasswordSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const SSOServiceSchema = new mongoose.Schema(
+  {
+    nameID: { type: String },
+  },
+  { _id: false }
+);
+
 const ServicesSchema = new mongoose.Schema(
   {
     password: { type: PasswordSchema, default: () => ({}) },
     resume: { type: ResumeSchema, default: () => ({}) },
     email: { type: EmailServiceSchema, default: () => ({}) },
     resetPassword: { type: ResetPasswordSchema },
+    sso: { type: SSOServiceSchema },
   },
   { _id: false }
 );

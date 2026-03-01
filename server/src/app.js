@@ -8,6 +8,7 @@ import path from 'path';
 import config from './config/index.js';
 import dbPlugin from './plugins/db.js';
 import uploadPlugin from './plugins/upload.js';
+import samlPlugin from './plugins/saml.js';
 import { authenticate, requireRole } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
@@ -43,6 +44,9 @@ export async function buildApp(opts = {}) {
 
   // Upload plugin
   await app.register(uploadPlugin);
+
+  // SAML SSO plugin
+  await app.register(samlPlugin);
 
   // Health check
   app.get('/api/v1/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

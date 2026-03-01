@@ -5,6 +5,13 @@ import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 
+function getAttr(profile, key) {
+  if (!key || !profile) return '';
+  const val = profile[key];
+  if (Array.isArray(val)) return val[0] || '';
+  return val || '';
+}
+
 function sanitizeUser(user) {
   const obj = user.toObject();
   delete obj.services;
@@ -292,4 +299,104 @@ export default async function authRoutes(app) {
       return { success: true };
     }
   );
+
+  // GET /sso/login
+  app.get('/sso/login', async (request, reply) => {
+    const saml = await app.getSamlProvider();
+    if (!saml) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
+    }
+
+    // Relay state is not needed; the callback handles redirect
+    const url = await saml.getAuthorizeUrlAsync('', request.id, {});
+    return reply.redirect(url);
+  });
+
+  // POST /sso/callback
+  app.post('/sso/callback', async (request, reply) => {
+    const saml = await app.getSamlProvider();
+    if (!saml) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
+    }
+
+    let profile;
+    try {
+      const result = await saml.validatePostResponseAsync(request.body);
+      profile = result.profile;
+    } catch (err) {
+      request.log.error('SAML validation error:', err);
+      return reply.code(401).send({ error: 'Unauthorized', message: 'SAML validation failed' });
+    }
+
+    if (!profile) {
+      return reply.code(401).send({ error: 'Unauthorized', message: 'No profile returned from IdP' });
+    }
+
+    const settings = await Settings.findOne();
+    const attrs = profile.attributes || profile;
+
+    const email = (getAttr(attrs, settings.SSO_emailIdentifier) || profile.nameID || '').toLowerCase().trim();
+    if (!email) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'No email in SAML response' });
+    }
+
+    const firstname = getAttr(attrs, settings.SSO_firstNameIdentifier);
+    const lastname = getAttr(attrs, settings.SSO_lastNameIdentifier);
+    const studentNumber = getAttr(attrs, settings.SSO_studentNumberIdentifier);
+    const roleValue = getAttr(attrs, settings.SSO_roleIdentifier);
+
+    let user = await User.findOne({ 'emails.address': email });
+
+    if (!user) {
+      const isProfessor = settings.SSO_roleProfName && roleValue === settings.SSO_roleProfName;
+      const roles = isProfessor ? ['professor'] : ['student'];
+
+      user = await User.create({
+        _id: generateMeteorId(),
+        emails: [{ address: email, verified: true }],
+        services: { sso: { nameID: profile.nameID } },
+        profile: {
+          firstname,
+          lastname,
+          roles,
+          studentNumber,
+        },
+        createdAt: new Date(),
+      });
+    } else {
+      if (firstname) user.profile.firstname = firstname;
+      if (lastname) user.profile.lastname = lastname;
+      if (studentNumber) user.profile.studentNumber = studentNumber;
+      if (!user.services) user.services = {};
+      user.services.sso = { nameID: profile.nameID };
+      await user.save();
+    }
+
+    const token = signAccessToken(app, user);
+    const refreshToken = signRefreshToken(app.config, user);
+
+    reply.setCookie('refreshToken', refreshToken, {
+      path: '/',
+      httpOnly: true,
+      secure: app.config.nodeEnv === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    return reply.redirect(`${app.config.rootUrl}/sso-callback?token=${encodeURIComponent(token)}`);
+  });
+
+  // GET /sso/metadata
+  app.get('/sso/metadata', async (request, reply) => {
+    const saml = await app.getSamlProvider();
+    if (!saml) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
+    }
+
+    const settings = await Settings.findOne();
+    const callbackUrl = `${app.config.rootUrl}/api/v1/auth/sso/callback`;
+    // No decryption/signing certs needed for basic SP metadata
+    const metadata = saml.generateServiceProviderMetadata(null, null, settings.SSO_EntityId, callbackUrl);
+    return reply.type('application/xml').send(metadata);
+  });
 }
