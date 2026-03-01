@@ -3,13 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent, CardActions,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Chip, InputAdornment, Grid,
+  CircularProgress, Chip, InputAdornment, Grid, Select, MenuItem,
+  FormControl, InputLabel,
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon, ContentCopy as CopyIcon,
   School as SchoolIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
+
+function getSuggestedSemester() {
+  const now = new Date();
+  const month = now.getMonth(); // 0-indexed
+  const year = now.getFullYear();
+  if (month >= 10 || month <= 1) {
+    // November-February → Winter
+    return { season: 'Winter', year: month >= 10 ? year + 1 : year };
+  }
+  if (month >= 1 && month <= 6) {
+    // February-July → Summer
+    return { season: 'Summer', year };
+  }
+  // July-November → Fall
+  return { season: 'Fall', year };
+}
 
 export default function ProfDashboard() {
   const navigate = useNavigate();
@@ -21,8 +38,9 @@ export default function ProfDashboard() {
   // Create course dialog
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const suggested = getSuggestedSemester();
   const [newCourse, setNewCourse] = useState({
-    name: '', deptCode: '', courseNumber: '', section: '', semester: '',
+    name: '', deptCode: '', courseNumber: '', section: '', season: suggested.season, year: suggested.year,
   });
 
   const fetchCourses = useCallback(async () => {
@@ -42,9 +60,11 @@ export default function ProfDashboard() {
   const handleCreate = async () => {
     setCreating(true);
     try {
-      await apiClient.post('/courses', newCourse);
+      const { season, year, ...rest } = newCourse;
+      await apiClient.post('/courses', { ...rest, semester: `${season} ${year}` });
       setCreateOpen(false);
-      setNewCourse({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
+      const s = getSuggestedSemester();
+      setNewCourse({ name: '', deptCode: '', courseNumber: '', section: '', season: s.season, year: s.year });
       fetchCourses();
       setMsg({ severity: 'success', text: 'Course created' });
     } catch (err) {
@@ -104,7 +124,7 @@ export default function ProfDashboard() {
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
               <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" gutterBottom noWrap>{course.name}</Typography>
+                  <Typography variant="h6" gutterBottom noWrap sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate(`/manage/course/${course._id}`)}>{course.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''}
                   </Typography>
@@ -132,11 +152,7 @@ export default function ProfDashboard() {
                     </Box>
                   )}
                 </CardContent>
-                <CardActions>
-                  <Button size="small" onClick={() => navigate(`/manage/course/${course._id}`)}>
-                    Manage
-                  </Button>
-                </CardActions>
+                <CardActions />
               </Card>
             </Grid>
           ))}
@@ -147,14 +163,25 @@ export default function ProfDashboard() {
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Create Course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label="Course Name" required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
+          <TextField label="Course Name" placeholder="e.g. Calculus-based physics" required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Dept Code" value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label="Course Number" value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label="Dept Code" placeholder="e.g. PHYS" value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label="Course Number" placeholder="e.g. 101" value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Section" value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label="Semester" placeholder="e.g. Fall 2025" value={newCourse.semester} onChange={(e) => setNewCourse((s) => ({ ...s, semester: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label="Section" placeholder="e.g. 001" value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
+            <FormControl sx={{ flex: 1 }}>
+              <InputLabel>Season</InputLabel>
+              <Select label="Season" value={newCourse.season} onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}>
+                <MenuItem value="Fall">Fall</MenuItem>
+                <MenuItem value="Winter">Winter</MenuItem>
+                <MenuItem value="Fall/Winter">Fall/Winter</MenuItem>
+                <MenuItem value="Spring">Spring</MenuItem>
+                <MenuItem value="Summer">Summer</MenuItem>
+                <MenuItem value="Spring/Summer">Spring/Summer</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField label="Year" value={newCourse.year} onChange={(e) => setNewCourse((s) => ({ ...s, year: e.target.value }))} sx={{ flex: 1 }} />
           </Box>
         </DialogContent>
         <DialogActions>
