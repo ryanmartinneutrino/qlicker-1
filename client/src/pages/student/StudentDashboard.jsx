@@ -80,7 +80,7 @@ export default function StudentDashboard() {
                 sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
                 onClick={() => navigate(`/student/course/${course._id}`)}
               >
-                <CardContent sx={{ flexGrow: 1, minHeight: 140 }}>
+                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
                     {course.deptCode} {course.courseNumber}
                   </Typography>
