@@ -40,7 +40,7 @@ async function websocketPlugin(fastify) {
 
       try {
         const decoded = fastify.jwt.verify(token);
-        userId = decoded.id;
+        userId = decoded.userId;
       } catch {
         socket.close(4401, 'Authentication failed');
         return;
