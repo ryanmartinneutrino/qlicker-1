@@ -368,15 +368,20 @@ function StorageTab() {
 function SSOTab() {
   const ssoFields = [
     { key: 'SSO_enabled', label: 'Enable SSO', type: 'checkbox' },
-    { key: 'SSO_entrypoint', label: 'SSO Entrypoint URL' },
-    { key: 'SSO_cert', label: 'SSO Certificate', type: 'textarea' },
-    { key: 'SSO_EntityId', label: 'Entity ID' },
+    { key: 'SSO_entrypoint', label: 'IDP Entry Point URL' },
+    { key: 'SSO_logoutUrl', label: 'IDP Logout URL' },
+    { key: 'SSO_EntityId', label: 'Entity ID (e.g. qlicker)' },
+    { key: 'SSO_identifierFormat', label: 'Identifier Format' },
+    { key: 'SSO_institutionName', label: 'Institution Name' },
     { key: 'SSO_emailIdentifier', label: 'Email Identifier' },
     { key: 'SSO_firstNameIdentifier', label: 'First Name Identifier' },
     { key: 'SSO_lastNameIdentifier', label: 'Last Name Identifier' },
     { key: 'SSO_roleIdentifier', label: 'Role Identifier' },
-    { key: 'SSO_roleProfName', label: 'Role Professor Name' },
-    { key: 'SSO_logoutUrl', label: 'Logout URL' },
+    { key: 'SSO_roleProfName', label: 'Name of professor role for auto-promote' },
+    { key: 'SSO_studentNumberIdentifier', label: 'Student Number Identifier' },
+    { key: 'SSO_cert', label: 'IDP Certificate (single string, no BEGIN-END)', type: 'textarea' },
+    { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
+    { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
   ];
 
   const [settings, setSettings] = useState(() =>

@@ -50,9 +50,23 @@ const ResetPasswordSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const SSOSessionSchema = new mongoose.Schema(
+  {
+    sessionIndex: { type: String },
+    loginToken: { type: String },
+  },
+  { _id: false }
+);
+
 const SSOServiceSchema = new mongoose.Schema(
   {
+    id: { type: String },
     nameID: { type: String },
+    nameIDFormat: { type: String },
+    email: { type: String },
+    SSORole: { type: String },
+    studentNumber: { type: String },
+    sessions: { type: [SSOSessionSchema], default: [] },
   },
   { _id: false }
 );

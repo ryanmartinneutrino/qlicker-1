@@ -307,12 +307,11 @@ export default async function authRoutes(app) {
       return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
     }
 
-    // Relay state is not needed; the callback handles redirect
     const url = await saml.getAuthorizeUrlAsync('', request.id, {});
     return reply.redirect(url);
   });
 
-  // POST /sso/callback
+  // POST /sso/callback — SAML assertion consumer (IdP → SP login)
   app.post('/sso/callback', async (request, reply) => {
     const saml = await app.getSamlProvider();
     if (!saml) {
@@ -344,17 +343,30 @@ export default async function authRoutes(app) {
     const lastname = getAttr(attrs, settings.SSO_lastNameIdentifier);
     const studentNumber = getAttr(attrs, settings.SSO_studentNumberIdentifier);
     const roleValue = getAttr(attrs, settings.SSO_roleIdentifier);
+    const sessionIndex = profile.sessionIndex || '';
 
     let user = await User.findOne({ 'emails.address': email });
 
     if (!user) {
+      // New user via SSO
       const isProfessor = settings.SSO_roleProfName && roleValue === settings.SSO_roleProfName;
       const roles = isProfessor ? ['professor'] : ['student'];
 
       user = await User.create({
         _id: generateMeteorId(),
         emails: [{ address: email, verified: true }],
-        services: { sso: { nameID: profile.nameID } },
+        services: {
+          password: { bcrypt: await User.hashPassword(crypto.randomBytes(32).toString('hex')) },
+          sso: {
+            id: profile.nameID,
+            nameID: profile.nameID,
+            nameIDFormat: profile.nameIDFormat || '',
+            email,
+            SSORole: roleValue,
+            studentNumber,
+            sessions: [],
+          },
+        },
         profile: {
           firstname,
           lastname,
@@ -364,11 +376,32 @@ export default async function authRoutes(app) {
         createdAt: new Date(),
       });
     } else {
+      // Existing user — update profile from SSO attributes
       if (firstname) user.profile.firstname = firstname;
       if (lastname) user.profile.lastname = lastname;
       if (studentNumber) user.profile.studentNumber = studentNumber;
+
+      // Only upgrade to professor, never downgrade (preserves admin or manually set roles)
+      if (settings.SSO_roleProfName && roleValue === settings.SSO_roleProfName
+          && !user.profile.roles.includes('professor') && !user.profile.roles.includes('admin')) {
+        user.profile.roles = ['professor'];
+      }
+
       if (!user.services) user.services = {};
-      user.services.sso = { nameID: profile.nameID };
+      if (!user.services.sso) user.services.sso = {};
+      user.services.sso.id = profile.nameID;
+      user.services.sso.nameID = profile.nameID;
+      user.services.sso.nameIDFormat = profile.nameIDFormat || '';
+      user.services.sso.email = email;
+      user.services.sso.SSORole = roleValue;
+      user.services.sso.studentNumber = studentNumber;
+      await user.save();
+    }
+
+    // Track SSO session index for proper logout
+    if (sessionIndex) {
+      if (!user.services.sso.sessions) user.services.sso.sessions = [];
+      user.services.sso.sessions.push({ sessionIndex });
       await user.save();
     }
 
@@ -386,6 +419,96 @@ export default async function authRoutes(app) {
     return reply.redirect(`${app.config.rootUrl}/sso-callback?token=${encodeURIComponent(token)}`);
   });
 
+  // GET /sso/logout — Handle GET logout callback from IdP
+  // Some IdPs (e.g. Azure AD) respond with a GET to confirm logout
+  app.get('/sso/logout', async (request, reply) => {
+    return reply.redirect(`${app.config.rootUrl}/login`);
+  });
+
+  // POST /sso/logout — Handle IdP-initiated logout (POST with SAMLRequest)
+  // NOTE: passport-saml could not validate encrypted POST logout requests.
+  // This is a workaround that manually extracts the sessionIndex from the
+  // SAMLRequest XML. See the original MeteorJS implementation for context.
+  // WARNING: This does not cryptographically validate that the POST came from the IdP.
+  app.post('/sso/logout', async (request, reply) => {
+    try {
+      const samlRequest = request.body?.SAMLRequest;
+      if (!samlRequest) {
+        return reply.redirect(`${app.config.rootUrl}/login`);
+      }
+
+      // Decode the base64 SAMLRequest and extract sessionIndex
+      const xml = Buffer.from(samlRequest, 'base64').toString('utf8');
+
+      // Try multiple namespace prefixes for SessionIndex element
+      // (different IdPs use different prefixes: saml2p:, samlp:, or no prefix)
+      let sessionIndex = null;
+      const sessionIndexPatterns = [
+        /<saml2p:SessionIndex[^>]*>([^<]+)<\/saml2p:SessionIndex>/,
+        /<samlp:SessionIndex[^>]*>([^<]+)<\/samlp:SessionIndex>/,
+        /<SessionIndex[^>]*>([^<]+)<\/SessionIndex>/,
+      ];
+      for (const pattern of sessionIndexPatterns) {
+        const match = xml.match(pattern);
+        if (match) {
+          sessionIndex = match[1];
+          break;
+        }
+      }
+
+      if (sessionIndex) {
+        // Find user with this SSO session and remove it
+        const user = await User.findOne({ 'services.sso.sessions.sessionIndex': sessionIndex });
+        if (user && user.services?.sso?.sessions) {
+          user.services.sso.sessions = user.services.sso.sessions.filter(
+            (s) => s.sessionIndex !== sessionIndex
+          );
+          await user.save();
+        }
+      }
+    } catch (err) {
+      request.log.error('SSO logout error:', err);
+    }
+
+    return reply.redirect(`${app.config.rootUrl}/login`);
+  });
+
+  // GET /sso/logout-url — Get the SSO logout URL for SP-initiated logout
+  app.get('/sso/logout-url', { preHandler: app.authenticate }, async (request, reply) => {
+    const saml = await app.getSamlProvider();
+    if (!saml) {
+      return { url: null };
+    }
+
+    const user = await User.findById(request.user.userId);
+    if (!user?.services?.sso?.sessions?.length) {
+      return { url: null };
+    }
+
+    const settings = await Settings.findOne();
+    if (!settings?.SSO_logoutUrl) {
+      return { url: null };
+    }
+
+    // Use the most recent SSO session
+    const session = user.services.sso.sessions[user.services.sso.sessions.length - 1];
+    try {
+      const logoutUrl = await saml.getLogoutUrlAsync(
+        {
+          nameID: user.services.sso.nameID,
+          nameIDFormat: user.services.sso.nameIDFormat,
+          sessionIndex: session.sessionIndex,
+        },
+        '',
+        {}
+      );
+      return { url: logoutUrl };
+    } catch (err) {
+      request.log.error('Failed to generate SSO logout URL:', err);
+      return { url: null };
+    }
+  });
+
   // GET /sso/metadata
   app.get('/sso/metadata', async (request, reply) => {
     const saml = await app.getSamlProvider();
@@ -393,10 +516,9 @@ export default async function authRoutes(app) {
       return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
     }
 
-    const settings = await Settings.findOne();
-    const callbackUrl = `${app.config.rootUrl}/api/v1/auth/sso/callback`;
-    // No decryption/signing certs needed for basic SP metadata
-    const metadata = saml.generateServiceProviderMetadata(null, null, settings.SSO_EntityId, callbackUrl);
+    const settings = saml._qlickerSettings || await Settings.findOne();
+    const decryptionCert = settings.SSO_privCert || null;
+    const metadata = saml.generateServiceProviderMetadata(decryptionCert, null);
     return reply.type('application/xml').send(metadata);
   });
 }
