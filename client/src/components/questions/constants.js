@@ -1,0 +1,23 @@
+export const QUESTION_TYPES = {
+  SHORT_ANSWER: 1,
+  MULTIPLE_CHOICE: 2,
+  TRUE_FALSE: 3,
+  MULTI_SELECT: 4,
+  NUMERICAL: 5,
+};
+
+export const TYPE_LABELS = {
+  [QUESTION_TYPES.SHORT_ANSWER]: 'Short Answer',
+  [QUESTION_TYPES.MULTIPLE_CHOICE]: 'Multiple Choice',
+  [QUESTION_TYPES.TRUE_FALSE]: 'True/False',
+  [QUESTION_TYPES.MULTI_SELECT]: 'Multi-Select',
+  [QUESTION_TYPES.NUMERICAL]: 'Numerical',
+};
+
+export const TYPE_COLORS = {
+  [QUESTION_TYPES.SHORT_ANSWER]: 'default',
+  [QUESTION_TYPES.MULTIPLE_CHOICE]: 'primary',
+  [QUESTION_TYPES.TRUE_FALSE]: 'secondary',
+  [QUESTION_TYPES.MULTI_SELECT]: 'info',
+  [QUESTION_TYPES.NUMERICAL]: 'warning',
+};

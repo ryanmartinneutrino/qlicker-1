@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress,
+  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
+  List, ListItem, ListItemText, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
-import { ArrowBack as BackIcon } from '@mui/icons-material';
+import { ArrowBack as BackIcon, Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
+
+const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
 
 export default function StudentCourseDetail() {
   const { id } = useParams();
@@ -17,6 +20,8 @@ export default function StudentCourseDetail() {
   const [msg, setMsg] = useState(null);
   const [unenrollOpen, setUnenrollOpen] = useState(false);
   const [unenrolling, setUnenrolling] = useState(false);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -30,6 +35,19 @@ export default function StudentCourseDetail() {
   }, [id]);
 
   useEffect(() => { fetchCourse(); }, [fetchCourse]);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get(`/courses/${id}/sessions`);
+      setSessions(data.sessions || []);
+    } catch {
+      /* silently fail */
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
   const handleUnenroll = async () => {
     setUnenrolling(true);
@@ -60,9 +78,47 @@ export default function StudentCourseDetail() {
         <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
           {course.semester}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Sessions and other course content will appear here.
-        </Typography>
+
+        <Typography variant="h6" sx={{ mb: 1 }}>Sessions</Typography>
+        {sessionsLoading ? <CircularProgress size={24} /> : sessions.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">No sessions available.</Typography>
+        ) : (
+          <Paper variant="outlined">
+            <List disablePadding>
+              {sessions.map((s, i) => (
+                <Box key={s._id}>
+                  {i > 0 && <Divider />}
+                  <ListItem>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {s.name}
+                          <Chip
+                            label={s.status}
+                            color={STATUS_COLORS[s.status] || 'default'}
+                            size="small"
+                          />
+                          {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                        </Box>
+                      }
+                    />
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      {s.status === 'running' && (
+                        <Button size="small" variant="outlined" disabled>Join</Button>
+                      )}
+                      {(s.quiz || s.practiceQuiz) && s.status !== 'done' && (
+                        <Button size="small" variant="outlined" disabled>Start Quiz</Button>
+                      )}
+                      {s.status === 'done' && (
+                        <Button size="small" variant="text" disabled>Review</Button>
+                      )}
+                    </Box>
+                  </ListItem>
+                </Box>
+              ))}
+            </List>
+          </Paper>
+        )}
       </Paper>
 
       <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
