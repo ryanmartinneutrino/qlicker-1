@@ -9,6 +9,7 @@ import {
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
+  Quiz as QuizIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 
@@ -47,8 +48,28 @@ export default function CourseDetail() {
   const [editFields, setEditFields] = useState({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Sessions
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [createSessionOpen, setCreateSessionOpen] = useState(false);
+  const [newSessionName, setNewSessionName] = useState('');
+  const [newSessionDesc, setNewSessionDesc] = useState('');
+  const [creatingSess, setCreatingSess] = useState(false);
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
+
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get(`/courses/${id}/sessions`);
+      setSessions(data.sessions || []);
+    } catch {
+      /* silently fail – sessions tab will show empty */
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [id]);
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -69,7 +90,7 @@ export default function CourseDetail() {
     }
   }, [id]);
 
-  useEffect(() => { fetchCourse(); }, [fetchCourse]);
+  useEffect(() => { fetchCourse(); fetchSessions(); }, [fetchCourse, fetchSessions]);
 
   // Poll for updates every 15 seconds (reactive student/instructor list)
   useEffect(() => {
@@ -192,6 +213,49 @@ export default function CourseDetail() {
     }
   };
 
+  // Session actions
+  const statusColor = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
+
+  const handleCreateSession = async () => {
+    if (!newSessionName.trim()) return;
+    setCreatingSess(true);
+    try {
+      const body = { name: newSessionName.trim() };
+      if (newSessionDesc.trim()) body.description = newSessionDesc.trim();
+      await apiClient.post(`/courses/${id}/sessions`, body);
+      setCreateSessionOpen(false);
+      setNewSessionName('');
+      setNewSessionDesc('');
+      fetchSessions();
+      setMsg({ severity: 'success', text: 'Session created' });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to create session' });
+    } finally {
+      setCreatingSess(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    try {
+      await apiClient.delete(`/sessions/${sessionId}`);
+      setDeleteSessionTarget(null);
+      fetchSessions();
+      setMsg({ severity: 'success', text: 'Session deleted' });
+    } catch {
+      setMsg({ severity: 'error', text: 'Failed to delete session' });
+    }
+  };
+
+  const handleCopySession = async (sessionId) => {
+    try {
+      await apiClient.post(`/sessions/${sessionId}/copy`);
+      fetchSessions();
+      setMsg({ severity: 'success', text: 'Session copied' });
+    } catch {
+      setMsg({ severity: 'error', text: 'Failed to copy session' });
+    }
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
 
@@ -230,13 +294,65 @@ export default function CourseDetail() {
 
       {/* Tabs */}
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+        <Tab label={`Sessions (${sessions.length})`} />
         <Tab label={`Students (${students.length})`} />
         <Tab label={`Instructors (${instructors.length})`} />
         <Tab label="Settings" />
       </Tabs>
 
-      {/* Students Tab */}
+      {/* Sessions Tab */}
       <TabPanel value={tab} index={0}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">Sessions</Typography>
+          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateSessionOpen(true)}>
+            Create Session
+          </Button>
+        </Box>
+        {sessionsLoading ? <CircularProgress size={24} /> : sessions.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">No sessions yet.</Typography>
+        ) : (
+          <Paper variant="outlined">
+            <List disablePadding>
+              {sessions.map((s, i) => (
+                <Box key={s._id}>
+                  {i > 0 && <Divider />}
+                  <ListItem
+                    button
+                    onClick={() => navigate(`/manage/course/${id}/session/${s._id}`)}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {s.name}
+                          <Chip label={s.status} color={statusColor[s.status] || 'default'} size="small" />
+                          {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                        </Box>
+                      }
+                      secondary={`${(s.questions || []).length} question${(s.questions || []).length === 1 ? '' : 's'}`}
+                    />
+                    <ListItemSecondaryAction>
+                      <Tooltip title="Copy session">
+                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCopySession(s._id); }}>
+                          <CopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete session">
+                        <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteSessionTarget(s); }}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                </Box>
+              ))}
+            </List>
+          </Paper>
+        )}
+      </TabPanel>
+
+      {/* Students Tab */}
+      <TabPanel value={tab} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Students</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
@@ -281,7 +397,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Instructors Tab */}
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={2}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Instructors</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
@@ -336,7 +452,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Settings Tab */}
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={3}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <FormControlLabel
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
@@ -491,6 +607,35 @@ export default function CourseDetail() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImageViewUrl(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Session Dialog */}
+      <Dialog open={createSessionOpen} onClose={() => setCreateSessionOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Create Session</DialogTitle>
+        <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField label="Session Name" value={newSessionName} onChange={(e) => setNewSessionName(e.target.value)} fullWidth autoFocus />
+          <TextField label="Description (optional)" value={newSessionDesc} onChange={(e) => setNewSessionDesc(e.target.value)} fullWidth multiline rows={2} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateSessionOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateSession} disabled={creatingSess || !newSessionName.trim()}>
+            {creatingSess ? 'Creating…' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Session Confirmation */}
+      <Dialog open={!!deleteSessionTarget} onClose={() => setDeleteSessionTarget(null)}>
+        <DialogTitle>Delete Session</DialogTitle>
+        <DialogContent>
+          Are you sure you want to delete <strong>{deleteSessionTarget?.name}</strong>? This action cannot be undone.
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteSessionTarget(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => handleDeleteSession(deleteSessionTarget?._id)}>
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 
