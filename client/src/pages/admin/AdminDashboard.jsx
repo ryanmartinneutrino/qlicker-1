@@ -5,7 +5,7 @@ import {
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  CircularProgress, TextareaAutosize,
+  CircularProgress,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
@@ -132,7 +132,7 @@ function UsersTab() {
   const handleRoleChange = async (userId, role) => {
     try {
       await apiClient.patch(`/users/${userId}/role`, { role });
-      setUsers((prev) => prev.map((u) => (u._id === userId ? { ...u, role } : u)));
+      setUsers((prev) => prev.map((u) => (u._id === userId ? { ...u, profile: { ...u.profile, roles: [role] } } : u)));
       setMsg({ severity: 'success', text: 'Role updated' });
     } catch {
       setMsg({ severity: 'error', text: 'Failed to update role' });
@@ -207,12 +207,12 @@ function UsersTab() {
             ) : (
               users.map((u) => (
                 <TableRow key={u._id}>
-                  <TableCell>{u.firstname} {u.lastname}</TableCell>
-                  <TableCell>{u.email}</TableCell>
+                  <TableCell>{u.profile?.firstname} {u.profile?.lastname}</TableCell>
+                  <TableCell>{u.emails?.[0]?.address}</TableCell>
                   <TableCell>
                     <Select
                       size="small"
-                      value={u.role}
+                      value={u.profile?.roles?.[0] ?? 'student'}
                       onChange={(e) => handleRoleChange(u._id, e.target.value)}
                     >
                       <MenuItem value="admin">admin</MenuItem>
@@ -246,7 +246,7 @@ function UsersTab() {
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>Confirm Delete</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete <strong>{deleteTarget?.firstname} {deleteTarget?.lastname}</strong> ({deleteTarget?.email})?
+          Are you sure you want to delete <strong>{deleteTarget?.profile?.firstname} {deleteTarget?.profile?.lastname}</strong> ({deleteTarget?.emails?.[0]?.address})?
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>

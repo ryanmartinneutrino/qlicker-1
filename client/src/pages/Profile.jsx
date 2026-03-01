@@ -19,9 +19,9 @@ export default function Profile() {
     apiClient.get('/users/me').then(({ data }) => {
       const u = data.user || data;
       setProfile({
-        firstname: u.firstname ?? '',
-        lastname: u.lastname ?? '',
-        studentNumber: u.studentNumber ?? '',
+        firstname: u.profile?.firstname ?? '',
+        lastname: u.profile?.lastname ?? '',
+        studentNumber: u.profile?.studentNumber ?? '',
       });
     }).catch(() => setMsg({ severity: 'error', text: 'Failed to load profile' }))
       .finally(() => setLoading(false));
