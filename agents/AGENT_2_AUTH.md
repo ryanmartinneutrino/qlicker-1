@@ -54,7 +54,7 @@
 
 **Important - Meteor password compatibility:**
 - Meteor stores passwords as `services.password.bcrypt` using bcrypt with `$2a$` prefix
-- When a user logs in, hash the provided password with bcrypt and compare
+- When a user logs in, use `bcrypt.compare()` to verify the provided password against the stored hash (it handles salt extraction internally)
 - The new app should also store passwords in the same format for backward compatibility
 - Use `bcryptjs` library which handles both `$2a$` and `$2b$` prefixes
 
