@@ -8,7 +8,7 @@ export async function createApp() {
     config: {
       jwtSecret: 'test-secret',
       jwtRefreshSecret: 'test-refresh-secret',
-      rootUrl: 'http://localhost:3000',
+      rootUrl: process.env.ROOT_URL || 'http://localhost:3000',
     },
   });
   await app.ready();
