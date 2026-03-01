@@ -1,19 +1,4 @@
-# Comments based on user testing after PR #90
-There is an error when running the docker stack (docker compose logs server):
-
-server-1  | Node.js v20.20.0
-server-1  | {"level":30,"time":1772385917836,"pid":1,"hostname":"763ec6d54067","msg":"MongoDB connected"}
-server-1  | node:fs:1386
-server-1  |   const result = binding.mkdir(
-server-1  |                          ^
-server-1  | 
-server-1  | Error: EACCES: permission denied, mkdir '/app/uploads'
-server-1  |     at Object.mkdirSync (node:fs:1386:26)
-server-1  |     at uploadPlugin (file:///app/src/plugins/upload.js:17:8)
-server-1  |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
-server-1  |   errno: -13,
-server-1  |   code: 'EACCES',
-server-1  |   syscall: 'mkdir',
-server-1  |   path: '/app/uploads'
-server-1  | }
-
+# Comments based on user testing after PR #91
+- Email does not seem to be working. There is no "forgot password" button (which should send an email), and no email is sent upon registration. I think I gave it a valid MAIL_URL
+- Profile picture upload does not seem to work. It doesn't complain, but it also doesn't seem to set a profile picture (which should show in the avatar and in the profile page)
+- If a user has signed in with SSO, make sure they can't change their name, since those are obtained from the SAML login information
