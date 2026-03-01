@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider,
+  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
@@ -15,6 +15,10 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotMsg, setForgotMsg] = useState(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const { login, register } = useAuth();
 
   useEffect(() => {
@@ -44,6 +48,19 @@ export default function Login() {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setForgotMsg(null);
+    setForgotLoading(true);
+    try {
+      await apiClient.post('/auth/forgot-password', { email: forgotEmail });
+      setForgotMsg({ severity: 'success', text: 'If that email is registered, a reset link has been sent.' });
+    } catch {
+      setForgotMsg({ severity: 'error', text: 'Failed to send reset email. Please try again.' });
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -80,6 +97,9 @@ export default function Login() {
               <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
                 {loading ? 'Logging in...' : 'Login'}
               </Button>
+              <Button size="small" sx={{ mt: 1 }} onClick={() => { setForgotOpen(true); setForgotMsg(null); setForgotEmail(''); }}>
+                Forgot Password?
+              </Button>
               {ssoEnabled && (
                 <>
                   <Divider sx={{ my: 2 }}>or</Divider>
@@ -107,6 +127,22 @@ export default function Login() {
           )}
         </CardContent>
       </Card>
+      <Dialog open={forgotOpen} onClose={() => setForgotOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Forgot Password</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Enter your email address and we&apos;ll send you a link to reset your password.
+          </Typography>
+          <TextField fullWidth label="Email" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} margin="normal" />
+          {forgotMsg && <Alert severity={forgotMsg.severity} sx={{ mt: 1 }}>{forgotMsg.text}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setForgotOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleForgotPassword} disabled={forgotLoading || !forgotEmail}>
+            {forgotLoading ? 'Sending…' : 'Send Reset Link'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
