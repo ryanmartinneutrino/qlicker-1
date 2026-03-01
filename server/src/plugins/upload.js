@@ -18,9 +18,17 @@ async function uploadPlugin(fastify) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
 
+  let cachedConfig = null;
+  let cacheTime = 0;
+  const CACHE_TTL_MS = 30000; // 30 seconds
+
   async function getStorageConfig() {
+    const now = Date.now();
+    if (cachedConfig && (now - cacheTime) < CACHE_TTL_MS) {
+      return cachedConfig;
+    }
     const settings = await Settings.findOne();
-    return {
+    cachedConfig = {
       storageType: settings?.storageType || 'local',
       AWS_bucket: settings?.AWS_bucket || '',
       AWS_region: settings?.AWS_region || '',
@@ -30,6 +38,8 @@ async function uploadPlugin(fastify) {
       Azure_storageAccessKey: settings?.Azure_storageAccessKey || '',
       Azure_storageContainer: settings?.Azure_storageContainer || '',
     };
+    cacheTime = now;
+    return cachedConfig;
   }
 
   async function uploadFile(fileBuffer, filename, mimetype) {

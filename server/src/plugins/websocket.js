@@ -34,6 +34,8 @@ async function websocketPlugin(fastify) {
   fastify.decorate('wsSendToUser', wsSendToUser);
 
   fastify.register(async function wsRoutes(app) {
+    // Token is passed via query parameter because the browser WebSocket API
+    // does not support custom headers. This is the standard approach.
     app.get('/ws', { websocket: true }, (socket, req) => {
       const token = req.query.token;
       let userId;
