@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateMeteorId } from '../utils/meteorId.js';
+import Settings from '../models/Settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
@@ -17,10 +18,23 @@ async function uploadPlugin(fastify) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
 
-  const storageType = fastify.config.storageType || 'local';
+  async function getStorageConfig() {
+    const settings = await Settings.findOne();
+    return {
+      storageType: settings?.storageType || 'local',
+      AWS_bucket: settings?.AWS_bucket || '',
+      AWS_region: settings?.AWS_region || '',
+      AWS_accessKeyId: settings?.AWS_accessKeyId || '',
+      AWS_secretAccessKey: settings?.AWS_secretAccessKey || '',
+      Azure_storageAccount: settings?.Azure_storageAccount || '',
+      Azure_storageAccessKey: settings?.Azure_storageAccessKey || '',
+      Azure_storageContainer: settings?.Azure_storageContainer || '',
+    };
+  }
 
   async function uploadFile(fileBuffer, filename, mimetype) {
-    switch (storageType) {
+    const config = await getStorageConfig();
+    switch (config.storageType) {
       case 'local': {
         const ext = path.extname(filename);
         const key = `${generateMeteorId()}${ext}`;
@@ -36,12 +50,13 @@ async function uploadPlugin(fastify) {
         // TODO: Implement Azure Blob upload using @azure/storage-blob
         throw new Error('Azure storage not yet implemented. Install @azure/storage-blob and implement Azure upload logic.');
       default:
-        throw new Error(`Unknown storage type: ${storageType}`);
+        throw new Error(`Unknown storage type: ${config.storageType}`);
     }
   }
 
   async function deleteFile(key) {
-    switch (storageType) {
+    const config = await getStorageConfig();
+    switch (config.storageType) {
       case 'local': {
         const filePath = path.join(UPLOADS_DIR, key);
         if (fs.existsSync(filePath)) {
@@ -54,7 +69,7 @@ async function uploadPlugin(fastify) {
       case 'azure':
         throw new Error('Azure storage not yet implemented. Install @azure/storage-blob and implement Azure deletion logic.');
       default:
-        throw new Error(`Unknown storage type: ${storageType}`);
+        throw new Error(`Unknown storage type: ${config.storageType}`);
     }
   }
 

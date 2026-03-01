@@ -1,24 +1,5 @@
 import mongoose from 'mongoose';
 
-const S3ConfigSchema = new mongoose.Schema(
-  {
-    bucket: { type: String, default: '' },
-    region: { type: String, default: '' },
-    accessKeyId: { type: String, default: '' },
-    secretAccessKey: { type: String, default: '' },
-  },
-  { _id: false }
-);
-
-const AzureConfigSchema = new mongoose.Schema(
-  {
-    storageAccount: { type: String, default: '' },
-    storageAccessKey: { type: String, default: '' },
-    storageContainer: { type: String, default: '' },
-  },
-  { _id: false }
-);
-
 const SettingsSchema = new mongoose.Schema(
   {
     _id: { type: String },
@@ -44,14 +25,21 @@ const SettingsSchema = new mongoose.Schema(
     SSO_roleIdentifier: { type: String, default: '' },
     SSO_roleProfName: { type: String, default: '' },
 
-    // Storage config
+    // Storage config (flat fields matching admin UI)
     storageType: {
       type: String,
       enum: ['local', 's3', 'azure'],
       default: 'local',
     },
-    s3Config: { type: S3ConfigSchema, default: () => ({}) },
-    azureConfig: { type: AzureConfigSchema, default: () => ({}) },
+    // AWS S3 config
+    AWS_bucket: { type: String, default: '' },
+    AWS_region: { type: String, default: '' },
+    AWS_accessKeyId: { type: String, default: '' },
+    AWS_secretAccessKey: { type: String, default: '' },
+    // Azure Blob Storage config
+    Azure_storageAccount: { type: String, default: '' },
+    Azure_storageAccessKey: { type: String, default: '' },
+    Azure_storageContainer: { type: String, default: '' },
   },
   {
     collection: 'settings',
