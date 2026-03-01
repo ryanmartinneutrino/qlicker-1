@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
   List, ListItem, ListItemText, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Divider, Switch, FormControlLabel, Tooltip,
+  CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -36,9 +36,19 @@ export default function CourseDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Confirm removal dialogs
+  const [removeStudentTarget, setRemoveStudentTarget] = useState(null);
+  const [removeInstructorTarget, setRemoveInstructorTarget] = useState(null);
+
+  // Full-size image viewer
+  const [imageViewUrl, setImageViewUrl] = useState(null);
+
   // Settings
   const [editFields, setEditFields] = useState({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Polling ref for auto-refresh
+  const pollingRef = useRef(null);
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -60,6 +70,14 @@ export default function CourseDetail() {
   }, [id]);
 
   useEffect(() => { fetchCourse(); }, [fetchCourse]);
+
+  // Poll for updates every 15 seconds (reactive student/instructor list)
+  useEffect(() => {
+    pollingRef.current = setInterval(() => {
+      fetchCourse();
+    }, 15000);
+    return () => clearInterval(pollingRef.current);
+  }, [fetchCourse]);
 
   const copyCode = () => {
     if (course?.enrollmentCode) {
@@ -88,6 +106,7 @@ export default function CourseDetail() {
   const handleRemoveStudent = async (studentId) => {
     try {
       await apiClient.delete(`/courses/${id}/students/${studentId}`);
+      setRemoveStudentTarget(null);
       fetchCourse();
       setMsg({ severity: 'success', text: 'Student removed' });
     } catch {
@@ -120,6 +139,7 @@ export default function CourseDetail() {
     }
     try {
       await apiClient.delete(`/courses/${id}/instructors/${instructorId}`);
+      setRemoveInstructorTarget(null);
       fetchCourse();
       setMsg({ severity: 'success', text: 'Instructor removed' });
     } catch {
@@ -236,10 +256,19 @@ export default function CourseDetail() {
                       primary={`${s.profile?.firstname || ''} ${s.profile?.lastname || ''}`.trim() || 'Unknown'}
                       secondary={s.emails?.[0]?.address || s.email || ''}
                     />
-                    <ListItemSecondaryAction>
-                      <IconButton edge="end" color="error" size="small" onClick={() => handleRemoveStudent(s._id)}>
+                    <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <IconButton edge="end" color="error" size="small" onClick={() => setRemoveStudentTarget(s)}>
                         <PersonRemoveIcon fontSize="small" />
                       </IconButton>
+                      <Avatar
+                        src={s.profile?.profileThumbnail || s.profile?.profileImage || ''}
+                        sx={{ width: 36, height: 36, cursor: (s.profile?.profileImage) ? 'pointer' : 'default' }}
+                        onClick={() => {
+                          if (s.profile?.profileImage) setImageViewUrl(s.profile.profileImage);
+                        }}
+                      >
+                        {(s.profile?.firstname?.[0] || '').toUpperCase()}
+                      </Avatar>
                     </ListItemSecondaryAction>
                   </ListItem>
                 </Box>
@@ -270,7 +299,7 @@ export default function CourseDetail() {
                       primary={`${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Unknown'}
                       secondary={inst.emails?.[0]?.address || inst.email || ''}
                     />
-                    <ListItemSecondaryAction>
+                    <ListItemSecondaryAction sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Tooltip title={instructors.length <= 1 ? 'Cannot remove the last instructor' : 'Remove instructor'}>
                         <span>
                           <IconButton
@@ -278,12 +307,21 @@ export default function CourseDetail() {
                             color="error"
                             size="small"
                             disabled={instructors.length <= 1}
-                            onClick={() => handleRemoveInstructor(inst._id)}
+                            onClick={() => setRemoveInstructorTarget(inst)}
                           >
                             <PersonRemoveIcon fontSize="small" />
                           </IconButton>
                         </span>
                       </Tooltip>
+                      <Avatar
+                        src={inst.profile?.profileThumbnail || inst.profile?.profileImage || ''}
+                        sx={{ width: 36, height: 36, cursor: (inst.profile?.profileImage) ? 'pointer' : 'default' }}
+                        onClick={() => {
+                          if (inst.profile?.profileImage) setImageViewUrl(inst.profile.profileImage);
+                        }}
+                      >
+                        {(inst.profile?.firstname?.[0] || '').toUpperCase()}
+                      </Avatar>
                     </ListItemSecondaryAction>
                   </ListItem>
                 </Box>
@@ -411,6 +449,44 @@ export default function CourseDetail() {
           <Button color="error" variant="contained" onClick={handleDelete} disabled={deleting}>
             {deleting ? 'Deleting…' : 'Delete'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Remove Student */}
+      <Dialog open={!!removeStudentTarget} onClose={() => setRemoveStudentTarget(null)}>
+        <DialogTitle>Remove Student</DialogTitle>
+        <DialogContent>
+          Are you sure you want to remove <strong>{removeStudentTarget?.profile?.firstname} {removeStudentTarget?.profile?.lastname}</strong> from this course?
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveStudentTarget(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => handleRemoveStudent(removeStudentTarget?._id)}>
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Remove Instructor */}
+      <Dialog open={!!removeInstructorTarget} onClose={() => setRemoveInstructorTarget(null)}>
+        <DialogTitle>Remove Instructor</DialogTitle>
+        <DialogContent>
+          Are you sure you want to remove <strong>{removeInstructorTarget?.profile?.firstname} {removeInstructorTarget?.profile?.lastname}</strong> from this course?
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRemoveInstructorTarget(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={() => handleRemoveInstructor(removeInstructorTarget?._id)}>
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Full-size image viewer */}
+      <Dialog open={!!imageViewUrl} onClose={() => setImageViewUrl(null)} maxWidth="sm" fullWidth>
+        <DialogContent sx={{ textAlign: 'center', p: 2 }}>
+          <img src={imageViewUrl} alt="Profile" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageViewUrl(null)}>Close</Button>
         </DialogActions>
       </Dialog>
 

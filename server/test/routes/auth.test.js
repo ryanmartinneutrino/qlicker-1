@@ -345,4 +345,21 @@ describe('PATCH /api/v1/users/:id/role', () => {
     expect(body.profile.roles).toContain('professor');
     expect(body.profile.roles).not.toContain('student');
   });
+
+  it('admin cannot change their own role', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin@example.com', roles: ['admin'] });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/users/${admin._id}/role`,
+      { token, payload: { role: 'student' } }
+    );
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.message).toMatch(/cannot change their own role/i);
+  });
 });

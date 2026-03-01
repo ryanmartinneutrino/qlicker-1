@@ -29,6 +29,23 @@ export function AuthProvider({ children }) {
     loadUser();
   }, [loadUser]);
 
+  // Cross-tab login/logout sync via storage events
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'token') {
+        if (e.newValue) {
+          // Token was added/changed in another tab — reload user
+          loadUser();
+        } else {
+          // Token was removed in another tab — log out
+          setUser(null);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [loadUser]);
+
   const login = async (email, password) => {
     const { data } = await apiClient.post('/auth/login', { email, password });
     localStorage.setItem('token', data.token);

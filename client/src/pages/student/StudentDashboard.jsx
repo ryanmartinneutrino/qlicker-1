@@ -75,15 +75,26 @@ export default function StudentDashboard() {
         <Grid container spacing={2}>
           {courses.map((course) => (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
-              <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" gutterBottom noWrap sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate(`/student/course/${course._id}`)}>{course.name}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''}
+              <Card
+                variant="outlined"
+                sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                onClick={() => navigate(`/student/course/${course._id}`)}
+              >
+                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
+                    {course.deptCode} {course.courseNumber}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {course.semester}
                   </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {course.name}
+                  </Typography>
+                  {course.section && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Section: {course.section}
+                    </Typography>
+                  )}
                 </CardContent>
               </Card>
             </Grid>

@@ -298,7 +298,7 @@ export default async function courseRoutes(app) {
     }
   );
 
-  // DELETE /:id/students/:studentId - Remove student from course (instructor/admin)
+  // DELETE /:id/students/:studentId - Remove student from course (instructor/admin or self-unenroll)
   app.delete(
     '/:id/students/:studentId',
     { preHandler: authenticate },
@@ -306,17 +306,18 @@ export default async function courseRoutes(app) {
       const roles = request.user.roles || [];
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
+      const { studentId } = request.params;
 
       const course = await Course.findById(request.params.id);
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isAdmin && !course.instructors.includes(userId)) {
+      // Allow: admin, instructor, or the student removing themselves
+      const isSelfUnenroll = studentId === userId && course.students.includes(userId);
+      if (!isAdmin && !course.instructors.includes(userId) && !isSelfUnenroll) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
-
-      const { studentId } = request.params;
 
       await Course.findByIdAndUpdate(course._id, {
         $pull: { students: studentId },
