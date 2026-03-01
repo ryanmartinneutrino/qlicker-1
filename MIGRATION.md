@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 4 In Progress — Sessions & Questions
+## Status: Phase 4 Complete — Sessions & Questions; Phase 5 Ready
 
 ---
 
@@ -566,17 +566,19 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 - [x] Profile page
 - [x] Professor dashboard and course pages
 - [x] Student dashboard and course pages
-- [ ] Session editor page
+- [x] Session editor page
 - [ ] Run session page (professor)
 - [ ] Present session page (student)
 - [ ] Quiz page (student)
 - [ ] Grading pages and components
 - [ ] Session review pages
-- [ ] Question components (display, edit, all types)
+- [x] Question components (display, edit, all types)
 - [ ] Answer distribution charts
 - [ ] Group management UI
 - [ ] Video chat (Jitsi) integration
-- [ ] Shared components (tables, forms, modals, lists)
+- [x] Shared components (tables, forms, modals, lists)
+- [x] Connection status indicator (health check banner)
+- [x] Session list on professor and student course pages
 
 ### Agent 8: Testing, CI/CD & Documentation
 See [agents/AGENT_8_TESTING.md](agents/AGENT_8_TESTING.md)
@@ -714,7 +716,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 1. Login works | ✅ Complete | Phase 1 |
 | 2. Profile & uploads | ✅ Complete (bugs fixed) | Phase 2 |
 | 3. Course management | ✅ Complete | Phase 3 |
-| 4. Session editor | 🟡 In progress (backend routes done, frontend pending) | Phase 4 |
+| 4. Session editor | ✅ Complete | Phase 4 |
 | 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
 | 7. Grading | ⬜ Not started | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
@@ -775,7 +777,7 @@ The following issues were identified during testing and have been resolved:
 | Password reset modal UX | Modal auto-closes after 5s on success, warns user to check spam/junk folder | ✅ Fixed |
 | Admin can change their own role | Server returns 403 for self-role-change; UI disables dropdown with tooltip | ✅ Fixed |
 | Cross-tab login not synced | Added localStorage 'storage' event listener in AuthContext for cross-tab auth sync | ✅ Fixed |
-| Prof course page: no avatars | Avatar shown at far right of each student/instructor row, clickable for full-size dialog | ✅ Fixed |
+| Prof course page: no avatars | Avatar shown at far left of each student/instructor row, clickable for full-size dialog | ✅ Fixed |
 | Prof course page: no removal confirmation | Added confirmation dialogs before removing students or instructors | ✅ Fixed |
 | Prof course page: no reactive updates | Added 15-second polling interval for auto-refresh of member lists | ✅ Fixed |
 | Student unenroll: "Insufficient permissions" | Server now allows students to remove themselves (self-unenroll) | ✅ Fixed |
@@ -783,6 +785,7 @@ The following issues were identified during testing and have been resolved:
 | Create course: Fall/Winter year format | Fall/Winter now generates year/year+1 format (e.g., 2025/2026) | ✅ Fixed |
 | Course tiles: inconsistent sizing | Fixed card sizes with minHeight, uniform layout across dashboards | ✅ Fixed |
 | Course tiles: layout order | Now shows: bold dept+number → semester → name (wrapped) → section | ✅ Fixed |
+| No connection status feedback | Added ConnectionStatus component that polls /api/v1/health every 15s and shows warning banner when disconnected | ✅ Fixed |
 
 ### Phase 4 Progress
 
@@ -797,9 +800,12 @@ The following issues were identified during testing and have been resolved:
 | Backend | Question library (copy to library, copy to session) | ✅ Complete |
 | Testing | Session routes unit tests (20 tests) | ✅ Complete |
 | Testing | Question routes unit tests (19 tests) | ✅ Complete |
-| Frontend | Session editor page | ⬜ Not started |
-| Frontend | Session list on course pages | ⬜ Not started |
-| Frontend | Question editor components | ⬜ Not started |
+| Frontend | Session editor page | ✅ Complete |
+| Frontend | Session list on course pages | ✅ Complete |
+| Frontend | Question editor components (all 5 types: SA, MC, TF, MS, NU) | ✅ Complete |
+| Frontend | Question display component | ✅ Complete |
+| Frontend | Connection status indicator (health check banner) | ✅ Complete |
+| Frontend | Avatar position fix (moved to far left per Comments.md) | ✅ Complete |
 
 ### Agent Status
 
@@ -811,7 +817,7 @@ The following issues were identified during testing and have been resolved:
 | 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 4 backend done |
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
-| 7 - Frontend | Dashboards, course pages, admin enhancements, course tile layout, member list improvements, cross-tab auth | ✅ Phase 4 UI fixes done |
+| 7 - Frontend | Session editor, question editor/display, session lists on course pages, connection status, avatar fix | ✅ Phase 4 frontend done |
 | 8 - Testing | All route tests passing (92 tests: auth 19, courses 23, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
 
 ---
@@ -825,14 +831,14 @@ The following issues were identified during testing and have been resolved:
 5. Complete the next pending task, update the agent file, and update this file's status tables
 6. Submit a PR with your changes
 
-### Current Next Steps (Phase 4 → Phase 5)
+### Current Next Steps (Phase 5)
 
-Phase 4 backend work is complete and all Comments.md issues have been resolved. Session and Question CRUD routes are implemented and tested. The following should happen next:
+Phase 4 is now complete — both backend and frontend work is done. All Comments.md issues have been resolved. The following should happen next:
 
 1. **Legacy DB Discovery:** Run the agent instructions in [AGENT_LEGACY_DB.md](AGENT_LEGACY_DB.md) to discover the legacy database structure and update seed scripts with restore-from-dump capability.
-2. **Phase 4 Frontend:** Session editor page, session list on course pages, question editor components (Agent 7)
-3. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
-4. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
+3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+4. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
 5. **Phase 6 Prep:** Grade calculation service (Agent 6)
 6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
 7. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
@@ -840,8 +846,13 @@ Phase 4 backend work is complete and all Comments.md issues have been resolved. 
 **Testable by human (all phases through Phase 4):**
 - Log in as professor → create a course → click course title to view
 - Students can enroll → student sees course in dashboard → click title to view
-- Professor: add/remove students with confirmation dialog, avatars shown at far right
+- Professor: add/remove students with confirmation dialog, avatars shown at far left
 - Professor: toggle requireVerified and allowStudentQuestions settings
+- Professor: Sessions tab shows list of sessions with status chips, create/copy/delete sessions
+- Professor: Click session → session editor with settings, question list, add/edit/delete/reorder questions
+- Student: Course page shows visible/running/done sessions with status chips
+- Question editor supports all 5 types: Short Answer, Multiple Choice, True/False, Multi-Select, Numerical
+- Connection status: warning banner appears when backend is unreachable, disappears when restored
 - Admin: see Verified column, click to verify email, see Last Login column
 - Admin: **cannot change their own role** (dropdown is disabled with tooltip)
 - Forgot password: click "Forgot Password?" → receive email → modal auto-closes with spam warning
