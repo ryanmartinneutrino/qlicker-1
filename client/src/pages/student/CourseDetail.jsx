@@ -9,6 +9,8 @@ import { ArrowBack as BackIcon, Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 
+const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
+
 export default function StudentCourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -93,7 +95,7 @@ export default function StudentCourseDetail() {
                           {s.name}
                           <Chip
                             label={s.status}
-                            color={{ visible: 'info', running: 'success', done: 'warning' }[s.status] || 'default'}
+                            color={STATUS_COLORS[s.status] || 'default'}
                             size="small"
                           />
                           {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}

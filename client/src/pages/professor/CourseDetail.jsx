@@ -214,7 +214,7 @@ export default function CourseDetail() {
   };
 
   // Session actions
-  const statusColor = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
+  const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
 
   const handleCreateSession = async () => {
     if (!newSessionName.trim()) return;
@@ -325,7 +325,7 @@ export default function CourseDetail() {
                       primary={
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {s.name}
-                          <Chip label={s.status} color={statusColor[s.status] || 'default'} size="small" />
+                          <Chip label={s.status} color={STATUS_COLORS[s.status] || 'default'} size="small" />
                           {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
                         </Box>
                       }
