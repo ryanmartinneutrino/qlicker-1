@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: PLANNING COMPLETE — Ready to Begin Implementation
+## Status: PHASE 1 IN PROGRESS — Foundation, Auth, Frontend, and Testing Infrastructure Complete
 
 ---
 
@@ -452,40 +452,40 @@ The milestones are defined in [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMEN
 See [agents/AGENT_1_FOUNDATION.md](agents/AGENT_1_FOUNDATION.md)
 
 **Summary of tasks:**
-- [ ] Project scaffolding (server package.json, client package.json, monorepo config)
-- [ ] Fastify app factory with plugin system
-- [ ] MongoDB/Mongoose connection with config
-- [ ] Environment configuration (.env, config module)
-- [ ] Docker Compose file (app, API, MongoDB, Nginx)
-- [ ] Dockerfiles for server and client
-- [ ] `setup-native.sh` script
-- [ ] `setup-docker.sh` script
-- [ ] `qlicker.sh` start/stop/restart/status script
-- [ ] `seed-db.sh` and `seed-db-docker.sh` scripts
-- [ ] `.env.example` file
+- [x] Project scaffolding (server package.json, client package.json, monorepo config)
+- [x] Fastify app factory with plugin system
+- [x] MongoDB/Mongoose connection with config
+- [x] Environment configuration (.env, config module)
+- [x] Docker Compose file (app, API, MongoDB, Nginx)
+- [x] Dockerfiles for server and client
+- [x] `setup-native.sh` script
+- [x] `setup-docker.sh` script
+- [x] `qlicker.sh` start/stop/restart/status script
+- [x] `seed-db.sh` and `seed-db-docker.sh` scripts
+- [x] `.env.example` file
 - [ ] File upload plugin (S3, Azure, local)
 - [ ] Image routes
-- [ ] CORS and security headers
-- [ ] Production Docker Compose with load balancing (Nginx)
+- [x] CORS and security headers
+- [x] Production Docker Compose with load balancing (Nginx)
 
 ### Agent 2: Authentication & Users
 See [agents/AGENT_2_AUTH.md](agents/AGENT_2_AUTH.md)
 
 **Summary of tasks:**
-- [ ] User Mongoose model (backward compatible with Meteor users collection)
-- [ ] JWT authentication plugin
-- [ ] Auth routes (register, login, logout)
-- [ ] First-user-is-admin logic
-- [ ] Password hashing (bcrypt, compatible with Meteor's bcrypt format)
-- [ ] Email verification flow
-- [ ] Password reset flow (Nodemailer)
-- [ ] User CRUD routes (admin)
-- [ ] Role management (admin changes roles, prof promotes)
-- [ ] Profile update routes
+- [x] User Mongoose model (backward compatible with Meteor users collection)
+- [x] JWT authentication plugin
+- [x] Auth routes (register, login, logout)
+- [x] First-user-is-admin logic
+- [x] Password hashing (bcrypt, compatible with Meteor's bcrypt format)
+- [x] Email verification flow
+- [x] Password reset flow (Nodemailer)
+- [x] User CRUD routes (admin)
+- [x] Role management (admin changes roles, prof promotes)
+- [x] Profile update routes
 - [ ] SAML SSO plugin (passport-saml)
 - [ ] SSO routes (login, callback, metadata, logout)
 - [ ] Legacy user compatibility (Meteor password format)
-- [ ] Auth middleware (role guards)
+- [x] Auth middleware (role guards)
 
 ### Agent 3: Course Management
 See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
@@ -555,15 +555,15 @@ See [agents/AGENT_6_GRADING.md](agents/AGENT_6_GRADING.md)
 See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 
 **Summary of tasks:**
-- [ ] React app scaffold (Vite + React 18)
-- [ ] MUI theme (colors, fonts matching existing app)
-- [ ] App layout (navbar, sidebar, routing)
-- [ ] Auth context (JWT storage, auto-refresh)
-- [ ] API client (fetch/axios wrapper)
+- [x] React app scaffold (Vite + React 18)
+- [x] MUI theme (colors, fonts matching existing app)
+- [x] App layout (navbar, sidebar, routing)
+- [x] Auth context (JWT storage, auto-refresh)
+- [x] API client (fetch/axios wrapper)
 - [ ] WebSocket context
-- [ ] Login/Register page
-- [ ] Admin panel (settings, users, images, SSO)
-- [ ] Profile page
+- [x] Login/Register page
+- [x] Admin panel (settings, users, images, SSO)
+- [x] Profile page
 - [ ] Professor dashboard and course pages
 - [ ] Student dashboard and course pages
 - [ ] Session editor page
@@ -582,8 +582,8 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 See [agents/AGENT_8_TESTING.md](agents/AGENT_8_TESTING.md)
 
 **Summary of tasks:**
-- [ ] Vitest configuration for server
-- [ ] Vitest configuration for client
+- [x] Vitest configuration for server
+- [x] Vitest configuration for client
 - [ ] Playwright configuration for E2E
 - [ ] CI pipeline (GitHub Actions)
 - [ ] Login flow E2E test
@@ -594,7 +594,7 @@ See [agents/AGENT_8_TESTING.md](agents/AGENT_8_TESTING.md)
 - [ ] Quiz flow E2E test
 - [ ] Grading flow E2E test
 - [ ] Legacy DB compatibility tests
-- [ ] API unit tests per route module
+- [x] API unit tests per route module
 - [ ] Component tests for critical UI
 - [ ] Documentation (README, developer guide, user guide)
 - [ ] Security audit
@@ -711,7 +711,7 @@ The existing MongoDB database uses Meteor's conventions:
 
 | Milestone | Status | Target Phase |
 |-----------|--------|-------------|
-| 1. Login works | ⬜ Not started | Phase 1 |
+| 1. Login works | 🟡 In progress | Phase 1 |
 | 2. Profile & uploads | ⬜ Not started | Phase 2 |
 | 3. Course management | ⬜ Not started | Phase 3 |
 | 4. Session editor | ⬜ Not started | Phase 4 |
@@ -724,14 +724,14 @@ The existing MongoDB database uses Meteor's conventions:
 
 | Agent | Current Task | Status |
 |-------|-------------|--------|
-| 1 - Foundation | Project scaffolding | ⬜ Not started |
-| 2 - Auth | User model | ⬜ Not started |
+| 1 - Foundation | Tasks 1.1-1.4 complete | ✅ Phase 1 done |
+| 2 - Auth | Tasks 2.1-2.4 complete | ✅ Phase 1 done |
 | 3 - Courses | Waiting for Phase 1 | ⬜ Not started |
 | 4 - Sessions | Waiting for Phase 1 | ⬜ Not started |
 | 5 - Responses | Waiting for Phase 1 | ⬜ Not started |
 | 6 - Grading | Waiting for Phase 1 | ⬜ Not started |
-| 7 - Frontend | React app scaffold | ⬜ Not started |
-| 8 - Testing | Test infrastructure | ⬜ Not started |
+| 7 - Frontend | Tasks 7.1-7.4 complete | ✅ Phase 1 done |
+| 8 - Testing | Tasks 8.1-8.2 complete | ✅ Phase 1 done |
 
 ---
 

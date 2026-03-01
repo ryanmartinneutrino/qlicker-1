@@ -1,0 +1,35 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+
+  server:
+    build: ./server
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      - PORT=3001
+      - MONGO_URI=mongodb://mongo:27017/qlicker
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - ROOT_URL=${ROOT_URL:-http://localhost:3000}
+      - MAIL_URL=${MAIL_URL:-}
+      - NODE_ENV=${NODE_ENV:-production}
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  client:
+    build: ./client
+    ports:
+      - "${APP_PORT:-3000}:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
