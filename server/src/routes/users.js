@@ -16,7 +16,7 @@ export default async function userRoutes(app) {
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return sanitizeUser(user);
+    return { user: sanitizeUser(user) };
   });
 
   // PATCH /me
