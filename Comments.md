@@ -7,6 +7,7 @@
 
 - The create course modal should say "semester" instead of "season". If the user chooses Fall/Winter, then the year will be 2025/2026 (use the current year as the first year, update this option if the user chooses Fall/Winter) 
 
+- The main web page needs to check if it's connected (to front and backend) and let user know if it's not (e.g. there should be some feedback on the webpage when the user has shutdown the app). 
 
 
 
