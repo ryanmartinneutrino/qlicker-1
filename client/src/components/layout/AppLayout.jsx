@@ -4,6 +4,7 @@ import {
   AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
+import ConnectionStatus from '../common/ConnectionStatus';
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
@@ -44,6 +45,7 @@ export default function AppLayout() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <ConnectionStatus />
       <AppBar position="static">
         <Toolbar>
           <Typography
