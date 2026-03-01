@@ -61,7 +61,8 @@ export default function ProfDashboard() {
     setCreating(true);
     try {
       const { season, year, ...rest } = newCourse;
-      await apiClient.post('/courses', { ...rest, semester: `${season} ${year}` });
+      const semesterYear = season === 'Fall/Winter' ? `${year}/${Number(year) + 1}` : String(year);
+      await apiClient.post('/courses', { ...rest, semester: `${season} ${semesterYear}` });
       setCreateOpen(false);
       const s = getSuggestedSemester();
       setNewCourse({ name: '', deptCode: '', courseNumber: '', section: '', season: s.season, year: s.year });
@@ -122,16 +123,27 @@ export default function ProfDashboard() {
         <Grid container spacing={2}>
           {filtered.map((course) => (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
-              <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="h6" gutterBottom noWrap sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }} onClick={() => navigate(`/manage/course/${course._id}`)}>{course.name}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''}
+              <Card
+                variant="outlined"
+                sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                onClick={() => navigate(`/manage/course/${course._id}`)}
+              >
+                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
+                    {course.deptCode} {course.courseNumber}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
                     {course.semester}
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                  <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {course.name}
+                  </Typography>
+                  {course.section && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      Section: {course.section}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
                     <Chip
                       label={course.inactive ? 'Inactive' : 'Active'}
                       color={course.inactive ? 'default' : 'success'}
@@ -139,7 +151,7 @@ export default function ProfDashboard() {
                     />
                   </Box>
                   {course.enrollmentCode && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
                       <Typography variant="caption" color="text.secondary">Code:</Typography>
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {course.enrollmentCode}
@@ -170,8 +182,18 @@ export default function ProfDashboard() {
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField label="Section" placeholder="e.g. 001" value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
             <FormControl sx={{ flex: 1 }}>
-              <InputLabel>Season</InputLabel>
-              <Select label="Season" value={newCourse.season} onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}>
+              <InputLabel>Semester</InputLabel>
+              <Select label="Semester" value={newCourse.season} onChange={(e) => {
+                const val = e.target.value;
+                setNewCourse((s) => {
+                  const updated = { ...s, season: val };
+                  // For Fall/Winter, use current year as the first year
+                  if (val === 'Fall/Winter') {
+                    updated.year = new Date().getFullYear();
+                  }
+                  return updated;
+                });
+              }}>
                 <MenuItem value="Fall">Fall</MenuItem>
                 <MenuItem value="Winter">Winter</MenuItem>
                 <MenuItem value="Fall/Winter">Fall/Winter</MenuItem>

@@ -459,3 +459,63 @@ describe('PATCH /api/v1/courses/:id/active', () => {
     expect(body.course.inactive).toBe(true);
   });
 });
+
+// ---------- Student self-unenroll ----------
+describe('DELETE /api/v1/courses/:id/students/:studentId (self-unenroll)', () => {
+  it('student can unenroll themselves', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+
+    const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const res = await authenticatedRequest(
+      app,
+      'DELETE',
+      `/api/v1/courses/${course._id}/students/${student._id}`,
+      { token: studentToken }
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+  });
+
+  it('student cannot remove another student', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+
+    const student1 = await createTestUser({ email: 'student1@example.com', roles: ['student'] });
+    const student1Token = await getAuthToken(app, student1);
+    const student2 = await createTestUser({ email: 'student2@example.com', roles: ['student'] });
+    const student2Token = await getAuthToken(app, student2);
+
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: student1Token,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: student2Token,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const res = await authenticatedRequest(
+      app,
+      'DELETE',
+      `/api/v1/courses/${course._id}/students/${student2._id}`,
+      { token: student1Token }
+    );
+
+    expect(res.statusCode).toBe(403);
+  });
+});

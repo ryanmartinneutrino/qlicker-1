@@ -188,6 +188,11 @@ export default async function userRoutes(app) {
         }
       }
 
+      // Admins cannot change their own role to prevent losing all admin access
+      if (isAdmin && request.params.id === request.user.userId) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Admins cannot change their own role' });
+      }
+
       const user = await User.findByIdAndUpdate(
         request.params.id,
         { $set: { 'profile.roles': [role] } },

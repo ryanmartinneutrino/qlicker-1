@@ -9,6 +9,7 @@ import {
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
 import apiClient from '../../api/client';
+import { useAuth } from '../../contexts/AuthContext';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -94,7 +95,7 @@ function SettingsTab() {
 }
 
 // ── Users Tab ───────────────────────────────────────────────────────────────
-function UsersTab() {
+function UsersTab({ currentUserId }) {
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -240,15 +241,20 @@ function UsersTab() {
                       : 'Never'}
                   </TableCell>
                   <TableCell>
-                    <Select
-                      size="small"
-                      value={u.profile?.roles?.[0] ?? 'student'}
-                      onChange={(e) => handleRoleChange(u._id, e.target.value)}
-                    >
-                      <MenuItem value="admin">admin</MenuItem>
-                      <MenuItem value="professor">professor</MenuItem>
-                      <MenuItem value="student">student</MenuItem>
-                    </Select>
+                    <Tooltip title={u._id === currentUserId ? 'You cannot change your own role' : ''}>
+                      <span>
+                        <Select
+                          size="small"
+                          value={u.profile?.roles?.[0] ?? 'student'}
+                          onChange={(e) => handleRoleChange(u._id, e.target.value)}
+                          disabled={u._id === currentUserId}
+                        >
+                          <MenuItem value="admin">admin</MenuItem>
+                          <MenuItem value="professor">professor</MenuItem>
+                          <MenuItem value="student">student</MenuItem>
+                        </Select>
+                      </span>
+                    </Tooltip>
                   </TableCell>
                   <TableCell align="right">
                     <IconButton color="error" size="small" onClick={() => setDeleteTarget(u)}>
@@ -487,6 +493,7 @@ function SSOTab() {
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [tab, setTab] = useState(0);
+  const { user } = useAuth();
 
   return (
     <Box sx={{ p: 3 }}>
@@ -498,7 +505,7 @@ export default function AdminDashboard() {
         <Tab label="SSO Configuration" />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
-      <TabPanel value={tab} index={1}><UsersTab /></TabPanel>
+      <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
       <TabPanel value={tab} index={2}><StorageTab /></TabPanel>
       <TabPanel value={tab} index={3}><SSOTab /></TabPanel>
     </Box>

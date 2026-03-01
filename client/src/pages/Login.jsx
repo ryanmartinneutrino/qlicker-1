@@ -56,7 +56,8 @@ export default function Login() {
     setForgotLoading(true);
     try {
       await apiClient.post('/auth/forgot-password', { email: forgotEmail });
-      setForgotMsg({ severity: 'success', text: 'If that email is registered, a reset link has been sent.' });
+      setForgotMsg({ severity: 'success', text: 'If that email is registered, a reset link has been sent. Please check your spam/junk folder if you don\u2019t see it in your inbox.' });
+      setTimeout(() => setForgotOpen(false), 5000);
     } catch {
       setForgotMsg({ severity: 'error', text: 'Failed to send reset email. Please try again.' });
     } finally {
