@@ -16,28 +16,41 @@ export default async function userRoutes(app) {
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return { user: sanitizeUser(user) };
+    const sanitized = sanitizeUser(user);
+    sanitized.isSSOUser = !!user.services?.sso?.id;
+    return { user: sanitized };
   });
 
   // PATCH /me
   app.patch('/me', { preHandler: authenticate }, async (request, reply) => {
     const allowed = ['firstname', 'lastname', 'studentNumber'];
     const updates = {};
+
+    const user = await User.findById(request.user.userId);
+    if (!user) {
+      return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+    }
+
+    const isSSOUser = !!user.services?.sso?.id;
+
     for (const key of allowed) {
       if (request.body?.[key] !== undefined) {
+        if (isSSOUser && (key === 'firstname' || key === 'lastname')) {
+          continue; // SSO users cannot change name fields
+        }
         updates[`profile.${key}`] = request.body[key];
       }
     }
 
-    const user = await User.findByIdAndUpdate(
+    const updated = await User.findByIdAndUpdate(
       request.user.userId,
       { $set: updates },
       { new: true }
     );
-    if (!user) {
+    if (!updated) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return sanitizeUser(user);
+    return sanitizeUser(updated);
   });
 
   // PATCH /me/password
