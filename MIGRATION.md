@@ -259,48 +259,78 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 ## Legacy App Analysis
 
-### MongoDB Collections
+### Legacy Dump Snapshot (Observed 2026-03-02)
 
-| Collection | Document Count (typical) | Key Fields |
-|-----------|-------------------------|------------|
-| `users` | 1000s | profile.roles, profile.courses, emails |
-| `courses` | 100s | students[], instructors[], sessions[], enrollmentCode |
-| `sessions` | 1000s | courseId, status, quiz, questions[], currentQuestion |
-| `questions` | 10,000s | type (1-5), sessionId, courseId, options[], sessionOptions |
-| `responses` | 100,000s | questionId, studentUserId, attempt, answer |
-| `grades` | 10,000s | userId, sessionId, marks[], value, points |
-| `images` | 100s | url, UID |
-| `settings` | 1 | Singleton config |
+- Local dump contains two DB namespaces: `qlickerdb` (application data) and `admin` (Mongo system collections).
+- `admin` includes `system.users` and `system.version`; these are Mongo instance-level auth/version artifacts, not Qlicker domain collections.
+- Restoring `qlickerdb` into the Fastify target DB produced:
+  - `users`: 20,901
+  - `courses`: 472
+  - `sessions`: 5,766
+  - `questions`: 63,257
+  - `responses`: 1,700,441
+  - `grades`: 510,617
+  - `images`: 6,803
+  - `settings`: 1
+  - `meteor_accounts_loginServiceConfiguration`: 0
+- IDs across core app collections are Meteor-style strings (not ObjectId), which matches current model assumptions.
+- Updated restore scripts now restore from a selected top-level dump directory and include both namespaces: application data (`qlickerdb`) is mapped into the configured app DB, while `admin` is restored in-place.
 
-### Question Types
+### Collection Mapping and Compatibility
 
-| Code | Type | Auto-gradable |
-|------|------|---------------|
-| 1 | Short Answer (SA) | No |
-| 2 | Multiple Choice (MC) | Yes |
-| 3 | True/False (TF) | Yes |
-| 4 | Multi-Select (MS) | Yes |
-| 5 | Numerical (NU) | Yes |
+| Legacy Collection | Fastify Model | Compatibility | Notes |
+|------------------|---------------|---------------|-------|
+| `users` | `User` | Partial | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Legacy also has `username` index/field usage, top-level `email` in some docs, and reset token path `services.password.reset.*` (current model uses `services.resetPassword.*`). New model adds `lastLogin` (optional in legacy data). |
+| `courses` | `Course` | Partial | Main fields align. Legacy `groupCategories.groups` uses `groupNumber/groupName/students`; current model uses `name/members`, so direct shape mismatch exists. |
+| `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz` are additive and optional. |
+| `questions` | `Question` | Mostly aligned | Legacy fields align for session/course ownership, options, tags, and session options. New schema fields (`toleranceNumerical`, `correctNumerical`, `solution*`, `imagePath`) are additive. |
+| `responses` | `Response` | Partial | Legacy has `attempt`, `questionId`, `studentUserId`, `answer`, `createdAt`, and legacy grading field `mark`. Current model does not define `mark`, and instead has `correct`, `updatedAt`, `editable`, `answerWysiwyg`. |
+| `grades` | `Grade` | Mostly aligned | Legacy marks and aggregate grade fields align with current schema; newer fields like `feedback` are additive defaults. |
+| `images` | `Image` | Mismatch | Legacy documents are shaped as `_id`, `url`, `UID`, and nested `image.url`. Current model requires `key`, `type`, and `size`, which are not present in legacy docs. |
+| `settings` | `Settings` | Mismatch | Legacy settings use different key names (`email`, `AWS_accessKey`, `AWS_secret`, `Azure_accountName`, etc.) and include extra keys (e.g., image limits/Jitsi fields). Current model expects `adminEmail`, `AWS_accessKeyId`, `AWS_secretAccessKey`, `Azure_storageAccount`, etc. |
+| `meteor_accounts_loginServiceConfiguration` | none | Gap | Legacy collection exists (empty in this snapshot) but has no equivalent model yet. |
 
-### User Roles
+### Legacy Indexes Observed
 
-| Role | Capabilities |
-|------|-------------|
-| `admin` | Full system access, user management, settings |
-| `professor` | Create/manage courses, sessions, grading |
-| `student` | Enroll in courses, answer questions, view grades |
+- `users`: unique/sparse indexes on `username`, `emails.address`, `services.resume.loginTokens.(hashedToken|token)`, `services.email.verificationTokens.token`, `services.password.reset.token`; additional sparse indexes on `services.resume.haveLoginTokensToDelete`, `services.resume.loginTokens.when`, `services.password.reset.when`.
+- `questions`: indexes on `sessionId`, `courseId`, `owner`.
+- `responses`: indexes on `questionId`, `studentUserId`.
+- `sessions`: index on `courseId`.
+- `grades`: indexes on `userId`, `courseId`, `sessionId`.
+- `images`: index on `UID`.
+- `meteor_accounts_loginServiceConfiguration`: unique index on `service`.
 
-Professors with `canPromote: true` can promote other users to professor.
+### Seed/Reset Verification Notes
 
-### Real-Time Requirements (Critical)
+- `--reset` on `seed-db.js` now uses `dropDatabase()` and is confirmed to clear all collections before re-seeding test users.
+- Native and Docker seed wrappers now support:
+  - test-data seed
+  - legacy dump restore with dynamic dump discovery
+  - reset-to-empty flow
+- Docker seeding cleanup now succeeds (previous temp-script permission failure removed).
 
-1. **Live interactive sessions**: Professor cycles through questions → students see updates instantly. Professor sees response counts updating in real-time. Stats/correct toggles reflected immediately.
-2. **Course pages**: Session status changes (started/ended) reflected immediately. Student enrollment list updates for professors.
-3. **Quiz mode**: Not real-time, but responses must be auto-saved.
+### Auth Compatibility Findings (API Validation, 2026-03-02)
 
-### Meteor Method → API Endpoint Mapping
+- API and DB wiring are functional in Docker (`:3201` API against restored `qlicker` DB): register and login for newly created users work.
+- Legacy snapshot user auth profile:
+  - total users: `20,901`
+  - users with password hashes (`services.password.bcrypt`): `1,725`
+  - users with SSO identities (`services.sso.id`): `19,887`
+  - users with mixed-case/non-lowercased stored emails: `8,081`
+  - users with password hashes + mixed-case stored emails: `188` (`51` are password-only users without SSO fallback)
+- Confirmed compatibility gap in current login lookup:
+  - login route normalizes input to lowercase, then performs exact match on `emails.address`
+  - many legacy addresses are not normalized to lowercase
+  - result: those users are not found and receive `401 Invalid email or password` even if password is correct
+- Password hash format itself appears compatible (`$2a$`/`$2b$` bcrypt hashes are present and supported by current bcrypt verification), so the primary observed blocker is email normalization mismatch rather than Meteor hash decoding.
 
-> See the API Design table above. Each Meteor method maps to a REST endpoint. The real-time subscription behavior is replaced by WebSocket events for critical paths and polling/refetch for non-critical paths.
+### Important Follow-Up Code Updates (Not Done Here)
+
+- Add migration/mapping logic for legacy `images` and `settings` shape differences before production cutover.
+- Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path.
+- Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.
+- Confirm whether `meteor_accounts_loginServiceConfiguration` should remain unsupported, be migrated, or be explicitly deprecated.
+- Update login/user lookup to handle legacy mixed-case emails (either case-insensitive lookup or a one-time email normalization migration).
 
 ---
 

@@ -26,9 +26,16 @@ for (const envPath of envPaths) {
   }
 }
 
-const MONGO_URI = process.env.MONGO_URI || `mongodb://localhost:${process.env.MONGO_PORT || '27017'}/qlicker`;
+const MONGO_URI = process.env.MONGO_URI
+  || (process.env.MONGO_PORT ? `mongodb://localhost:${process.env.MONGO_PORT}/qlicker` : '');
+
+if (!MONGO_URI) {
+  console.error('MONGO_URI or MONGO_PORT must be set in .env');
+  process.exit(1);
+}
 const args = process.argv.slice(2);
 const shouldReset = args.includes('--reset');
+const shouldResetOnly = args.includes('--reset-only');
 
 // Inline User schema to avoid path resolution issues in Docker
 const EmailSchema = new mongoose.Schema(
@@ -102,14 +109,16 @@ async function main() {
   await mongoose.connect(MONGO_URI);
   console.log('Connected.');
 
-  if (shouldReset) {
-    console.log('Resetting database — dropping all collections...');
-    const collections = await mongoose.connection.db.listCollections().toArray();
-    for (const col of collections) {
-      await mongoose.connection.db.dropCollection(col.name);
-      console.log(`  Dropped: ${col.name}`);
-    }
-    console.log('All collections dropped.');
+  if (shouldReset || shouldResetOnly) {
+    console.log('Resetting database — dropping database...');
+    await mongoose.connection.db.dropDatabase();
+    console.log('Database dropped.');
+  }
+
+  if (shouldResetOnly) {
+    console.log('Reset complete. No seed data inserted.');
+    await mongoose.disconnect();
+    return;
   }
 
   console.log('Seeding users...');
