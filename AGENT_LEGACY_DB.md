@@ -85,14 +85,14 @@ After discovering the legacy database structure:
 2. Verify that field names match (especially the Meteor conventions):
    - `users` collection: `_id` is a string (not ObjectId), passwords in `services.password.bcrypt`, emails in `emails[]` array
    - Other collections: Check `_id` format, date fields, reference fields
-3. Flag any fields in the legacy data that are missing from the new models (these may need to be added for full backward compatibility).
-4. Flag any new fields added in the new models (like `lastLogin`) that won't exist in legacy data — ensure they have appropriate defaults or are optional.
+3. Flag any fields in the legacy data that are missing from the new models (these may need to be added for full backward compatibility). Report this in MIGRATION.md
+4. Flag any new fields added in the new models (like `lastLogin`) that won't exist in legacy data — ensure they have appropriate defaults or are optional. Report back in MIGRATION.md, but don't update code.
 
 ---
 
 ## Deliverables
 
-1. Updated `MIGRATION.md` — "Legacy App Analysis" section with discovered structure details
+1. Updated `MIGRATION.md` — "Legacy App Analysis" section with discovered structure details and findings about compatability.
 2. Updated `scripts/seed-db.sh` — with legacy dump restore option
 3. Updated `scripts/seed-db-docker.sh` — with legacy dump restore option
 4. This file can be removed or archived once the tasks are complete.
