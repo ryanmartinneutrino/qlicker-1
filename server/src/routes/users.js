@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import { generateMeteorId } from '../utils/meteorId.js';
+import { emailRegex } from '../utils/email.js';
 
 function sanitizeUser(user) {
   const obj = user.toObject();
@@ -258,7 +259,7 @@ export default async function userRoutes(app) {
       const { email, password, firstname, lastname, role } = request.body;
       const normalizedEmail = email.toLowerCase().trim();
 
-      const existing = await User.findOne({ 'emails.address': normalizedEmail });
+      const existing = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
       if (existing) {
         return reply.code(409).send({ error: 'Conflict', message: 'Email already registered' });
       }

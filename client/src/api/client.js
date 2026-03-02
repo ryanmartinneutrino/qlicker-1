@@ -15,11 +15,13 @@ apiClient.interceptors.request.use((config) => {
 });
 
 // Handle 401 responses - attempt refresh or redirect to login
+// Skip retry for auth endpoints (login/register) so error messages display properly
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       try {
         const { data } = await axios.post('/api/v1/auth/refresh', {}, { withCredentials: true });
