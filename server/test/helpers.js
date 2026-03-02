@@ -27,7 +27,7 @@ export async function createTestUser(overrides = {}) {
   const hashedPassword = await User.hashPassword(data.password);
   const user = await User.create({
     emails: [{ address: data.email.toLowerCase(), verified: true }],
-    services: { password: { bcrypt: hashedPassword } },
+    services: { password: { hash: hashedPassword } },
     profile: {
       firstname: data.firstname,
       lastname: data.lastname,

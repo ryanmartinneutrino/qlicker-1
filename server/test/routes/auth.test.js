@@ -212,14 +212,14 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.user.profile).toBeDefined();
   });
 
-  it('finds legacy user with mixed-case email (case-insensitive lookup)', async (ctx) => {
+  it('finds mixed-case email user (case-insensitive lookup)', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    // Simulate a legacy user stored with mixed-case email
+    // Simulate a user stored with mixed-case email
     const User = (await import('../../src/models/User.js')).default;
     const hashedPassword = await User.hashPassword('password123');
     await User.create({
       emails: [{ address: 'John.Doe@University.Edu', verified: true }],
-      services: { password: { bcrypt: hashedPassword } },
+      services: { password: { hash: hashedPassword } },
       profile: { firstname: 'John', lastname: 'Doe', roles: ['student'] },
       createdAt: new Date(),
     });
@@ -238,6 +238,91 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.token).toBeDefined();
     expect(body.user).toBeDefined();
     expect(body.user.profile.firstname).toBe('John');
+  });
+
+  it('requires password reset for legacy bcrypt users', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    await User.create({
+      emails: [{ address: 'legacy@example.com', verified: true }],
+      services: { password: { bcrypt: '$2a$10$RpS898ow7xM8/7VsgV.CRO07nMYdzt5t62DZXEejz75DbUIH.clgm' } },
+      profile: { firstname: 'Legacy', lastname: 'User', roles: ['student'] },
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: {
+        email: 'legacy@example.com',
+        password: 'anything',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.code).toBe('PASSWORD_RESET_REQUIRED');
+    expect(body.requiresPasswordReset).toBe(true);
+    expect(body.reason).toBe('legacy_hash');
+    expect(body.message).toMatch(/reset/i);
+  });
+
+  it('requires password reset when no local password is set', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    await User.create({
+      emails: [{ address: 'nopass@example.com', verified: true }],
+      services: {},
+      profile: { firstname: 'No', lastname: 'Password', roles: ['student'] },
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: {
+        email: 'nopass@example.com',
+        password: 'anything',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.code).toBe('PASSWORD_RESET_REQUIRED');
+    expect(body.requiresPasswordReset).toBe(true);
+    expect(body.reason).toBe('no_local_password');
+    expect(body.message).toMatch(/reset/i);
+  });
+
+  it('allows login when argon2 hash exists even if legacy bcrypt field is present', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    const hashedPassword = await User.hashPassword('password123');
+    await User.create({
+      emails: [{ address: 'dual@example.com', verified: true }],
+      services: {
+        password: {
+          hash: hashedPassword,
+          bcrypt: '$2a$10$RpS898ow7xM8/7VsgV.CRO07nMYdzt5t62DZXEejz75DbUIH.clgm',
+        },
+      },
+      profile: { firstname: 'Dual', lastname: 'Mode', roles: ['student'] },
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: {
+        email: 'dual@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.token).toBeDefined();
+    expect(body.user).toBeDefined();
   });
 });
 

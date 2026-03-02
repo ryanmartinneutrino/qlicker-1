@@ -90,7 +90,7 @@ export default async function authRoutes(app) {
       _id: userId,
       emails: [{ address: normalizedEmail, verified: false }],
       services: {
-        password: { bcrypt: hashedPassword },
+        password: { hash: hashedPassword },
       },
       profile: {
         firstname,
@@ -138,6 +138,20 @@ export default async function authRoutes(app) {
     const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
     if (!user) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
+    }
+
+    if (user.passwordResetRequired()) {
+      const reason = user.passwordResetReason();
+      const message = reason === 'no_local_password'
+        ? 'No local password is set for this account. Please reset your password.'
+        : 'This account uses a legacy password format. Please reset your password.';
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'PASSWORD_RESET_REQUIRED',
+        requiresPasswordReset: true,
+        reason,
+        message,
+      });
     }
 
     const valid = await user.verifyPassword(password);
@@ -258,7 +272,9 @@ export default async function authRoutes(app) {
       }
 
       const hashedPassword = await User.hashPassword(newPassword);
-      user.services.password.bcrypt = hashedPassword;
+      if (!user.services.password) user.services.password = {};
+      user.services.password.hash = hashedPassword;
+      user.services.password.bcrypt = undefined;
       user.services.resetPassword = undefined;
       await user.save();
 
@@ -361,7 +377,7 @@ export default async function authRoutes(app) {
         _id: generateMeteorId(),
         emails: [{ address: email, verified: true }],
         services: {
-          password: { bcrypt: await User.hashPassword(crypto.randomBytes(32).toString('hex')) },
+          password: { hash: await User.hashPassword(crypto.randomBytes(32).toString('hex')) },
           sso: {
             id: profile.nameID,
             nameID: profile.nameID,

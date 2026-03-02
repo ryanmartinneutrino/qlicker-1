@@ -227,11 +227,7 @@ interactive_menu() {
 
   case "$choice" in
     1)
-      if confirm_action "Reset database before seeding test users?"; then
-        run_seed --reset
-      else
-        run_seed
-      fi
+      run_seed
       ;;
     2)
       restore_legacy_dump
@@ -251,13 +247,19 @@ if [ "$#" -gt 0 ]; then
     --legacy-restore)
       restore_legacy_dump
       ;;
+    --reset)
+      run_seed --reset
+      ;;
     --reset-empty)
       reset_to_empty
+      ;;
+    --menu)
+      interactive_menu
       ;;
     *)
       run_seed "$@"
       ;;
   esac
 else
-  interactive_menu
+  run_seed
 fi
