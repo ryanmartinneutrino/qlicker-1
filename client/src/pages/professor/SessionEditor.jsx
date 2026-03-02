@@ -10,6 +10,7 @@ import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Edit as EditIcon,
   KeyboardArrowUp as UpIcon, KeyboardArrowDown as DownIcon,
+  ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
@@ -57,6 +58,7 @@ export default function SessionEditor() {
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
+  const [expandedQuestions, setExpandedQuestions] = useState({});
 
   const fetchSession = useCallback(async () => {
     try {
@@ -196,6 +198,10 @@ export default function SessionEditor() {
     }
   };
 
+  const toggleQuestionExpanded = (questionId) => {
+    setExpandedQuestions((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">Session not found</Alert></Box>;
 
@@ -317,7 +323,35 @@ export default function SessionEditor() {
 
               {/* Question content */}
               <Box sx={{ flexGrow: 1 }}>
-                <QuestionDisplay question={q} />
+                <Box
+                  sx={{
+                    maxHeight: expandedQuestions[q._id] ? 'none' : 120,
+                    overflow: 'hidden',
+                    position: 'relative',
+                  }}
+                >
+                  <QuestionDisplay question={q} />
+                  {!expandedQuestions[q._id] && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 36,
+                        background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1))',
+                      }}
+                    />
+                  )}
+                </Box>
+                <Button
+                  size="small"
+                  endIcon={expandedQuestions[q._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  onClick={() => toggleQuestionExpanded(q._id)}
+                  sx={{ mt: 0.5 }}
+                >
+                  {expandedQuestions[q._id] ? 'Show less' : 'Show more'}
+                </Button>
               </Box>
 
               {/* Action buttons */}

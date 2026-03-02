@@ -38,6 +38,8 @@ export default function QuestionDisplay({ question }) {
     window.MathJax.typesetPromise([containerRef.current]).catch(() => {});
   }, [question, normalizedType]);
 
+  const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
+
   return (
     <Paper variant="outlined" sx={{ p: 2 }} ref={containerRef}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -54,8 +56,18 @@ export default function QuestionDisplay({ question }) {
               {opt.correct && <CorrectIcon color="success" fontSize="small" />}
               <Box sx={{ color: opt.correct ? 'success.main' : 'text.secondary' }}>
                 {hasHtml(opt.content)
-                  ? <Box dangerouslySetInnerHTML={{ __html: opt.content }} />
-                  : <Typography variant="body2">{opt.content || opt.plainText || opt.answer || `Option ${i + 1}`}</Typography>}
+                  ? (
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {shouldLetterOptions ? <Typography variant="body2" component="span">{String.fromCharCode(65 + i)}.</Typography> : null}
+                      <Box component="span" dangerouslySetInnerHTML={{ __html: opt.content }} />
+                    </Box>
+                  )
+                  : (
+                    <Typography variant="body2">
+                      {shouldLetterOptions ? `${String.fromCharCode(65 + i)}. ` : ''}
+                      {opt.content || opt.plainText || opt.answer || `Option ${i + 1}`}
+                    </Typography>
+                  )}
               </Box>
             </Box>
           ))}

@@ -40,27 +40,43 @@ export function normalizeQuestionType(question = {}) {
   const rawType = Number(question?.type);
   const options = question?.options || [];
   const hasNumerical = question?.correctNumerical !== undefined && question?.correctNumerical !== null;
+  const correctCount = countCorrect(options);
 
-  if (rawType === QUESTION_TYPES.NUMERICAL || hasNumerical) return QUESTION_TYPES.NUMERICAL;
+  // Explicit legacy-only code.
   if (rawType === 0) return QUESTION_TYPES.MULTIPLE_CHOICE;
 
+  // Ambiguous values (legacy + new):
+  // 1: legacy TF, new SA
+  // 2: legacy SA, new MC
+  // 3: legacy MS, new TF
+  // 4: legacy NUM, new MS
   if (rawType === 1) {
-    return isTrueFalseOptions(options) ? QUESTION_TYPES.TRUE_FALSE : QUESTION_TYPES.SHORT_ANSWER;
+    if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
+    return QUESTION_TYPES.SHORT_ANSWER;
   }
 
   if (rawType === 2) {
-    if (options.length <= 1) return QUESTION_TYPES.SHORT_ANSWER;
-    return QUESTION_TYPES.MULTIPLE_CHOICE;
+    if (options.length > 1) return QUESTION_TYPES.MULTIPLE_CHOICE;
+    return QUESTION_TYPES.SHORT_ANSWER;
   }
 
   if (rawType === 3) {
-    const correctCount = countCorrect(options);
-    if (correctCount > 1) return QUESTION_TYPES.MULTI_SELECT;
-    return isTrueFalseOptions(options) ? QUESTION_TYPES.TRUE_FALSE : QUESTION_TYPES.MULTI_SELECT;
+    if (isTrueFalseOptions(options) && correctCount <= 1) return QUESTION_TYPES.TRUE_FALSE;
+    return QUESTION_TYPES.MULTI_SELECT;
   }
 
-  if (rawType === 4) return QUESTION_TYPES.MULTI_SELECT;
+  if (rawType === 4) {
+    if (hasNumerical || options.length <= 1) return QUESTION_TYPES.NUMERICAL;
+    return QUESTION_TYPES.MULTI_SELECT;
+  }
 
+  if (rawType === 5) return QUESTION_TYPES.NUMERICAL;
   if (Object.values(QUESTION_TYPES).includes(rawType)) return rawType;
+
+  // Last-resort fallback for malformed records.
+  if (hasNumerical) return QUESTION_TYPES.NUMERICAL;
+  if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
+  if (correctCount > 1) return QUESTION_TYPES.MULTI_SELECT;
+  if (options.length > 1) return QUESTION_TYPES.MULTIPLE_CHOICE;
   return QUESTION_TYPES.SHORT_ANSWER;
 }
