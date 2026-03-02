@@ -9,6 +9,51 @@ echo ""
 ERRORS=()
 WARNINGS=()
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+EXISTING_ENV_FILE="$PROJECT_ROOT/.env"
+
+if [ -f "$EXISTING_ENV_FILE" ]; then
+  echo "[INFO] Existing .env found at $EXISTING_ENV_FILE"
+  echo "       Using current values as setup defaults."
+  set -a
+  # shellcheck disable=SC1090
+  . "$EXISTING_ENV_FILE"
+  set +a
+fi
+
+choose_token_value() {
+  local token_name="$1"
+  local existing_value="$2"
+  local output_var="$3"
+  local selected_value response
+
+  if [ -n "$existing_value" ]; then
+    while true; do
+      read -r -p "$token_name exists in .env. Keep existing value? [Y/n]: " response
+      case "$response" in
+        ""|[Yy])
+          selected_value="$existing_value"
+          break
+          ;;
+        [Nn])
+          selected_value="$(openssl rand -hex 32)"
+          echo "[OK] Generated new $token_name"
+          break
+          ;;
+        *)
+          echo "Please answer y or n."
+          ;;
+      esac
+    done
+  else
+    selected_value="$(openssl rand -hex 32)"
+    echo "[OK] Generated $token_name"
+  fi
+
+  printf -v "$output_var" '%s' "$selected_value"
+}
+
 # --------------------------------------------------
 # Check Node.js >= 20
 # --------------------------------------------------
@@ -95,8 +140,9 @@ fi
 echo ""
 echo "--- Port Configuration ---"
 
-read -r -p "Client port [3000]: " APP_PORT
-APP_PORT=${APP_PORT:-3000}
+DEFAULT_APP_PORT="${APP_PORT:-3000}"
+read -r -p "Client port [$DEFAULT_APP_PORT]: " APP_PORT_INPUT
+APP_PORT=${APP_PORT_INPUT:-$DEFAULT_APP_PORT}
 
 # Check for openssl (needed for secret generation)
 if ! command -v openssl &>/dev/null; then
@@ -105,11 +151,13 @@ if ! command -v openssl &>/dev/null; then
   exit 1
 fi
 
-read -r -p "API/Server port [3001]: " API_PORT
-API_PORT=${API_PORT:-3001}
+DEFAULT_API_PORT="${API_PORT:-3001}"
+read -r -p "API/Server port [$DEFAULT_API_PORT]: " API_PORT_INPUT
+API_PORT=${API_PORT_INPUT:-$DEFAULT_API_PORT}
 
-read -r -p "MongoDB port [27017]: " MONGO_PORT
-MONGO_PORT=${MONGO_PORT:-27017}
+DEFAULT_MONGO_PORT="${MONGO_PORT:-27017}"
+read -r -p "MongoDB port [$DEFAULT_MONGO_PORT]: " MONGO_PORT_INPUT
+MONGO_PORT=${MONGO_PORT_INPUT:-$DEFAULT_MONGO_PORT}
 
 # Check if ports are free
 check_port() {
@@ -142,8 +190,9 @@ echo "--- Email Configuration ---"
 echo "  MAIL_URL is required for email verification and password reset."
 echo "  Format: smtp://user:password@smtp.example.com:587"
 echo "  Leave blank to skip (emails will not be sent until configured)."
-read -r -p "MAIL_URL []: " MAIL_URL
-MAIL_URL=${MAIL_URL:-}
+DEFAULT_MAIL_URL="${MAIL_URL:-}"
+read -r -p "MAIL_URL [$DEFAULT_MAIL_URL]: " MAIL_URL_INPUT
+MAIL_URL=${MAIL_URL_INPUT:-$DEFAULT_MAIL_URL}
 if [ -z "$MAIL_URL" ]; then
   echo "[WARN] MAIL_URL not set — email features (verification, password reset) will not work."
   echo "       Set MAIL_URL in the .env file later to enable email."
@@ -155,11 +204,9 @@ fi
 echo ""
 echo "--- Generating .env file ---"
 
-JWT_SECRET=$(openssl rand -hex 32)
-JWT_REFRESH_SECRET=$(openssl rand -hex 32)
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+echo "--- JWT Secret Configuration ---"
+choose_token_value "JWT_SECRET" "${JWT_SECRET:-}" JWT_SECRET
+choose_token_value "JWT_REFRESH_SECRET" "${JWT_REFRESH_SECRET:-}" JWT_REFRESH_SECRET
 
 cat > "$PROJECT_ROOT/.env" <<EOF
 # Server
