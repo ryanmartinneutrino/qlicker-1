@@ -48,16 +48,19 @@ export default function AppLayout() {
       <ConnectionStatus />
       <AppBar position="static">
         <Toolbar>
-          <Typography
-            variant="h4"
-            sx={{ flexGrow: 1, cursor: 'pointer', fontWeight: 500 }}
-            onClick={() => navigate(dashboardPath)}
-          >
-            Qlicker
-          </Typography>
-          <Button color="inherit" onClick={() => navigate(dashboardPath)} sx={{ mr: 1 }}>
-            Dashboard
-          </Button>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography
+              variant="h4"
+              sx={{ cursor: 'pointer', fontWeight: 500 }}
+              onClick={() => navigate(dashboardPath)}
+            >
+              Qlicker
+            </Typography>
+            <Button color="inherit" onClick={() => navigate(dashboardPath)}>
+              Dashboard
+            </Button>
+          </Box>
+          <Box sx={{ flexGrow: 1 }} />
           <IconButton onClick={handleMenuOpen} color="inherit">
             <Avatar
               src={user?.profile?.profileImage}
