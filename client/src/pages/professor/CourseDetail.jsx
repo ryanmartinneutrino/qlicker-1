@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
   List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, IconButton,
@@ -34,12 +34,22 @@ function sortSessions(items) {
   });
 }
 
+const MAX_COURSE_TAB_INDEX = 4;
+
+function parseCourseTab(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 0;
+  if (parsed < 0 || parsed > MAX_COURSE_TAB_INDEX) return 0;
+  return parsed;
+}
+
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
   const [msg, setMsg] = useState(null);
 
   // Dialogs
@@ -116,6 +126,11 @@ export default function CourseDetail() {
     }, 15000);
     return () => clearInterval(pollingRef.current);
   }, [fetchCourse]);
+
+  useEffect(() => {
+    const urlTab = parseCourseTab(searchParams.get('tab'));
+    setTab((currentTab) => (currentTab === urlTab ? currentTab : urlTab));
+  }, [searchParams]);
 
   const copyCode = () => {
     if (course?.enrollmentCode) {
@@ -293,7 +308,10 @@ export default function CourseDetail() {
               {i > 0 && <Divider />}
               <ListItem
                 button
-                onClick={() => navigate(`/manage/course/${id}/session/${s._id}`)}
+                onClick={() => navigate(
+                  `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
+                  { state: { returnTab: tab } }
+                )}
                 sx={{
                   cursor: 'pointer',
                   transition: 'background-color 120ms ease',
@@ -355,7 +373,21 @@ export default function CourseDetail() {
       </Box>
 
       {/* Tabs */}
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
+      <Tabs
+        value={tab}
+        onChange={(_, nextTab) => {
+          setTab(nextTab);
+          const nextParams = new URLSearchParams(searchParams);
+          if (nextTab === 0) {
+            nextParams.delete('tab');
+          } else {
+            nextParams.set('tab', String(nextTab));
+          }
+          setSearchParams(nextParams, { replace: true });
+        }}
+        variant="scrollable"
+        allowScrollButtonsMobile
+      >
         <Tab label={`Interactive Sessions (${interactiveSessions.length})`} />
         <Tab label={`Quizzes (${quizSessions.length})`} />
         <Tab label={`Students (${students.length})`} />

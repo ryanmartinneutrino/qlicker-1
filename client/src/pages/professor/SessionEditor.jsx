@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -24,9 +24,24 @@ const STATUS_LABELS = {
   done: 'Ended',
 };
 
+const MAX_COURSE_TAB_INDEX = 4;
+
+function parseCourseTab(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 0;
+  if (parsed < 0 || parsed > MAX_COURSE_TAB_INDEX) return 0;
+  return parsed;
+}
+
 export default function SessionEditor() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const returnTab = parseCourseTab(searchParams.get('returnTab') ?? location.state?.returnTab);
+  const courseBackLink = returnTab === 0
+    ? `/manage/course/${courseId}`
+    : `/manage/course/${courseId}?tab=${returnTab}`;
 
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -135,7 +150,7 @@ export default function SessionEditor() {
     setDeleting(true);
     try {
       await apiClient.delete(`/sessions/${sessionId}`);
-      navigate(`/manage/course/${courseId}`);
+      navigate(courseBackLink);
     } catch {
       setMsg({ severity: 'error', text: 'Failed to delete session' });
       setDeleting(false);
@@ -149,7 +164,12 @@ export default function SessionEditor() {
       const { data } = await apiClient.post(`/sessions/${sessionId}/copy`);
       const newId = data.session?._id || data._id;
       setMsg({ severity: 'success', text: 'Session copied' });
-      if (newId) navigate(`/manage/course/${courseId}/session/${newId}`);
+      if (newId) {
+        navigate(
+          `/manage/course/${courseId}/session/${newId}?returnTab=${returnTab}`,
+          { state: { returnTab } }
+        );
+      }
     } catch {
       setMsg({ severity: 'error', text: 'Failed to copy session' });
     } finally {
@@ -218,7 +238,7 @@ export default function SessionEditor() {
     <Box sx={{ p: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton onClick={() => navigate(`/manage/course/${courseId}`)}><BackIcon /></IconButton>
+        <IconButton onClick={() => navigate(courseBackLink)}><BackIcon /></IconButton>
         <Typography variant="h5" sx={{ flexGrow: 1 }}>{session.name}</Typography>
         <Chip label={STATUS_LABELS[status] || status} color={STATUS_COLORS[status] || 'default'} size="small" />
       </Box>
