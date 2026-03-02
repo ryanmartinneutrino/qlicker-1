@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Box, Tabs, Tab, Typography, TextField, Button, Checkbox,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
@@ -16,6 +16,26 @@ function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
 
+const AUTO_SAVE_DELAY_MS = 500;
+const VALID_STORAGE_TYPES = new Set(['local', 's3', 'azure']);
+const SSO_FIELDS = [
+  { key: 'SSO_enabled', label: 'Enable SSO', type: 'checkbox' },
+  { key: 'SSO_entrypoint', label: 'IDP Entry Point URL' },
+  { key: 'SSO_logoutUrl', label: 'IDP Logout URL' },
+  { key: 'SSO_EntityId', label: 'Entity ID (e.g. qlicker)' },
+  { key: 'SSO_identifierFormat', label: 'Identifier Format' },
+  { key: 'SSO_institutionName', label: 'Institution Name' },
+  { key: 'SSO_emailIdentifier', label: 'Email Identifier' },
+  { key: 'SSO_firstNameIdentifier', label: 'First Name Identifier' },
+  { key: 'SSO_lastNameIdentifier', label: 'Last Name Identifier' },
+  { key: 'SSO_roleIdentifier', label: 'Role Identifier' },
+  { key: 'SSO_roleProfName', label: 'Name of professor role for auto-promote' },
+  { key: 'SSO_studentNumberIdentifier', label: 'Student Number Identifier' },
+  { key: 'SSO_cert', label: 'IDP Certificate (single string, no BEGIN-END)', type: 'textarea' },
+  { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
+  { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
+];
+
 // ── Settings Tab ────────────────────────────────────────────────────────────
 function SettingsTab() {
   const [settings, setSettings] = useState({
@@ -26,45 +46,71 @@ function SettingsTab() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
+  const [saveError, setSaveError] = useState('');
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
+      if (!mounted) return;
       setSettings({
         restrictDomain: data.restrictDomain ?? false,
         allowedDomains: Array.isArray(data.allowedDomains)
           ? data.allowedDomains.join(', ')
           : data.allowedDomains ?? '',
         requireVerified: data.requireVerified ?? false,
-        adminEmail: data.adminEmail ?? '',
+        adminEmail: data.resolvedAdminEmail ?? data.adminEmail ?? data.email ?? '',
       });
-    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load settings' }))
-      .finally(() => setLoading(false));
+    }).catch(() => {
+      if (mounted) {
+        setSaveError('Failed to load settings');
+      }
+    }).finally(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const payload = {
-        ...settings,
-        allowedDomains: settings.allowedDomains
-          .split(',')
-          .map((d) => d.trim())
-          .filter(Boolean),
-      };
-      await apiClient.patch('/settings', payload);
-      setMsg({ severity: 'success', text: 'Settings saved' });
-    } catch {
-      setMsg({ severity: 'error', text: 'Failed to save settings' });
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      return;
     }
-  };
+
+    const timer = setTimeout(async () => {
+      setSaving(true);
+      setSaveError('');
+      try {
+        const payload = {
+          ...settings,
+          allowedDomains: settings.allowedDomains
+            .split(',')
+            .map((d) => d.trim())
+            .filter(Boolean),
+        };
+        await apiClient.patch('/settings', payload);
+      } catch {
+        setSaveError('Failed to save settings');
+      } finally {
+        setSaving(false);
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [settings, loading]);
 
   if (loading) return <CircularProgress />;
 
   return (
-    <Box component="form" sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="caption" color="text.secondary">
+        {saving ? 'Saving changes…' : 'Changes save automatically.'}
+      </Typography>
       <FormControlLabel
         control={<Checkbox checked={settings.restrictDomain} onChange={(e) => setSettings((s) => ({ ...s, restrictDomain: e.target.checked }))} />}
         label="Restrict email domain"
@@ -85,12 +131,7 @@ function SettingsTab() {
         onChange={(e) => setSettings((s) => ({ ...s, adminEmail: e.target.value }))}
         fullWidth
       />
-      <Button variant="contained" onClick={handleSave} disabled={saving}>
-        {saving ? 'Saving…' : 'Save Settings'}
-      </Button>
-      {msg && (
-        <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>
-      )}
+      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }
@@ -328,45 +369,71 @@ function StorageTab() {
   const [azure, setAzure] = useState({ Azure_storageAccount: '', Azure_storageAccessKey: '', Azure_storageContainer: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
+  const [saveError, setSaveError] = useState('');
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
-      setStorageType(data.storageType ?? 'local');
+      if (!mounted) return;
+      setStorageType(VALID_STORAGE_TYPES.has(data.storageType) ? data.storageType : 'local');
       setS3({
         AWS_bucket: data.AWS_bucket ?? '',
         AWS_region: data.AWS_region ?? '',
-        AWS_accessKeyId: data.AWS_accessKeyId ?? '',
-        AWS_secretAccessKey: data.AWS_secretAccessKey ?? '',
+        AWS_accessKeyId: data.resolvedAWSAccessKeyId ?? data.AWS_accessKeyId ?? data.AWS_accessKey ?? '',
+        AWS_secretAccessKey: data.resolvedAWSSecretAccessKey ?? data.AWS_secretAccessKey ?? data.AWS_secret ?? '',
       });
       setAzure({
-        Azure_storageAccount: data.Azure_storageAccount ?? '',
-        Azure_storageAccessKey: data.Azure_storageAccessKey ?? '',
-        Azure_storageContainer: data.Azure_storageContainer ?? '',
+        Azure_storageAccount: data.resolvedAzureStorageAccount ?? data.Azure_storageAccount ?? data.Azure_accountName ?? '',
+        Azure_storageAccessKey: data.resolvedAzureStorageAccessKey ?? data.Azure_storageAccessKey ?? data.Azure_accountKey ?? '',
+        Azure_storageContainer: data.resolvedAzureStorageContainer ?? data.Azure_storageContainer ?? data.Azure_containerName ?? '',
       });
-    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load storage settings' }))
-      .finally(() => setLoading(false));
+    }).catch(() => {
+      if (mounted) {
+        setSaveError('Failed to load storage settings');
+      }
+    }).finally(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const payload = { storageType };
-      if (storageType === 's3') Object.assign(payload, s3);
-      if (storageType === 'azure') Object.assign(payload, azure);
-      await apiClient.patch('/settings', payload);
-      setMsg({ severity: 'success', text: 'Storage settings saved' });
-    } catch {
-      setMsg({ severity: 'error', text: 'Failed to save storage settings' });
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      return;
     }
-  };
+
+    const timer = setTimeout(async () => {
+      setSaving(true);
+      setSaveError('');
+      try {
+        const payload = { storageType };
+        if (storageType === 's3') Object.assign(payload, s3);
+        if (storageType === 'azure') Object.assign(payload, azure);
+        await apiClient.patch('/settings', payload);
+      } catch {
+        setSaveError('Failed to save storage settings');
+      } finally {
+        setSaving(false);
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [storageType, s3, azure, loading]);
 
   if (loading) return <CircularProgress />;
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="caption" color="text.secondary">
+        {saving ? 'Saving changes…' : 'Changes save automatically.'}
+      </Typography>
       <FormControl fullWidth>
         <InputLabel>Storage Type</InputLabel>
         <Select value={storageType} label="Storage Type" onChange={(e) => setStorageType(e.target.value)}>
@@ -393,70 +460,74 @@ function StorageTab() {
         </>
       )}
 
-      <Button variant="contained" onClick={handleSave} disabled={saving}>
-        {saving ? 'Saving…' : 'Save Storage Settings'}
-      </Button>
-      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }
 
 // ── SSO Tab ─────────────────────────────────────────────────────────────────
 function SSOTab() {
-  const ssoFields = [
-    { key: 'SSO_enabled', label: 'Enable SSO', type: 'checkbox' },
-    { key: 'SSO_entrypoint', label: 'IDP Entry Point URL' },
-    { key: 'SSO_logoutUrl', label: 'IDP Logout URL' },
-    { key: 'SSO_EntityId', label: 'Entity ID (e.g. qlicker)' },
-    { key: 'SSO_identifierFormat', label: 'Identifier Format' },
-    { key: 'SSO_institutionName', label: 'Institution Name' },
-    { key: 'SSO_emailIdentifier', label: 'Email Identifier' },
-    { key: 'SSO_firstNameIdentifier', label: 'First Name Identifier' },
-    { key: 'SSO_lastNameIdentifier', label: 'Last Name Identifier' },
-    { key: 'SSO_roleIdentifier', label: 'Role Identifier' },
-    { key: 'SSO_roleProfName', label: 'Name of professor role for auto-promote' },
-    { key: 'SSO_studentNumberIdentifier', label: 'Student Number Identifier' },
-    { key: 'SSO_cert', label: 'IDP Certificate (single string, no BEGIN-END)', type: 'textarea' },
-    { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
-    { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
-  ];
-
   const [settings, setSettings] = useState(() =>
-    Object.fromEntries(ssoFields.map((f) => [f.key, f.type === 'checkbox' ? false : '']))
+    Object.fromEntries(SSO_FIELDS.map((f) => [f.key, f.type === 'checkbox' ? false : '']))
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
+  const [saveError, setSaveError] = useState('');
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
+      if (!mounted) return;
       const next = {};
-      for (const f of ssoFields) {
+      for (const f of SSO_FIELDS) {
         next[f.key] = data[f.key] ?? (f.type === 'checkbox' ? false : '');
       }
       setSettings(next);
-    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load SSO settings' }))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }).catch(() => {
+      if (mounted) {
+        setSaveError('Failed to load SSO settings');
+      }
+    }).finally(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await apiClient.patch('/settings', settings);
-      setMsg({ severity: 'success', text: 'SSO settings saved' });
-    } catch {
-      setMsg({ severity: 'error', text: 'Failed to save SSO settings' });
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (loading) return;
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      return;
     }
-  };
+
+    const timer = setTimeout(async () => {
+      setSaving(true);
+      setSaveError('');
+      try {
+        await apiClient.patch('/settings', settings);
+      } catch {
+        setSaveError('Failed to save SSO settings');
+      } finally {
+        setSaving(false);
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [settings, loading]);
 
   if (loading) return <CircularProgress />;
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {ssoFields.map((f) =>
+      <Typography variant="caption" color="text.secondary">
+        {saving ? 'Saving changes…' : 'Changes save automatically.'}
+      </Typography>
+      {SSO_FIELDS.map((f) =>
         f.type === 'checkbox' ? (
           <FormControlLabel
             key={f.key}
@@ -483,10 +554,7 @@ function SSOTab() {
           />
         )
       )}
-      <Button variant="contained" onClick={handleSave} disabled={saving}>
-        {saving ? 'Saving…' : 'Save SSO Settings'}
-      </Button>
-      {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }

@@ -1,7 +1,7 @@
 import Settings from '../models/Settings.js';
 
 export default async function settingsRoutes(app) {
-  const { authenticate, requireRole } = app;
+  const { requireRole } = app;
 
   // GET / (admin only)
   app.get('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
@@ -18,14 +18,29 @@ export default async function settingsRoutes(app) {
     // Don't allow changing _id
     delete updates._id;
 
-    let settings = await Settings.findOne();
-    if (!settings) {
-      settings = await Settings.create({ _id: 'settings', ...updates });
-    } else {
-      Object.assign(settings, updates);
-      await settings.save();
+    try {
+      let settings = await Settings.findOne().select('_id');
+      if (!settings) {
+        settings = await Settings.create({ _id: 'settings' });
+      }
+
+      const updatedSettings = await Settings.findByIdAndUpdate(
+        settings._id,
+        { $set: updates },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+      return updatedSettings.toObject();
+    } catch (err) {
+      request.log.error({ err }, 'Failed to update settings');
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: err.message || 'Failed to update settings',
+      });
     }
-    return settings.toObject();
   });
 
   // GET /public (no auth)
