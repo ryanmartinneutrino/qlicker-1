@@ -52,21 +52,46 @@ export default function QuestionDisplay({ question }) {
       {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType) && opts.length > 0 && (
         <Box sx={{ pl: 2 }}>
           {opts.map((opt, i) => (
-            <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.25 }}>
-              {opt.correct && <CorrectIcon color="success" fontSize="small" />}
+            <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, mb: 0.5 }}>
+              <Box sx={{ width: 20, display: 'flex', justifyContent: 'center', pt: 0.25 }}>
+                {opt.correct ? <CorrectIcon color="success" fontSize="small" /> : null}
+              </Box>
               <Box sx={{ color: opt.correct ? 'success.main' : 'text.secondary' }}>
                 {hasHtml(opt.content)
                   ? (
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      {shouldLetterOptions ? <Typography variant="body2" component="span">{String.fromCharCode(65 + i)}.</Typography> : null}
-                      <Box component="span" dangerouslySetInnerHTML={{ __html: opt.content }} />
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: shouldLetterOptions ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                        columnGap: 0.5,
+                        alignItems: 'start',
+                      }}
+                    >
+                      {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
+                      <Box
+                        sx={{
+                          '& p': { my: 0 },
+                          '& ul, & ol': { my: 0, pl: 2.5 },
+                          '& li': { my: 0 },
+                        }}
+                        dangerouslySetInnerHTML={{ __html: opt.content }}
+                      />
                     </Box>
                   )
                   : (
-                    <Typography variant="body2">
-                      {shouldLetterOptions ? `${String.fromCharCode(65 + i)}. ` : ''}
-                      {opt.content || opt.plainText || opt.answer || `Option ${i + 1}`}
-                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: shouldLetterOptions ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                        columnGap: 0.5,
+                        alignItems: 'start',
+                      }}
+                    >
+                      {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
+                      <Typography variant="body2">
+                        {opt.content || opt.plainText || opt.answer || `Option ${i + 1}`}
+                      </Typography>
+                    </Box>
                   )}
               </Box>
             </Box>

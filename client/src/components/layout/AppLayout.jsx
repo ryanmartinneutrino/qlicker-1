@@ -48,7 +48,7 @@ export default function AppLayout() {
       <ConnectionStatus />
       <AppBar position="static">
         <Toolbar>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <Typography
               variant="h4"
               sx={{ cursor: 'pointer', fontWeight: 500 }}
@@ -56,7 +56,12 @@ export default function AppLayout() {
             >
               Qlicker
             </Typography>
-            <Button color="inherit" onClick={() => navigate(dashboardPath)}>
+            <Button
+              color="inherit"
+              size="large"
+              onClick={() => navigate(dashboardPath)}
+              sx={{ ml: 2, px: 2.25, fontSize: '1.05rem', fontWeight: 600 }}
+            >
               Dashboard
             </Button>
           </Box>
