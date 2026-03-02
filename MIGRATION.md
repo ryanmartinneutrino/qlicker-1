@@ -280,7 +280,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 | Legacy Collection | Fastify Model | Compatibility | Notes |
 |------------------|---------------|---------------|-------|
-| `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Login uses case-insensitive email lookup via regex to handle legacy mixed-case emails. Legacy also has `username` index/field usage and reset token path `services.password.reset.*` (current model uses `services.resetPassword.*`). New model adds `lastLogin` (optional in legacy data). |
+| `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Login uses case-insensitive email regex. `lastLogin` optional. Legacy `services.password.reset.*` path differs from new `services.resetPassword.*`. |
 | `courses` | `Course` | Partial | Main fields align. Legacy `groupCategories.groups` uses `groupNumber/groupName/students`; current model uses `name/members`, so direct shape mismatch exists. |
 | `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz` are additive and optional. |
 | `questions` | `Question` | Mostly aligned | Legacy fields align for session/course ownership, options, tags, and session options. New schema fields (`toleranceNumerical`, `correctNumerical`, `solution*`, `imagePath`) are additive. |

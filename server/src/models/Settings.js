@@ -51,8 +51,8 @@ const SettingsSchema = new mongoose.Schema(
     Azure_containerName: { type: String, default: '' },
 
     // Legacy extra fields (preserved so they aren't stripped on save)
-    maxImageSize: { type: Number },
-    maxImageWidth: { type: Number },
+    maxImageSize: { type: Number, default: 0 },
+    maxImageWidth: { type: Number, default: 0 },
   },
   {
     collection: 'settings',
