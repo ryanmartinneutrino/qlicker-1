@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname, join } from 'path';
 import { config } from 'dotenv';
 import { existsSync } from 'fs';
 
@@ -12,6 +11,33 @@ import { existsSync } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
+
+async function loadArgon2Module() {
+  try {
+    return await import('@node-rs/argon2');
+  } catch (err) {
+    // Local script execution may not have a root package.json/node_modules.
+    // Fall back to server dependencies when present.
+    const fallbackPath = join(projectRoot, 'server', 'node_modules', '@node-rs', 'argon2', 'index.js');
+    if (existsSync(fallbackPath)) {
+      return import(pathToFileURL(fallbackPath).href);
+    }
+    throw err;
+  }
+}
+
+const { hash, Algorithm, Version } = await loadArgon2Module();
+
+async function hashPasswordArgon2id(password) {
+  return hash(password, {
+    algorithm: Algorithm.Argon2id,
+    version: Version.V0x13,
+    memoryCost: 19456,
+    timeCost: 2,
+    parallelism: 1,
+    outputLen: 32,
+  });
+}
 
 // Try loading .env from project root, then from parent (for Docker)
 const envPaths = [
@@ -34,8 +60,7 @@ if (!MONGO_URI) {
   process.exit(1);
 }
 const args = process.argv.slice(2);
-const shouldReset = args.includes('--reset');
-const shouldResetOnly = args.includes('--reset-only');
+const shouldReset = args.includes('--reset') || args.includes('--reset-only');
 
 // Inline User schema to avoid path resolution issues in Docker
 const EmailSchema = new mongoose.Schema(
@@ -43,7 +68,13 @@ const EmailSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const PasswordSchema = new mongoose.Schema({ bcrypt: { type: String } }, { _id: false });
+const PasswordSchema = new mongoose.Schema(
+  {
+    hash: { type: String },
+    bcrypt: { type: String },
+  },
+  { _id: false }
+);
 const ResumeSchema = new mongoose.Schema({ loginTokens: { type: Array, default: [] } }, { _id: false });
 const EmailTokenSchema = new mongoose.Schema(
   { token: { type: String }, address: { type: String }, when: { type: Date } },
@@ -109,14 +140,11 @@ async function main() {
   await mongoose.connect(MONGO_URI);
   console.log('Connected.');
 
-  if (shouldReset || shouldResetOnly) {
+  if (shouldReset) {
     console.log('Resetting database — dropping database...');
     await mongoose.connection.db.dropDatabase();
     console.log('Database dropped.');
-  }
-
-  if (shouldResetOnly) {
-    console.log('Reset complete. No seed data inserted.');
+    console.log('Reset complete. Database is empty.');
     await mongoose.disconnect();
     return;
   }
@@ -154,12 +182,12 @@ async function main() {
       continue;
     }
 
-    const hashedPassword = await bcrypt.hash(u.password, 10);
+    const hashedPassword = await hashPasswordArgon2id(u.password);
 
     const user = new User({
       emails: [{ address: u.email, verified: true }],
       services: {
-        password: { bcrypt: hashedPassword },
+        password: { hash: hashedPassword },
       },
       profile: {
         firstname: u.firstname,

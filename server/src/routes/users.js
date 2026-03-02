@@ -80,11 +80,26 @@ export default async function userRoutes(app) {
 
       const valid = await user.verifyPassword(currentPassword);
       if (!valid) {
+        if (user.passwordResetRequired()) {
+          const reason = user.passwordResetReason();
+          const message = reason === 'no_local_password'
+            ? 'No local password is set for this account. Please reset your password.'
+            : 'This account uses a legacy password format. Please reset your password.';
+          return reply.code(403).send({
+            error: 'Forbidden',
+            code: 'PASSWORD_RESET_REQUIRED',
+            requiresPasswordReset: true,
+            reason,
+            message,
+          });
+        }
         return reply.code(401).send({ error: 'Unauthorized', message: 'Current password is incorrect' });
       }
 
       const hashed = await User.hashPassword(newPassword);
-      user.services.password.bcrypt = hashed;
+      if (!user.services.password) user.services.password = {};
+      user.services.password.hash = hashed;
+      user.services.password.bcrypt = undefined;
       await user.save();
 
       return { success: true };
@@ -269,7 +284,7 @@ export default async function userRoutes(app) {
         _id: generateMeteorId(),
         emails: [{ address: normalizedEmail, verified: false }],
         services: {
-          password: { bcrypt: hashedPassword },
+          password: { hash: hashedPassword },
         },
         profile: {
           firstname,

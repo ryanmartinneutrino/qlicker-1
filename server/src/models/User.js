@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import { generateMeteorId } from '../utils/meteorId.js';
+import {
+  hashPasswordArgon2id,
+  verifyPasswordArgon2id,
+  requiresPasswordReset,
+} from '../utils/password.js';
 
 const EmailSchema = new mongoose.Schema(
   {
@@ -12,6 +16,8 @@ const EmailSchema = new mongoose.Schema(
 
 const PasswordSchema = new mongoose.Schema(
   {
+    hash: { type: String },
+    // Legacy Meteor field. Kept for compatibility checks/reset prompts.
     bcrypt: { type: String },
   },
   { _id: false }
@@ -118,14 +124,33 @@ UserSchema.virtual('email').get(function () {
 
 // Instance method: verify password
 UserSchema.methods.verifyPassword = async function (password) {
-  const hash = this.services?.password?.bcrypt;
+  const hash = this.services?.password?.hash;
   if (!hash) return false;
-  return bcrypt.compare(password, hash);
+  return verifyPasswordArgon2id(password, hash);
+};
+
+// Instance method: identify legacy hashes that require reset
+UserSchema.methods.passwordResetRequired = function () {
+  const current = this.services?.password?.hash;
+  if (typeof current === 'string' && current.length > 0) return false;
+  const legacy = this.services?.password?.bcrypt;
+  if (requiresPasswordReset(legacy)) return true;
+  // No local password hash (typical for some legacy SSO-only users).
+  return true;
+};
+
+// Instance method: explain why reset is required
+UserSchema.methods.passwordResetReason = function () {
+  const current = this.services?.password?.hash;
+  if (typeof current === 'string' && current.length > 0) return null;
+  const legacy = this.services?.password?.bcrypt;
+  if (requiresPasswordReset(legacy)) return 'legacy_hash';
+  return 'no_local_password';
 };
 
 // Static method: hash password
 UserSchema.statics.hashPassword = async function (password) {
-  return bcrypt.hash(password, 10);
+  return hashPasswordArgon2id(password);
 };
 
 // Ensure virtuals are included in JSON/Object output

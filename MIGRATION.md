@@ -280,7 +280,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 | Legacy Collection | Fastify Model | Compatibility | Notes |
 |------------------|---------------|---------------|-------|
-| `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Login uses case-insensitive email regex. `lastLogin` optional. Legacy `services.password.reset.*` path differs from new `services.resetPassword.*`. |
+| `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `profile.roles`). Password storage now uses `services.password.hash` (argon2id) for new writes. Legacy `services.password.bcrypt` is detected and triggers reset-required flow. `lastLogin` optional. Legacy `services.password.reset.*` path differs from new `services.resetPassword.*`. |
 | `courses` | `Course` | Partial | Main fields align. Legacy `groupCategories.groups` uses `groupNumber/groupName/students`; current model uses `name/members`, so direct shape mismatch exists. |
 | `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz` are additive and optional. |
 | `questions` | `Question` | Mostly aligned | Legacy fields align for session/course ownership, options, tags, and session options. New schema fields (`toleranceNumerical`, `correctNumerical`, `solution*`, `imagePath`) are additive. |
@@ -302,9 +302,10 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 ### Seed/Reset Verification Notes
 
-- `--reset` on `seed-db.js` now uses `dropDatabase()` and is confirmed to clear all collections before re-seeding test users.
+- `--reset` on `seed-db.js` now uses `dropDatabase()` and exits with an empty database (no seed data inserted).
 - Native and Docker seed wrappers now support:
-  - test-data seed
+  - no-arg default: seed with the 3 example users
+  - `--reset`: reset database to empty (no seed users)
   - legacy dump restore with dynamic dump discovery
   - reset-to-empty flow
 - Docker seeding cleanup now succeeds (previous temp-script permission failure removed).
@@ -319,7 +320,9 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
   - users with mixed-case/non-lowercased stored emails: `8,081`
   - users with password hashes + mixed-case stored emails: `188` (`51` are password-only users without SSO fallback)
 - ~~Confirmed compatibility gap in current login lookup:~~ **FIXED** — all email lookups now use case-insensitive regex matching (`emailRegex()` utility in `server/src/utils/email.js`). This applies to login, register (duplicate check), forgot-password, SSO callback, and admin create-user routes.
-- Password hash format itself appears compatible (`$2a$`/`$2b$` bcrypt hashes are present and supported by current bcrypt verification).
+- Password policy updated to a single modern scheme: **argon2id only** for login verification and all new writes (`register`, `reset-password`, `change password`, admin user create, SSO random password bootstrap).
+- Legacy bcrypt hashes (`$2a$`/`$2b$`) are intentionally not verified directly; login returns `PASSWORD_RESET_REQUIRED` so users must reset and move to argon2id.
+- Users with no local password hash (common in legacy SSO-only accounts) also receive `PASSWORD_RESET_REQUIRED` with reason `no_local_password`.
 - **Client interceptor fix:** The API client (`client/src/api/client.js`) no longer intercepts 401 responses from `/auth/*` endpoints. Previously, a login failure (401) would trigger the token-refresh interceptor which would redirect to `/login` before the error message could be displayed, causing the error to "flash by" too quickly to read.
 
 ### Legacy Compatibility Fixes Applied
@@ -334,6 +337,8 @@ The following code changes were made to ensure the app works correctly with a re
 | Settings model compatibility | `server/src/models/Settings.js` | Added legacy field names (`email`, `AWS_accessKey`, `AWS_secret`, `Azure_accountName`, `Azure_accountKey`, `Azure_containerName`). Added `strict: false` to preserve extra legacy fields. Added virtual getters that resolve either field name. |
 | Upload plugin compatibility | `server/src/plugins/upload.js` | Storage config resolution checks both new and legacy field names (e.g., `AWS_accessKeyId || AWS_accessKey`). |
 | Response model `mark` field | `server/src/models/Response.js` | Added `mark: { type: Number }` field present in legacy response documents for grading. |
+| Password hashing modernization | `server/src/utils/password.js`, `server/src/models/User.js`, `server/src/routes/auth.js`, `server/src/routes/users.js`, `scripts/seed-db.js` | Switched to argon2id for new password hashes. Added explicit reset-required detection for both legacy bcrypt hashes and accounts without a local password (`code: PASSWORD_RESET_REQUIRED`, reason `legacy_hash` or `no_local_password`). Seed script now creates argon2id hashes. |
+| Seed script behavior alignment | `scripts/seed-db.js`, `scripts/seed-db.sh`, `scripts/seed-db-docker.sh` | `--reset` now always leaves the database empty. Default no-argument execution seeds the 3 example users in both native and Docker wrappers. |
 
 ### Remaining Follow-Up Items
 
@@ -516,7 +521,7 @@ See [agents/AGENT_2_AUTH.md](agents/AGENT_2_AUTH.md)
 - [x] JWT authentication plugin
 - [x] Auth routes (register, login, logout)
 - [x] First-user-is-admin logic
-- [x] Password hashing (bcrypt, compatible with Meteor's bcrypt format)
+- [x] Password hashing (argon2id), with legacy bcrypt reset-required detection
 - [x] Email verification flow
 - [x] Password reset flow (Nodemailer)
 - [x] User CRUD routes (admin)
@@ -711,7 +716,7 @@ Phase 8 (Production):
 ### Database Backward Compatibility
 
 The existing MongoDB database uses Meteor's conventions:
-- **Users collection**: Named `users` (standard Meteor). Passwords stored using Meteor's `bcrypt` format (`$2a$` prefix with specific structure in `services.password.bcrypt`). The new app must be able to verify these passwords.
+- **Users collection**: Named `users` (standard Meteor). Legacy records may have `services.password.bcrypt` (`$2a$`/`$2b$`). New app writes use `services.password.hash` with argon2id and require reset for legacy bcrypt-only users.
 - **Collection IDs**: Meteor uses string `_id` fields (17-char random strings), not ObjectIds. The new app must preserve this behavior for compatibility.
 - **Dates**: Stored as JavaScript Date objects.
 - **Document structure**: Must match exactly — the new Mongoose models must use the same field names and types.
