@@ -12,7 +12,14 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
   set +a
 fi
 
-MONGO_URI="${MONGO_URI:-mongodb://localhost:${MONGO_PORT:-27017}/qlicker}"
+if [ -z "${MONGO_URI:-}" ]; then
+  if [ -n "${MONGO_PORT:-}" ]; then
+    MONGO_URI="mongodb://localhost:${MONGO_PORT}/qlicker"
+  else
+    echo "MONGO_URI or MONGO_PORT must be set in .env"
+    exit 1
+  fi
+fi
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then

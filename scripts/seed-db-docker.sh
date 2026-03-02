@@ -22,7 +22,11 @@ if [ -z "$SERVER_CONTAINER" ] || [ -z "$MONGO_CONTAINER" ]; then
 fi
 
 DOCKER_MONGO_URI="$(docker exec "$SERVER_CONTAINER" printenv MONGO_URI 2>/dev/null | tr -d '\r')"
-DOCKER_MONGO_URI="${DOCKER_MONGO_URI:-mongodb://mongo:27017/qlicker}"
+if [ -z "$DOCKER_MONGO_URI" ]; then
+  echo "MONGO_URI is not set in the server container environment."
+  echo "Set MONGO_URI via .env/docker compose before running this script."
+  exit 1
+fi
 
 db_name_from_uri() {
   local uri="$1"

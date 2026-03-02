@@ -26,7 +26,13 @@ for (const envPath of envPaths) {
   }
 }
 
-const MONGO_URI = process.env.MONGO_URI || `mongodb://localhost:${process.env.MONGO_PORT || '27017'}/qlicker`;
+const MONGO_URI = process.env.MONGO_URI
+  || (process.env.MONGO_PORT ? `mongodb://localhost:${process.env.MONGO_PORT}/qlicker` : '');
+
+if (!MONGO_URI) {
+  console.error('MONGO_URI or MONGO_PORT must be set in .env');
+  process.exit(1);
+}
 const args = process.argv.slice(2);
 const shouldReset = args.includes('--reset');
 const shouldResetOnly = args.includes('--reset-only');
