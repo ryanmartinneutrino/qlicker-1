@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Chip, InputAdornment, Grid, Select, MenuItem,
+  CircularProgress, Chip, InputAdornment, Select, MenuItem,
   FormControl, InputLabel,
 } from '@mui/material';
 import {
@@ -85,6 +85,13 @@ export default function ProfDashboard() {
     const q = search.toLowerCase();
     const searchable = `${c.name} ${c.deptCode} ${c.courseNumber} ${c.section} ${c.semester}`.toLowerCase();
     return searchable.includes(q);
+  }).sort((a, b) => {
+    const aActive = a.inactive ? 1 : 0;
+    const bActive = b.inactive ? 1 : 0;
+    if (aActive !== bActive) return aActive - bActive;
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
   });
 
   return (
@@ -120,9 +127,15 @@ export default function ProfDashboard() {
           )}
         </Box>
       ) : (
-        <Grid container spacing={2}>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 2,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
+          }}
+        >
           {filtered.map((course) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
+            <Box key={course._id}>
               <Card
                 variant="outlined"
                 sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
@@ -165,9 +178,9 @@ export default function ProfDashboard() {
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Create Course Dialog */}

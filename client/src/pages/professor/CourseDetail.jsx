@@ -7,7 +7,7 @@ import {
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar,
 } from '@mui/material';
 import {
-  ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
+  ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
   Quiz as QuizIcon,
 } from '@mui/icons-material';
@@ -15,6 +15,22 @@ import apiClient from '../../api/client';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
+}
+
+const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
+const STATUS_LABELS = { hidden: 'Draft', visible: 'Upcoming', running: 'Live', done: 'Ended' };
+
+function getSessionSortTime(session) {
+  return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
+}
+
+function sortSessions(items) {
+  return [...items].sort((a, b) => {
+    const aRunning = a.status === 'running' ? 0 : 1;
+    const bRunning = b.status === 'running' ? 0 : 1;
+    if (aRunning !== bRunning) return aRunning - bRunning;
+    return getSessionSortTime(b) - getSessionSortTime(a);
+  });
 }
 
 export default function CourseDetail() {
@@ -214,8 +230,6 @@ export default function CourseDetail() {
   };
 
   // Session actions
-  const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
-
   const handleCreateSession = async () => {
     if (!newSessionName.trim()) return;
     setCreatingSess(true);
@@ -261,98 +275,117 @@ export default function CourseDetail() {
 
   const students = course.students || [];
   const instructors = course.instructors || [];
+  const sortedSessions = sortSessions(sessions);
+  const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
+  const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+
+  const renderSessionList = (sessionItems, emptyText) => {
+    if (sessionsLoading) return <CircularProgress size={24} />;
+    if (sessionItems.length === 0) {
+      return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
+    }
+    return (
+      <Paper variant="outlined">
+        <List disablePadding>
+          {sessionItems.map((s, i) => (
+            <Box key={s._id}>
+              {i > 0 && <Divider />}
+              <ListItem
+                button
+                onClick={() => navigate(`/manage/course/${id}/session/${s._id}`)}
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'background-color 120ms ease',
+                  '&:hover': {
+                    backgroundColor: 'action.hover',
+                  },
+                }}
+              >
+                <ListItemText
+                  primary={(
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {s.name}
+                      <Chip label={STATUS_LABELS[s.status] || s.status} color={STATUS_COLORS[s.status] || 'default'} size="small" />
+                      {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                    </Box>
+                  )}
+                  secondary={(
+                    <>
+                      {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                      {getSessionSortTime(s) > 0 ? ` · ${new Date(getSessionSortTime(s)).toLocaleString()}` : ''}
+                    </>
+                  )}
+                />
+                <ListItemSecondaryAction>
+                  <Tooltip title="Copy session">
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCopySession(s._id); }}>
+                      <CopyIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete session">
+                    <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteSessionTarget(s); }}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </ListItemSecondaryAction>
+              </ListItem>
+            </Box>
+          ))}
+        </List>
+      </Paper>
+    );
+  };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900 }}>
+    <Box sx={{ p: 2.5, maxWidth: 980 }}>
       {/* Header */}
-      <Button startIcon={<BackIcon />} onClick={() => navigate('/manage')} sx={{ mb: 2 }}>
-        Back to Courses
-      </Button>
-
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, flexWrap: 'wrap', gap: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h4">{course.name}</Typography>
-          <Typography variant="body1" color="text.secondary">
-            {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''} &middot; {course.semester}
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            {`${course.deptCode || ''} ${course.courseNumber || ''}`.trim()}: {course.name} ({course.semester})
           </Typography>
+          {course.section && (
+            <Typography variant="caption" color="text.secondary">
+              Section {course.section}
+            </Typography>
+          )}
         </Box>
         <Chip label={course.inactive ? 'Inactive' : 'Active'} color={course.inactive ? 'default' : 'success'} />
       </Box>
 
-      {/* Enrollment code */}
-      {course.enrollmentCode && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography variant="body2" color="text.secondary">Enrollment Code:</Typography>
-          <Typography variant="h6" sx={{ fontFamily: 'monospace', fontWeight: 700, letterSpacing: 1 }}>
-            {course.enrollmentCode}
-          </Typography>
-          <Tooltip title="Copy code">
-            <IconButton size="small" onClick={copyCode}><CopyIcon fontSize="small" /></IconButton>
-          </Tooltip>
-        </Paper>
-      )}
-
       {/* Tabs */}
-      <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-        <Tab label={`Sessions (${sessions.length})`} />
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" allowScrollButtonsMobile>
+        <Tab label={`Interactive Sessions (${interactiveSessions.length})`} />
+        <Tab label={`Quizzes (${quizSessions.length})`} />
         <Tab label={`Students (${students.length})`} />
         <Tab label={`Instructors (${instructors.length})`} />
         <Tab label="Settings" />
       </Tabs>
 
-      {/* Sessions Tab */}
+      {/* Interactive Sessions Tab */}
       <TabPanel value={tab} index={0}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Sessions</Typography>
+          <Typography variant="h6">Interactive Sessions</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateSessionOpen(true)}>
             Create Session
           </Button>
         </Box>
-        {sessionsLoading ? <CircularProgress size={24} /> : sessions.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">No sessions yet.</Typography>
-        ) : (
-          <Paper variant="outlined">
-            <List disablePadding>
-              {sessions.map((s, i) => (
-                <Box key={s._id}>
-                  {i > 0 && <Divider />}
-                  <ListItem
-                    button
-                    onClick={() => navigate(`/manage/course/${id}/session/${s._id}`)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {s.name}
-                          <Chip label={s.status} color={STATUS_COLORS[s.status] || 'default'} size="small" />
-                          {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
-                        </Box>
-                      }
-                      secondary={`${(s.questions || []).length} question${(s.questions || []).length === 1 ? '' : 's'}`}
-                    />
-                    <ListItemSecondaryAction>
-                      <Tooltip title="Copy session">
-                        <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCopySession(s._id); }}>
-                          <CopyIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Delete session">
-                        <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteSessionTarget(s); }}>
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </ListItemSecondaryAction>
-                  </ListItem>
-                </Box>
-              ))}
-            </List>
-          </Paper>
-        )}
+        {renderSessionList(interactiveSessions, 'No interactive sessions yet.')}
+      </TabPanel>
+
+      {/* Quizzes Tab */}
+      <TabPanel value={tab} index={1}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6">Quizzes</Typography>
+          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateSessionOpen(true)}>
+            Create Session
+          </Button>
+        </Box>
+        {renderSessionList(quizSessions, 'No quizzes yet.')}
       </TabPanel>
 
       {/* Students Tab */}
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={2}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Students</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
@@ -397,7 +430,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Instructors Tab */}
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Instructors</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
@@ -452,7 +485,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Settings Tab */}
-      <TabPanel value={tab} index={3}>
+      <TabPanel value={tab} index={4}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <FormControlLabel
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
@@ -492,6 +525,9 @@ export default function CourseDetail() {
           />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2">Enrollment Code: <strong>{course.enrollmentCode}</strong></Typography>
+            <Button size="small" startIcon={<CopyIcon />} onClick={copyCode}>
+              Copy
+            </Button>
             <Button size="small" startIcon={<RefreshIcon />} onClick={handleRegenerateCode}>
               Regenerate
             </Button>

@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, TextField, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, Divider, CircularProgress,
-  Card, CardContent, Tooltip,
+  Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -16,6 +16,12 @@ import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
 
 const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'secondary' };
+const STATUS_LABELS = {
+  hidden: 'Draft',
+  visible: 'Upcoming',
+  running: 'Live',
+  done: 'Ended',
+};
 
 export default function SessionEditor() {
   const { courseId, sessionId } = useParams();
@@ -36,6 +42,8 @@ export default function SessionEditor() {
   const [quizStart, setQuizStart] = useState('');
   const [quizEnd, setQuizEnd] = useState('');
   const [reviewable, setReviewable] = useState(false);
+  const [status, setStatus] = useState('hidden');
+  const [sessionDate, setSessionDate] = useState('');
 
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -61,6 +69,8 @@ export default function SessionEditor() {
       setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '');
       setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '');
       setReviewable(!!s.reviewable);
+      setStatus(s.status || 'hidden');
+      setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
 
       // Fetch full question objects
       const qIds = s.questions || [];
@@ -91,10 +101,13 @@ export default function SessionEditor() {
         quiz,
         practiceQuiz,
         reviewable,
+        status,
       };
       if (quiz || practiceQuiz) {
         if (quizStart) payload.quizStart = new Date(quizStart).toISOString();
         if (quizEnd) payload.quizEnd = new Date(quizEnd).toISOString();
+      } else if (sessionDate) {
+        payload.date = new Date(sessionDate).toISOString();
       }
       await apiClient.patch(`/sessions/${sessionId}`, payload);
       fetchSession();
@@ -187,16 +200,16 @@ export default function SessionEditor() {
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">Session not found</Alert></Box>;
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ p: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <IconButton onClick={() => navigate(`/manage/course/${courseId}`)}><BackIcon /></IconButton>
         <Typography variant="h5" sx={{ flexGrow: 1 }}>{session.name}</Typography>
-        <Chip label={session.status || 'hidden'} color={STATUS_COLORS[session.status] || 'default'} size="small" />
+        <Chip label={STATUS_LABELS[status] || status} color={STATUS_COLORS[status] || 'default'} size="small" />
       </Box>
 
       {/* Session Properties */}
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 2.5, mb: 2 }}>
         <Typography variant="h6" gutterBottom>Session Settings</Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
@@ -207,6 +220,16 @@ export default function SessionEditor() {
             label="Description" fullWidth multiline minRows={2} value={editFields.description}
             onChange={e => setEditFields({ ...editFields, description: e.target.value })}
           />
+
+          <FormControl sx={{ maxWidth: 280 }}>
+            <InputLabel>Status</InputLabel>
+            <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <MenuItem value="hidden">Draft</MenuItem>
+              <MenuItem value="visible">Upcoming</MenuItem>
+              <MenuItem value="running">Live</MenuItem>
+              <MenuItem value="done">Ended</MenuItem>
+            </Select>
+          </FormControl>
 
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <FormControlLabel control={<Switch checked={quiz} onChange={e => setQuiz(e.target.checked)} />} label="Quiz" />
@@ -231,6 +254,17 @@ export default function SessionEditor() {
             </Box>
           )}
 
+          {!(quiz || practiceQuiz) && (
+            <TextField
+              label="Session Date"
+              type="datetime-local"
+              InputLabelProps={{ shrink: true }}
+              value={sessionDate}
+              onChange={(e) => setSessionDate(e.target.value)}
+              sx={{ maxWidth: 360 }}
+            />
+          )}
+
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button variant="contained" onClick={handleSaveSession} disabled={savingSession}>
               {savingSession ? 'Saving…' : 'Save Settings'}
@@ -246,7 +280,7 @@ export default function SessionEditor() {
       </Paper>
 
       {/* Questions */}
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 2.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>Questions ({questions.length})</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingQuestion(null); setQEditorOpen(true); }}>

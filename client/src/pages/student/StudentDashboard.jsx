@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Grid,
+  CircularProgress,
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
@@ -49,6 +49,15 @@ export default function StudentDashboard() {
     }
   };
 
+  const sortedCourses = [...courses].sort((a, b) => {
+    const aActive = a.inactive ? 1 : 0;
+    const bActive = b.inactive ? 1 : 0;
+    if (aActive !== bActive) return aActive - bActive;
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -72,9 +81,15 @@ export default function StudentDashboard() {
           </Button>
         </Box>
       ) : (
-        <Grid container spacing={2}>
-          {courses.map((course) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={course._id}>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 2,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
+          }}
+        >
+          {sortedCourses.map((course) => (
+            <Box key={course._id}>
               <Card
                 variant="outlined"
                 sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
@@ -97,9 +112,9 @@ export default function StudentDashboard() {
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Enroll Dialog */}

@@ -6,7 +6,7 @@ import {
   Checkbox, FormGroup,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
-import { TYPE_LABELS, QUESTION_TYPES } from './constants';
+import { TYPE_LABELS, QUESTION_TYPES, normalizeQuestionType } from './constants';
 
 function normalizeOptions(opts) {
   if (!opts || !opts.length) return [{ content: '', correct: false }, { content: '', correct: false }];
@@ -30,7 +30,7 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
     if (open) {
       if (initial) {
         setForm({
-          type: initial.type || QUESTION_TYPES.MULTIPLE_CHOICE,
+          type: normalizeQuestionType(initial),
           content: initial.content || '',
           options: normalizeOptions(initial.options),
           correctNumerical: initial.correctNumerical ?? '',

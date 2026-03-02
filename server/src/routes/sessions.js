@@ -12,6 +12,7 @@ const createSessionSchema = {
       practiceQuiz: { type: 'boolean' },
       quizStart: { type: 'string', format: 'date-time' },
       quizEnd: { type: 'string', format: 'date-time' },
+      date: { type: 'string', format: 'date-time' },
     },
     additionalProperties: false,
   },
@@ -29,6 +30,7 @@ const updateSessionSchema = {
       quizEnd: { type: 'string', format: 'date-time' },
       reviewable: { type: 'boolean' },
       status: { type: 'string', enum: ['hidden', 'visible', 'running', 'done'] },
+      date: { type: 'string', format: 'date-time' },
     },
     additionalProperties: false,
   },
@@ -113,7 +115,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const { name, description, quiz, practiceQuiz, quizStart, quizEnd } = request.body;
+      const { name, description, quiz, practiceQuiz, quizStart, quizEnd, date } = request.body;
 
       const session = await Session.create({
         name,
@@ -124,6 +126,7 @@ export default async function sessionRoutes(app) {
         practiceQuiz: practiceQuiz || false,
         quizStart: quizStart ? new Date(quizStart) : undefined,
         quizEnd: quizEnd ? new Date(quizEnd) : undefined,
+        date: date ? new Date(date) : undefined,
       });
 
       await Course.findByIdAndUpdate(course._id, {
@@ -213,7 +216,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status'];
+      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {

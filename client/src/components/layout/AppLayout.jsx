@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container,
+  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectionStatus from '../common/ConnectionStatus';
@@ -55,6 +55,9 @@ export default function AppLayout() {
           >
             Qlicker
           </Typography>
+          <Button color="inherit" onClick={() => navigate(dashboardPath)} sx={{ mr: 1 }}>
+            Dashboard
+          </Button>
           <IconButton onClick={handleMenuOpen} color="inherit">
             <Avatar
               src={user?.profile?.profileImage}
