@@ -10,6 +10,7 @@ import {
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDisplayDate } from '../../utils/date';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -237,7 +238,7 @@ function UsersTab({ currentUserId }) {
                   </TableCell>
                   <TableCell>
                     {u.lastLogin
-                      ? new Date(u.lastLogin).toLocaleString()
+                      ? formatDisplayDate(u.lastLogin)
                       : 'Never'}
                   </TableCell>
                   <TableCell>

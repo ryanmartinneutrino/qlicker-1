@@ -50,6 +50,7 @@ export default function SessionEditor() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [confirmGoLiveOpen, setConfirmGoLiveOpen] = useState(false);
 
   // Question editor
   const [qEditorOpen, setQEditorOpen] = useState(false);
@@ -93,32 +94,40 @@ export default function SessionEditor() {
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
-  // Save session properties
-  const handleSaveSession = async () => {
+  const toIsoIfValid = (dateValue) => {
+    if (!dateValue) return null;
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  };
+
+  // Save session properties immediately as fields change
+  const saveSessionPatch = async (updates) => {
     setSavingSession(true);
     try {
-      const payload = {
-        name: editFields.name,
-        description: editFields.description,
-        quiz,
-        practiceQuiz,
-        reviewable,
-        status,
-      };
-      if (quiz || practiceQuiz) {
-        if (quizStart) payload.quizStart = new Date(quizStart).toISOString();
-        if (quizEnd) payload.quizEnd = new Date(quizEnd).toISOString();
-      } else if (sessionDate) {
-        payload.date = new Date(sessionDate).toISOString();
-      }
-      await apiClient.patch(`/sessions/${sessionId}`, payload);
-      fetchSession();
-      setMsg({ severity: 'success', text: 'Session updated' });
+      const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
+      setSession(data.session || data);
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
+      fetchSession();
     } finally {
       setSavingSession(false);
     }
+  };
+
+  const handleStatusChange = (nextStatus) => {
+    if (nextStatus === status) return;
+    if (nextStatus === 'running') {
+      setConfirmGoLiveOpen(true);
+      return;
+    }
+    setStatus(nextStatus);
+    saveSessionPatch({ status: nextStatus });
+  };
+
+  const confirmGoLive = () => {
+    setConfirmGoLiveOpen(false);
+    setStatus('running');
+    saveSessionPatch({ status: 'running' });
   };
 
   // Delete session
@@ -217,19 +226,39 @@ export default function SessionEditor() {
       {/* Session Properties */}
       <Paper sx={{ p: 2.5, mb: 2 }}>
         <Typography variant="h6" gutterBottom>Session Settings</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {savingSession ? 'Saving changes…' : 'Changes save automatically.'}
+        </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
             label="Name" fullWidth value={editFields.name}
             onChange={e => setEditFields({ ...editFields, name: e.target.value })}
+            onBlur={() => {
+              if (editFields.name !== (session.name || '')) {
+                saveSessionPatch({ name: editFields.name });
+              }
+            }}
+            disabled={savingSession}
           />
           <TextField
             label="Description" fullWidth multiline minRows={2} value={editFields.description}
             onChange={e => setEditFields({ ...editFields, description: e.target.value })}
+            onBlur={() => {
+              if (editFields.description !== (session.description || '')) {
+                saveSessionPatch({ description: editFields.description });
+              }
+            }}
+            disabled={savingSession}
           />
 
           <FormControl sx={{ maxWidth: 280 }}>
             <InputLabel>Status</InputLabel>
-            <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <Select
+              label="Status"
+              value={status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={savingSession}
+            >
               <MenuItem value="hidden">Draft</MenuItem>
               <MenuItem value="visible">Upcoming</MenuItem>
               <MenuItem value="running">Live</MenuItem>
@@ -238,9 +267,48 @@ export default function SessionEditor() {
           </FormControl>
 
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <FormControlLabel control={<Switch checked={quiz} onChange={e => setQuiz(e.target.checked)} />} label="Quiz" />
-            <FormControlLabel control={<Switch checked={practiceQuiz} onChange={e => setPracticeQuiz(e.target.checked)} />} label="Practice Quiz" />
-            <FormControlLabel control={<Switch checked={reviewable} onChange={e => setReviewable(e.target.checked)} />} label="Reviewable" />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={quiz}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setQuiz(checked);
+                    saveSessionPatch({ quiz: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Quiz"
+            />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={practiceQuiz}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPracticeQuiz(checked);
+                    saveSessionPatch({ practiceQuiz: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Practice Quiz"
+            />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={reviewable}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setReviewable(checked);
+                    saveSessionPatch({ reviewable: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Reviewable"
+            />
           </Box>
 
           {(quiz || practiceQuiz) && (
@@ -249,13 +317,25 @@ export default function SessionEditor() {
                 label="Quiz Start" type="datetime-local" fullWidth
                 InputLabelProps={{ shrink: true }}
                 value={quizStart}
-                onChange={e => setQuizStart(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuizStart(val);
+                  const iso = toIsoIfValid(val);
+                  if (iso) saveSessionPatch({ quizStart: iso });
+                }}
+                disabled={savingSession}
               />
               <TextField
                 label="Quiz End" type="datetime-local" fullWidth
                 InputLabelProps={{ shrink: true }}
                 value={quizEnd}
-                onChange={e => setQuizEnd(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuizEnd(val);
+                  const iso = toIsoIfValid(val);
+                  if (iso) saveSessionPatch({ quizEnd: iso });
+                }}
+                disabled={savingSession}
               />
             </Box>
           )}
@@ -266,15 +346,18 @@ export default function SessionEditor() {
               type="datetime-local"
               InputLabelProps={{ shrink: true }}
               value={sessionDate}
-              onChange={(e) => setSessionDate(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSessionDate(val);
+                const iso = toIsoIfValid(val);
+                if (iso) saveSessionPatch({ date: iso });
+              }}
               sx={{ maxWidth: 360 }}
+              disabled={savingSession}
             />
           )}
 
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button variant="contained" onClick={handleSaveSession} disabled={savingSession}>
-              {savingSession ? 'Saving…' : 'Save Settings'}
-            </Button>
             <Button startIcon={<CopyIcon />} onClick={handleCopySession} disabled={copying}>
               {copying ? 'Copying…' : 'Copy Session'}
             </Button>
@@ -319,6 +402,13 @@ export default function SessionEditor() {
                     </IconButton>
                   </span>
                 </Tooltip>
+              </Box>
+
+              {/* Question number */}
+              <Box sx={{ minWidth: 28, pt: 0.75 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  {idx + 1}.
+                </Typography>
               </Box>
 
               {/* Question content */}
@@ -391,6 +481,22 @@ export default function SessionEditor() {
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleDeleteSession} disabled={deleting}>
             {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Go Live Confirmation */}
+      <Dialog open={confirmGoLiveOpen} onClose={() => setConfirmGoLiveOpen(false)}>
+        <DialogTitle>Go live now?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Changing status to Live will immediately make this session available to students.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmGoLiveOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="success" onClick={confirmGoLive}>
+            Go Live
           </Button>
         </DialogActions>
       </Dialog>

@@ -12,6 +12,7 @@ import {
   Quiz as QuizIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
+import { formatDisplayDate } from '../../utils/date';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -312,7 +313,7 @@ export default function CourseDetail() {
                   secondary={(
                     <>
                       {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
-                      {getSessionSortTime(s) > 0 ? ` · ${new Date(getSessionSortTime(s)).toLocaleString()}` : ''}
+                      {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
                     </>
                   )}
                 />

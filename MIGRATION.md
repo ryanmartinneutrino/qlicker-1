@@ -353,6 +353,11 @@ The following code changes were made to ensure the app works correctly with a re
   - normalizes legacy question type values for display,
   - renders HTML `content`/options/solution fields,
   - typesets MathJax formulas on render.
+- Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).
+- Session status changes to `Live` now require explicit confirmation, then apply immediately.
+- Session editor question list now displays dynamic question numbering (`1.`, `2.`, `3.`) that updates with reordering.
+- UI date display is standardized to `DD-Mmm-YYYY` (for example `02-Mar-2026`), including professor session lists and admin user last-login.
+- Professor course session list now shows date-only (no time) in the session metadata row.
 
 ### Remaining Follow-Up Items
 
