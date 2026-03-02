@@ -8,8 +8,23 @@ import {
 import { ArrowBack as BackIcon, Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
+import { formatDisplayDate } from '../../utils/date';
 
 const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
+const STATUS_LABELS = { hidden: 'Draft', visible: 'Upcoming', running: 'Live', done: 'Ended' };
+
+function getSessionSortTime(session) {
+  return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
+}
+
+function sortSessions(items) {
+  return [...items].sort((a, b) => {
+    const aRunning = a.status === 'running' ? 0 : 1;
+    const bRunning = b.status === 'running' ? 0 : 1;
+    if (aRunning !== bRunning) return aRunning - bRunning;
+    return getSessionSortTime(b) - getSessionSortTime(a);
+  });
+}
 
 export default function StudentCourseDetail() {
   const { id } = useParams();
@@ -63,6 +78,7 @@ export default function StudentCourseDetail() {
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
+  const sortedSessions = sortSessions(sessions);
 
   return (
     <Box sx={{ p: 3, maxWidth: 700 }}>
@@ -80,12 +96,12 @@ export default function StudentCourseDetail() {
         </Typography>
 
         <Typography variant="h6" sx={{ mb: 1 }}>Sessions</Typography>
-        {sessionsLoading ? <CircularProgress size={24} /> : sessions.length === 0 ? (
+        {sessionsLoading ? <CircularProgress size={24} /> : sortedSessions.length === 0 ? (
           <Typography variant="body2" color="text.secondary">No sessions available.</Typography>
         ) : (
           <Paper variant="outlined">
             <List disablePadding>
-              {sessions.map((s, i) => (
+              {sortedSessions.map((s, i) => (
                 <Box key={s._id}>
                   {i > 0 && <Divider />}
                   <ListItem>
@@ -94,13 +110,19 @@ export default function StudentCourseDetail() {
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {s.name}
                           <Chip
-                            label={s.status}
+                            label={STATUS_LABELS[s.status] || s.status}
                             color={STATUS_COLORS[s.status] || 'default'}
                             size="small"
                           />
                           {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
                         </Box>
                       }
+                      secondary={(
+                        <>
+                          {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                          {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
+                        </>
+                      )}
                     />
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       {s.status === 'running' && (

@@ -340,6 +340,28 @@ The following code changes were made to ensure the app works correctly with a re
 | Password hashing modernization | `server/src/utils/password.js`, `server/src/models/User.js`, `server/src/routes/auth.js`, `server/src/routes/users.js`, `scripts/seed-db.js` | Switched to argon2id for new password hashes. Added explicit reset-required detection for both legacy bcrypt hashes and accounts without a local password (`code: PASSWORD_RESET_REQUIRED`, reason `legacy_hash` or `no_local_password`). Seed script now creates argon2id hashes. |
 | Seed script behavior alignment | `scripts/seed-db.js`, `scripts/seed-db.sh`, `scripts/seed-db-docker.sh` | `--reset` now always leaves the database empty. Default no-argument execution seeds the 3 example users in both native and Docker wrappers. |
 
+### UI Updates from Testing (Pre-Milestone Follow-Up)
+
+- Professor dashboard course tiles now sort with active courses first, then newest first.
+- Course tiles on professor/student dashboards use fixed-width cards for consistent wrapping and scanability.
+- Professor course page header is compact and starts directly with course identity (`DEPT NUMBER: Name (Semester)`), with section on a smaller line.
+- Professor course tabs were reorganized to: `Interactive Sessions`, `Quizzes`, `Students`, `Instructors`, `Settings`.
+- Session rows on the professor course page now have stronger hover feedback and are sorted with live sessions first, then most recent by date.
+- Session editor now exposes status using user-facing labels (`Draft`, `Upcoming`, `Live`, `Ended`) mapped to backend values (`hidden`, `visible`, `running`, `done`).
+- Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
+- Legacy question rendering in session editor now:
+  - normalizes legacy question type values for display,
+  - renders HTML `content`/options/solution fields,
+  - typesets MathJax formulas on render.
+- Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).
+- Session status changes to `Live` now require explicit confirmation, then apply immediately.
+- Session editor question list now displays dynamic question numbering (`1.`, `2.`, `3.`) that updates with reordering.
+- Session editor multiple-choice/multi-select option rendering now keeps option labels (`A.`, `B.`, `C.`) horizontally aligned with option content, including HTML-rich legacy options.
+- UI date display is standardized to `DD-Mmm-YYYY` (for example `02-Mar-2026`), including professor session lists and admin user last-login.
+- Professor course session list now shows date-only (no time) in the session metadata row.
+- Student course session list now follows the same ordering/date rules as professor session lists (live first, then most recent; date-only `DD-Mmm-YYYY`).
+- App bar `Dashboard` button styling updated to be larger and offset slightly to the right of the app title for better prominence.
+
 ### Remaining Follow-Up Items
 
 - Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path (affects users with pending reset tokens from the old app).

@@ -4,18 +4,25 @@ import {
   Box, Typography, Button, TextField, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, Divider, CircularProgress,
-  Card, CardContent, Tooltip,
+  Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Edit as EditIcon,
   KeyboardArrowUp as UpIcon, KeyboardArrowDown as DownIcon,
+  ExpandMore as ExpandMoreIcon, ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
 
 const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'secondary' };
+const STATUS_LABELS = {
+  hidden: 'Draft',
+  visible: 'Upcoming',
+  running: 'Live',
+  done: 'Ended',
+};
 
 export default function SessionEditor() {
   const { courseId, sessionId } = useParams();
@@ -36,11 +43,14 @@ export default function SessionEditor() {
   const [quizStart, setQuizStart] = useState('');
   const [quizEnd, setQuizEnd] = useState('');
   const [reviewable, setReviewable] = useState(false);
+  const [status, setStatus] = useState('hidden');
+  const [sessionDate, setSessionDate] = useState('');
 
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [confirmGoLiveOpen, setConfirmGoLiveOpen] = useState(false);
 
   // Question editor
   const [qEditorOpen, setQEditorOpen] = useState(false);
@@ -49,6 +59,7 @@ export default function SessionEditor() {
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
+  const [expandedQuestions, setExpandedQuestions] = useState({});
 
   const fetchSession = useCallback(async () => {
     try {
@@ -61,6 +72,8 @@ export default function SessionEditor() {
       setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '');
       setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '');
       setReviewable(!!s.reviewable);
+      setStatus(s.status || 'hidden');
+      setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
 
       // Fetch full question objects
       const qIds = s.questions || [];
@@ -81,29 +94,40 @@ export default function SessionEditor() {
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
-  // Save session properties
-  const handleSaveSession = async () => {
+  const toIsoIfValid = (dateValue) => {
+    if (!dateValue) return null;
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  };
+
+  // Save session properties immediately as fields change
+  const saveSessionPatch = async (updates) => {
     setSavingSession(true);
     try {
-      const payload = {
-        name: editFields.name,
-        description: editFields.description,
-        quiz,
-        practiceQuiz,
-        reviewable,
-      };
-      if (quiz || practiceQuiz) {
-        if (quizStart) payload.quizStart = new Date(quizStart).toISOString();
-        if (quizEnd) payload.quizEnd = new Date(quizEnd).toISOString();
-      }
-      await apiClient.patch(`/sessions/${sessionId}`, payload);
-      fetchSession();
-      setMsg({ severity: 'success', text: 'Session updated' });
+      const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
+      setSession(data.session || data);
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
+      fetchSession();
     } finally {
       setSavingSession(false);
     }
+  };
+
+  const handleStatusChange = (nextStatus) => {
+    if (nextStatus === status) return;
+    if (nextStatus === 'running') {
+      setConfirmGoLiveOpen(true);
+      return;
+    }
+    setStatus(nextStatus);
+    saveSessionPatch({ status: nextStatus });
+  };
+
+  const confirmGoLive = () => {
+    setConfirmGoLiveOpen(false);
+    setStatus('running');
+    saveSessionPatch({ status: 'running' });
   };
 
   // Delete session
@@ -183,35 +207,108 @@ export default function SessionEditor() {
     }
   };
 
+  const toggleQuestionExpanded = (questionId) => {
+    setExpandedQuestions((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">Session not found</Alert></Box>;
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
+    <Box sx={{ p: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
         <IconButton onClick={() => navigate(`/manage/course/${courseId}`)}><BackIcon /></IconButton>
         <Typography variant="h5" sx={{ flexGrow: 1 }}>{session.name}</Typography>
-        <Chip label={session.status || 'hidden'} color={STATUS_COLORS[session.status] || 'default'} size="small" />
+        <Chip label={STATUS_LABELS[status] || status} color={STATUS_COLORS[status] || 'default'} size="small" />
       </Box>
 
       {/* Session Properties */}
-      <Paper sx={{ p: 3, mb: 3 }}>
+      <Paper sx={{ p: 2.5, mb: 2 }}>
         <Typography variant="h6" gutterBottom>Session Settings</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {savingSession ? 'Saving changes…' : 'Changes save automatically.'}
+        </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
             label="Name" fullWidth value={editFields.name}
             onChange={e => setEditFields({ ...editFields, name: e.target.value })}
+            onBlur={() => {
+              if (editFields.name !== (session.name || '')) {
+                saveSessionPatch({ name: editFields.name });
+              }
+            }}
+            disabled={savingSession}
           />
           <TextField
             label="Description" fullWidth multiline minRows={2} value={editFields.description}
             onChange={e => setEditFields({ ...editFields, description: e.target.value })}
+            onBlur={() => {
+              if (editFields.description !== (session.description || '')) {
+                saveSessionPatch({ description: editFields.description });
+              }
+            }}
+            disabled={savingSession}
           />
 
+          <FormControl sx={{ maxWidth: 280 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              label="Status"
+              value={status}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={savingSession}
+            >
+              <MenuItem value="hidden">Draft</MenuItem>
+              <MenuItem value="visible">Upcoming</MenuItem>
+              <MenuItem value="running">Live</MenuItem>
+              <MenuItem value="done">Ended</MenuItem>
+            </Select>
+          </FormControl>
+
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <FormControlLabel control={<Switch checked={quiz} onChange={e => setQuiz(e.target.checked)} />} label="Quiz" />
-            <FormControlLabel control={<Switch checked={practiceQuiz} onChange={e => setPracticeQuiz(e.target.checked)} />} label="Practice Quiz" />
-            <FormControlLabel control={<Switch checked={reviewable} onChange={e => setReviewable(e.target.checked)} />} label="Reviewable" />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={quiz}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setQuiz(checked);
+                    saveSessionPatch({ quiz: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Quiz"
+            />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={practiceQuiz}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPracticeQuiz(checked);
+                    saveSessionPatch({ practiceQuiz: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Practice Quiz"
+            />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={reviewable}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setReviewable(checked);
+                    saveSessionPatch({ reviewable: checked });
+                  }}
+                  disabled={savingSession}
+                />
+              )}
+              label="Reviewable"
+            />
           </Box>
 
           {(quiz || practiceQuiz) && (
@@ -220,21 +317,47 @@ export default function SessionEditor() {
                 label="Quiz Start" type="datetime-local" fullWidth
                 InputLabelProps={{ shrink: true }}
                 value={quizStart}
-                onChange={e => setQuizStart(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuizStart(val);
+                  const iso = toIsoIfValid(val);
+                  if (iso) saveSessionPatch({ quizStart: iso });
+                }}
+                disabled={savingSession}
               />
               <TextField
                 label="Quiz End" type="datetime-local" fullWidth
                 InputLabelProps={{ shrink: true }}
                 value={quizEnd}
-                onChange={e => setQuizEnd(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setQuizEnd(val);
+                  const iso = toIsoIfValid(val);
+                  if (iso) saveSessionPatch({ quizEnd: iso });
+                }}
+                disabled={savingSession}
               />
             </Box>
           )}
 
+          {!(quiz || practiceQuiz) && (
+            <TextField
+              label="Session Date"
+              type="datetime-local"
+              InputLabelProps={{ shrink: true }}
+              value={sessionDate}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSessionDate(val);
+                const iso = toIsoIfValid(val);
+                if (iso) saveSessionPatch({ date: iso });
+              }}
+              sx={{ maxWidth: 360 }}
+              disabled={savingSession}
+            />
+          )}
+
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button variant="contained" onClick={handleSaveSession} disabled={savingSession}>
-              {savingSession ? 'Saving…' : 'Save Settings'}
-            </Button>
             <Button startIcon={<CopyIcon />} onClick={handleCopySession} disabled={copying}>
               {copying ? 'Copying…' : 'Copy Session'}
             </Button>
@@ -246,7 +369,7 @@ export default function SessionEditor() {
       </Paper>
 
       {/* Questions */}
-      <Paper sx={{ p: 3 }}>
+      <Paper sx={{ p: 2.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>Questions ({questions.length})</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingQuestion(null); setQEditorOpen(true); }}>
@@ -281,9 +404,44 @@ export default function SessionEditor() {
                 </Tooltip>
               </Box>
 
+              {/* Question number */}
+              <Box sx={{ minWidth: 28, pt: 0.75 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  {idx + 1}.
+                </Typography>
+              </Box>
+
               {/* Question content */}
               <Box sx={{ flexGrow: 1 }}>
-                <QuestionDisplay question={q} />
+                <Box
+                  sx={{
+                    maxHeight: expandedQuestions[q._id] ? 'none' : 120,
+                    overflow: 'hidden',
+                    position: 'relative',
+                  }}
+                >
+                  <QuestionDisplay question={q} />
+                  {!expandedQuestions[q._id] && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 36,
+                        background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1))',
+                      }}
+                    />
+                  )}
+                </Box>
+                <Button
+                  size="small"
+                  endIcon={expandedQuestions[q._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  onClick={() => toggleQuestionExpanded(q._id)}
+                  sx={{ mt: 0.5 }}
+                >
+                  {expandedQuestions[q._id] ? 'Show less' : 'Show more'}
+                </Button>
               </Box>
 
               {/* Action buttons */}
@@ -323,6 +481,22 @@ export default function SessionEditor() {
           <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
           <Button color="error" variant="contained" onClick={handleDeleteSession} disabled={deleting}>
             {deleting ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Go Live Confirmation */}
+      <Dialog open={confirmGoLiveOpen} onClose={() => setConfirmGoLiveOpen(false)}>
+        <DialogTitle>Go live now?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Changing status to Live will immediately make this session available to students.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmGoLiveOpen(false)}>Cancel</Button>
+          <Button variant="contained" color="success" onClick={confirmGoLive}>
+            Go Live
           </Button>
         </DialogActions>
       </Dialog>

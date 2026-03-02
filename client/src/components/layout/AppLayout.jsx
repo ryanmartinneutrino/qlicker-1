@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container,
+  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectionStatus from '../common/ConnectionStatus';
@@ -48,13 +48,24 @@ export default function AppLayout() {
       <ConnectionStatus />
       <AppBar position="static">
         <Toolbar>
-          <Typography
-            variant="h4"
-            sx={{ flexGrow: 1, cursor: 'pointer', fontWeight: 500 }}
-            onClick={() => navigate(dashboardPath)}
-          >
-            Qlicker
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography
+              variant="h4"
+              sx={{ cursor: 'pointer', fontWeight: 500 }}
+              onClick={() => navigate(dashboardPath)}
+            >
+              Qlicker
+            </Typography>
+            <Button
+              color="inherit"
+              size="large"
+              onClick={() => navigate(dashboardPath)}
+              sx={{ ml: 2, px: 2.25, fontSize: '1.05rem', fontWeight: 600 }}
+            >
+              Dashboard
+            </Button>
+          </Box>
+          <Box sx={{ flexGrow: 1 }} />
           <IconButton onClick={handleMenuOpen} color="inherit">
             <Avatar
               src={user?.profile?.profileImage}
