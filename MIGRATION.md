@@ -309,12 +309,28 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
   - reset-to-empty flow
 - Docker seeding cleanup now succeeds (previous temp-script permission failure removed).
 
+### Auth Compatibility Findings (API Validation, 2026-03-02)
+
+- API and DB wiring are functional in Docker (`:3201` API against restored `qlicker` DB): register and login for newly created users work.
+- Legacy snapshot user auth profile:
+  - total users: `20,901`
+  - users with password hashes (`services.password.bcrypt`): `1,725`
+  - users with SSO identities (`services.sso.id`): `19,887`
+  - users with mixed-case/non-lowercased stored emails: `8,081`
+  - users with password hashes + mixed-case stored emails: `188` (`51` are password-only users without SSO fallback)
+- Confirmed compatibility gap in current login lookup:
+  - login route normalizes input to lowercase, then performs exact match on `emails.address`
+  - many legacy addresses are not normalized to lowercase
+  - result: those users are not found and receive `401 Invalid email or password` even if password is correct
+- Password hash format itself appears compatible (`$2a$`/`$2b$` bcrypt hashes are present and supported by current bcrypt verification), so the primary observed blocker is email normalization mismatch rather than Meteor hash decoding.
+
 ### Important Follow-Up Code Updates (Not Done Here)
 
 - Add migration/mapping logic for legacy `images` and `settings` shape differences before production cutover.
 - Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path.
 - Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.
 - Confirm whether `meteor_accounts_loginServiceConfiguration` should remain unsupported, be migrated, or be explicitly deprecated.
+- Update login/user lookup to handle legacy mixed-case emails (either case-insensitive lookup or a one-time email normalization migration).
 
 ---
 
