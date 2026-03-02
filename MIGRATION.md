@@ -262,6 +262,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 ### Legacy Dump Snapshot (Observed 2026-03-02)
 
 - Local dump contains two DB namespaces: `qlickerdb` (application data) and `admin` (Mongo system collections).
+- `admin` includes `system.users` and `system.version`; these are Mongo instance-level auth/version artifacts, not Qlicker domain collections.
 - Restoring `qlickerdb` into the Fastify target DB produced:
   - `users`: 20,901
   - `courses`: 472
@@ -273,6 +274,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
   - `settings`: 1
   - `meteor_accounts_loginServiceConfiguration`: 0
 - IDs across core app collections are Meteor-style strings (not ObjectId), which matches current model assumptions.
+- Updated restore scripts now restore from a selected top-level dump directory and include both namespaces: application data (`qlickerdb`) is mapped into the configured app DB, while `admin` is restored in-place.
 
 ### Collection Mapping and Compatibility
 

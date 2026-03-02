@@ -38,6 +38,22 @@ db_name_from_uri() {
   printf '%s\n' "$db_name"
 }
 
+uri_without_db_from_uri() {
+  local uri="$1"
+  local base="${uri%%\?*}"
+  local query=""
+  if [ "$base" != "$uri" ]; then
+    query="?${uri#*\?}"
+  fi
+
+  if [[ "$base" =~ ^(mongodb(\+srv)?://[^/]+)/[^/]+$ ]]; then
+    printf '%s%s\n' "${BASH_REMATCH[1]}" "$query"
+    return 0
+  fi
+
+  printf '%s%s\n' "$base" "$query"
+}
+
 confirm_action() {
   local prompt="$1"
   local answer
@@ -51,14 +67,53 @@ find_legacy_candidates() {
     return 0
   fi
 
-  find "$legacy_root" -type f -name '*.bson' -exec dirname {} \; \
-    | sort -u \
-    | while IFS= read -r dir; do
-        if find "$dir" -maxdepth 1 -type f -name '*.bson' ! -name 'oplog.bson' | grep -q .; then
-          printf '%s\n' "$dir"
+  find "$legacy_root" -type f -name '*.bson' ! -name 'oplog.bson' \
+    | while IFS= read -r file; do
+        local rel top
+        rel="${file#$legacy_root/}"
+        top="${rel%%/*}"
+        if [ "$top" != "$rel" ]; then
+          printf '%s\n' "$legacy_root/$top"
         fi
       done \
     | sort -u
+}
+
+is_system_database_name() {
+  case "$1" in
+    admin|local|config)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+list_dump_databases() {
+  local dump_root="$1"
+  find "$dump_root" -mindepth 1 -maxdepth 1 -type d \
+    | while IFS= read -r db_dir; do
+        if find "$db_dir" -maxdepth 1 -type f -name '*.bson' | grep -q .; then
+          basename "$db_dir"
+        fi
+      done \
+    | sort -u
+}
+
+pick_primary_app_database() {
+  local db_name
+  for db_name in "$@"; do
+    if ! is_system_database_name "$db_name"; then
+      printf '%s\n' "$db_name"
+      return 0
+    fi
+  done
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+  return 1
 }
 
 SELECTED_LEGACY_DIR=""
@@ -117,11 +172,26 @@ restore_legacy_dump() {
     return 1
   fi
 
-  local source_db target_db
-  source_db="$(basename "$SELECTED_LEGACY_DIR")"
-  target_db="$(db_name_from_uri "$MONGO_URI")"
+  local target_db restore_uri primary_source_db db_name restore_db
+  local -a dump_databases
 
-  echo "Restore source database: $source_db"
+  mapfile -t dump_databases < <(list_dump_databases "$SELECTED_LEGACY_DIR")
+  if [ "${#dump_databases[@]}" -eq 0 ]; then
+    echo "No database directories found in selected dump."
+    return 1
+  fi
+
+  if ! primary_source_db="$(pick_primary_app_database "${dump_databases[@]}")"; then
+    echo "Unable to determine primary application database in selected dump."
+    return 1
+  fi
+
+  target_db="$(db_name_from_uri "$MONGO_URI")"
+  restore_uri="$(uri_without_db_from_uri "$MONGO_URI")"
+
+  echo "Restore dump: ${SELECTED_LEGACY_DIR#$PROJECT_ROOT/}"
+  echo "Databases in dump: ${dump_databases[*]}"
+  echo "Primary application database: $primary_source_db"
   echo "Restore target database: $target_db"
 
   if ! confirm_action "This will overwrite all data in '$target_db'. Continue?"; then
@@ -129,11 +199,19 @@ restore_legacy_dump() {
     return 0
   fi
 
-  mongorestore \
-    --drop \
-    --uri="$MONGO_URI" \
-    --db="$target_db" \
-    "$SELECTED_LEGACY_DIR"
+  for db_name in "${dump_databases[@]}"; do
+    restore_db="$db_name"
+    if [ "$db_name" = "$primary_source_db" ]; then
+      restore_db="$target_db"
+    fi
+
+    echo "Restoring database '$db_name' -> '$restore_db'..."
+    mongorestore \
+      --drop \
+      --uri="$restore_uri" \
+      --db="$restore_db" \
+      "$SELECTED_LEGACY_DIR/$db_name"
+  done
 
   echo "Legacy restore complete."
 }

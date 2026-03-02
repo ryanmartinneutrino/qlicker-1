@@ -38,6 +38,22 @@ db_name_from_uri() {
   printf '%s\n' "$db_name"
 }
 
+uri_without_db_from_uri() {
+  local uri="$1"
+  local base="${uri%%\?*}"
+  local query=""
+  if [ "$base" != "$uri" ]; then
+    query="?${uri#*\?}"
+  fi
+
+  if [[ "$base" =~ ^(mongodb(\+srv)?://[^/]+)/[^/]+$ ]]; then
+    printf '%s%s\n' "${BASH_REMATCH[1]}" "$query"
+    return 0
+  fi
+
+  printf '%s%s\n' "$base" "$query"
+}
+
 confirm_action() {
   local prompt="$1"
   local answer
@@ -51,14 +67,53 @@ find_legacy_candidates() {
     return 0
   fi
 
-  find "$legacy_root" -type f -name '*.bson' -exec dirname {} \; \
-    | sort -u \
-    | while IFS= read -r dir; do
-        if find "$dir" -maxdepth 1 -type f -name '*.bson' ! -name 'oplog.bson' | grep -q .; then
-          printf '%s\n' "$dir"
+  find "$legacy_root" -type f -name '*.bson' ! -name 'oplog.bson' \
+    | while IFS= read -r file; do
+        local rel top
+        rel="${file#$legacy_root/}"
+        top="${rel%%/*}"
+        if [ "$top" != "$rel" ]; then
+          printf '%s\n' "$legacy_root/$top"
         fi
       done \
     | sort -u
+}
+
+is_system_database_name() {
+  case "$1" in
+    admin|local|config)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+list_dump_databases() {
+  local dump_root="$1"
+  find "$dump_root" -mindepth 1 -maxdepth 1 -type d \
+    | while IFS= read -r db_dir; do
+        if find "$db_dir" -maxdepth 1 -type f -name '*.bson' | grep -q .; then
+          basename "$db_dir"
+        fi
+      done \
+    | sort -u
+}
+
+pick_primary_app_database() {
+  local db_name
+  for db_name in "$@"; do
+    if ! is_system_database_name "$db_name"; then
+      printf '%s\n' "$db_name"
+      return 0
+    fi
+  done
+  if [ "$#" -gt 0 ]; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+  return 1
 }
 
 SELECTED_LEGACY_DIR=""
@@ -134,14 +189,29 @@ restore_legacy_dump() {
     return 1
   fi
 
-  local source_db dump_root target_db temp_dump_dir status
-  source_db="$(basename "$SELECTED_LEGACY_DIR")"
-  dump_root="$(dirname "$SELECTED_LEGACY_DIR")"
+  local dump_root_name target_db restore_uri temp_dump_dir status primary_source_db db_name restore_db
+  local -a dump_databases
+
+  mapfile -t dump_databases < <(list_dump_databases "$SELECTED_LEGACY_DIR")
+  if [ "${#dump_databases[@]}" -eq 0 ]; then
+    echo "No database directories found in selected dump."
+    return 1
+  fi
+
+  if ! primary_source_db="$(pick_primary_app_database "${dump_databases[@]}")"; then
+    echo "Unable to determine primary application database in selected dump."
+    return 1
+  fi
+
+  dump_root_name="$(basename "$SELECTED_LEGACY_DIR")"
   target_db="$(db_name_from_uri "$DOCKER_MONGO_URI")"
+  restore_uri="$(uri_without_db_from_uri "$DOCKER_MONGO_URI")"
   temp_dump_dir="/tmp/legacy-restore-$$"
   status=0
 
-  echo "Restore source database: $source_db"
+  echo "Restore dump: ${SELECTED_LEGACY_DIR#$PROJECT_ROOT/}"
+  echo "Databases in dump: ${dump_databases[*]}"
+  echo "Primary application database: $primary_source_db"
   echo "Restore target database: $target_db"
 
   if ! confirm_action "This will overwrite all data in '$target_db'. Continue?"; then
@@ -152,18 +222,27 @@ restore_legacy_dump() {
   echo "Copying dump into mongo container..."
   docker exec "$MONGO_CONTAINER" rm -rf "$temp_dump_dir"
   docker exec "$MONGO_CONTAINER" mkdir -p "$temp_dump_dir"
-  docker cp "$dump_root/." "$MONGO_CONTAINER:$temp_dump_dir/"
+  docker cp "$SELECTED_LEGACY_DIR" "$MONGO_CONTAINER:$temp_dump_dir/"
 
   echo "Running mongorestore inside mongo container..."
-  if docker exec "$MONGO_CONTAINER" mongorestore \
-    --drop \
-    --uri="$DOCKER_MONGO_URI" \
-    --db="$target_db" \
-    "$temp_dump_dir/$source_db"; then
-    status=0
-  else
-    status=$?
-  fi
+  for db_name in "${dump_databases[@]}"; do
+    restore_db="$db_name"
+    if [ "$db_name" = "$primary_source_db" ]; then
+      restore_db="$target_db"
+    fi
+
+    echo "Restoring database '$db_name' -> '$restore_db'..."
+    if docker exec "$MONGO_CONTAINER" mongorestore \
+      --drop \
+      --uri="$restore_uri" \
+      --db="$restore_db" \
+      "$temp_dump_dir/$dump_root_name/$db_name"; then
+      status=0
+    else
+      status=$?
+      break
+    fi
+  done
 
   docker exec "$MONGO_CONTAINER" rm -rf "$temp_dump_dir" >/dev/null 2>&1 || true
 
