@@ -32,11 +32,11 @@ async function uploadPlugin(fastify) {
       storageType: settings?.storageType || 'local',
       AWS_bucket: settings?.AWS_bucket || '',
       AWS_region: settings?.AWS_region || '',
-      AWS_accessKeyId: settings?.AWS_accessKeyId || '',
-      AWS_secretAccessKey: settings?.AWS_secretAccessKey || '',
-      Azure_storageAccount: settings?.Azure_storageAccount || '',
-      Azure_storageAccessKey: settings?.Azure_storageAccessKey || '',
-      Azure_storageContainer: settings?.Azure_storageContainer || '',
+      AWS_accessKeyId: settings?.AWS_accessKeyId || settings?.AWS_accessKey || '',
+      AWS_secretAccessKey: settings?.AWS_secretAccessKey || settings?.AWS_secret || '',
+      Azure_storageAccount: settings?.Azure_storageAccount || settings?.Azure_accountName || '',
+      Azure_storageAccessKey: settings?.Azure_storageAccessKey || settings?.Azure_accountKey || '',
+      Azure_storageContainer: settings?.Azure_storageContainer || settings?.Azure_containerName || '',
     };
     cacheTime = now;
     return cachedConfig;

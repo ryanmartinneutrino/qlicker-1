@@ -5,10 +5,10 @@ const ImageSchema = new mongoose.Schema(
   {
     _id: { type: String, default: () => generateMeteorId() },
     url: { type: String, required: true },
-    key: { type: String, required: true },
+    key: { type: String, default: '' },
     UID: { type: String, required: true },
-    type: { type: String, required: true },
-    size: { type: Number, required: true },
+    type: { type: String, default: '' },
+    size: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now },
   },
   {

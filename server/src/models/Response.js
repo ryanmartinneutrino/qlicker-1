@@ -10,6 +10,7 @@ const ResponseSchema = new mongoose.Schema(
     answer: { type: mongoose.Schema.Types.Mixed, required: true },
     answerWysiwyg: { type: String, default: '' },
     correct: { type: Boolean },
+    mark: { type: Number },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
     editable: { type: Boolean, default: false },

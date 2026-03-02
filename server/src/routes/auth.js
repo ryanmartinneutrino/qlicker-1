@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
+import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 
 function getAttr(profile, key) {
@@ -72,8 +73,8 @@ export default async function authRoutes(app) {
       }
     }
 
-    // Check if user already exists
-    const existing = await User.findOne({ 'emails.address': normalizedEmail });
+    // Check if user already exists (case-insensitive for legacy DB compatibility)
+    const existing = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
     if (existing) {
       return reply.code(409).send({ error: 'Conflict', message: 'Email already registered' });
     }
@@ -133,7 +134,8 @@ export default async function authRoutes(app) {
     const { email, password } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
-    const user = await User.findOne({ 'emails.address': normalizedEmail });
+    // Case-insensitive lookup for legacy DB compatibility
+    const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
     if (!user) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
@@ -210,7 +212,7 @@ export default async function authRoutes(app) {
       const normalizedEmail = email.toLowerCase().trim();
 
       // Always return success to avoid user enumeration
-      const user = await User.findOne({ 'emails.address': normalizedEmail });
+      const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
       if (user) {
         const token = crypto.randomBytes(32).toString('hex');
         user.services.resetPassword = {
@@ -348,7 +350,7 @@ export default async function authRoutes(app) {
     const roleValue = getAttr(attrs, settings.SSO_roleIdentifier);
     const sessionIndex = profile.sessionIndex || '';
 
-    let user = await User.findOne({ 'emails.address': email });
+    let user = await User.findOne({ 'emails.address': emailRegex(email) });
 
     if (!user) {
       // New user via SSO

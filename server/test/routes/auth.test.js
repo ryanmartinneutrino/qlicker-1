@@ -211,6 +211,34 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.user.services).toBeUndefined();
     expect(body.user.profile).toBeDefined();
   });
+
+  it('finds legacy user with mixed-case email (case-insensitive lookup)', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    // Simulate a legacy user stored with mixed-case email
+    const User = (await import('../../src/models/User.js')).default;
+    const hashedPassword = await User.hashPassword('password123');
+    await User.create({
+      emails: [{ address: 'John.Doe@University.Edu', verified: true }],
+      services: { password: { bcrypt: hashedPassword } },
+      profile: { firstname: 'John', lastname: 'Doe', roles: ['student'] },
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: {
+        email: 'john.doe@university.edu',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.token).toBeDefined();
+    expect(body.user).toBeDefined();
+    expect(body.user.profile.firstname).toBe('John');
+  });
 });
 
 // ---------- POST /api/v1/auth/logout ----------
