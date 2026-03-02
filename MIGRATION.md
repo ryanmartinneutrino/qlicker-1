@@ -280,14 +280,14 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 | Legacy Collection | Fastify Model | Compatibility | Notes |
 |------------------|---------------|---------------|-------|
-| `users` | `User` | Partial | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Legacy also has `username` index/field usage, top-level `email` in some docs, and reset token path `services.password.reset.*` (current model uses `services.resetPassword.*`). New model adds `lastLogin` (optional in legacy data). |
+| `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `services.password.bcrypt`, `profile.roles`). Login uses case-insensitive email lookup via regex to handle legacy mixed-case emails. Legacy also has `username` index/field usage and reset token path `services.password.reset.*` (current model uses `services.resetPassword.*`). New model adds `lastLogin` (optional in legacy data). |
 | `courses` | `Course` | Partial | Main fields align. Legacy `groupCategories.groups` uses `groupNumber/groupName/students`; current model uses `name/members`, so direct shape mismatch exists. |
 | `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz` are additive and optional. |
 | `questions` | `Question` | Mostly aligned | Legacy fields align for session/course ownership, options, tags, and session options. New schema fields (`toleranceNumerical`, `correctNumerical`, `solution*`, `imagePath`) are additive. |
-| `responses` | `Response` | Partial | Legacy has `attempt`, `questionId`, `studentUserId`, `answer`, `createdAt`, and legacy grading field `mark`. Current model does not define `mark`, and instead has `correct`, `updatedAt`, `editable`, `answerWysiwyg`. |
+| `responses` | `Response` | ✅ Compatible | Legacy fields `attempt`, `questionId`, `studentUserId`, `answer`, `createdAt`, and `mark` are all in the model. New fields `correct`, `updatedAt`, `editable`, `answerWysiwyg` are optional with defaults. |
 | `grades` | `Grade` | Mostly aligned | Legacy marks and aggregate grade fields align with current schema; newer fields like `feedback` are additive defaults. |
-| `images` | `Image` | Mismatch | Legacy documents are shaped as `_id`, `url`, `UID`, and nested `image.url`. Current model requires `key`, `type`, and `size`, which are not present in legacy docs. |
-| `settings` | `Settings` | Mismatch | Legacy settings use different key names (`email`, `AWS_accessKey`, `AWS_secret`, `Azure_accountName`, etc.) and include extra keys (e.g., image limits/Jitsi fields). Current model expects `adminEmail`, `AWS_accessKeyId`, `AWS_secretAccessKey`, `Azure_storageAccount`, etc. |
+| `images` | `Image` | ✅ Compatible | Legacy documents (`_id`, `url`, `UID`) load without errors. `key`, `type`, and `size` are now optional with defaults (were previously `required`). |
+| `settings` | `Settings` | ✅ Compatible | Schema now includes both new and legacy field names (`email`/`adminEmail`, `AWS_accessKey`/`AWS_accessKeyId`, etc.). Schema uses `strict: false` to preserve any extra legacy fields (Jitsi, image limits) on save. Virtual getters resolve either field name. |
 | `meteor_accounts_loginServiceConfiguration` | none | Gap | Legacy collection exists (empty in this snapshot) but has no equivalent model yet. |
 
 ### Legacy Indexes Observed
@@ -318,19 +318,29 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
   - users with SSO identities (`services.sso.id`): `19,887`
   - users with mixed-case/non-lowercased stored emails: `8,081`
   - users with password hashes + mixed-case stored emails: `188` (`51` are password-only users without SSO fallback)
-- Confirmed compatibility gap in current login lookup:
-  - login route normalizes input to lowercase, then performs exact match on `emails.address`
-  - many legacy addresses are not normalized to lowercase
-  - result: those users are not found and receive `401 Invalid email or password` even if password is correct
-- Password hash format itself appears compatible (`$2a$`/`$2b$` bcrypt hashes are present and supported by current bcrypt verification), so the primary observed blocker is email normalization mismatch rather than Meteor hash decoding.
+- ~~Confirmed compatibility gap in current login lookup:~~ **FIXED** — all email lookups now use case-insensitive regex matching (`emailRegex()` utility in `server/src/utils/email.js`). This applies to login, register (duplicate check), forgot-password, SSO callback, and admin create-user routes.
+- Password hash format itself appears compatible (`$2a$`/`$2b$` bcrypt hashes are present and supported by current bcrypt verification).
+- **Client interceptor fix:** The API client (`client/src/api/client.js`) no longer intercepts 401 responses from `/auth/*` endpoints. Previously, a login failure (401) would trigger the token-refresh interceptor which would redirect to `/login` before the error message could be displayed, causing the error to "flash by" too quickly to read.
 
-### Important Follow-Up Code Updates (Not Done Here)
+### Legacy Compatibility Fixes Applied
 
-- Add migration/mapping logic for legacy `images` and `settings` shape differences before production cutover.
-- Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path.
+The following code changes were made to ensure the app works correctly with a restored legacy database:
+
+| Fix | Files Changed | Description |
+|-----|---------------|-------------|
+| Case-insensitive email lookup | `server/src/routes/auth.js`, `server/src/routes/users.js`, `server/src/utils/email.js` | All email lookups use `emailRegex()` for case-insensitive matching. Fixes login failure for legacy users with mixed-case emails (8,081 affected users). |
+| Client auth interceptor | `client/src/api/client.js` | 401 responses from `/auth/*` endpoints are no longer intercepted by the token-refresh logic. Login errors now display properly instead of flashing by. |
+| Image model compatibility | `server/src/models/Image.js` | `key`, `type`, and `size` changed from `required` to optional with defaults. Legacy images only have `_id`, `url`, `UID`. |
+| Settings model compatibility | `server/src/models/Settings.js` | Added legacy field names (`email`, `AWS_accessKey`, `AWS_secret`, `Azure_accountName`, `Azure_accountKey`, `Azure_containerName`). Added `strict: false` to preserve extra legacy fields. Added virtual getters that resolve either field name. |
+| Upload plugin compatibility | `server/src/plugins/upload.js` | Storage config resolution checks both new and legacy field names (e.g., `AWS_accessKeyId || AWS_accessKey`). |
+| Response model `mark` field | `server/src/models/Response.js` | Added `mark: { type: Number }` field present in legacy response documents for grading. |
+
+### Remaining Follow-Up Items
+
+- Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path (affects users with pending reset tokens from the old app).
 - Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.
 - Confirm whether `meteor_accounts_loginServiceConfiguration` should remain unsupported, be migrated, or be explicitly deprecated.
-- Update login/user lookup to handle legacy mixed-case emails (either case-insensitive lookup or a one-time email normalization migration).
+- Legacy `groupCategories.groups` shape mismatch (`groupNumber/groupName/students` vs `name/members`) needs migration logic or schema alignment before group features are implemented.
 
 ---
 
@@ -514,7 +524,7 @@ See [agents/AGENT_2_AUTH.md](agents/AGENT_2_AUTH.md)
 - [x] Profile update routes
 - [x] SAML SSO plugin (node-saml with encrypted logout handling)
 - [x] SSO routes (login, callback, metadata, logout)
-- [ ] Legacy user compatibility (Meteor password format)
+- [x] Legacy user compatibility (case-insensitive email lookup for mixed-case legacy emails)
 - [x] Auth middleware (role guards)
 
 ### Agent 3: Course Management
@@ -848,7 +858,7 @@ The following issues were identified during testing and have been resolved:
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
 | 7 - Frontend | Session editor, question editor/display, session lists on course pages, connection status, avatar fix | ✅ Phase 4 frontend done |
-| 8 - Testing | All route tests passing (92 tests: auth 19, courses 23, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
+| 8 - Testing | All route tests passing (93 tests: auth 20, courses 23, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
 
 ---
 
@@ -863,15 +873,15 @@ The following issues were identified during testing and have been resolved:
 
 ### Current Next Steps (Phase 5)
 
-Phase 4 is now complete — both backend and frontend work is done. All Comments.md issues have been resolved. The following should happen next:
+Phase 4 is now complete — both backend and frontend work is done. All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
 
-1. **Legacy DB Discovery:** Run the agent instructions in [AGENT_LEGACY_DB.md](AGENT_LEGACY_DB.md) to discover the legacy database structure and update seed scripts with restore-from-dump capability.
-2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
-3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
-4. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
-5. **Phase 6 Prep:** Grade calculation service (Agent 6)
-6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
-7. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
+1. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
+2. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+3. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
+4. **Phase 6 Prep:** Grade calculation service (Agent 6)
+5. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
+6. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
+7. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
 
 **Testable by human (all phases through Phase 4):**
 - Log in as professor → create a course → click course title to view
