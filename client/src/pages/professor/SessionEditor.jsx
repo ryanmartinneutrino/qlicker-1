@@ -15,6 +15,7 @@ import {
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
+import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 
 const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'secondary' };
 const STATUS_LABELS = {
@@ -51,6 +52,8 @@ export default function SessionEditor() {
   // Edit session fields
   const [editFields, setEditFields] = useState({ name: '', description: '' });
   const [savingSession, setSavingSession] = useState(false);
+  const [sessionSaveStatus, setSessionSaveStatus] = useState('idle');
+  const [sessionSaveError, setSessionSaveError] = useState('');
 
   // Quiz settings
   const [quiz, setQuiz] = useState(false);
@@ -118,11 +121,16 @@ export default function SessionEditor() {
   // Save session properties immediately as fields change
   const saveSessionPatch = async (updates) => {
     setSavingSession(true);
+    setSessionSaveStatus('saving');
+    setSessionSaveError('');
     try {
       const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
       setSession(data.session || data);
+      setSessionSaveStatus('success');
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
+      setSessionSaveStatus('error');
+      const message = err.response?.data?.message || 'Failed to update session.';
+      setSessionSaveError(`${message} Your last change was not recorded.`);
       fetchSession();
     } finally {
       setSavingSession(false);
@@ -246,9 +254,7 @@ export default function SessionEditor() {
       {/* Session Properties */}
       <Paper sx={{ p: 2.5, mb: 2 }}>
         <Typography variant="h6" gutterBottom>Session Settings</Typography>
-        <Typography variant="caption" color="text.secondary">
-          {savingSession ? 'Saving changes…' : 'Changes save automatically.'}
-        </Typography>
+        <AutoSaveStatus status={savingSession ? 'saving' : sessionSaveStatus} errorText={sessionSaveError} />
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
             label="Name" fullWidth value={editFields.name}

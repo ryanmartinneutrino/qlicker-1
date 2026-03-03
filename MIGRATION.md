@@ -764,6 +764,22 @@ The existing MongoDB database uses Meteor's conventions:
 - **Dark/light**: Plan for theme switching in the future
 - **Component inheritance**: Use MUI's `ThemeProvider` and `styled` components for consistent styling that propagates globally
 
+### UI Autosave Standard (Design Choice)
+
+- **Default behavior**: UI settings/forms should autosave by default. Add manual save buttons only for destructive flows, multi-step drafts, or explicit product requirements.
+- **Shared pattern required**: Use a common autosave status pattern instead of one-off messages/snackbars to keep behavior consistent and avoid spaghetti code.
+- **Canonical autosave state machine**:
+  - `idle`: `Changes save automatically.` (neutral text)
+  - `saving`: `Saving changes...` (neutral text)
+  - `success`: `Changes saved automatically.` (green/success text)
+  - `error`: `<backend message>. Your last change was not recorded.` (red/error text)
+- **Implementation rule**:
+  - Keep `saveStatus` + `saveError` state per autosave form/section.
+  - On trigger, set `saveStatus='saving'` and clear old error text.
+  - On successful backend response, set `saveStatus='success'`.
+  - On backend error/negative response, set `saveStatus='error'` and show the error text with the explicit "not recorded" warning.
+- **Reuse existing component**: Prefer shared `client/src/components/common/AutoSaveStatus.jsx` for display, and follow this same status contract for any new autosave surface.
+
 ### Documentation Standards
 
 - README.md: Setup instructions, quick start

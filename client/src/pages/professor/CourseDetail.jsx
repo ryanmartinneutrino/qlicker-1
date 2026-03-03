@@ -13,6 +13,7 @@ import {
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
+import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -74,6 +75,8 @@ export default function CourseDetail() {
   // Settings
   const [editFields, setEditFields] = useState({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
+  const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
 
   // Sessions
   const [sessions, setSessions] = useState([]);
@@ -201,13 +204,48 @@ export default function CourseDetail() {
   };
 
   // Settings actions
+  const markSettingAutoSaveInProgress = () => {
+    setSettingsAutoSaveStatus('saving');
+    setSettingsAutoSaveError('');
+  };
+
+  const markSettingAutoSaveError = (err, fallbackMessage) => {
+    setSettingsAutoSaveStatus('error');
+    const message = err.response?.data?.message || fallbackMessage;
+    setSettingsAutoSaveError(`${message} Your last change was not recorded.`);
+  };
+
   const handleToggleActive = async () => {
+    markSettingAutoSaveInProgress();
     try {
       await apiClient.patch(`/courses/${id}/active`, { inactive: !course.inactive });
       fetchCourse();
+      setSettingsAutoSaveStatus('success');
       setMsg({ severity: 'success', text: `Course ${course.inactive ? 'activated' : 'deactivated'}` });
-    } catch {
-      setMsg({ severity: 'error', text: 'Failed to toggle course status' });
+    } catch (err) {
+      markSettingAutoSaveError(err, 'Failed to update course setting.');
+    }
+  };
+
+  const handleToggleRequireVerified = async () => {
+    markSettingAutoSaveInProgress();
+    try {
+      await apiClient.patch(`/courses/${id}`, { requireVerified: !course.requireVerified });
+      fetchCourse();
+      setSettingsAutoSaveStatus('success');
+    } catch (err) {
+      markSettingAutoSaveError(err, 'Failed to update setting.');
+    }
+  };
+
+  const handleToggleAllowStudentQuestions = async () => {
+    markSettingAutoSaveInProgress();
+    try {
+      await apiClient.patch(`/courses/${id}`, { allowStudentQuestions: !course.allowStudentQuestions });
+      fetchCourse();
+      setSettingsAutoSaveStatus('success');
+    } catch (err) {
+      markSettingAutoSaveError(err, 'Failed to update setting.');
     }
   };
 
@@ -520,6 +558,7 @@ export default function CourseDetail() {
       {/* Settings Tab */}
       <TabPanel value={tab} index={4}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
           <FormControlLabel
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
             label={course.inactive ? 'Course is inactive' : 'Course is active'}
@@ -528,14 +567,7 @@ export default function CourseDetail() {
             control={
               <Switch
                 checked={!!course.requireVerified}
-                onChange={async () => {
-                  try {
-                    await apiClient.patch(`/courses/${id}`, { requireVerified: !course.requireVerified });
-                    fetchCourse();
-                  } catch {
-                    setMsg({ severity: 'error', text: 'Failed to update setting' });
-                  }
-                }}
+                onChange={handleToggleRequireVerified}
               />
             }
             label="Require verified email to enroll"
@@ -544,14 +576,7 @@ export default function CourseDetail() {
             control={
               <Switch
                 checked={!!course.allowStudentQuestions}
-                onChange={async () => {
-                  try {
-                    await apiClient.patch(`/courses/${id}`, { allowStudentQuestions: !course.allowStudentQuestions });
-                    fetchCourse();
-                  } catch {
-                    setMsg({ severity: 'error', text: 'Failed to update setting' });
-                  }
-                }}
+                onChange={handleToggleAllowStudentQuestions}
               />
             }
             label="Allow students to submit questions"

@@ -11,6 +11,7 @@ import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/date';
+import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -46,6 +47,7 @@ function SettingsTab() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
   const hasLoadedRef = useRef(false);
 
@@ -63,6 +65,7 @@ function SettingsTab() {
       });
     }).catch(() => {
       if (mounted) {
+        setSaveStatus('error');
         setSaveError('Failed to load settings');
       }
     }).finally(() => {
@@ -84,6 +87,7 @@ function SettingsTab() {
 
     const timer = setTimeout(async () => {
       setSaving(true);
+      setSaveStatus('saving');
       setSaveError('');
       try {
         const payload = {
@@ -94,8 +98,11 @@ function SettingsTab() {
             .filter(Boolean),
         };
         await apiClient.patch('/settings', payload);
-      } catch {
-        setSaveError('Failed to save settings');
+        setSaveStatus('success');
+      } catch (err) {
+        setSaveStatus('error');
+        const message = err.response?.data?.message || 'Failed to save settings.';
+        setSaveError(`${message} Your last change was not recorded.`);
       } finally {
         setSaving(false);
       }
@@ -108,9 +115,7 @@ function SettingsTab() {
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="caption" color="text.secondary">
-        {saving ? 'Saving changes…' : 'Changes save automatically.'}
-      </Typography>
+      <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControlLabel
         control={<Checkbox checked={settings.restrictDomain} onChange={(e) => setSettings((s) => ({ ...s, restrictDomain: e.target.checked }))} />}
         label="Restrict email domain"
@@ -131,7 +136,6 @@ function SettingsTab() {
         onChange={(e) => setSettings((s) => ({ ...s, adminEmail: e.target.value }))}
         fullWidth
       />
-      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }
@@ -369,6 +373,7 @@ function StorageTab() {
   const [azure, setAzure] = useState({ Azure_storageAccount: '', Azure_storageAccessKey: '', Azure_storageContainer: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
   const hasLoadedRef = useRef(false);
 
@@ -390,6 +395,7 @@ function StorageTab() {
       });
     }).catch(() => {
       if (mounted) {
+        setSaveStatus('error');
         setSaveError('Failed to load storage settings');
       }
     }).finally(() => {
@@ -411,14 +417,18 @@ function StorageTab() {
 
     const timer = setTimeout(async () => {
       setSaving(true);
+      setSaveStatus('saving');
       setSaveError('');
       try {
         const payload = { storageType };
         if (storageType === 's3') Object.assign(payload, s3);
         if (storageType === 'azure') Object.assign(payload, azure);
         await apiClient.patch('/settings', payload);
-      } catch {
-        setSaveError('Failed to save storage settings');
+        setSaveStatus('success');
+      } catch (err) {
+        setSaveStatus('error');
+        const message = err.response?.data?.message || 'Failed to save storage settings.';
+        setSaveError(`${message} Your last change was not recorded.`);
       } finally {
         setSaving(false);
       }
@@ -431,9 +441,7 @@ function StorageTab() {
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="caption" color="text.secondary">
-        {saving ? 'Saving changes…' : 'Changes save automatically.'}
-      </Typography>
+      <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControl fullWidth>
         <InputLabel>Storage Type</InputLabel>
         <Select value={storageType} label="Storage Type" onChange={(e) => setStorageType(e.target.value)}>
@@ -459,8 +467,6 @@ function StorageTab() {
           <TextField label="Storage Container" value={azure.Azure_storageContainer} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageContainer: e.target.value }))} fullWidth />
         </>
       )}
-
-      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }
@@ -472,6 +478,7 @@ function SSOTab() {
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
   const hasLoadedRef = useRef(false);
 
@@ -486,6 +493,7 @@ function SSOTab() {
       setSettings(next);
     }).catch(() => {
       if (mounted) {
+        setSaveStatus('error');
         setSaveError('Failed to load SSO settings');
       }
     }).finally(() => {
@@ -507,11 +515,15 @@ function SSOTab() {
 
     const timer = setTimeout(async () => {
       setSaving(true);
+      setSaveStatus('saving');
       setSaveError('');
       try {
         await apiClient.patch('/settings', settings);
-      } catch {
-        setSaveError('Failed to save SSO settings');
+        setSaveStatus('success');
+      } catch (err) {
+        setSaveStatus('error');
+        const message = err.response?.data?.message || 'Failed to save SSO settings.';
+        setSaveError(`${message} Your last change was not recorded.`);
       } finally {
         setSaving(false);
       }
@@ -524,9 +536,7 @@ function SSOTab() {
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Typography variant="caption" color="text.secondary">
-        {saving ? 'Saving changes…' : 'Changes save automatically.'}
-      </Typography>
+      <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       {SSO_FIELDS.map((f) =>
         f.type === 'checkbox' ? (
           <FormControlLabel
@@ -554,7 +564,6 @@ function SSOTab() {
           />
         )
       )}
-      {!!saveError && <Alert severity="error" onClose={() => setSaveError('')}>{saveError}</Alert>}
     </Box>
   );
 }
