@@ -59,6 +59,7 @@ export default function RichTextEditor({
           codeBlock: false,
           blockquote: false,
           horizontalRule: false,
+          underline: false,
         }),
         Underline,
         ResizableImage.configure({ allowBase64: false }),

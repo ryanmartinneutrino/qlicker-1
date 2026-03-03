@@ -1,4 +1,3 @@
-import katex from 'katex';
 import renderMathInElement from 'katex/contrib/auto-render';
 
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
@@ -165,6 +164,7 @@ export function renderKatexInElement(container) {
     throwOnError: false,
     strict: 'ignore',
     trust: true,
+    output: 'html',
     preProcess: math => normalizeLatexForKatex(math),
     delimiters: [
       { left: '$$', right: '$$', display: true },

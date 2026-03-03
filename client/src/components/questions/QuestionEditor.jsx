@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
-  Box, IconButton, FormControlLabel, Typography, Divider,
+  Box, IconButton, FormControlLabel, Typography, Divider, Paper,
   Checkbox, FormGroup, Alert,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
@@ -13,6 +15,7 @@ import {
   hasRichTextContent,
   normalizeStoredHtml,
   prepareRichTextInput,
+  renderKatexInElement,
 } from './richTextUtils';
 
 function normalizeOptions(opts) {
@@ -67,16 +70,39 @@ function buildQuestionPayload(form) {
   return payload;
 }
 
+function MathLivePreview({ html, fallback = '', emptyText = '(no content yet)' }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const prepared = prepareRichTextInput(html || '', fallback || '') || `<p>${emptyText}</p>`;
+    containerRef.current.innerHTML = prepared;
+    renderKatexInElement(containerRef.current);
+  }, [html, fallback, emptyText]);
+
+  return (
+    <Box
+      ref={containerRef}
+      sx={{
+        '& p': { my: 0.5 },
+        '& ul, & ol': { my: 0.5, pl: 3 },
+      }}
+    />
+  );
+}
+
 export default function QuestionEditor({
   open,
   onClose,
   onAutoSave,
   initial,
+  inline = false,
 }) {
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
   const [autosaveState, setAutosaveState] = useState('idle');
   const [autosaveError, setAutosaveError] = useState('');
+  const [closing, setClosing] = useState(false);
 
   const questionIdRef = useRef(null);
   const hydratingRef = useRef(false);
@@ -85,35 +111,53 @@ export default function QuestionEditor({
   const queuedSaveRef = useRef(null);
 
   const persistPayload = useCallback(async (payload, payloadHash) => {
-    if (saveInFlightRef.current) {
-      queuedSaveRef.current = { payload, payloadHash };
-      return;
-    }
-
-    saveInFlightRef.current = true;
-    setAutosaveState('saving');
-    setAutosaveError('');
-
-    try {
-      const savedQuestion = await onAutoSave(payload, questionIdRef.current);
-      if (savedQuestion?._id && savedQuestion._id !== questionIdRef.current) {
-        questionIdRef.current = savedQuestion._id;
-        setPersistedQuestionId(savedQuestion._id);
+    const runSave = async (nextPayload, nextHash) => {
+      if (saveInFlightRef.current) {
+        queuedSaveRef.current = { payload: nextPayload, payloadHash: nextHash };
+        return null;
       }
-      lastSavedHashRef.current = payloadHash;
-      setAutosaveState('saved');
-    } catch (err) {
-      setAutosaveState('error');
-      setAutosaveError(err.response?.data?.message || 'Autosave failed');
-    } finally {
-      saveInFlightRef.current = false;
-      if (queuedSaveRef.current) {
-        const queued = queuedSaveRef.current;
-        queuedSaveRef.current = null;
-        persistPayload(queued.payload, queued.payloadHash);
+
+      saveInFlightRef.current = true;
+      setAutosaveState('saving');
+      setAutosaveError('');
+
+      try {
+        const savedQuestion = await onAutoSave(nextPayload, questionIdRef.current);
+        if (savedQuestion?._id && savedQuestion._id !== questionIdRef.current) {
+          questionIdRef.current = savedQuestion._id;
+          setPersistedQuestionId(savedQuestion._id);
+        }
+        lastSavedHashRef.current = nextHash;
+        setAutosaveState('saved');
+        return savedQuestion;
+      } catch (err) {
+        setAutosaveState('error');
+        setAutosaveError(err.response?.data?.message || 'Autosave failed');
+        throw err;
+      } finally {
+        saveInFlightRef.current = false;
+        if (queuedSaveRef.current) {
+          const queued = queuedSaveRef.current;
+          queuedSaveRef.current = null;
+          try {
+            await runSave(queued.payload, queued.payloadHash);
+          } catch {
+            // Keep latest error surfaced to the user; queue processing continues.
+          }
+        }
       }
-    }
+    };
+
+    return runSave(payload, payloadHash);
   }, [onAutoSave]);
+
+  const waitForSaveDrain = useCallback(async () => {
+    while (saveInFlightRef.current || queuedSaveRef.current) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 40);
+      });
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -152,7 +196,7 @@ export default function QuestionEditor({
 
   useEffect(() => {
     if (!open || hydratingRef.current) return;
-    if (!hasRichTextContent(form.content)) return;
+    if (!hasRichTextContent(form.content) && !questionIdRef.current) return;
 
     const payload = buildQuestionPayload(form);
     const payloadHash = JSON.stringify(payload);
@@ -164,6 +208,8 @@ export default function QuestionEditor({
 
     return () => clearTimeout(autosaveTimer);
   }, [open, form, persistPayload]);
+
+  const previewPayload = useMemo(() => buildQuestionPayload(form), [form]);
 
   // When switching to TF, reset options to True/False pair
   const handleTypeChange = (type) => {
@@ -206,10 +252,31 @@ export default function QuestionEditor({
         ? 'Autosave enabled'
         : 'Start typing to create question';
 
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{persistedQuestionId ? 'Edit Question' : 'New Question'}</DialogTitle>
-      <DialogContent dividers>
+  const handleCloseRequest = useCallback(async () => {
+    if (closing) return;
+
+    setClosing(true);
+    try {
+      const shouldAttemptSave = hasRichTextContent(form.content) || !!questionIdRef.current;
+      if (shouldAttemptSave) {
+        const payload = buildQuestionPayload(form);
+        const payloadHash = JSON.stringify(payload);
+        if (payloadHash !== lastSavedHashRef.current || saveInFlightRef.current || queuedSaveRef.current) {
+          await persistPayload(payload, payloadHash);
+        }
+        await waitForSaveDrain();
+      }
+
+      onClose?.({ persistedQuestionId: questionIdRef.current });
+    } catch {
+      // Keep editor open on save failure so user can retry.
+    } finally {
+      setClosing(false);
+    }
+  }, [closing, form, onClose, persistPayload, waitForSaveDrain]);
+
+  const editorFields = (
+    <>
         <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
           <InputLabel>Question Type</InputLabel>
           <Select
@@ -323,20 +390,106 @@ export default function QuestionEditor({
           placeholder="Add an optional explanation..."
           minHeight={96}
         />
-      </DialogContent>
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+          Live Preview
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Math delimiters stay visible while typing; rendered KaTeX is shown below.
+        </Typography>
+        <Paper variant="outlined" sx={{ mt: 1, p: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Question
+          </Typography>
+          <MathLivePreview
+            html={previewPayload.content}
+            fallback={previewPayload.plainText}
+            emptyText="(no question text yet)"
+          />
 
-      <DialogActions sx={{ justifyContent: 'space-between', px: 3 }}>
-        <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center' }}>
-          {autosaveError ? (
-            <Alert severity="error" sx={{ py: 0 }}>
-              {autosaveError}
-            </Alert>
-          ) : (
-            <Typography variant="caption" color="text.secondary">{autosaveLabel}</Typography>
+          {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)
+            && (previewPayload.options || []).length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                {(previewPayload.options || []).map((option, optionIdx) => (
+                  <Box key={`preview-option-${optionIdx}`} sx={{ mb: 0.75 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {String.fromCharCode(65 + optionIdx)}.
+                    </Typography>
+                    <MathLivePreview
+                      html={option.content}
+                      fallback={option.plainText || option.answer}
+                      emptyText={`(empty option ${optionIdx + 1})`}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+          {form.type === QUESTION_TYPES.NUMERICAL && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+              Correct: {previewPayload.correctNumerical ?? 0} (± {previewPayload.toleranceNumerical ?? 0})
+            </Typography>
           )}
-        </Box>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
+
+          {previewPayload.solution ? (
+            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="caption" color="text.secondary">
+                Solution
+              </Typography>
+              <MathLivePreview
+                html={previewPayload.solution}
+                fallback={previewPayload.solution_plainText}
+                emptyText=""
+              />
+            </Box>
+          ) : null}
+        </Paper>
+    </>
+  );
+
+  const footer = (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', px: inline ? 0 : 3, py: inline ? 0 : 1, alignItems: 'center' }}>
+      <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center' }}>
+        {autosaveError ? (
+          <Alert severity="error" sx={{ py: 0 }}>
+            {autosaveError}
+          </Alert>
+        ) : (
+          <Typography variant="caption" color="text.secondary">{autosaveLabel}</Typography>
+        )}
+      </Box>
+      <Button onClick={handleCloseRequest} disabled={closing}>
+        {closing ? 'Closing…' : 'Close'}
+      </Button>
+    </Box>
+  );
+
+  if (inline) {
+    return (
+      <Box>
+        {editorFields}
+        <Box sx={{ mt: 1.5 }}>{footer}</Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      maxWidth="md"
+      fullWidth
+      onClose={(_event, reason) => {
+        if (reason === 'backdropClick') return;
+        handleCloseRequest();
+      }}
+    >
+      <DialogTitle>{persistedQuestionId ? 'Edit Question' : 'New Question'}</DialogTitle>
+      <DialogContent dividers>
+        <Paper variant="outlined" sx={{ border: 'none', boxShadow: 'none' }}>
+          {editorFields}
+        </Paper>
+      </DialogContent>
+      <DialogActions>{footer}</DialogActions>
     </Dialog>
   );
 }
