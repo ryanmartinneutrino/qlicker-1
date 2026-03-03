@@ -3,7 +3,7 @@ import { useLocation, useParams, useNavigate, useSearchParams } from 'react-rout
 import {
   Box, Typography, Button, TextField, Paper, Chip,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-  Alert, Snackbar, Switch, FormControlLabel, Divider, CircularProgress,
+  Alert, Snackbar, Switch, FormControlLabel, CircularProgress,
   Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import {
@@ -71,9 +71,7 @@ export default function SessionEditor() {
   const [confirmGoLiveOpen, setConfirmGoLiveOpen] = useState(false);
 
   // Question editor
-  const [qEditorOpen, setQEditorOpen] = useState(false);
-  const [editingQuestion, setEditingQuestion] = useState(null);
-  const [savingQuestion, setSavingQuestion] = useState(false);
+  const [inlineEditor, setInlineEditor] = useState(null);
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
@@ -185,26 +183,115 @@ export default function SessionEditor() {
     }
   };
 
-  // Create or update question
-  const handleSaveQuestion = async (payload) => {
-    setSavingQuestion(true);
-    try {
-      if (editingQuestion) {
-        await apiClient.patch(`/questions/${editingQuestion._id}`, payload);
-        setMsg({ severity: 'success', text: 'Question updated' });
-      } else {
-        const { data } = await apiClient.post('/questions', { ...payload, sessionId, courseId });
-        const newQ = data.question || data;
-        await apiClient.post(`/sessions/${sessionId}/questions`, { questionId: newQ._id });
-        setMsg({ severity: 'success', text: 'Question added' });
+  const upsertQuestionLocally = useCallback((savedQuestion, orderedIds = null) => {
+    setQuestions((prev) => {
+      const existingIdx = prev.findIndex(q => q._id === savedQuestion._id);
+      const mergedQuestion = existingIdx === -1 ? savedQuestion : { ...prev[existingIdx], ...savedQuestion };
+
+      let next = existingIdx === -1
+        ? [...prev, mergedQuestion]
+        : prev.map((q, idx) => (idx === existingIdx ? mergedQuestion : q));
+
+      if (Array.isArray(orderedIds)) {
+        const byId = new Map(next.map(q => [q._id, q]));
+        next = orderedIds.map((id) => byId.get(id)).filter(Boolean);
       }
-      setQEditorOpen(false);
-      setEditingQuestion(null);
-      fetchSession();
+
+      return next;
+    });
+
+    setSession((prev) => {
+      if (!prev) return prev;
+
+      if (Array.isArray(orderedIds)) {
+        return { ...prev, questions: orderedIds };
+      }
+
+      const ids = prev.questions || [];
+      if (ids.includes(savedQuestion._id)) return prev;
+      return { ...prev, questions: [...ids, savedQuestion._id] };
+    });
+  }, []);
+
+  const applyQuestionOrderLocally = useCallback((orderedIds) => {
+    setQuestions((prev) => {
+      const byId = new Map(prev.map(q => [q._id, q]));
+      return orderedIds.map((id) => byId.get(id)).filter(Boolean);
+    });
+    setSession((prev) => (prev ? { ...prev, questions: orderedIds } : prev));
+  }, []);
+
+  const openInsertEditorAt = (index) => {
+    if (inlineEditor) {
+      setMsg({ severity: 'info', text: 'Close the current question editor before opening another.' });
+      return;
+    }
+    setInlineEditor({ mode: 'insert', index, key: Date.now() });
+  };
+
+  const openEditEditor = (questionId) => {
+    if (inlineEditor) {
+      if (inlineEditor.mode === 'edit' && inlineEditor.questionId === questionId) return;
+      setMsg({ severity: 'info', text: 'Close the current question editor before opening another.' });
+      return;
+    }
+    setInlineEditor({ mode: 'edit', questionId, key: Date.now() });
+  };
+
+  const shiftInsertEditor = (direction) => {
+    setInlineEditor((prev) => {
+      if (!prev || prev.mode !== 'insert') return prev;
+      const nextIndex = Math.max(0, Math.min(questions.length, prev.index + direction));
+      if (nextIndex === prev.index) return prev;
+      return { ...prev, index: nextIndex };
+    });
+  };
+
+  const closeInlineEditor = async ({ persistedQuestionId } = {}) => {
+    setInlineEditor(null);
+
+    if (persistedQuestionId) {
+      try {
+        const { data } = await apiClient.get(`/questions/${persistedQuestionId}`);
+        const refreshed = data.question || data;
+        upsertQuestionLocally(refreshed);
+      } catch {
+        // Keep local state if refresh fails.
+      }
+    }
+  };
+
+  const handleAutoSaveQuestion = async (payload, questionId) => {
+    try {
+      if (questionId) {
+        const { data } = await apiClient.patch(`/questions/${questionId}`, payload);
+        const updated = data.question || data;
+        upsertQuestionLocally(updated);
+        return updated;
+      }
+
+      const insertIndex = inlineEditor?.mode === 'insert' ? inlineEditor.index : questions.length;
+      const { data } = await apiClient.post('/questions', { ...payload, sessionId, courseId });
+      const created = data.question || data;
+      await apiClient.post(`/sessions/${sessionId}/questions`, { questionId: created._id });
+
+      const currentIds = (session?.questions || questions.map(q => q._id)).filter((id) => id !== created._id);
+      const orderedIds = [...currentIds];
+      const clampedIndex = Math.max(0, Math.min(insertIndex, orderedIds.length));
+      orderedIds.splice(clampedIndex, 0, created._id);
+
+      await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
+      upsertQuestionLocally(created, orderedIds);
+
+      setInlineEditor((prev) => {
+        if (!prev || prev.mode !== 'insert') return prev;
+        return { mode: 'edit', questionId: created._id, key: prev.key };
+      });
+
+      return created;
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to save question' });
-    } finally {
-      setSavingQuestion(false);
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to auto-save question' });
+      throw err;
     }
   };
 
@@ -213,6 +300,11 @@ export default function SessionEditor() {
     try {
       await apiClient.delete(`/sessions/${sessionId}/questions/${qId}`);
       await apiClient.delete(`/questions/${qId}`);
+      setInlineEditor((prev) => {
+        if (!prev) return prev;
+        if (prev.mode === 'edit' && prev.questionId === qId) return null;
+        return prev;
+      });
       setDeleteQTarget(null);
       fetchSession();
       setMsg({ severity: 'success', text: 'Question deleted' });
@@ -223,14 +315,17 @@ export default function SessionEditor() {
 
   // Move question (reorder)
   const handleMove = async (idx, direction) => {
-    const ids = (session.questions || []).slice();
+    const ids = questions.map(q => q._id);
     const target = idx + direction;
     if (target < 0 || target >= ids.length) return;
-    [ids[idx], ids[target]] = [ids[target], ids[idx]];
+    const orderedIds = ids.slice();
+    [orderedIds[idx], orderedIds[target]] = [orderedIds[target], orderedIds[idx]];
+
+    applyQuestionOrderLocally(orderedIds);
     try {
-      await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: ids });
-      fetchSession();
+      await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
     } catch {
+      fetchSession();
       setMsg({ severity: 'error', text: 'Failed to reorder questions' });
     }
   };
@@ -238,6 +333,73 @@ export default function SessionEditor() {
   const toggleQuestionExpanded = (questionId) => {
     setExpandedQuestions((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
   };
+
+  const editingQuestionId = inlineEditor?.mode === 'edit' ? inlineEditor.questionId : null;
+  const insertingAtIndex = inlineEditor?.mode === 'insert' ? inlineEditor.index : -1;
+
+  const renderInlineEditorCard = ({ key, index, initialQuestion = null }) => (
+    <Card key={key} variant="outlined" sx={{ mb: 1.5 }}>
+      <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', '&:last-child': { pb: 2 } }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Tooltip title={initialQuestion ? 'Move up' : 'Move insertion up'}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={index === 0}
+                onClick={() => {
+                  if (initialQuestion) handleMove(index, -1);
+                  else shiftInsertEditor(-1);
+                }}
+              >
+                <UpIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title={initialQuestion ? 'Move down' : 'Move insertion down'}>
+            <span>
+              <IconButton
+                size="small"
+                disabled={index >= questions.length - (initialQuestion ? 1 : 0)}
+                onClick={() => {
+                  if (initialQuestion) handleMove(index, 1);
+                  else shiftInsertEditor(1);
+                }}
+              >
+                <DownIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
+
+        <Box sx={{ minWidth: 28, pt: 0.75 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            {index + 1}.
+          </Typography>
+        </Box>
+
+        <Box sx={{ flexGrow: 1 }}>
+          <QuestionEditor
+            key={`inline-editor-${inlineEditor?.key}-${initialQuestion?._id || 'new'}`}
+            inline
+            open
+            onClose={closeInlineEditor}
+            onAutoSave={handleAutoSaveQuestion}
+            initial={initialQuestion}
+          />
+        </Box>
+
+        {initialQuestion ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => setDeleteQTarget(initialQuestion)}>
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">Session not found</Alert></Box>;
@@ -396,106 +558,124 @@ export default function SessionEditor() {
 
       {/* Questions */}
       <Paper sx={{ p: 2.5 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>Questions ({questions.length})</Typography>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingQuestion(null); setQEditorOpen(true); }}>
-            Add Question
-          </Button>
-        </Box>
+        <Typography variant="h6" sx={{ mb: 2 }}>Questions ({questions.length})</Typography>
 
         {questions.length === 0 && (
-          <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            No questions yet. Click &quot;Add Question&quot; to get started.
+          <Typography color="text.secondary" sx={{ pb: 1.5, textAlign: 'center' }}>
+            No questions yet. Use the button below to add one.
           </Typography>
         )}
 
-        {questions.map((q, idx) => (
-          <Card key={q._id} variant="outlined" sx={{ mb: 1.5 }}>
-            <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', '&:last-child': { pb: 2 } }}>
-              {/* Move buttons */}
-              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                <Tooltip title="Move up">
-                  <span>
-                    <IconButton size="small" disabled={idx === 0} onClick={() => handleMove(idx, -1)}>
-                      <UpIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-                <Tooltip title="Move down">
-                  <span>
-                    <IconButton size="small" disabled={idx === questions.length - 1} onClick={() => handleMove(idx, 1)}>
-                      <DownIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              </Box>
+        {[...Array(questions.length + 1).keys()].map((slotIdx) => {
+          const slotKey = `slot-${slotIdx}`;
+          const currentQuestion = questions[slotIdx];
 
-              {/* Question number */}
-              <Box sx={{ minWidth: 28, pt: 0.75 }}>
-                <Typography variant="subtitle2" color="text.secondary">
-                  {idx + 1}.
-                </Typography>
-              </Box>
-
-              {/* Question content */}
-              <Box sx={{ flexGrow: 1 }}>
-                <Box
-                  sx={{
-                    maxHeight: expandedQuestions[q._id] ? 'none' : 120,
-                    overflow: 'hidden',
-                    position: 'relative',
-                  }}
-                >
-                  <QuestionDisplay question={q} />
-                  {!expandedQuestions[q._id] && (
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 36,
-                        background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1))',
-                      }}
-                    />
-                  )}
+          return (
+            <Box key={slotKey}>
+              {insertingAtIndex === slotIdx ? (
+                renderInlineEditorCard({
+                  key: `insert-editor-${inlineEditor?.key}-${slotIdx}`,
+                  index: slotIdx,
+                  initialQuestion: null,
+                })
+              ) : (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => openInsertEditorAt(slotIdx)}
+                  >
+                    Add Question
+                  </Button>
                 </Box>
-                <Button
-                  size="small"
-                  endIcon={expandedQuestions[q._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                  onClick={() => toggleQuestionExpanded(q._id)}
-                  sx={{ mt: 0.5 }}
-                >
-                  {expandedQuestions[q._id] ? 'Show less' : 'Show more'}
-                </Button>
-              </Box>
+              )}
 
-              {/* Action buttons */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                <Tooltip title="Edit">
-                  <IconButton size="small" onClick={() => { setEditingQuestion(q); setQEditorOpen(true); }}>
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Delete">
-                  <IconButton size="small" color="error" onClick={() => setDeleteQTarget(q)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </CardContent>
-          </Card>
-        ))}
+              {currentQuestion ? (
+                editingQuestionId === currentQuestion._id ? (
+                  renderInlineEditorCard({
+                    key: `edit-editor-${currentQuestion._id}-${inlineEditor?.key}`,
+                    index: slotIdx,
+                    initialQuestion: currentQuestion,
+                  })
+                ) : (
+                  <Card key={currentQuestion._id} variant="outlined" sx={{ mb: 1.5 }}>
+                    <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', '&:last-child': { pb: 2 } }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Tooltip title="Move up">
+                          <span>
+                            <IconButton size="small" disabled={slotIdx === 0} onClick={() => handleMove(slotIdx, -1)}>
+                              <UpIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip title="Move down">
+                          <span>
+                            <IconButton size="small" disabled={slotIdx === questions.length - 1} onClick={() => handleMove(slotIdx, 1)}>
+                              <DownIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Box>
+
+                      <Box sx={{ minWidth: 28, pt: 0.75 }}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          {slotIdx + 1}.
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Box
+                          sx={{
+                            maxHeight: expandedQuestions[currentQuestion._id] ? 'none' : 120,
+                            overflow: 'hidden',
+                            position: 'relative',
+                          }}
+                        >
+                          <QuestionDisplay question={currentQuestion} />
+                          {!expandedQuestions[currentQuestion._id] && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                height: 36,
+                                background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1))',
+                              }}
+                            />
+                          )}
+                        </Box>
+                        <Button
+                          size="small"
+                          endIcon={expandedQuestions[currentQuestion._id] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          onClick={() => toggleQuestionExpanded(currentQuestion._id)}
+                          sx={{ mt: 0.5 }}
+                        >
+                          {expandedQuestions[currentQuestion._id] ? 'Show less' : 'Show more'}
+                        </Button>
+                      </Box>
+
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Tooltip title="Edit">
+                          <IconButton size="small" onClick={() => openEditEditor(currentQuestion._id)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton size="small" color="error" onClick={() => setDeleteQTarget(currentQuestion)}>
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                )
+              ) : null}
+            </Box>
+          );
+        })}
       </Paper>
-
-      {/* Question Editor Dialog */}
-      <QuestionEditor
-        open={qEditorOpen}
-        onClose={() => { setQEditorOpen(false); setEditingQuestion(null); }}
-        onSave={handleSaveQuestion}
-        initial={editingQuestion}
-        saving={savingQuestion}
-      />
 
       {/* Delete Session Confirmation */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>

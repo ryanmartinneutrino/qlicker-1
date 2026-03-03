@@ -1,16 +1,29 @@
-import { useState, useEffect } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
-  Box, IconButton, Switch, FormControlLabel, Typography, Divider,
-  Checkbox, FormGroup,
+  Box, IconButton, FormControlLabel, Typography, Divider, Paper,
+  Checkbox, FormGroup, Alert,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { TYPE_LABELS, QUESTION_TYPES, normalizeQuestionType } from './constants';
+import RichTextEditor from './RichTextEditor';
+import {
+  extractPlainTextFromHtml,
+  hasRichTextContent,
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from './richTextUtils';
 
 function normalizeOptions(opts) {
   if (!opts || !opts.length) return [{ content: '', correct: false }, { content: '', correct: false }];
-  return opts.map(o => ({ content: o.content || o.answer || '', correct: !!o.correct }));
+  return opts.map((o) => ({
+    content: prepareRichTextInput(o.content || o.answer || '', o.plainText || ''),
+    correct: !!o.correct,
+  }));
 }
 
 const emptyForm = () => ({
@@ -23,26 +36,180 @@ const emptyForm = () => ({
   points: 1,
 });
 
-export default function QuestionEditor({ open, onClose, onSave, initial, saving }) {
-  const [form, setForm] = useState(emptyForm());
+function buildQuestionPayload(form) {
+  const content = normalizeStoredHtml(form.content);
+  const solution = normalizeStoredHtml(form.solution);
+  const payload = {
+    type: form.type,
+    content,
+    plainText: extractPlainTextFromHtml(content),
+    solution: solution || undefined,
+    solution_plainText: solution ? extractPlainTextFromHtml(solution) : undefined,
+    sessionOptions: { points: Number(form.points) || 1 },
+  };
+
+  if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)) {
+    payload.options = form.options.map((o) => {
+      const optionHtml = normalizeStoredHtml(o.content);
+      const optionPlainText = extractPlainTextFromHtml(optionHtml);
+      return {
+        content: optionHtml,
+        plainText: optionPlainText,
+        answer: optionPlainText,
+        correct: o.correct,
+        wysiwyg: true,
+      };
+    });
+  }
+
+  if (form.type === QUESTION_TYPES.NUMERICAL) {
+    payload.correctNumerical = Number(form.correctNumerical) || 0;
+    payload.toleranceNumerical = Number(form.toleranceNumerical) || 0;
+  }
+
+  return payload;
+}
+
+function MathLivePreview({ html, fallback = '', emptyText = '(no content yet)' }) {
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      if (initial) {
-        setForm({
-          type: normalizeQuestionType(initial),
-          content: initial.content || '',
-          options: normalizeOptions(initial.options),
-          correctNumerical: initial.correctNumerical ?? '',
-          toleranceNumerical: initial.toleranceNumerical ?? '',
-          solution: initial.solution || '',
-          points: initial.sessionOptions?.points ?? 1,
-        });
-      } else {
-        setForm(emptyForm());
+    if (!containerRef.current) return;
+    const prepared = prepareRichTextInput(html || '', fallback || '') || `<p>${emptyText}</p>`;
+    containerRef.current.innerHTML = prepared;
+    renderKatexInElement(containerRef.current);
+  }, [html, fallback, emptyText]);
+
+  return (
+    <Box
+      ref={containerRef}
+      sx={{
+        '& p': { my: 0.5 },
+        '& ul, & ol': { my: 0.5, pl: 3 },
+      }}
+    />
+  );
+}
+
+export default function QuestionEditor({
+  open,
+  onClose,
+  onAutoSave,
+  initial,
+  inline = false,
+}) {
+  const [form, setForm] = useState(emptyForm());
+  const [persistedQuestionId, setPersistedQuestionId] = useState(null);
+  const [autosaveState, setAutosaveState] = useState('idle');
+  const [autosaveError, setAutosaveError] = useState('');
+  const [closing, setClosing] = useState(false);
+
+  const questionIdRef = useRef(null);
+  const hydratingRef = useRef(false);
+  const lastSavedHashRef = useRef('');
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef(null);
+
+  const persistPayload = useCallback(async (payload, payloadHash) => {
+    const runSave = async (nextPayload, nextHash) => {
+      if (saveInFlightRef.current) {
+        queuedSaveRef.current = { payload: nextPayload, payloadHash: nextHash };
+        return null;
       }
+
+      saveInFlightRef.current = true;
+      setAutosaveState('saving');
+      setAutosaveError('');
+
+      try {
+        const savedQuestion = await onAutoSave(nextPayload, questionIdRef.current);
+        if (savedQuestion?._id && savedQuestion._id !== questionIdRef.current) {
+          questionIdRef.current = savedQuestion._id;
+          setPersistedQuestionId(savedQuestion._id);
+        }
+        lastSavedHashRef.current = nextHash;
+        setAutosaveState('saved');
+        return savedQuestion;
+      } catch (err) {
+        setAutosaveState('error');
+        setAutosaveError(err.response?.data?.message || 'Autosave failed');
+        throw err;
+      } finally {
+        saveInFlightRef.current = false;
+        if (queuedSaveRef.current) {
+          const queued = queuedSaveRef.current;
+          queuedSaveRef.current = null;
+          try {
+            await runSave(queued.payload, queued.payloadHash);
+          } catch {
+            // Keep latest error surfaced to the user; queue processing continues.
+          }
+        }
+      }
+    };
+
+    return runSave(payload, payloadHash);
+  }, [onAutoSave]);
+
+  const waitForSaveDrain = useCallback(async () => {
+    while (saveInFlightRef.current || queuedSaveRef.current) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 40);
+      });
     }
-  }, [open, initial]);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const nextForm = initial
+      ? {
+        type: normalizeQuestionType(initial),
+        content: prepareRichTextInput(initial.content || '', initial.plainText || ''),
+        options: normalizeOptions(initial.options),
+        correctNumerical: initial.correctNumerical ?? '',
+        toleranceNumerical: initial.toleranceNumerical ?? '',
+        solution: prepareRichTextInput(initial.solution || '', initial.solution_plainText || ''),
+        points: initial.sessionOptions?.points ?? 1,
+      }
+      : emptyForm();
+
+    hydratingRef.current = true;
+    setForm(nextForm);
+    setAutosaveState('idle');
+    setAutosaveError('');
+    saveInFlightRef.current = false;
+    queuedSaveRef.current = null;
+
+    const nextId = initial?._id || null;
+    setPersistedQuestionId(nextId);
+    questionIdRef.current = nextId;
+
+    lastSavedHashRef.current = nextId ? JSON.stringify(buildQuestionPayload(nextForm)) : '';
+
+    const hydrationTimer = setTimeout(() => {
+      hydratingRef.current = false;
+    }, 0);
+
+    return () => clearTimeout(hydrationTimer);
+  }, [open, initial?._id]);
+
+  useEffect(() => {
+    if (!open || hydratingRef.current) return;
+    if (!hasRichTextContent(form.content) && !questionIdRef.current) return;
+
+    const payload = buildQuestionPayload(form);
+    const payloadHash = JSON.stringify(payload);
+    if (payloadHash === lastSavedHashRef.current) return;
+
+    const autosaveTimer = setTimeout(() => {
+      persistPayload(payload, payloadHash);
+    }, 700);
+
+    return () => clearTimeout(autosaveTimer);
+  }, [open, form, persistPayload]);
+
+  const previewPayload = useMemo(() => buildQuestionPayload(form), [form]);
 
   // When switching to TF, reset options to True/False pair
   const handleTypeChange = (type) => {
@@ -53,50 +220,63 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
       update.options = [];
     } else if (type === QUESTION_TYPES.NUMERICAL) {
       update.options = [];
-    } else if (form.type === QUESTION_TYPES.TRUE_FALSE || form.type === QUESTION_TYPES.SHORT_ANSWER || form.type === QUESTION_TYPES.NUMERICAL) {
-      // Switching from SA/TF/NU to MC/MS — provide two blank options
+    } else if (
+      form.type === QUESTION_TYPES.TRUE_FALSE
+      || form.type === QUESTION_TYPES.SHORT_ANSWER
+      || form.type === QUESTION_TYPES.NUMERICAL
+    ) {
       update.options = [{ content: '', correct: false }, { content: '', correct: false }];
     }
     setForm(update);
   };
 
   const setOption = (idx, field, value) => {
-    const opts = [...form.options];
-    opts[idx] = { ...opts[idx], [field]: value };
-    // For MC/TF: only one correct allowed
-    if (field === 'correct' && value && (form.type === QUESTION_TYPES.MULTIPLE_CHOICE || form.type === QUESTION_TYPES.TRUE_FALSE)) {
-      opts.forEach((o, i) => { if (i !== idx) o.correct = false; });
-    }
-    setForm({ ...form, options: opts });
+    setForm((prev) => {
+      const opts = [...prev.options];
+      opts[idx] = { ...opts[idx], [field]: value };
+      if (field === 'correct' && value && (prev.type === QUESTION_TYPES.MULTIPLE_CHOICE || prev.type === QUESTION_TYPES.TRUE_FALSE)) {
+        opts.forEach((o, i) => { if (i !== idx) o.correct = false; });
+      }
+      return { ...prev, options: opts };
+    });
   };
 
-  const addOption = () => setForm({ ...form, options: [...form.options, { content: '', correct: false }] });
-  const removeOption = (idx) => setForm({ ...form, options: form.options.filter((_, i) => i !== idx) });
+  const addOption = () => setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
+  const removeOption = (idx) => setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
 
-  const handleSubmit = () => {
-    const payload = {
-      type: form.type,
-      content: form.content,
-      plainText: form.content,
-      solution: form.solution || undefined,
-      sessionOptions: { points: Number(form.points) || 1 },
-    };
-    if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)) {
-      payload.options = form.options.map(o => ({ content: o.content, correct: o.correct }));
+  const autosaveLabel = autosaveState === 'saving'
+    ? 'Saving...'
+    : autosaveState === 'saved'
+      ? 'All changes saved'
+      : persistedQuestionId
+        ? 'Autosave enabled'
+        : 'Start typing to create question';
+
+  const handleCloseRequest = useCallback(async () => {
+    if (closing) return;
+
+    setClosing(true);
+    try {
+      const shouldAttemptSave = hasRichTextContent(form.content) || !!questionIdRef.current;
+      if (shouldAttemptSave) {
+        const payload = buildQuestionPayload(form);
+        const payloadHash = JSON.stringify(payload);
+        if (payloadHash !== lastSavedHashRef.current || saveInFlightRef.current || queuedSaveRef.current) {
+          await persistPayload(payload, payloadHash);
+        }
+        await waitForSaveDrain();
+      }
+
+      onClose?.({ persistedQuestionId: questionIdRef.current });
+    } catch {
+      // Keep editor open on save failure so user can retry.
+    } finally {
+      setClosing(false);
     }
-    if (form.type === QUESTION_TYPES.NUMERICAL) {
-      payload.correctNumerical = Number(form.correctNumerical) || 0;
-      payload.toleranceNumerical = Number(form.toleranceNumerical) || 0;
-    }
-    onSave(payload);
-  };
+  }, [closing, form, onClose, persistPayload, waitForSaveDrain]);
 
-  const isValid = form.content.trim().length > 0;
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{initial ? 'Edit Question' : 'New Question'}</DialogTitle>
-      <DialogContent dividers>
+  const editorFields = (
+    <>
         <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
           <InputLabel>Question Type</InputLabel>
           <Select
@@ -110,36 +290,40 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
           </Select>
         </FormControl>
 
-        <TextField
-          label="Question Text"
-          multiline minRows={2}
-          fullWidth
-          value={form.content}
-          onChange={e => setForm({ ...form, content: e.target.value })}
-          sx={{ mb: 2 }}
-        />
+        <Box sx={{ mb: 2 }}>
+          <RichTextEditor
+            label="Question Text"
+            value={form.content}
+            onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
+            placeholder="Write the question here..."
+            minHeight={110}
+            showTip
+          />
+        </Box>
 
-        {/* MC / MS options */}
         {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type) && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               Options {form.type === QUESTION_TYPES.MULTI_SELECT ? '(select all correct)' : '(select one correct)'}
             </Typography>
             {form.options.map((opt, i) => (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
                 {form.type === QUESTION_TYPES.MULTI_SELECT ? (
-                  <Checkbox checked={opt.correct} onChange={e => setOption(i, 'correct', e.target.checked)} />
+                  <Checkbox checked={opt.correct} onChange={e => setOption(i, 'correct', e.target.checked)} sx={{ mt: 0.5 }} />
                 ) : (
-                  <Checkbox checked={opt.correct} onChange={() => setOption(i, 'correct', true)} />
+                  <Checkbox checked={opt.correct} onChange={() => setOption(i, 'correct', true)} sx={{ mt: 0.5 }} />
                 )}
-                <TextField
-                  size="small" fullWidth
-                  placeholder={`Option ${i + 1}`}
-                  value={opt.content}
-                  onChange={e => setOption(i, 'content', e.target.value)}
-                />
+                <Box sx={{ flexGrow: 1 }}>
+                  <RichTextEditor
+                    value={opt.content}
+                    onChange={({ html }) => setOption(i, 'content', html)}
+                    placeholder={`Option ${i + 1}`}
+                    minHeight={30}
+                    compact
+                  />
+                </Box>
                 {form.options.length > 2 && (
-                  <IconButton size="small" onClick={() => removeOption(i)}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
                 )}
               </Box>
             ))}
@@ -147,7 +331,6 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
           </Box>
         )}
 
-        {/* TF options */}
         {form.type === QUESTION_TYPES.TRUE_FALSE && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>Correct Answer</Typography>
@@ -168,16 +351,19 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
           </Box>
         )}
 
-        {/* Numerical */}
         {form.type === QUESTION_TYPES.NUMERICAL && (
           <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
             <TextField
-              label="Correct Answer" type="number" fullWidth
+              label="Correct Answer"
+              type="number"
+              fullWidth
               value={form.correctNumerical}
               onChange={e => setForm({ ...form, correctNumerical: e.target.value })}
             />
             <TextField
-              label="Tolerance (±)" type="number" fullWidth
+              label="Tolerance (+/-)"
+              type="number"
+              fullWidth
               value={form.toleranceNumerical}
               onChange={e => setForm({ ...form, toleranceNumerical: e.target.value })}
             />
@@ -188,26 +374,122 @@ export default function QuestionEditor({ open, onClose, onSave, initial, saving 
 
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <TextField
-            label="Points" type="number" sx={{ width: 120 }}
+            label="Points"
+            type="number"
+            sx={{ width: 120 }}
             inputProps={{ min: 0 }}
             value={form.points}
             onChange={e => setForm({ ...form, points: e.target.value })}
           />
         </Box>
 
-        <TextField
+        <RichTextEditor
           label="Solution / Explanation (optional)"
-          multiline minRows={2} fullWidth
           value={form.solution}
-          onChange={e => setForm({ ...form, solution: e.target.value })}
+          onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
+          placeholder="Add an optional explanation..."
+          minHeight={96}
         />
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
+          Live Preview
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Math delimiters stay visible while typing; rendered KaTeX is shown below.
+        </Typography>
+        <Paper variant="outlined" sx={{ mt: 1, p: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">
+            Question
+          </Typography>
+          <MathLivePreview
+            html={previewPayload.content}
+            fallback={previewPayload.plainText}
+            emptyText="(no question text yet)"
+          />
+
+          {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)
+            && (previewPayload.options || []).length > 0 && (
+              <Box sx={{ mt: 1 }}>
+                {(previewPayload.options || []).map((option, optionIdx) => (
+                  <Box key={`preview-option-${optionIdx}`} sx={{ mb: 0.75 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {String.fromCharCode(65 + optionIdx)}.
+                    </Typography>
+                    <MathLivePreview
+                      html={option.content}
+                      fallback={option.plainText || option.answer}
+                      emptyText={`(empty option ${optionIdx + 1})`}
+                    />
+                  </Box>
+                ))}
+              </Box>
+            )}
+
+          {form.type === QUESTION_TYPES.NUMERICAL && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+              Correct: {previewPayload.correctNumerical ?? 0} (± {previewPayload.toleranceNumerical ?? 0})
+            </Typography>
+          )}
+
+          {previewPayload.solution ? (
+            <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
+              <Typography variant="caption" color="text.secondary">
+                Solution
+              </Typography>
+              <MathLivePreview
+                html={previewPayload.solution}
+                fallback={previewPayload.solution_plainText}
+                emptyText=""
+              />
+            </Box>
+          ) : null}
+        </Paper>
+    </>
+  );
+
+  const footer = (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', px: inline ? 0 : 3, py: inline ? 0 : 1, alignItems: 'center' }}>
+      <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center' }}>
+        {autosaveError ? (
+          <Alert severity="error" sx={{ py: 0 }}>
+            {autosaveError}
+          </Alert>
+        ) : (
+          <Typography variant="caption" color="text.secondary">{autosaveLabel}</Typography>
+        )}
+      </Box>
+      <Button onClick={handleCloseRequest} disabled={closing}>
+        {closing ? 'Closing…' : 'Close'}
+      </Button>
+    </Box>
+  );
+
+  if (inline) {
+    return (
+      <Box>
+        {editorFields}
+        <Box sx={{ mt: 1.5 }}>{footer}</Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Dialog
+      open={open}
+      maxWidth="md"
+      fullWidth
+      onClose={(_event, reason) => {
+        if (reason === 'backdropClick') return;
+        handleCloseRequest();
+      }}
+    >
+      <DialogTitle>{persistedQuestionId ? 'Edit Question' : 'New Question'}</DialogTitle>
+      <DialogContent dividers>
+        <Paper variant="outlined" sx={{ border: 'none', boxShadow: 'none' }}>
+          {editorFields}
+        </Paper>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSubmit} disabled={!isValid || saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-      </DialogActions>
+      <DialogActions>{footer}</DialogActions>
     </Dialog>
   );
 }
