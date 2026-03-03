@@ -350,10 +350,15 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor now exposes status using user-facing labels (`Draft`, `Upcoming`, `Live`, `Ended`) mapped to backend values (`hidden`, `visible`, `running`, `done`).
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
-  - normalizes legacy question type values for display,
+  - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
+  - trusts stored `type` for canonical values `0..4`, with a narrow guard for malformed legacy outliers (`type=4` + multiple options => option-based type),
+  - falls back to `SA` only when a record has an invalid type value,
   - renders HTML `content`/options/solution fields,
-  - typesets MathJax formulas on render.
+  - typesets KaTeX formulas on render with inline `$...$` and block `$$...$$` delimiters.
 - Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).
+- Session question editor now auto-saves while typing (manual save removed); dialog uses a close action only.
+- New question dialog always opens as a blank Multiple Choice question with two empty options.
+- Drag-and-drop images in the question editor are now resizable directly in the TipTap canvas.
 - Session status changes to `Live` now require explicit confirmation, then apply immediately.
 - Session editor question list now displays dynamic question numbering (`1.`, `2.`, `3.`) that updates with reordering.
 - Session editor multiple-choice/multi-select option rendering now keeps option labels (`A.`, `B.`, `C.`) horizontally aligned with option content, including HTML-rich legacy options.
@@ -361,6 +366,40 @@ The following code changes were made to ensure the app works correctly with a re
 - Professor course session list now shows date-only (no time) in the session metadata row.
 - Student course session list now follows the same ordering/date rules as professor session lists (live first, then most recent; date-only `DD-Mmm-YYYY`).
 - App bar `Dashboard` button styling updated to be larger and offset slightly to the right of the app title for better prominence.
+
+### One-Time Legacy Question Type Cleanup (Required)
+
+Use this script once per restored legacy database to normalize invalid question `type` values into canonical Meteor mapping:
+
+- Canonical mapping: `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`
+- Script path: `server/scripts/migrate-question-types.js`
+- Behavior:
+  - default mode is dry-run (reports only),
+  - `--apply` writes updates,
+  - canonical `0..4` types are left unchanged, except malformed numerical outliers (`type=4` with multiple options) which are rewritten to option-based canonical types (`MC`/`MS`/`TF`),
+  - legacy `type=5` is mapped to `4` (Numerical),
+  - any other invalid values are inferred once using option shape/flags, then written as canonical values.
+
+Run steps:
+
+```bash
+cd /home/rmartin/qlicker-1/server
+node scripts/migrate-question-types.js
+node scripts/migrate-question-types.js --apply
+```
+
+Verification (optional):
+
+```bash
+mongosh "mongodb://localhost:27071/qlicker" --quiet --eval \
+'db.questions.aggregate([{ $group:{ _id:"$type", count:{ $sum:1 } } }, { $sort:{ _id:1 } }]).forEach(printjson)'
+```
+
+After this script has been applied in all environments, remove temporary client normalization fallbacks in `client/src/components/questions/constants.js`:
+
+- remove the malformed numerical guard (`type=4` with multiple options),
+- remove legacy `rawType === 5` compatibility branch,
+- remove the final unknown-type fallback (`return QUESTION_TYPES.SHORT_ANSWER`) if strict rejection is preferred.
 
 ### Remaining Follow-Up Items
 
