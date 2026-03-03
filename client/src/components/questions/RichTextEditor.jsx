@@ -29,6 +29,7 @@ export default function RichTextEditor({
   onChange,
   placeholder = '',
   minHeight = 96,
+  resizable = false,
   disabled = false,
   label,
   showTip = false,
@@ -185,9 +186,13 @@ export default function RichTextEditor({
           '&:focus-within': { borderColor: 'primary.main', boxShadow: theme => `0 0 0 1px ${theme.palette.primary.main}` },
           '& .question-rich-text-editor': {
             minHeight,
+            width: '100%',
+            boxSizing: 'border-box',
             outline: 'none',
             fontSize: 15,
             lineHeight: 1.55,
+            resize: resizable ? 'vertical' : 'none',
+            overflow: resizable ? 'auto' : 'visible',
             '& p': { my: compact ? 0 : 0.7 },
             '& ul, & ol': { my: 0.7, pl: 3 },
             '& .tiptap-resizable-image': {

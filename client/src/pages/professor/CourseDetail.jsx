@@ -44,6 +44,20 @@ function parseCourseTab(value) {
   return parsed;
 }
 
+function getCourseEditFields(course = {}) {
+  return {
+    name: course.name || '',
+    deptCode: course.deptCode || '',
+    courseNumber: course.courseNumber || '',
+    section: course.section || '',
+    semester: course.semester || '',
+  };
+}
+
+function hasAllCourseEditFields(fields) {
+  return Object.values(fields).every((value) => String(value || '').trim().length > 0);
+}
+
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -74,7 +88,6 @@ export default function CourseDetail() {
 
   // Settings
   const [editFields, setEditFields] = useState({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
-  const [savingSettings, setSavingSettings] = useState(false);
   const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
   const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
 
@@ -89,6 +102,10 @@ export default function CourseDetail() {
 
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
+  const settingsHydratedRef = useRef(false);
+  const lastSavedEditFieldsHashRef = useRef('');
+  const settingsSaveInFlightRef = useRef(false);
+  const queuedSettingsFieldsRef = useRef(null);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -105,19 +122,38 @@ export default function CourseDetail() {
     try {
       const { data } = await apiClient.get(`/courses/${id}`);
       const c = data.course || data;
+      const nextEditFields = getCourseEditFields(c);
+      const nextHash = JSON.stringify(nextEditFields);
       setCourse(c);
-      setEditFields({
-        name: c.name || '',
-        deptCode: c.deptCode || '',
-        courseNumber: c.courseNumber || '',
-        section: c.section || '',
-        semester: c.semester || '',
+      setEditFields((previousFields) => {
+        if (!settingsHydratedRef.current) {
+          settingsHydratedRef.current = true;
+          lastSavedEditFieldsHashRef.current = nextHash;
+          return nextEditFields;
+        }
+
+        const previousHash = JSON.stringify(previousFields);
+        if (previousHash === lastSavedEditFieldsHashRef.current) {
+          lastSavedEditFieldsHashRef.current = nextHash;
+          return nextEditFields;
+        }
+
+        return previousFields;
       });
     } catch {
       setMsg({ severity: 'error', text: 'Failed to load course' });
     } finally {
       setLoading(false);
     }
+  }, [id]);
+
+  useEffect(() => {
+    settingsHydratedRef.current = false;
+    lastSavedEditFieldsHashRef.current = '';
+    settingsSaveInFlightRef.current = false;
+    queuedSettingsFieldsRef.current = null;
+    setSettingsAutoSaveStatus('idle');
+    setSettingsAutoSaveError('');
   }, [id]);
 
   useEffect(() => { fetchCourse(); fetchSessions(); }, [fetchCourse, fetchSessions]);
@@ -215,6 +251,67 @@ export default function CourseDetail() {
     setSettingsAutoSaveError(`${message} Your last change was not recorded.`);
   };
 
+  const persistCourseEditFields = useCallback(async (fieldsToPersist) => {
+    const runSave = async (pendingFields) => {
+      if (settingsSaveInFlightRef.current) {
+        queuedSettingsFieldsRef.current = pendingFields;
+        return;
+      }
+
+      settingsSaveInFlightRef.current = true;
+      setSettingsAutoSaveStatus('saving');
+      setSettingsAutoSaveError('');
+      const requestedHash = JSON.stringify(pendingFields);
+
+      try {
+        const { data } = await apiClient.patch(`/courses/${id}`, pendingFields);
+        const savedCourse = data.course || data;
+        const savedFields = getCourseEditFields(savedCourse);
+        const savedHash = JSON.stringify(savedFields);
+
+        lastSavedEditFieldsHashRef.current = savedHash;
+        setCourse((previousCourse) => (previousCourse ? { ...previousCourse, ...savedFields } : previousCourse));
+        setEditFields((currentFields) => (
+          JSON.stringify(currentFields) === requestedHash ? savedFields : currentFields
+        ));
+        setSettingsAutoSaveStatus('success');
+      } catch (err) {
+        const message = err.response?.data?.message || 'Failed to update course.';
+        setSettingsAutoSaveStatus('error');
+        setSettingsAutoSaveError(`${message} Your last change was not recorded.`);
+      } finally {
+        settingsSaveInFlightRef.current = false;
+
+        if (queuedSettingsFieldsRef.current) {
+          const queuedFields = queuedSettingsFieldsRef.current;
+          queuedSettingsFieldsRef.current = null;
+          if (hasAllCourseEditFields(queuedFields)) {
+            const queuedHash = JSON.stringify(queuedFields);
+            if (queuedHash !== lastSavedEditFieldsHashRef.current) {
+              await runSave(queuedFields);
+            }
+          }
+        }
+      }
+    };
+
+    await runSave(fieldsToPersist);
+  }, [id]);
+
+  useEffect(() => {
+    if (!settingsHydratedRef.current) return;
+    if (!hasAllCourseEditFields(editFields)) return;
+
+    const fieldsHash = JSON.stringify(editFields);
+    if (fieldsHash === lastSavedEditFieldsHashRef.current) return;
+
+    const autosaveTimer = setTimeout(() => {
+      persistCourseEditFields(editFields);
+    }, 700);
+
+    return () => clearTimeout(autosaveTimer);
+  }, [editFields, persistCourseEditFields]);
+
   const handleToggleActive = async () => {
     markSettingAutoSaveInProgress();
     try {
@@ -256,19 +353,6 @@ export default function CourseDetail() {
       setMsg({ severity: 'success', text: 'Enrollment code regenerated' });
     } catch {
       setMsg({ severity: 'error', text: 'Failed to regenerate code' });
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    setSavingSettings(true);
-    try {
-      await apiClient.patch(`/courses/${id}`, editFields);
-      fetchCourse();
-      setMsg({ severity: 'success', text: 'Course updated' });
-    } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update course' });
-    } finally {
-      setSavingSettings(false);
     }
   };
 
@@ -601,9 +685,6 @@ export default function CourseDetail() {
             <TextField label="Section" value={editFields.section} onChange={(e) => setEditFields((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
             <TextField label="Semester" value={editFields.semester} onChange={(e) => setEditFields((s) => ({ ...s, semester: e.target.value }))} sx={{ flex: 1 }} />
           </Box>
-          <Button variant="contained" onClick={handleSaveSettings} disabled={savingSettings}>
-            {savingSettings ? 'Saving…' : 'Save Changes'}
-          </Button>
           <Divider sx={{ my: 1 }} />
           <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteOpen(true)}>
             Delete Course

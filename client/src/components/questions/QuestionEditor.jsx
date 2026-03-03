@@ -26,6 +26,19 @@ function normalizeOptions(opts) {
   }));
 }
 
+function buildTrueFalseOptions(correctIndex = 0) {
+  return [
+    { content: 'True', correct: correctIndex === 0 },
+    { content: 'False', correct: correctIndex === 1 },
+  ];
+}
+
+function normalizeTrueFalseOptions(opts) {
+  if (!opts || !opts.length) return buildTrueFalseOptions(0);
+  const correctIndex = opts.findIndex((option) => !!option?.correct);
+  return buildTrueFalseOptions(correctIndex === 1 ? 1 : 0);
+}
+
 const emptyForm = () => ({
   type: QUESTION_TYPES.MULTIPLE_CHOICE,
   content: '',
@@ -49,7 +62,10 @@ function buildQuestionPayload(form) {
   };
 
   if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)) {
-    payload.options = form.options.map((o) => {
+    const optionSource = form.type === QUESTION_TYPES.TRUE_FALSE
+      ? normalizeTrueFalseOptions(form.options)
+      : form.options;
+    payload.options = optionSource.map((o) => {
       const optionHtml = normalizeStoredHtml(o.content);
       const optionPlainText = extractPlainTextFromHtml(optionHtml);
       return {
@@ -70,7 +86,12 @@ function buildQuestionPayload(form) {
   return payload;
 }
 
-function MathLivePreview({ html, fallback = '', emptyText = '(no content yet)' }) {
+function MathLivePreview({
+  html,
+  fallback = '',
+  emptyText = '(no content yet)',
+  compact = false,
+}) {
   const containerRef = useRef(null);
 
   useEffect(() => {
@@ -84,8 +105,8 @@ function MathLivePreview({ html, fallback = '', emptyText = '(no content yet)' }
     <Box
       ref={containerRef}
       sx={{
-        '& p': { my: 0.5 },
-        '& ul, & ol': { my: 0.5, pl: 3 },
+        '& p': { my: compact ? 0 : 0.5 },
+        '& ul, & ol': { my: compact ? 0 : 0.5, pl: 3 },
       }}
     />
   );
@@ -162,11 +183,14 @@ export default function QuestionEditor({
   useEffect(() => {
     if (!open) return;
 
+    const normalizedType = initial ? normalizeQuestionType(initial) : QUESTION_TYPES.MULTIPLE_CHOICE;
     const nextForm = initial
       ? {
-        type: normalizeQuestionType(initial),
+        type: normalizedType,
         content: prepareRichTextInput(initial.content || '', initial.plainText || ''),
-        options: normalizeOptions(initial.options),
+        options: normalizedType === QUESTION_TYPES.TRUE_FALSE
+          ? normalizeTrueFalseOptions(initial.options)
+          : normalizeOptions(initial.options),
         correctNumerical: initial.correctNumerical ?? '',
         toleranceNumerical: initial.toleranceNumerical ?? '',
         solution: prepareRichTextInput(initial.solution || '', initial.solution_plainText || ''),
@@ -215,7 +239,7 @@ export default function QuestionEditor({
   const handleTypeChange = (type) => {
     const update = { ...form, type };
     if (type === QUESTION_TYPES.TRUE_FALSE) {
-      update.options = [{ content: 'True', correct: true }, { content: 'False', correct: false }];
+      update.options = normalizeTrueFalseOptions(form.options);
     } else if (type === QUESTION_TYPES.SHORT_ANSWER) {
       update.options = [];
     } else if (type === QUESTION_TYPES.NUMERICAL) {
@@ -297,6 +321,7 @@ export default function QuestionEditor({
             onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
             placeholder="Write the question here..."
             minHeight={110}
+            resizable
             showTip
           />
         </Box>
@@ -337,13 +362,13 @@ export default function QuestionEditor({
             <FormGroup row>
               <FormControlLabel
                 control={<Checkbox checked={form.options[0]?.correct || false} onChange={() => {
-                  setForm({ ...form, options: [{ content: 'True', correct: true }, { content: 'False', correct: false }] });
+                  setForm({ ...form, options: buildTrueFalseOptions(0) });
                 }} />}
                 label="True"
               />
               <FormControlLabel
                 control={<Checkbox checked={form.options[1]?.correct || false} onChange={() => {
-                  setForm({ ...form, options: [{ content: 'True', correct: false }, { content: 'False', correct: true }] });
+                  setForm({ ...form, options: buildTrueFalseOptions(1) });
                 }} />}
                 label="False"
               />
@@ -389,6 +414,7 @@ export default function QuestionEditor({
           onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
           placeholder="Add an optional explanation..."
           minHeight={96}
+          resizable
         />
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
@@ -411,15 +437,27 @@ export default function QuestionEditor({
             && (previewPayload.options || []).length > 0 && (
               <Box sx={{ mt: 1 }}>
                 {(previewPayload.options || []).map((option, optionIdx) => (
-                  <Box key={`preview-option-${optionIdx}`} sx={{ mb: 0.75 }}>
-                    <Typography variant="caption" color="text.secondary">
+                  <Box
+                    key={`preview-option-${optionIdx}`}
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: '20px minmax(0, 1fr)',
+                      columnGap: 0.5,
+                      alignItems: 'start',
+                      mb: 0.75,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
                       {String.fromCharCode(65 + optionIdx)}.
                     </Typography>
-                    <MathLivePreview
-                      html={option.content}
-                      fallback={option.plainText || option.answer}
-                      emptyText={`(empty option ${optionIdx + 1})`}
-                    />
+                    <Box sx={{ '& p': { my: 0 }, '& ul, & ol': { my: 0, pl: 2.5 }, '& li': { my: 0 } }}>
+                      <MathLivePreview
+                        html={option.content}
+                        fallback={option.plainText || option.answer}
+                        emptyText={`(empty option ${optionIdx + 1})`}
+                        compact
+                      />
+                    </Box>
                   </Box>
                 ))}
               </Box>
