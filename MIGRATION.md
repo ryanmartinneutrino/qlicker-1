@@ -351,6 +351,7 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
   - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
+  - applies structural normalization only for malformed outliers (for example `type=4` with multiple options is treated as option-based rather than numerical),
   - renders HTML `content`/options/solution fields,
   - typesets KaTeX formulas on render with inline `$...$` and block `$$...$$` delimiters.
 - Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).

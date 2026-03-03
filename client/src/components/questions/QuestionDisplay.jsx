@@ -33,6 +33,11 @@ export default function QuestionDisplay({ question }) {
   useEffect(() => {
     if (!containerRef.current) return;
     renderKatexInElement(containerRef.current);
+    const rafId = requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      renderKatexInElement(containerRef.current);
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [question, normalizedType]);
 
   const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);

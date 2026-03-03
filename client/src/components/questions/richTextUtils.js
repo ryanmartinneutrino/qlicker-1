@@ -80,7 +80,8 @@ function normalizeBlockMathMarkup(container) {
 function maskCurrencyTokens(container) {
   if (!container || typeof document === 'undefined') return () => {};
   const replacements = [];
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const showTextNode = typeof NodeFilter !== 'undefined' ? NodeFilter.SHOW_TEXT : 4;
+  const walker = document.createTreeWalker(container, showTextNode);
 
   let node = walker.nextNode();
   while (node) {
@@ -97,7 +98,7 @@ function maskCurrencyTokens(container) {
 
   return () => {
     if (!replacements.length) return;
-    const restoreWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const restoreWalker = document.createTreeWalker(container, showTextNode);
     let textNode = restoreWalker.nextNode();
     while (textNode) {
       let value = textNode.nodeValue || '';
