@@ -373,7 +373,7 @@ describe('PATCH /api/v1/sessions/:id/current', () => {
     // Create a question and add it to the session
     const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
       token: profToken,
-      payload: { type: 1, content: 'Q1', sessionId: session._id, courseId: course._id },
+      payload: { type: 2, content: 'Q1', sessionId: session._id, courseId: course._id },
     });
     const question = qRes.json().question;
 
