@@ -65,12 +65,19 @@ function normalizeBlockMathMarkup(container) {
   if (!container) return;
   const html = container.innerHTML;
   container.innerHTML = html.replace(/\$\$([\s\S]*?)\$\$/g, (fullMatch, inner) => {
-    const cleaned = inner
+    let cleaned = inner
       .replace(BLOCK_SPLIT_REGEX, '\n')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]+>/g, '')
-      .trim();
+      .replace(/<br\s*\/?>/gi, '\n');
 
+    // Strip HTML tags iteratively to prevent incomplete sanitization
+    // (e.g. nested fragments like `<scr<b>ipt>` surviving a single pass).
+    let previous;
+    do {
+      previous = cleaned;
+      cleaned = cleaned.replace(/<[^>]+>/g, '');
+    } while (cleaned !== previous);
+
+    cleaned = cleaned.trim();
     if (!cleaned) return fullMatch;
     return `$$\n${normalizeLatexForKatex(cleaned)}\n$$`;
   });
