@@ -350,10 +350,13 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor now exposes status using user-facing labels (`Draft`, `Upcoming`, `Live`, `Ended`) mapped to backend values (`hidden`, `visible`, `running`, `done`).
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
-  - normalizes legacy question type values for display,
+  - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
   - renders HTML `content`/options/solution fields,
-  - typesets MathJax formulas on render.
+  - typesets KaTeX formulas on render with inline `$...$` and block `$$...$$` delimiters.
 - Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).
+- Session question editor now auto-saves while typing (manual save removed); dialog uses a close action only.
+- New question dialog always opens as a blank Multiple Choice question with two empty options.
+- Drag-and-drop images in the question editor are now resizable directly in the TipTap canvas.
 - Session status changes to `Live` now require explicit confirmation, then apply immediately.
 - Session editor question list now displays dynamic question numbering (`1.`, `2.`, `3.`) that updates with reordering.
 - Session editor multiple-choice/multi-select option rendering now keeps option labels (`A.`, `B.`, `C.`) horizontally aligned with option content, including HTML-rich legacy options.

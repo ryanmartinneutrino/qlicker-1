@@ -8,20 +8,17 @@ import { useEffect, useMemo, useRef } from 'react';
 import {
   TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
 } from './constants';
-
-function hasHtml(text) {
-  return typeof text === 'string' && /<[^>]+>/.test(text);
-}
+import { prepareRichTextInput, renderKatexInElement } from './richTextUtils';
 
 function renderRichText(value, fallback = '') {
-  const text = value || fallback || '';
-  if (!hasHtml(text)) {
-    return <Typography variant="body1" sx={{ mb: 1 }}>{text || '(no content)'}</Typography>;
+  const contentHtml = prepareRichTextInput(value || '', fallback || '');
+  if (!contentHtml) {
+    return <Typography variant="body1" sx={{ mb: 1 }}>(no content)</Typography>;
   }
   return (
     <Box
       sx={{ mb: 1, '& p': { my: 0.5 } }}
-      dangerouslySetInnerHTML={{ __html: text }}
+      dangerouslySetInnerHTML={{ __html: contentHtml }}
     />
   );
 }
@@ -34,8 +31,8 @@ export default function QuestionDisplay({ question }) {
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
 
   useEffect(() => {
-    if (!containerRef.current || !window.MathJax?.typesetPromise) return;
-    window.MathJax.typesetPromise([containerRef.current]).catch(() => {});
+    if (!containerRef.current) return;
+    renderKatexInElement(containerRef.current);
   }, [question, normalizedType]);
 
   const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
@@ -57,42 +54,28 @@ export default function QuestionDisplay({ question }) {
                 {opt.correct ? <CorrectIcon color="success" fontSize="small" /> : null}
               </Box>
               <Box sx={{ color: opt.correct ? 'success.main' : 'text.secondary' }}>
-                {hasHtml(opt.content)
-                  ? (
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns: shouldLetterOptions ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
-                        columnGap: 0.5,
-                        alignItems: 'start',
-                      }}
-                    >
-                      {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
-                      <Box
-                        sx={{
-                          '& p': { my: 0 },
-                          '& ul, & ol': { my: 0, pl: 2.5 },
-                          '& li': { my: 0 },
-                        }}
-                        dangerouslySetInnerHTML={{ __html: opt.content }}
-                      />
-                    </Box>
-                  )
-                  : (
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns: shouldLetterOptions ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
-                        columnGap: 0.5,
-                        alignItems: 'start',
-                      }}
-                    >
-                      {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
-                      <Typography variant="body2">
-                        {opt.content || opt.plainText || opt.answer || `Option ${i + 1}`}
-                      </Typography>
-                    </Box>
-                  )}
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: shouldLetterOptions ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                    columnGap: 0.5,
+                    alignItems: 'start',
+                  }}
+                >
+                  {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
+                  <Box
+                    sx={{
+                      '& p': { my: 0 },
+                      '& ul, & ol': { my: 0, pl: 2.5 },
+                      '& li': { my: 0 },
+                    }}
+                    dangerouslySetInnerHTML={{
+                      __html: prepareRichTextInput(
+                        opt.content || opt.plainText || opt.answer || `Option ${i + 1}`
+                      ),
+                    }}
+                  />
+                </Box>
               </Box>
             </Box>
           ))}
@@ -105,14 +88,12 @@ export default function QuestionDisplay({ question }) {
         </Typography>
       )}
 
-      {question.solution && (
+      {(question.solution || question.solution_plainText) && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             Solution
           </Typography>
-          {hasHtml(question.solution)
-            ? <Box dangerouslySetInnerHTML={{ __html: question.solution }} />
-            : <Typography variant="body2">{question.solution}</Typography>}
+          <Box dangerouslySetInnerHTML={{ __html: prepareRichTextInput(question.solution, question.solution_plainText) }} />
         </Box>
       )}
     </Paper>

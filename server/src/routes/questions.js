@@ -7,7 +7,8 @@ const createQuestionSchema = {
     type: 'object',
     required: ['type'],
     properties: {
-      type: { type: 'integer', minimum: 1, maximum: 5 },
+      // Canonical mapping: MC=0, TF=1, SA=2, MS=3, NU=4.
+      type: { type: 'integer', minimum: 0, maximum: 4 },
       content: { type: 'string' },
       plainText: { type: 'string' },
       options: {
@@ -69,7 +70,8 @@ const updateQuestionSchema = {
           additionalProperties: false,
         },
       },
-      type: { type: 'integer', minimum: 1, maximum: 5 },
+      // Canonical mapping: MC=0, TF=1, SA=2, MS=3, NU=4.
+      type: { type: 'integer', minimum: 0, maximum: 4 },
       toleranceNumerical: { type: 'number' },
       correctNumerical: { type: 'number' },
       solution: { type: 'string' },
