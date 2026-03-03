@@ -161,23 +161,32 @@ export function renderKatexInElement(container) {
 
   normalizeBlockMathMarkup(container);
   const restoreCurrency = maskCurrencyTokens(container);
+  const renderOptions = {
+    throwOnError: false,
+    strict: 'ignore',
+    trust: true,
+    preProcess: math => normalizeLatexForKatex(math),
+    delimiters: [
+      { left: '$$', right: '$$', display: true },
+      { left: '\\[', right: '\\]', display: true },
+      { left: '\\(', right: '\\)', display: false },
+      { left: '$', right: '$', display: false },
+    ],
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+  };
 
   try {
-    renderMathInElement(container, {
-      throwOnError: false,
-      strict: 'ignore',
-      trust: true,
-      preProcess: math => normalizeLatexForKatex(math),
-      delimiters: [
-        { left: '$$', right: '$$', display: true },
-        { left: '\\[', right: '\\]', display: true },
-        { left: '\\(', right: '\\)', display: false },
-        { left: '$', right: '$', display: false },
-      ],
-      ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-    });
+    renderMathInElement(container, renderOptions);
   } catch {
-    // Leave original content intact if KaTeX auto-render fails.
+    // Fall back to smaller chunks if whole-container auto-render fails.
+    const chunks = container.querySelectorAll('p, li, div, span');
+    chunks.forEach((chunk) => {
+      try {
+        renderMathInElement(chunk, renderOptions);
+      } catch {
+        // Keep failing chunks unchanged.
+      }
+    });
   } finally {
     restoreCurrency();
   }

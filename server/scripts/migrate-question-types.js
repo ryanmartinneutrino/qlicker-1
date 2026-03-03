@@ -101,6 +101,20 @@ function inferTypeForInvalidValue(question) {
 
 function resolveType(question) {
   const rawType = Number(question.type);
+  const options = Array.isArray(question.options) ? question.options : [];
+
+  if (rawType === QUESTION_TYPES.NUMERICAL && options.length > 1) {
+    // Legacy outlier: numerical type cannot have multiple choices.
+    // Normalize to the appropriate option-based type once.
+    if (isTrueFalseOptions(options)) {
+      return { nextType: QUESTION_TYPES.TRUE_FALSE, reason: 'numerical_with_options_to_true_false' };
+    }
+    const correctCount = countCorrect(options);
+    return {
+      nextType: correctCount > 1 ? QUESTION_TYPES.MULTI_SELECT : QUESTION_TYPES.MULTIPLE_CHOICE,
+      reason: correctCount > 1 ? 'numerical_with_options_to_multi_select' : 'numerical_with_options_to_multiple_choice',
+    };
+  }
 
   if (CANONICAL_TYPES.has(rawType)) {
     return { nextType: rawType, reason: null };

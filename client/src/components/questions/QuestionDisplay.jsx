@@ -31,14 +31,21 @@ export default function QuestionDisplay({ question }) {
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
 
   useEffect(() => {
-    if (!containerRef.current) return;
-    renderKatexInElement(containerRef.current);
-    const rafId = requestAnimationFrame(() => {
+    if (!containerRef.current) return undefined;
+    const applyRender = () => {
       if (!containerRef.current) return;
       renderKatexInElement(containerRef.current);
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [question, normalizedType]);
+    };
+
+    applyRender();
+    const rafId = requestAnimationFrame(applyRender);
+    const timeoutId = setTimeout(applyRender, 60);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timeoutId);
+    };
+  }, [question, normalizedType, question?.content, question?.plainText, question?.solution, question?.solution_plainText, opts.length]);
 
   const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
 

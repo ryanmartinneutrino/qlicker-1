@@ -351,7 +351,7 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
   - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
-  - trusts stored `type` for canonical values `0..4` (no structural remapping between MC/MS/NU),
+  - trusts stored `type` for canonical values `0..4`, with a narrow guard for malformed legacy outliers (`type=4` + multiple options => option-based type),
   - falls back to `SA` only when a record has an invalid type value,
   - renders HTML `content`/options/solution fields,
   - typesets KaTeX formulas on render with inline `$...$` and block `$$...$$` delimiters.
@@ -376,7 +376,7 @@ Use this script once per restored legacy database to normalize invalid question 
 - Behavior:
   - default mode is dry-run (reports only),
   - `--apply` writes updates,
-  - canonical `0..4` types are left unchanged,
+  - canonical `0..4` types are left unchanged, except malformed numerical outliers (`type=4` with multiple options) which are rewritten to option-based canonical types (`MC`/`MS`/`TF`),
   - legacy `type=5` is mapped to `4` (Numerical),
   - any other invalid values are inferred once using option shape/flags, then written as canonical values.
 
@@ -397,6 +397,7 @@ mongosh "mongodb://localhost:27071/qlicker" --quiet --eval \
 
 After this script has been applied in all environments, remove temporary client normalization fallbacks in `client/src/components/questions/constants.js`:
 
+- remove the malformed numerical guard (`type=4` with multiple options),
 - remove legacy `rawType === 5` compatibility branch,
 - remove the final unknown-type fallback (`return QUESTION_TYPES.SHORT_ANSWER`) if strict rejection is preferred.
 

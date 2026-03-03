@@ -22,6 +22,16 @@ export const TYPE_COLORS = {
   [QUESTION_TYPES.NUMERICAL]: 'warning',
 };
 
+function isTrueFalseOptions(options = []) {
+  if (!Array.isArray(options) || options.length !== 2) return false;
+  const labels = options.map((o) => (o?.answer || o?.plainText || o?.content || '').replace(/<[^>]*>/g, '').trim().toUpperCase());
+  return labels.includes('TRUE') && labels.includes('FALSE');
+}
+
+function countCorrect(options = []) {
+  return options.filter((o) => !!o?.correct).length;
+}
+
 /**
  * Normalize question type values.
  * Canonical mapping follows Meteor app configs:
@@ -29,11 +39,20 @@ export const TYPE_COLORS = {
  */
 export function normalizeQuestionType(question = {}) {
   const rawType = Number(question?.type);
+  const options = question?.options || [];
   if (rawType === QUESTION_TYPES.MULTIPLE_CHOICE) return QUESTION_TYPES.MULTIPLE_CHOICE;
   if (rawType === QUESTION_TYPES.TRUE_FALSE) return QUESTION_TYPES.TRUE_FALSE;
   if (rawType === QUESTION_TYPES.SHORT_ANSWER) return QUESTION_TYPES.SHORT_ANSWER;
   if (rawType === QUESTION_TYPES.MULTI_SELECT) return QUESTION_TYPES.MULTI_SELECT;
-  if (rawType === QUESTION_TYPES.NUMERICAL) return QUESTION_TYPES.NUMERICAL;
+  if (rawType === QUESTION_TYPES.NUMERICAL) {
+    // Guard for malformed restored rows: numerical type with multiple options.
+    // These should be option-based questions, not numerical.
+    if (Array.isArray(options) && options.length > 1) {
+      if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
+      return countCorrect(options) > 1 ? QUESTION_TYPES.MULTI_SELECT : QUESTION_TYPES.MULTIPLE_CHOICE;
+    }
+    return QUESTION_TYPES.NUMERICAL;
+  }
 
   // Compatibility for any docs written with a 1..5 enum where 5 represented numerical.
   if (rawType === 5) return QUESTION_TYPES.NUMERICAL;
