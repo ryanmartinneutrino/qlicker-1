@@ -73,7 +73,7 @@ export default function SessionEditor() {
   // Question editor
   const [qEditorOpen, setQEditorOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
-  const [qEditorVersion, setQEditorVersion] = useState(0);
+  const [savingQuestion, setSavingQuestion] = useState(false);
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
@@ -185,41 +185,26 @@ export default function SessionEditor() {
     }
   };
 
-  const upsertQuestionLocally = useCallback((savedQuestion) => {
-    setQuestions((prev) => {
-      const idx = prev.findIndex(q => q._id === savedQuestion._id);
-      if (idx === -1) return [...prev, savedQuestion];
-      const next = [...prev];
-      next[idx] = { ...prev[idx], ...savedQuestion };
-      return next;
-    });
-    setSession((prev) => {
-      if (!prev) return prev;
-      const ids = prev.questions || [];
-      if (ids.includes(savedQuestion._id)) return prev;
-      return { ...prev, questions: [...ids, savedQuestion._id] };
-    });
-  }, []);
-
-  const handleAutoSaveQuestion = async (payload, questionId) => {
+  // Create or update question
+  const handleSaveQuestion = async (payload) => {
+    setSavingQuestion(true);
     try {
-      if (questionId) {
-        const { data } = await apiClient.patch(`/questions/${questionId}`, payload);
-        const updated = data.question || data;
-        upsertQuestionLocally(updated);
-        setEditingQuestion(updated);
-        return updated;
+      if (editingQuestion) {
+        await apiClient.patch(`/questions/${editingQuestion._id}`, payload);
+        setMsg({ severity: 'success', text: 'Question updated' });
+      } else {
+        const { data } = await apiClient.post('/questions', { ...payload, sessionId, courseId });
+        const newQ = data.question || data;
+        await apiClient.post(`/sessions/${sessionId}/questions`, { questionId: newQ._id });
+        setMsg({ severity: 'success', text: 'Question added' });
       }
-
-      const { data } = await apiClient.post('/questions', { ...payload, sessionId, courseId });
-      const created = data.question || data;
-      await apiClient.post(`/sessions/${sessionId}/questions`, { questionId: created._id });
-      upsertQuestionLocally(created);
-      setEditingQuestion(created);
-      return created;
+      setQEditorOpen(false);
+      setEditingQuestion(null);
+      fetchSession();
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to auto-save question' });
-      throw err;
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to save question' });
+    } finally {
+      setSavingQuestion(false);
     }
   };
 
@@ -413,15 +398,7 @@ export default function SessionEditor() {
       <Paper sx={{ p: 2.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ flexGrow: 1 }}>Questions ({questions.length})</Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => {
-              setEditingQuestion(null);
-              setQEditorVersion(prev => prev + 1);
-              setQEditorOpen(true);
-            }}
-          >
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => { setEditingQuestion(null); setQEditorOpen(true); }}>
             Add Question
           </Button>
         </Box>
@@ -496,14 +473,7 @@ export default function SessionEditor() {
               {/* Action buttons */}
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                 <Tooltip title="Edit">
-                  <IconButton
-                    size="small"
-                    onClick={() => {
-                      setEditingQuestion(q);
-                      setQEditorVersion(prev => prev + 1);
-                      setQEditorOpen(true);
-                    }}
-                  >
+                  <IconButton size="small" onClick={() => { setEditingQuestion(q); setQEditorOpen(true); }}>
                     <EditIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -520,11 +490,11 @@ export default function SessionEditor() {
 
       {/* Question Editor Dialog */}
       <QuestionEditor
-        key={`question-editor-${qEditorVersion}`}
         open={qEditorOpen}
         onClose={() => { setQEditorOpen(false); setEditingQuestion(null); }}
-        onAutoSave={handleAutoSaveQuestion}
+        onSave={handleSaveQuestion}
         initial={editingQuestion}
+        saving={savingQuestion}
       />
 
       {/* Delete Session Confirmation */}

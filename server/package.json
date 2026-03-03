@@ -7,9 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "vitest run",
-    "migrate:question-types": "node scripts/migrate-question-types.js",
-    "migrate:question-types:apply": "node scripts/migrate-question-types.js --apply"
+    "test": "vitest run"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
