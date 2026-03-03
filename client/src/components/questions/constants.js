@@ -1,9 +1,9 @@
 export const QUESTION_TYPES = {
-  SHORT_ANSWER: 1,
-  MULTIPLE_CHOICE: 2,
-  TRUE_FALSE: 3,
-  MULTI_SELECT: 4,
-  NUMERICAL: 5,
+  MULTIPLE_CHOICE: 0,
+  TRUE_FALSE: 1,
+  SHORT_ANSWER: 2,
+  MULTI_SELECT: 3,
+  NUMERICAL: 4,
 };
 
 export const TYPE_LABELS = {
@@ -33,50 +33,30 @@ function countCorrect(options = []) {
 }
 
 /**
- * Normalize legacy Meteor question type values to the current UI enum.
- * Handles mixed datasets where existing documents may use old numeric values.
+ * Normalize question type values.
+ * Canonical mapping follows Meteor app configs:
+ * MC=0, TF=1, SA=2, MS=3, NU=4.
  */
 export function normalizeQuestionType(question = {}) {
   const rawType = Number(question?.type);
   const options = question?.options || [];
-  const hasNumerical = question?.correctNumerical !== undefined && question?.correctNumerical !== null;
-  const correctCount = countCorrect(options);
-
-  // Explicit legacy-only code.
-  if (rawType === 0) return QUESTION_TYPES.MULTIPLE_CHOICE;
-
-  // Ambiguous values (legacy + new):
-  // 1: legacy TF, new SA
-  // 2: legacy SA, new MC
-  // 3: legacy MS, new TF
-  // 4: legacy NUM, new MS
-  if (rawType === 1) {
-    if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
-    return QUESTION_TYPES.SHORT_ANSWER;
+  if (rawType === QUESTION_TYPES.MULTIPLE_CHOICE) return QUESTION_TYPES.MULTIPLE_CHOICE;
+  if (rawType === QUESTION_TYPES.TRUE_FALSE) return QUESTION_TYPES.TRUE_FALSE;
+  if (rawType === QUESTION_TYPES.SHORT_ANSWER) return QUESTION_TYPES.SHORT_ANSWER;
+  if (rawType === QUESTION_TYPES.MULTI_SELECT) return QUESTION_TYPES.MULTI_SELECT;
+  if (rawType === QUESTION_TYPES.NUMERICAL) {
+    // Guard for malformed restored rows: numerical type with multiple options.
+    // These should be option-based questions, not numerical.
+    if (Array.isArray(options) && options.length > 1) {
+      if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
+      return countCorrect(options) > 1 ? QUESTION_TYPES.MULTI_SELECT : QUESTION_TYPES.MULTIPLE_CHOICE;
+    }
+    return QUESTION_TYPES.NUMERICAL;
   }
 
-  if (rawType === 2) {
-    if (options.length > 1) return QUESTION_TYPES.MULTIPLE_CHOICE;
-    return QUESTION_TYPES.SHORT_ANSWER;
-  }
-
-  if (rawType === 3) {
-    if (isTrueFalseOptions(options) && correctCount <= 1) return QUESTION_TYPES.TRUE_FALSE;
-    return QUESTION_TYPES.MULTI_SELECT;
-  }
-
-  if (rawType === 4) {
-    if (hasNumerical || options.length <= 1) return QUESTION_TYPES.NUMERICAL;
-    return QUESTION_TYPES.MULTI_SELECT;
-  }
-
+  // Compatibility for any docs written with a 1..5 enum where 5 represented numerical.
   if (rawType === 5) return QUESTION_TYPES.NUMERICAL;
-  if (Object.values(QUESTION_TYPES).includes(rawType)) return rawType;
 
-  // Last-resort fallback for malformed records.
-  if (hasNumerical) return QUESTION_TYPES.NUMERICAL;
-  if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
-  if (correctCount > 1) return QUESTION_TYPES.MULTI_SELECT;
-  if (options.length > 1) return QUESTION_TYPES.MULTIPLE_CHOICE;
+  // Last-resort fallback for malformed records with unknown type values.
   return QUESTION_TYPES.SHORT_ANSWER;
 }
