@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 4 Complete — Sessions & Questions; Phase 5 Ready
+## Status: Phase 4 Complete — TipTap/KaTeX Question Editor Integrated; Phase 5 Ready
 
 ---
 
@@ -50,8 +50,8 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **File Upload** | AWS SDK v3, @azure/storage-blob | S3, Azure, local storage |
 | **UI Framework** | Material UI (MUI) | Material Design components |
 | **Charts** | Recharts | Data visualization |
-| **Math** | MathJax / KaTeX | Equation rendering |
-| **Rich Text** | TipTap or CKEditor 5 | WYSIWYG editor |
+| **Math** | KaTeX | Equation rendering |
+| **Rich Text** | TipTap | WYSIWYG editor |
 | **Testing** | Vitest + Playwright | Unit + E2E tests |
 | **Containerization** | Docker + Docker Compose | Deployment |
 
@@ -350,10 +350,15 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor now exposes status using user-facing labels (`Draft`, `Upcoming`, `Live`, `Ended`) mapped to backend values (`hidden`, `visible`, `running`, `done`).
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
-  - normalizes legacy question type values for display,
+  - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
+  - trusts stored `type` for canonical values `0..4`, with a narrow guard for malformed legacy outliers (`type=4` + multiple options => option-based type),
+  - falls back to `SA` only when a record has an invalid type value,
   - renders HTML `content`/options/solution fields,
-  - typesets MathJax formulas on render.
+  - typesets KaTeX formulas on render with inline `$...$` and block `$$...$$` delimiters.
 - Session editor settings now auto-save directly to the database on change (manual `Save Settings` removed).
+- Session question editor now auto-saves while typing (manual save removed); dialog uses a close action only.
+- New question dialog always opens as a blank Multiple Choice question with two empty options.
+- Drag-and-drop images in the question editor are now resizable directly in the TipTap canvas.
 - Session status changes to `Live` now require explicit confirmation, then apply immediately.
 - Session editor question list now displays dynamic question numbering (`1.`, `2.`, `3.`) that updates with reordering.
 - Session editor multiple-choice/multi-select option rendering now keeps option labels (`A.`, `B.`, `C.`) horizontally aligned with option content, including HTML-rich legacy options.
@@ -361,6 +366,40 @@ The following code changes were made to ensure the app works correctly with a re
 - Professor course session list now shows date-only (no time) in the session metadata row.
 - Student course session list now follows the same ordering/date rules as professor session lists (live first, then most recent; date-only `DD-Mmm-YYYY`).
 - App bar `Dashboard` button styling updated to be larger and offset slightly to the right of the app title for better prominence.
+
+### One-Time Legacy Question Type Cleanup (Required)
+
+Use this script once per restored legacy database to normalize invalid question `type` values into canonical Meteor mapping:
+
+- Canonical mapping: `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`
+- Script path: `server/scripts/migrate-question-types.js`
+- Behavior:
+  - default mode is dry-run (reports only),
+  - `--apply` writes updates,
+  - canonical `0..4` types are left unchanged, except malformed numerical outliers (`type=4` with multiple options) which are rewritten to option-based canonical types (`MC`/`MS`/`TF`),
+  - legacy `type=5` is mapped to `4` (Numerical),
+  - any other invalid values are inferred once using option shape/flags, then written as canonical values.
+
+Run steps:
+
+```bash
+cd server
+node scripts/migrate-question-types.js
+node scripts/migrate-question-types.js --apply
+```
+
+Verification (optional):
+
+```bash
+mongosh "mongodb://localhost:27071/qlicker" --quiet --eval \
+'db.questions.aggregate([{ $group:{ _id:"$type", count:{ $sum:1 } } }, { $sort:{ _id:1 } }]).forEach(printjson)'
+```
+
+After this script has been applied in all environments, remove temporary client normalization fallbacks in `client/src/components/questions/constants.js`:
+
+- remove the malformed numerical guard (`type=4` with multiple options),
+- remove legacy `rawType === 5` compatibility branch,
+- remove the final unknown-type fallback (`return QUESTION_TYPES.SHORT_ANSWER`) if strict rejection is preferred.
 
 ### Remaining Follow-Up Items
 
@@ -445,18 +484,18 @@ The milestones are defined in [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMEN
 
 ### Phase 4 — Sessions & Questions (Milestone 4: Session Editor)
 
-**Goal:** Professors can create sessions/quizzes, add questions, edit them (with attachments, MathJax), set dates, give extensions. Course page shows sessions with status.
+**Goal:** Professors can create sessions/quizzes, add questions, edit them (with attachments, KaTeX), set dates, give extensions. Course page shows sessions with status. Question editor uses TipTap for rich text and KaTeX for math rendering.
 
 | Agent | Tasks |
 |-------|-------|
 | 4 | Session CRUD, question CRUD, question types, session editor, quiz config, extensions |
-| 7 | Session editor UI, question editor UI (WYSIWYG, MathJax), session list, quiz date picker |
+| 7 | Session editor UI, question editor UI (TipTap WYSIWYG, KaTeX math), session list, quiz date picker |
 | 3 | Session list on course page, session status display |
 | 8 | Session/question CRUD tests, editor E2E tests |
 | 5 | Finalize WebSocket for live sessions |
 | 6 | Continue grade integration |
 
-**Testable by human:** Prof creates session → adds questions (all types) → edits with images/MathJax → sets quiz dates → gives extension → course page shows session status.
+**Testable by human:** Prof creates session → adds questions (all types) → edits with images/KaTeX → sets quiz dates → gives extension → course page shows session status.
 
 ### Phase 5 — Live Sessions & Quizzes (Milestone 6: Interactive Sessions Work)
 
@@ -890,6 +929,22 @@ The following issues were identified during testing and have been resolved:
 | Frontend | Connection status indicator (health check banner) | ✅ Complete |
 | Frontend | Avatar position fix (moved to far left per Comments.md) | ✅ Complete |
 
+### Post-Phase 4: TipTap/KaTeX Question Editor Integration
+
+| Component | Task | Status |
+|-----------|------|--------|
+| Frontend | Replace MathJax with KaTeX for math rendering | ✅ Complete |
+| Frontend | Replace plain text fields with TipTap rich text editor | ✅ Complete |
+| Frontend | Question editor autosave (inline editing, no manual save) | ✅ Complete |
+| Frontend | Resizable image support in TipTap editor (drag-and-drop) | ✅ Complete |
+| Frontend | Legacy math conversion (`<script type="math/tex">` → KaTeX `$...$`/`$$...$$`) | ✅ Complete |
+| Frontend | Questions store both `content` (HTML) and `plainText` fields | ✅ Complete |
+| Frontend | Live KaTeX preview in question editor | ✅ Complete |
+| Frontend | Canonical question type mapping aligned to Meteor (MC=0, TF=1, SA=2, MS=3, NU=4) | ✅ Complete |
+| Backend | Question route validation updated for canonical types (0–4) | ✅ Complete |
+| Backend | Migration script for legacy question type cleanup (`server/scripts/migrate-question-types.js`) | ✅ Complete |
+| Testing | Server tests updated for canonical question type values | ✅ Complete |
+
 ### Agent Status
 
 | Agent | Current Task | Status |
@@ -916,17 +971,18 @@ The following issues were identified during testing and have been resolved:
 
 ### Current Next Steps (Phase 5)
 
-Phase 4 is now complete — both backend and frontend work is done. All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
+Phase 4 is now complete — both backend and frontend work is done. The TipTap/KaTeX question editor integration is complete (replacing MathJax and plain text fields). All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
 
-1. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
-2. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
-3. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
-4. **Phase 6 Prep:** Grade calculation service (Agent 6)
-5. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
-6. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
-7. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
+1. **Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5
+2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
+3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
+4. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
+5. **Phase 6 Prep:** Grade calculation service (Agent 6)
+6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
+7. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
+8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
 
-**Testable by human (all phases through Phase 4):**
+**Testable by human (all phases through Phase 4 + TipTap/KaTeX):**
 - Log in as professor → create a course → click course title to view
 - Students can enroll → student sees course in dashboard → click title to view
 - Professor: add/remove students with confirmation dialog, avatars shown at far left
@@ -935,6 +991,11 @@ Phase 4 is now complete — both backend and frontend work is done. All Comments
 - Professor: Click session → session editor with settings, question list, add/edit/delete/reorder questions
 - Student: Course page shows visible/running/done sessions with status chips
 - Question editor supports all 5 types: Short Answer, Multiple Choice, True/False, Multi-Select, Numerical
+- Question editor uses TipTap rich text editor with bold/italic/underline formatting toolbar
+- Question editor supports inline `$...$` and block `$$...$$` KaTeX math rendering
+- Question editor supports drag-and-drop image upload with resizable images
+- Question editor autosaves while typing (no manual save button)
+- Legacy questions with MathJax `<script type="math/tex">` tags render correctly in KaTeX
 - Connection status: warning banner appears when backend is unreachable, disappears when restored
 - Admin: see Verified column, click to verify email, see Last Login column
 - Admin: **cannot change their own role** (dropdown is disabled with tooltip)

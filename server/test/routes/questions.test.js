@@ -51,7 +51,7 @@ async function createSessionInCourse(token, courseId, overrides = {}) {
 
 // Helper to create a question via the API
 async function createQuestionAsProf(profToken, overrides = {}) {
-  const payload = { type: 1, content: 'Test question?', ...overrides };
+  const payload = { type: 2, content: 'Test question?', ...overrides };
   const res = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
     token: profToken,
     payload,
@@ -78,6 +78,7 @@ describe('POST /api/v1/questions', () => {
     const profToken = await getAuthToken(app, prof);
 
     const res = await createQuestionAsProf(profToken, {
+      type: 0,
       content: 'What is 2+2?',
       options: [
         { answer: '3', correct: false },
@@ -89,7 +90,7 @@ describe('POST /api/v1/questions', () => {
     const body = res.json();
     expect(body.question).toBeDefined();
     expect(body.question.content).toBe('What is 2+2?');
-    expect(body.question.type).toBe(1);
+    expect(body.question.type).toBe(0);
     expect(body.question.creator).toBe(prof._id.toString());
     expect(body.question.options.length).toBe(2);
   });
