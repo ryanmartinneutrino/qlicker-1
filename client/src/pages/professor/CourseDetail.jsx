@@ -44,18 +44,63 @@ function parseCourseTab(value) {
   return parsed;
 }
 
+function toText(value) {
+  if (value === undefined || value === null) return '';
+  return String(value);
+}
+
 function getCourseEditFields(course = {}) {
   return {
-    name: course.name || '',
-    deptCode: course.deptCode || '',
-    courseNumber: course.courseNumber || '',
-    section: course.section || '',
-    semester: course.semester || '',
+    name: toText(course.name),
+    deptCode: toText(course.deptCode),
+    courseNumber: toText(course.courseNumber),
+    section: toText(course.section),
+    semester: toText(course.semester),
   };
+}
+
+const EMPTY_COURSE_EDIT_FIELDS = {
+  name: '',
+  deptCode: '',
+  courseNumber: '',
+  section: '',
+  semester: '',
+};
+const EMPTY_COURSE_EDIT_FIELDS_HASH = JSON.stringify(EMPTY_COURSE_EDIT_FIELDS);
+
+function parseFieldsHash(hashValue) {
+  if (!hashValue) return { ...EMPTY_COURSE_EDIT_FIELDS };
+  try {
+    const parsed = JSON.parse(hashValue);
+    return {
+      name: toText(parsed.name),
+      deptCode: toText(parsed.deptCode),
+      courseNumber: toText(parsed.courseNumber),
+      section: toText(parsed.section),
+      semester: toText(parsed.semester),
+    };
+  } catch {
+    return { ...EMPTY_COURSE_EDIT_FIELDS };
+  }
+}
+
+function diffCourseEditFields(previousFields, nextFields) {
+  const updates = {};
+  const keys = Object.keys(nextFields);
+  for (const key of keys) {
+    if (nextFields[key] !== previousFields[key]) {
+      updates[key] = nextFields[key];
+    }
+  }
+  return updates;
 }
 
 function hasAllCourseEditFields(fields) {
   return Object.values(fields).every((value) => String(value || '').trim().length > 0);
+}
+
+function isEmptyField(value) {
+  return String(value || '').trim().length === 0;
 }
 
 export default function CourseDetail() {
@@ -87,7 +132,7 @@ export default function CourseDetail() {
   const [imageViewUrl, setImageViewUrl] = useState(null);
 
   // Settings
-  const [editFields, setEditFields] = useState({ name: '', deptCode: '', courseNumber: '', section: '', semester: '' });
+  const [editFields, setEditFields] = useState(EMPTY_COURSE_EDIT_FIELDS);
   const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
   const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
 
@@ -126,14 +171,13 @@ export default function CourseDetail() {
       const nextHash = JSON.stringify(nextEditFields);
       setCourse(c);
       setEditFields((previousFields) => {
-        if (!settingsHydratedRef.current) {
-          settingsHydratedRef.current = true;
-          lastSavedEditFieldsHashRef.current = nextHash;
-          return nextEditFields;
-        }
-
         const previousHash = JSON.stringify(previousFields);
-        if (previousHash === lastSavedEditFieldsHashRef.current) {
+        const shouldHydrate = !settingsHydratedRef.current
+          || previousHash === EMPTY_COURSE_EDIT_FIELDS_HASH
+          || previousHash === lastSavedEditFieldsHashRef.current;
+
+        if (shouldHydrate) {
+          settingsHydratedRef.current = true;
           lastSavedEditFieldsHashRef.current = nextHash;
           return nextEditFields;
         }
@@ -262,9 +306,17 @@ export default function CourseDetail() {
       setSettingsAutoSaveStatus('saving');
       setSettingsAutoSaveError('');
       const requestedHash = JSON.stringify(pendingFields);
+      const lastSavedFields = parseFieldsHash(lastSavedEditFieldsHashRef.current);
+      const patchPayload = diffCourseEditFields(lastSavedFields, pendingFields);
+
+      if (Object.keys(patchPayload).length === 0) {
+        settingsSaveInFlightRef.current = false;
+        setSettingsAutoSaveStatus('success');
+        return;
+      }
 
       try {
-        const { data } = await apiClient.patch(`/courses/${id}`, pendingFields);
+        const { data } = await apiClient.patch(`/courses/${id}`, patchPayload);
         const savedCourse = data.course || data;
         const savedFields = getCourseEditFields(savedCourse);
         const savedHash = JSON.stringify(savedFields);
@@ -285,11 +337,9 @@ export default function CourseDetail() {
         if (queuedSettingsFieldsRef.current) {
           const queuedFields = queuedSettingsFieldsRef.current;
           queuedSettingsFieldsRef.current = null;
-          if (hasAllCourseEditFields(queuedFields)) {
-            const queuedHash = JSON.stringify(queuedFields);
-            if (queuedHash !== lastSavedEditFieldsHashRef.current) {
-              await runSave(queuedFields);
-            }
+          const queuedHash = JSON.stringify(queuedFields);
+          if (queuedHash !== lastSavedEditFieldsHashRef.current) {
+            await runSave(queuedFields);
           }
         }
       }
@@ -416,6 +466,12 @@ export default function CourseDetail() {
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+  const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);
+  const headerCourseName = settingsHydratedRef.current ? editFields.name : toText(course.name);
+  const headerDeptCode = settingsHydratedRef.current ? editFields.deptCode : toText(course.deptCode);
+  const headerCourseNumber = settingsHydratedRef.current ? editFields.courseNumber : toText(course.courseNumber);
+  const headerSection = settingsHydratedRef.current ? editFields.section : toText(course.section);
+  const headerSemester = settingsHydratedRef.current ? editFields.semester : toText(course.semester);
 
   const renderSessionList = (sessionItems, emptyText) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
@@ -483,11 +539,11 @@ export default function CourseDetail() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {`${course.deptCode || ''} ${course.courseNumber || ''}`.trim()}: {course.name} ({course.semester})
+            {`${headerDeptCode || ''} ${headerCourseNumber || ''}`.trim()}: {headerCourseName} ({headerSemester})
           </Typography>
-          {course.section && (
+          {headerSection && (
             <Typography variant="caption" color="text.secondary">
-              Section {course.section}
+              Section {headerSection}
             </Typography>
           )}
         </Box>
@@ -643,6 +699,11 @@ export default function CourseDetail() {
       <TabPanel value={tab} index={4}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
+          {hasMissingCourseProperties && (
+            <Alert severity="warning">
+              All course property fields are required. Autosave resumes once all fields are filled.
+            </Alert>
+          )}
           <FormControlLabel
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
             label={course.inactive ? 'Course is inactive' : 'Course is active'}
@@ -676,14 +737,49 @@ export default function CourseDetail() {
           </Box>
           <Divider sx={{ my: 1 }} />
           <Typography variant="h6">Course Properties</Typography>
-          <TextField label="Course Name" value={editFields.name} onChange={(e) => setEditFields((s) => ({ ...s, name: e.target.value }))} fullWidth />
+          <TextField
+            label="Course Name"
+            value={editFields.name}
+            onChange={(e) => setEditFields((s) => ({ ...s, name: e.target.value }))}
+            error={isEmptyField(editFields.name)}
+            helperText={isEmptyField(editFields.name) ? 'Course name is required.' : undefined}
+            fullWidth
+          />
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Dept Code" value={editFields.deptCode} onChange={(e) => setEditFields((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label="Course Number" value={editFields.courseNumber} onChange={(e) => setEditFields((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField
+              label="Dept Code"
+              value={editFields.deptCode}
+              onChange={(e) => setEditFields((s) => ({ ...s, deptCode: e.target.value }))}
+              error={isEmptyField(editFields.deptCode)}
+              helperText={isEmptyField(editFields.deptCode) ? 'Dept code is required.' : undefined}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Course Number"
+              value={editFields.courseNumber}
+              onChange={(e) => setEditFields((s) => ({ ...s, courseNumber: e.target.value }))}
+              error={isEmptyField(editFields.courseNumber)}
+              helperText={isEmptyField(editFields.courseNumber) ? 'Course number is required.' : undefined}
+              sx={{ flex: 1 }}
+            />
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Section" value={editFields.section} onChange={(e) => setEditFields((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label="Semester" value={editFields.semester} onChange={(e) => setEditFields((s) => ({ ...s, semester: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField
+              label="Section"
+              value={editFields.section}
+              onChange={(e) => setEditFields((s) => ({ ...s, section: e.target.value }))}
+              error={isEmptyField(editFields.section)}
+              helperText={isEmptyField(editFields.section) ? 'Section is required.' : undefined}
+              sx={{ flex: 1 }}
+            />
+            <TextField
+              label="Semester"
+              value={editFields.semester}
+              onChange={(e) => setEditFields((s) => ({ ...s, semester: e.target.value }))}
+              error={isEmptyField(editFields.semester)}
+              helperText={isEmptyField(editFields.semester) ? 'Semester is required.' : 'Stored exactly as entered (legacy-compatible)'}
+              sx={{ flex: 1 }}
+            />
           </Box>
           <Divider sx={{ my: 1 }} />
           <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteOpen(true)}>

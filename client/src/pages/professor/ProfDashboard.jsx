@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Chip, InputAdornment, Select, MenuItem,
+  CircularProgress, Chip, InputAdornment, Select, MenuItem, Autocomplete,
   FormControl, InputLabel,
 } from '@mui/material';
 import {
@@ -11,6 +11,11 @@ import {
   School as SchoolIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
+import {
+  SEMESTER_OPTIONS,
+  formatSemester,
+  getYearOptions,
+} from '../../utils/courseSemester';
 
 function getSuggestedSemester() {
   const now = new Date();
@@ -18,14 +23,14 @@ function getSuggestedSemester() {
   const year = now.getFullYear();
   if (month >= 10 || month <= 1) {
     // November-February → Winter
-    return { season: 'Winter', year: month >= 10 ? year + 1 : year };
+    return { season: 'Winter', year: String(month >= 10 ? year + 1 : year) };
   }
   if (month <= 6) {
     // March-July → Summer
-    return { season: 'Summer', year };
+    return { season: 'Summer', year: String(year) };
   }
   // August-October → Fall
-  return { season: 'Fall', year };
+  return { season: 'Fall', year: String(year) };
 }
 
 export default function ProfDashboard() {
@@ -39,6 +44,7 @@ export default function ProfDashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const suggested = getSuggestedSemester();
+  const yearOptions = getYearOptions();
   const [newCourse, setNewCourse] = useState({
     name: '', deptCode: '', courseNumber: '', section: '', season: suggested.season, year: suggested.year,
   });
@@ -61,8 +67,12 @@ export default function ProfDashboard() {
     setCreating(true);
     try {
       const { season, year, ...rest } = newCourse;
-      const semesterYear = season === 'Fall/Winter' ? `${year}/${Number(year) + 1}` : String(year);
-      await apiClient.post('/courses', { ...rest, semester: `${season} ${semesterYear}` });
+      const semester = formatSemester(season, year);
+      if (!semester) {
+        setMsg({ severity: 'error', text: 'Semester and year are required.' });
+        return;
+      }
+      await apiClient.post('/courses', { ...rest, semester });
       setCreateOpen(false);
       const s = getSuggestedSemester();
       setNewCourse({ name: '', deptCode: '', courseNumber: '', section: '', season: s.season, year: s.year });
@@ -196,31 +206,41 @@ export default function ProfDashboard() {
             <TextField label="Section" placeholder="e.g. 001" value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
             <FormControl sx={{ flex: 1 }}>
               <InputLabel>Semester</InputLabel>
-              <Select label="Semester" value={newCourse.season} onChange={(e) => {
-                const val = e.target.value;
-                setNewCourse((s) => {
-                  const updated = { ...s, season: val };
-                  // For Fall/Winter, use current year as the first year
-                  if (val === 'Fall/Winter') {
-                    updated.year = new Date().getFullYear();
-                  }
-                  return updated;
-                });
-              }}>
-                <MenuItem value="Fall">Fall</MenuItem>
-                <MenuItem value="Winter">Winter</MenuItem>
-                <MenuItem value="Fall/Winter">Fall/Winter</MenuItem>
-                <MenuItem value="Spring">Spring</MenuItem>
-                <MenuItem value="Summer">Summer</MenuItem>
-                <MenuItem value="Spring/Summer">Spring/Summer</MenuItem>
+              <Select
+                label="Semester"
+                value={newCourse.season}
+                onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}
+              >
+                {SEMESTER_OPTIONS.map((option) => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
               </Select>
             </FormControl>
-            <TextField label="Year" placeholder="e.g. 2025" value={newCourse.year} onChange={(e) => setNewCourse((s) => ({ ...s, year: e.target.value }))} sx={{ flex: 1 }} />
+            <Autocomplete
+              freeSolo
+              options={yearOptions}
+              value={newCourse.year}
+              onChange={(_, value) => {
+                setNewCourse((s) => ({ ...s, year: String(value || '').trim() }));
+              }}
+              onInputChange={(_, value) => {
+                setNewCourse((s) => ({ ...s, year: value }));
+              }}
+              sx={{ flex: 1 }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Year"
+                  placeholder="e.g. 2026 or 2026/2027"
+                  helperText="Use YYYY or YYYY/YYYY"
+                />
+              )}
+            />
           </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={creating || !newCourse.name}>
+          <Button variant="contained" onClick={handleCreate} disabled={creating || !newCourse.name || !newCourse.season || !newCourse.year}>
             {creating ? 'Creating…' : 'Create'}
           </Button>
         </DialogActions>
