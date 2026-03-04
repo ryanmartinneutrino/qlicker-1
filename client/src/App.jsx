@@ -17,6 +17,7 @@ import ProfCourseDetail from './pages/professor/CourseDetail';
 import SessionEditor from './pages/professor/SessionEditor';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseDetail from './pages/student/CourseDetail';
+import SessionReview from './pages/student/SessionReview';
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />
+              <Route path="/student/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

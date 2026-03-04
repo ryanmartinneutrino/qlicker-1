@@ -151,7 +151,14 @@ export default function StudentCourseDetail() {
                     <Button size="small" variant="outlined" disabled>Start Quiz</Button>
                   )}
                   {s.status === 'done' && (
-                    <Button size="small" variant="text" disabled>Review</Button>
+                    <Button
+                      size="small"
+                      variant="text"
+                      disabled={!s.reviewable}
+                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/review`)}
+                    >
+                      Review
+                    </Button>
                   )}
                 </Box>
               </ListItem>
