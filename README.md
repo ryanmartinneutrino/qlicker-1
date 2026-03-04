@@ -19,11 +19,11 @@ This repository contains the **migration** from the original MeteorJS implementa
 │   ├── AGENT_7_FRONTEND.md
 │   └── AGENT_8_TESTING.md
 ├── meteorjs_version/                       # Original MeteorJS app (reference)
-├── server/                                 # Fastify backend (to be created)
-├── client/                                 # React frontend (to be created)
+├── server/                                 # Fastify backend
+├── client/                                 # React frontend (Vite)
 ├── scripts/                                # Setup and utility scripts
 ├── docker-compose.yml                      # Docker orchestration
-└── Dockerfile.*                            # Container build files
+└── .env.example                            # Environment variable template
 ```
 
 ## Quick Start
@@ -71,13 +71,15 @@ docker compose up -d
 ### Managing the Native App
 
 ```bash
-./scripts/qlicker.sh start    # Start the app
+./scripts/qlicker.sh start    # Start the app (backend + frontend)
 ./scripts/qlicker.sh stop     # Stop the app
 ./scripts/qlicker.sh restart  # Restart the app
-./scripts/qlicker.sh status   # Check status
+./scripts/qlicker.sh status   # Check running status
 ```
 
 ### Database Seeding
+
+Populate the database with sample users for testing:
 
 ```bash
 # Seed with sample users (native)
@@ -90,6 +92,23 @@ docker compose up -d
 ./scripts/seed-db.sh --reset
 ./scripts/seed-db-docker.sh --reset
 ```
+
+### Changing a User Password (Dev/Testing)
+
+For development and testing, you can change any user's password directly in the database:
+
+```bash
+# Change password (defaults to '123456' if --newpasswd is omitted)
+./scripts/changeuserpwd.sh --email user@example.com
+
+# Change password to a specific value
+./scripts/changeuserpwd.sh --email user@example.com --newpasswd mynewpassword
+
+# Show usage
+./scripts/changeuserpwd.sh --help
+```
+
+The script connects to MongoDB using the `MONGO_URI` from your `.env` file and updates the user's password hash (Argon2id). The minimum password length is 6 characters.
 
 ### First Run
 
@@ -112,6 +131,131 @@ cd client && npm run dev
 cd server && npm test
 cd client && npm test
 ```
+
+## Scripts Reference
+
+| Script | Description |
+|--------|-------------|
+| `scripts/setup-native.sh` | Interactive wizard for native (non-Docker) installation |
+| `scripts/setup-docker.sh` | Interactive wizard for Docker Compose setup |
+| `scripts/qlicker.sh` | Service manager — `start`, `stop`, `restart`, `status` |
+| `scripts/seed-db.sh` | Seed the database with test data (native) |
+| `scripts/seed-db-docker.sh` | Seed the database with test data (Docker) |
+| `scripts/seed-db.js` | Node.js seeding logic used by the shell wrappers |
+| `scripts/changeuserpwd.sh` | Change a user's password from the CLI (dev/testing) |
+| `scripts/changeuserpwd.js` | Node.js logic for password change |
+
+## Image / File Storage Configuration
+
+Qlicker supports three storage backends for uploaded images (profile photos, question images): **local**, **Amazon S3**, and **Azure Blob Storage**. The backend is selected via the `STORAGE_TYPE` environment variable (or configured in the admin settings panel).
+
+### Local Storage (default)
+
+No additional configuration is needed. Files are stored in the `server/uploads/` directory and served directly by Fastify.
+
+```env
+STORAGE_TYPE=local
+```
+
+### Amazon S3
+
+To use Amazon S3 (or any S3-compatible service such as MinIO):
+
+1. **Create an S3 bucket** in your AWS account (or MinIO instance).
+2. **Create an IAM user** (or use an existing one) with programmatic access.
+3. **Attach a policy** granting `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on the bucket. Example policy:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [{
+       "Effect": "Allow",
+       "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+       "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME/*"
+     }]
+   }
+   ```
+4. **Copy the Access Key ID and Secret Access Key** from the IAM user credentials.
+5. **Set the environment variables:**
+
+```env
+STORAGE_TYPE=s3
+AWS_BUCKET=your-bucket-name
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
+
+**For S3-compatible services (e.g., MinIO):** also set the custom endpoint and enable path-style access:
+
+```env
+AWS_ENDPOINT=http://localhost:9000
+AWS_FORCE_PATH_STYLE=true
+```
+
+### Azure Blob Storage
+
+To use Azure Blob Storage:
+
+1. **Create a Storage Account** in the Azure Portal (e.g., `qlickerstorage`).
+2. **Create a Blob Container** inside the storage account (e.g., `images`).
+3. **Copy an Access Key** from the storage account's "Access keys" blade in the Azure Portal.
+4. **Set the environment variables:**
+
+```env
+STORAGE_TYPE=azure
+AZURE_ACCOUNT_NAME=qlickerstorage
+AZURE_ACCOUNT_KEY=your-base64-encoded-access-key
+AZURE_CONTAINER_NAME=images
+```
+
+The container will be created automatically if it does not exist (provided the access key has sufficient permissions).
+
+### Testing Storage Backends
+
+**S3 with MinIO:** [MinIO](https://min.io/) is an S3-compatible object storage server that can be run locally. It is well suited for integration testing and local development without an AWS account:
+
+```bash
+# Run MinIO via Docker
+docker run -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio server /data --console-address ":9001"
+```
+
+Then create a bucket (e.g., `qlicker-dev`) via the MinIO console at `http://localhost:9001` and configure:
+
+```env
+STORAGE_TYPE=s3
+AWS_BUCKET=qlicker-dev
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_ENDPOINT=http://localhost:9000
+AWS_FORCE_PATH_STYLE=true
+```
+
+**Azure with Azurite:** [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) is the official Azure Storage emulator. It provides a local emulation of Azure Blob Storage for development and testing:
+
+```bash
+# Run Azurite via Docker
+docker run -p 10000:10000 -p 10001:10001 -p 10002:10002 \
+  mcr.microsoft.com/azure-storage/azurite
+
+# Or install and run via npm
+npm install -g azurite
+azurite --silent --location ./azurite-data
+```
+
+Then configure Qlicker to use Azurite's well-known credentials:
+
+```env
+STORAGE_TYPE=azure
+AZURE_ACCOUNT_NAME=devstoreaccount1
+AZURE_ACCOUNT_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+AZURE_CONTAINER_NAME=images
+```
+
+> **Note:** Azurite uses a different blob endpoint format (`http://127.0.0.1:10000/devstoreaccount1`). The upload plugin currently constructs Azure URLs using the standard `https://<account>.blob.core.windows.net` pattern. For production usage this is correct; for local Azurite testing, uploaded files can be accessed directly via the Azurite endpoint.
 
 ## Documentation
 

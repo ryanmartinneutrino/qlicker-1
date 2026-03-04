@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 4 Complete — TipTap/KaTeX Question Editor Integrated; Phase 5 Ready
+## Status: Phase 5 In Progress — Student Session Review Page Implemented; Image Uploads Verified
 
 ---
 
@@ -840,7 +840,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 2. Profile & uploads | ✅ Complete (bugs fixed) | Phase 2 |
 | 3. Course management | ✅ Complete | Phase 3 |
 | 4. Session editor | ✅ Complete | Phase 4 |
-| 6. Live sessions & quizzes | ⬜ Not started | Phase 5 |
+| 6. Live sessions & quizzes | 🔄 In progress | Phase 5 |
 | 7. Grading | ⬜ Not started | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
@@ -974,14 +974,23 @@ The following issues were identified during testing and have been resolved:
 
 Phase 4 is now complete — both backend and frontend work is done. The TipTap/KaTeX question editor integration is complete (replacing MathJax and plain text fields). All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
 
-1. **Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5
+1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
 2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
 3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
 4. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
 5. **Phase 6 Prep:** Grade calculation service (Agent 6)
 6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
-7. **Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures (referenced in Comments.md)
+7. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
 8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
+
+### Phase 5 Progress
+
+The following Phase 5 work has been completed:
+
+- ✅ **Student session review page** — `GET /api/v1/sessions/:id/review` endpoint returns session questions with solutions for reviewable (done) sessions. Students access via `/student/course/:courseId/session/:sessionId/review`. Default single-question view with Previous/Next controls; toggle to view all questions at once. Each question has a "Show solution" button that reveals correct answers and solution text (rendered with KaTeX for math). 6 new backend tests cover permission checks.
+- ✅ **Image upload backends verified** — Local, S3 (including MinIO via custom endpoint + path-style), and Azure Blob Storage backends are implemented and tested. See README for configuration instructions.
+- ✅ **README updated** — All scripts documented, S3/Azure/MinIO/Azurite setup instructions added.
+- ✅ **UI consistency** (PRs 108–112) — Helvetica font stack, student course page mirrors professor layout, image rendering constrained in questions, SSO-first login UX.
 
 **Testable by human (all phases through Phase 4 + TipTap/KaTeX):**
 - Log in as professor → create a course → click course title to view
