@@ -24,6 +24,76 @@ function isImageFile(file) {
   return Boolean(file?.type?.startsWith('image/'));
 }
 
+const RESIZABLE_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Failed to decode image'));
+    img.src = dataUrl;
+  });
+}
+
+async function prepareImageForUpload(file, maxWidthPx) {
+  const safeMaxWidth = Number(maxWidthPx);
+  if (!RESIZABLE_UPLOAD_TYPES.has(file.type)) {
+    return { file, width: undefined };
+  }
+  if (!Number.isFinite(safeMaxWidth) || safeMaxWidth <= 0) {
+    return { file, width: undefined };
+  }
+
+  const sourceDataUrl = await readFileAsDataUrl(file);
+  const sourceImage = await loadImageFromDataUrl(sourceDataUrl);
+  const sourceWidth = sourceImage.naturalWidth || 0;
+  const sourceHeight = sourceImage.naturalHeight || 0;
+
+  if (!sourceWidth || !sourceHeight || sourceWidth <= safeMaxWidth) {
+    return { file, width: sourceWidth || undefined };
+  }
+
+  const scale = safeMaxWidth / sourceWidth;
+  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { file, width: sourceWidth || undefined };
+  ctx.drawImage(sourceImage, 0, 0, targetWidth, targetHeight);
+
+  const resizedBlob = await new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), file.type, 0.92);
+  });
+
+  if (!resizedBlob) return { file, width: sourceWidth || undefined };
+  return {
+    file: new File([resizedBlob], file.name, {
+      type: file.type,
+      lastModified: Date.now(),
+    }),
+    width: targetWidth,
+  };
+}
+
+function getMaxEditorImageWidth(view) {
+  const editorWidth = view?.dom?.getBoundingClientRect?.().width || 0;
+  if (!Number.isFinite(editorWidth) || editorWidth <= 0) return 0;
+  return Math.floor(editorWidth * 0.9);
+}
+
 export default function RichTextEditor({
   value,
   onChange,
@@ -41,13 +111,15 @@ export default function RichTextEditor({
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
 
-  const uploadImage = async (file) => {
+  const uploadImage = async (file, maxEditorImageWidth) => {
+    const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
     const formData = new FormData();
-    formData.append('file', file);
-    const { data } = await apiClient.post('/images', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return data?.image?.url || '';
+    formData.append('file', preparedUpload.file);
+    const { data } = await apiClient.post('/images', formData);
+    return {
+      url: data?.image?.url || '',
+      width: preparedUpload.width,
+    };
   };
 
   const editor = useEditor(
@@ -78,16 +150,20 @@ export default function RichTextEditor({
 
           const dropPos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
             ?? view.state.selection.from;
+          const maxEditorImageWidth = getMaxEditorImageWidth(view);
 
-          Promise.all(droppedFiles.map(file => uploadImage(file)))
-            .then((urls) => {
-              const validUrls = urls.filter(Boolean);
-              if (!validUrls.length) return;
+          Promise.all(droppedFiles.map((file) => uploadImage(file, maxEditorImageWidth)))
+            .then((uploads) => {
+              const validUploads = uploads.filter((upload) => upload?.url);
+              if (!validUploads.length) return;
 
               let tr = view.state.tr;
               let insertPos = dropPos;
-              validUrls.forEach((url) => {
-                const imageNode = view.state.schema.nodes.image.create({ src: url });
+              validUploads.forEach((upload) => {
+                const imageNode = view.state.schema.nodes.image.create({
+                  src: upload.url,
+                  width: upload.width,
+                });
                 tr = tr.insert(insertPos, imageNode);
                 insertPos += imageNode.nodeSize;
               });
@@ -111,15 +187,19 @@ export default function RichTextEditor({
           setUploading(true);
 
           const insertPos = view.state.selection.from;
-          Promise.all(pastedFiles.map(file => uploadImage(file)))
-            .then((urls) => {
-              const validUrls = urls.filter(Boolean);
-              if (!validUrls.length) return;
+          const maxEditorImageWidth = getMaxEditorImageWidth(view);
+          Promise.all(pastedFiles.map((file) => uploadImage(file, maxEditorImageWidth)))
+            .then((uploads) => {
+              const validUploads = uploads.filter((upload) => upload?.url);
+              if (!validUploads.length) return;
 
               let tr = view.state.tr;
               let pos = insertPos;
-              validUrls.forEach((url) => {
-                const imageNode = view.state.schema.nodes.image.create({ src: url });
+              validUploads.forEach((upload) => {
+                const imageNode = view.state.schema.nodes.image.create({
+                  src: upload.url,
+                  width: upload.width,
+                });
                 tr = tr.insert(pos, imageNode);
                 pos += imageNode.nodeSize;
               });
@@ -192,15 +272,14 @@ export default function RichTextEditor({
             fontSize: 15,
             lineHeight: 1.55,
             resize: resizable ? 'vertical' : 'none',
-            overflow: resizable ? 'auto' : 'visible',
+            overflowX: 'hidden',
+            overflowY: resizable ? 'auto' : 'visible',
             '& p': { my: compact ? 0 : 0.7 },
             '& ul, & ol': { my: 0.7, pl: 3 },
             '& .tiptap-resizable-image': {
-              borderRadius: 6,
-              border: theme => `1px dashed ${theme.palette.divider}`,
               my: 0.8,
             },
-            '& img': { maxWidth: '100%', height: 'auto', borderRadius: 1 },
+            '& img': { maxWidth: '100%', height: 'auto', borderRadius: 0 },
             '& .is-empty::before': {
               color: 'text.disabled',
               content: 'attr(data-placeholder)',

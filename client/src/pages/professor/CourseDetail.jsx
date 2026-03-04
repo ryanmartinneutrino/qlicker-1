@@ -614,7 +614,7 @@ export default function CourseDetail() {
                   <ListItem>
                     <ListItemAvatar>
                       <Avatar
-                        src={s.profile?.profileThumbnail || s.profile?.profileImage || ''}
+                        src={s.profile?.profileImage || s.profile?.profileThumbnail || ''}
                         sx={{ width: 36, height: 36, cursor: (s.profile?.profileImage) ? 'pointer' : 'default' }}
                         onClick={() => {
                           if (s.profile?.profileImage) setImageViewUrl(s.profile.profileImage);
@@ -659,7 +659,7 @@ export default function CourseDetail() {
                   <ListItem>
                     <ListItemAvatar>
                       <Avatar
-                        src={inst.profile?.profileThumbnail || inst.profile?.profileImage || ''}
+                        src={inst.profile?.profileImage || inst.profile?.profileThumbnail || ''}
                         sx={{ width: 36, height: 36, cursor: (inst.profile?.profileImage) ? 'pointer' : 'default' }}
                         onClick={() => {
                           if (inst.profile?.profileImage) setImageViewUrl(inst.profile.profileImage);

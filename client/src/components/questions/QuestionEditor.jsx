@@ -107,6 +107,14 @@ function MathLivePreview({
       sx={{
         '& p': { my: compact ? 0 : 0.5 },
         '& ul, & ol': { my: compact ? 0 : 0.5, pl: 3 },
+        '& img': {
+          display: 'block',
+          maxWidth: '90% !important',
+          width: 'auto !important',
+          height: 'auto !important',
+          borderRadius: 0,
+          my: 0.5,
+        },
       }}
     />
   );
@@ -486,7 +494,17 @@ export default function QuestionEditor({
   );
 
   const footer = (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', px: inline ? 0 : 3, py: inline ? 0 : 1, alignItems: 'center' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        px: inline ? 0 : 3,
+        py: inline ? 0 : 1,
+        alignItems: 'center',
+        gap: 1,
+        flexWrap: 'wrap',
+      }}
+    >
       <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center' }}>
         {autosaveError ? (
           <Alert severity="error" sx={{ py: 0 }}>
@@ -504,7 +522,7 @@ export default function QuestionEditor({
 
   if (inline) {
     return (
-      <Box>
+      <Box sx={{ width: '100%', minWidth: 0 }}>
         {editorFields}
         <Box sx={{ mt: 1.5 }}>{footer}</Box>
       </Box>

@@ -10,6 +10,19 @@ import {
 } from './constants';
 import { prepareRichTextInput, renderKatexInElement } from './richTextUtils';
 
+const questionRichContentSx = {
+  '& p': { my: 0.5 },
+  '& ul, & ol': { my: 0.5, pl: 3 },
+  '& img': {
+    display: 'block',
+    maxWidth: '90% !important',
+    width: 'auto !important',
+    height: 'auto !important',
+    borderRadius: 0,
+    my: 0.75,
+  },
+};
+
 function renderRichText(value, fallback = '') {
   const contentHtml = prepareRichTextInput(value || '', fallback || '');
   if (!contentHtml) {
@@ -17,7 +30,7 @@ function renderRichText(value, fallback = '') {
   }
   return (
     <Box
-      sx={{ mb: 1, '& p': { my: 0.5 } }}
+      sx={{ ...questionRichContentSx, mb: 1 }}
       dangerouslySetInnerHTML={{ __html: contentHtml }}
     />
   );
@@ -50,7 +63,7 @@ export default function QuestionDisplay({ question }) {
   const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2 }} ref={containerRef}>
+    <Paper variant="outlined" sx={{ p: 2, width: '100%', minWidth: 0, overflow: 'hidden' }} ref={containerRef}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" />
         {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" />}
@@ -80,6 +93,14 @@ export default function QuestionDisplay({ question }) {
                       '& p': { my: 0 },
                       '& ul, & ol': { my: 0, pl: 2.5 },
                       '& li': { my: 0 },
+                      '& img': {
+                        display: 'block',
+                        maxWidth: '90% !important',
+                        width: 'auto !important',
+                        height: 'auto !important',
+                        borderRadius: 0,
+                        my: 0.5,
+                      },
                     }}
                     dangerouslySetInnerHTML={{
                       __html: prepareRichTextInput(
@@ -105,7 +126,10 @@ export default function QuestionDisplay({ question }) {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             Solution
           </Typography>
-          <Box dangerouslySetInnerHTML={{ __html: prepareRichTextInput(question.solution, question.solution_plainText) }} />
+          <Box
+            sx={questionRichContentSx}
+            dangerouslySetInnerHTML={{ __html: prepareRichTextInput(question.solution, question.solution_plainText) }}
+          />
         </Box>
       )}
     </Paper>

@@ -108,14 +108,24 @@ export default async function userRoutes(app) {
 
   // PATCH /me/image — Update profile image
   app.patch('/me/image', { preHandler: authenticate }, async (request, reply) => {
-    const { profileImage } = request.body || {};
+    const { profileImage, profileThumbnail } = request.body || {};
     if (typeof profileImage !== 'string') {
       return reply.code(400).send({ error: 'Bad Request', message: 'profileImage URL string is required' });
     }
+    if (profileThumbnail !== undefined && typeof profileThumbnail !== 'string') {
+      return reply.code(400).send({ error: 'Bad Request', message: 'profileThumbnail must be a URL string when provided' });
+    }
+
+    const resolvedThumbnail = profileThumbnail ?? profileImage;
 
     const user = await User.findByIdAndUpdate(
       request.user.userId,
-      { $set: { 'profile.profileImage': profileImage } },
+      {
+        $set: {
+          'profile.profileImage': profileImage,
+          'profile.profileThumbnail': resolvedThumbnail,
+        },
+      },
       { new: true }
     );
     if (!user) {

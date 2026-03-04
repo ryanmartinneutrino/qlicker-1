@@ -38,6 +38,8 @@ const SettingsSchema = new mongoose.Schema(
     AWS_region: { type: String, default: '' },
     AWS_accessKeyId: { type: String, default: '' },
     AWS_secretAccessKey: { type: String, default: '' },
+    AWS_endpoint: { type: String, default: '' },
+    AWS_forcePathStyle: { type: Boolean, default: false },
     // AWS S3 legacy field names (Meteor used different names)
     AWS_accessKey: { type: String, default: '' },
     AWS_secret: { type: String, default: '' },
