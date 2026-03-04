@@ -36,10 +36,13 @@ coverage/
 
 # Docker volumes
 mongo-data/
+data/db/
+.data/
 
 # Temporary files
 tmp/
 .tmp/
+.qlicker.pids
 
 # Uploaded files
 server/uploads/

@@ -183,6 +183,23 @@ check_port "$API_PORT" "Server"
 check_port "$MONGO_PORT" "MongoDB"
 
 # --------------------------------------------------
+# Ask for MongoDB data path
+# --------------------------------------------------
+echo ""
+echo "--- MongoDB Data Path ---"
+DEFAULT_MONGO_DBPATH="${MONGO_DBPATH:-data/db}"
+read -r -p "MongoDB dbpath [$DEFAULT_MONGO_DBPATH]: " MONGO_DBPATH_INPUT
+MONGO_DBPATH=${MONGO_DBPATH_INPUT:-$DEFAULT_MONGO_DBPATH}
+
+if [[ "$MONGO_DBPATH" = /* ]]; then
+  MONGO_DBPATH_RESOLVED="$MONGO_DBPATH"
+else
+  MONGO_DBPATH_RESOLVED="$PROJECT_ROOT/$MONGO_DBPATH"
+fi
+mkdir -p "$MONGO_DBPATH_RESOLVED"
+echo "[OK] MongoDB dbpath: $MONGO_DBPATH_RESOLVED"
+
+# --------------------------------------------------
 # Ask for MAIL_URL
 # --------------------------------------------------
 echo ""
@@ -227,6 +244,7 @@ VITE_WS_URL=ws://localhost:$API_PORT
 APP_PORT=$APP_PORT
 API_PORT=$API_PORT
 MONGO_PORT=$MONGO_PORT
+MONGO_DBPATH=$MONGO_DBPATH
 
 # Storage (optional)
 STORAGE_TYPE=local
@@ -275,7 +293,7 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
   echo ""
 fi
 echo "  Next steps:"
-echo "    1. Start MongoDB:  mongod --dbpath /data/db"
+echo "    1. Start MongoDB:  mongod --port $MONGO_PORT --dbpath $MONGO_DBPATH_RESOLVED"
 echo "    2. Seed database:  ./scripts/seed-db.sh"
 echo "    3. Start Qlicker:  ./scripts/qlicker.sh start"
 echo ""

@@ -46,6 +46,7 @@ This repository contains the **migration** from the original MeteorJS implementa
 The script will:
 - Check and offer to install dependencies (Node.js, npm, MongoDB)
 - Ask which ports to use (defaults: 3000 for app, 3001 for API, 27017 for MongoDB)
+- Ask for MongoDB data path (default: `data/db`)
 - Generate `.env` files with secure tokens (using OpenSSL)
 - Run `npm install` for both server and client
 
