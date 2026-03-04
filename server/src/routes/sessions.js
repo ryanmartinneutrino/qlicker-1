@@ -511,10 +511,10 @@ export default async function sessionRoutes(app) {
       // Maintain session question order
       const questionMap = {};
       for (const q of questions) {
-        questionMap[q._id] = q;
+        questionMap[String(q._id)] = q;
       }
       const orderedQuestions = questionIds
-        .map((id) => questionMap[id])
+        .map((id) => questionMap[String(id)])
         .filter(Boolean);
 
       // Fetch this student's responses for these questions

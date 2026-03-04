@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress,
+  Box, Typography, Button, Paper, Alert, CircularProgress,
   Chip, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import {
@@ -171,7 +171,6 @@ export default function SessionReview() {
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [msg, setMsg] = useState(null);
 
   // View mode: 'one' (single question) or 'all'
   const [viewMode, setViewMode] = useState('one');
@@ -333,9 +332,6 @@ export default function SessionReview() {
         </>
       )}
 
-      <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>
-        {msg ? <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert> : undefined}
-      </Snackbar>
     </Box>
   );
 }
