@@ -454,3 +454,148 @@ describe('POST /api/v1/sessions/:id/copy', () => {
     expect(updatedCourse.sessions).toContain(copiedSession._id);
   });
 });
+
+// ---------- GET /api/v1/sessions/:id/review ----------
+describe('GET /api/v1/sessions/:id/review', () => {
+  async function createReviewableSession(profToken, courseId) {
+    const sessRes = await createSessionInCourse(profToken, courseId, { name: 'Review Session' });
+    const session = sessRes.json().session;
+
+    // Create a question with a correct answer and solution
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>What is 2+2?</p>',
+        plainText: 'What is 2+2?',
+        sessionId: session._id,
+        courseId,
+        options: [
+          { content: '3', correct: false },
+          { content: '4', correct: true },
+          { content: '5', correct: false },
+        ],
+        solution: '<p>Basic addition: 2+2=4</p>',
+        solution_plainText: 'Basic addition: 2+2=4',
+      },
+    });
+    const question = qRes.json().question;
+
+    // Add question to session
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+
+    // Mark session done and reviewable
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+
+    return { session, question };
+  }
+
+  it('student can review a done+reviewable session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { session, question } = await createReviewableSession(profToken, course._id);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session).toBeDefined();
+    expect(body.questions).toBeDefined();
+    expect(body.questions.length).toBe(1);
+    expect(body.questions[0]._id).toBe(question._id);
+    expect(body.questions[0].solution).toBe('<p>Basic addition: 2+2=4</p>');
+    expect(body.questions[0].options[1].correct).toBe(true);
+    expect(body.responses).toBeDefined();
+  });
+
+  it('student cannot review a non-reviewable session (403)', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: false },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('student cannot review a session that is not done (403)', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible', reviewable: true },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('non-member cannot review session (403)', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const { session } = await createReviewableSession(profToken, course._id);
+
+    const outsider = await createTestUser({ email: 'outsider@example.com', roles: ['student'] });
+    const outsiderToken = await getAuthToken(app, outsider);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: outsiderToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('instructor can review session even if not reviewable', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    // Session is hidden and not reviewable, but instructor should still access review
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('returns 404 for non-existent session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/nonexistentId123/review', {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});

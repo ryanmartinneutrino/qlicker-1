@@ -1,5 +1,7 @@
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
+import Question from '../models/Question.js';
+import Response from '../models/Response.js';
 
 const createSessionSchema = {
   body: {
@@ -469,6 +471,72 @@ export default async function sessionRoutes(app) {
       });
 
       return reply.code(201).send({ session: newSession.toObject() });
+    }
+  );
+
+  // GET /sessions/:id/review - Get session review data for a student
+  app.get(
+    '/sessions/:id/review',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      // Students can only review if the session is reviewable and done
+      const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      if (!isInstrOrAdmin) {
+        if (!session.reviewable) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
+        }
+        if (session.status !== 'done') {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
+        }
+      }
+
+      // Fetch questions in session order
+      const questionIds = session.questions || [];
+      const questions = await Question.find({ _id: { $in: questionIds } }).lean();
+
+      // Maintain session question order
+      const questionMap = {};
+      for (const q of questions) {
+        questionMap[q._id] = q;
+      }
+      const orderedQuestions = questionIds
+        .map((id) => questionMap[id])
+        .filter(Boolean);
+
+      // Fetch this student's responses for these questions
+      const responses = await Response.find({
+        questionId: { $in: questionIds },
+        studentUserId: request.user.userId,
+      }).lean();
+
+      // Group responses by questionId
+      const responsesByQuestion = {};
+      for (const r of responses) {
+        if (!responsesByQuestion[r.questionId]) {
+          responsesByQuestion[r.questionId] = [];
+        }
+        responsesByQuestion[r.questionId].push(r);
+      }
+
+      return {
+        session: session.toObject(),
+        questions: orderedQuestions,
+        responses: responsesByQuestion,
+      };
     }
   );
 }
