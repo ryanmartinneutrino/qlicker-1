@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+MONGO_DBPATH="${MONGO_DBPATH:-data/db}"
+MONGO_LOG_PATH="${MONGO_LOG_PATH:-.data/mongodb.log}"
 
 # Load .env if it exists so MONGO_URI is available
 if [ -f "$PROJECT_ROOT/.env" ]; then
@@ -21,11 +23,126 @@ if [ -z "${MONGO_URI:-}" ]; then
   fi
 fi
 
+resolve_path() {
+  local input_path="$1"
+  if [[ "$input_path" = /* ]]; then
+    printf '%s\n' "$input_path"
+  else
+    printf '%s\n' "$PROJECT_ROOT/$input_path"
+  fi
+}
+
+MONGO_DBPATH_RESOLVED="$(resolve_path "$MONGO_DBPATH")"
+MONGO_LOG_PATH_RESOLVED="$(resolve_path "$MONGO_LOG_PATH")"
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1"
     exit 1
   fi
+}
+
+mongo_uri_is_localhost() {
+  [[ "$MONGO_URI" =~ ^mongodb(\+srv)?://(localhost|127\.0\.0\.1)(:([0-9]+))?(/|$) ]]
+}
+
+mongo_port_from_uri() {
+  if [[ "$MONGO_URI" =~ ^mongodb(\+srv)?://(localhost|127\.0\.0\.1):([0-9]+)(/|$) ]]; then
+    printf '%s\n' "${BASH_REMATCH[3]}"
+    return 0
+  fi
+
+  if [[ "$MONGO_URI" =~ ^mongodb(\+srv)?://(localhost|127\.0\.0\.1)(/|$) ]]; then
+    printf '27017\n'
+    return 0
+  fi
+
+  return 1
+}
+
+can_connect_mongo() {
+  command -v mongosh >/dev/null 2>&1 || return 1
+  mongosh "$MONGO_URI" --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null 2>&1
+}
+
+is_port_listening() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
+    return $?
+  fi
+
+  if command -v ss >/dev/null 2>&1; then
+    ss -tln | grep -q ":$port "
+    return $?
+  fi
+
+  return 1
+}
+
+ensure_local_mongo_running() {
+  local mongo_port
+
+  if command -v mongosh >/dev/null 2>&1 && can_connect_mongo; then
+    return 0
+  fi
+
+  if ! mongo_uri_is_localhost; then
+    if command -v mongosh >/dev/null 2>&1; then
+      echo "MongoDB is not reachable at $MONGO_URI"
+      echo "Start MongoDB manually and re-run this script."
+      exit 1
+    fi
+    return 0
+  fi
+
+  if [ -n "${MONGO_PORT:-}" ]; then
+    mongo_port="$MONGO_PORT"
+  elif ! mongo_port="$(mongo_port_from_uri)"; then
+    echo "Unable to determine MongoDB port from MONGO_URI: $MONGO_URI"
+    exit 1
+  fi
+
+  if ! command -v mongosh >/dev/null 2>&1 && is_port_listening "$mongo_port"; then
+    return 0
+  fi
+
+  if ! command -v mongod >/dev/null 2>&1; then
+    echo "MongoDB is not reachable at $MONGO_URI and 'mongod' is not installed."
+    echo "Install MongoDB or run the Docker seeding script instead."
+    exit 1
+  fi
+
+  mkdir -p "$MONGO_DBPATH_RESOLVED"
+  mkdir -p "$(dirname "$MONGO_LOG_PATH_RESOLVED")"
+
+  echo "MongoDB is not reachable at $MONGO_URI."
+  echo "Starting local mongod on port $mongo_port with dbpath $MONGO_DBPATH_RESOLVED ..."
+  if ! mongod --port "$mongo_port" --dbpath "$MONGO_DBPATH_RESOLVED" --fork --logpath "$MONGO_LOG_PATH_RESOLVED" >/dev/null 2>&1; then
+    echo "Failed to start mongod."
+    if [ -f "$MONGO_LOG_PATH_RESOLVED" ]; then
+      echo "Last MongoDB log lines:"
+      tail -n 20 "$MONGO_LOG_PATH_RESOLVED" || true
+    fi
+    exit 1
+  fi
+
+  local attempt
+  for attempt in {1..20}; do
+    if command -v mongosh >/dev/null 2>&1; then
+      if can_connect_mongo; then
+        echo "MongoDB is ready."
+        return 0
+      fi
+    elif is_port_listening "$mongo_port"; then
+      echo "MongoDB is ready."
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  echo "MongoDB did not become ready at $MONGO_URI."
+  exit 1
 }
 
 db_name_from_uri() {
@@ -148,6 +265,7 @@ select_legacy_directory() {
 }
 
 run_seed() {
+  ensure_local_mongo_running
   echo "Running database seed..."
   node "$SCRIPT_DIR/seed-db.js" "$@"
 }

@@ -1,29 +1,36 @@
 #!/usr/bin/env node
 
-import mongoose from 'mongoose';
 import crypto from 'crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
-import { config } from 'dotenv';
 import { existsSync } from 'fs';
 
-// Load .env from project root (try multiple locations for Docker compatibility)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const projectRoot = join(__dirname, '..');
 
-async function loadArgon2Module() {
+async function loadModule(moduleName, fallbackRelativePath) {
   try {
-    return await import('@node-rs/argon2');
+    return await import(moduleName);
   } catch (err) {
     // Local script execution may not have a root package.json/node_modules.
     // Fall back to server dependencies when present.
-    const fallbackPath = join(projectRoot, 'server', 'node_modules', '@node-rs', 'argon2', 'index.js');
+    const fallbackPath = join(projectRoot, 'server', 'node_modules', fallbackRelativePath);
     if (existsSync(fallbackPath)) {
       return import(pathToFileURL(fallbackPath).href);
     }
     throw err;
   }
+}
+
+const mongooseModule = await loadModule('mongoose', 'mongoose/index.js');
+const mongoose = mongooseModule.default ?? mongooseModule;
+
+const dotenvModule = await loadModule('dotenv', 'dotenv/lib/main.js');
+const { config } = dotenvModule;
+
+async function loadArgon2Module() {
+  return loadModule('@node-rs/argon2', '@node-rs/argon2/index.js');
 }
 
 const { hash, Algorithm, Version } = await loadArgon2Module();
