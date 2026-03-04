@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   List, ListItem, ListItemText, Divider,
-  Dialog, DialogTitle, DialogContent, DialogActions,
+  Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
-import { ArrowBack as BackIcon, Quiz as QuizIcon } from '@mui/icons-material';
+import { Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
@@ -26,6 +26,15 @@ function sortSessions(items) {
   });
 }
 
+function isQuizSession(session) {
+  return !!(session.quiz || session.practiceQuiz);
+}
+
+function TabPanel({ children, value, index }) {
+  if (value !== index) return null;
+  return <Box sx={{ pt: 2 }}>{children}</Box>;
+}
+
 export default function StudentCourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -37,6 +46,7 @@ export default function StudentCourseDetail() {
   const [unenrolling, setUnenrolling] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [tab, setTab] = useState(0);
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -79,73 +89,119 @@ export default function StudentCourseDetail() {
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
   const sortedSessions = sortSessions(sessions);
+  const interactiveSessions = sortedSessions.filter((s) => !isQuizSession(s));
+  const quizSessions = sortedSessions.filter(isQuizSession);
+  const headerCourseName = String(course.name || '').trim() || 'Course';
+  const headerDeptCode = String(course.deptCode || '').trim();
+  const headerCourseNumber = String(course.courseNumber || '').trim();
+  const headerSection = String(course.section || '').trim();
+  const headerSemester = String(course.semester || '').trim();
+  const headerCode = `${headerDeptCode} ${headerCourseNumber}`.trim();
+  const headerTitle = `${headerCode ? `${headerCode}: ` : ''}${headerCourseName}${headerSemester ? ` (${headerSemester})` : ''}`;
+
+  const renderSessionList = (sessionItems, emptyText) => {
+    if (sessionsLoading) return <CircularProgress size={24} />;
+    if (sessionItems.length === 0) {
+      return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
+    }
+    return (
+      <Paper variant="outlined">
+        <List disablePadding>
+          {sessionItems.map((s, i) => (
+            <Box key={s._id}>
+              {i > 0 && <Divider />}
+              <ListItem
+                sx={{
+                  alignItems: 'flex-start',
+                  flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                  gap: 1,
+                }}
+              >
+                <ListItemText
+                  primary={(
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      {s.name}
+                      <Chip
+                        label={STATUS_LABELS[s.status] || s.status}
+                        color={STATUS_COLORS[s.status] || 'default'}
+                        size="small"
+                      />
+                      {isQuizSession(s) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                    </Box>
+                  )}
+                  secondary={(
+                    <>
+                      {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                      {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
+                    </>
+                  )}
+                />
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1,
+                    width: { xs: '100%', sm: 'auto' },
+                    justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                  }}
+                >
+                  {s.status === 'running' && (
+                    <Button size="small" variant="outlined" disabled>Join</Button>
+                  )}
+                  {isQuizSession(s) && s.status !== 'done' && (
+                    <Button size="small" variant="outlined" disabled>Start Quiz</Button>
+                  )}
+                  {s.status === 'done' && (
+                    <Button size="small" variant="text" disabled>Review</Button>
+                  )}
+                </Box>
+              </ListItem>
+            </Box>
+          ))}
+        </List>
+      </Paper>
+    );
+  };
 
   return (
-    <Box sx={{ p: 3, maxWidth: 700 }}>
-      <Button startIcon={<BackIcon />} onClick={() => navigate('/student')} sx={{ mb: 2 }}>
-        Back to Courses
-      </Button>
+    <Box sx={{ p: 2.5, maxWidth: 980 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            {headerTitle}
+          </Typography>
+          {headerSection && (
+            <Typography variant="caption" color="text.secondary">
+              Section {headerSection}
+            </Typography>
+          )}
+        </Box>
+      </Box>
 
-      <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h4" gutterBottom>{course.name}</Typography>
-        <Typography variant="body1" color="text.secondary">
-          {course.deptCode} {course.courseNumber}{course.section ? ` – ${course.section}` : ''}
-        </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-          {course.semester}
-        </Typography>
+      <Tabs
+        value={tab}
+        onChange={(_, nextTab) => setTab(nextTab)}
+        variant="scrollable"
+        allowScrollButtonsMobile
+      >
+        <Tab label={`Lectures (${interactiveSessions.length})`} />
+        <Tab label={`Quizzes (${quizSessions.length})`} />
+      </Tabs>
 
-        <Typography variant="h6" sx={{ mb: 1 }}>Sessions</Typography>
-        {sessionsLoading ? <CircularProgress size={24} /> : sortedSessions.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">No sessions available.</Typography>
-        ) : (
-          <Paper variant="outlined">
-            <List disablePadding>
-              {sortedSessions.map((s, i) => (
-                <Box key={s._id}>
-                  {i > 0 && <Divider />}
-                  <ListItem>
-                    <ListItemText
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {s.name}
-                          <Chip
-                            label={STATUS_LABELS[s.status] || s.status}
-                            color={STATUS_COLORS[s.status] || 'default'}
-                            size="small"
-                          />
-                          {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
-                        </Box>
-                      }
-                      secondary={(
-                        <>
-                          {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
-                          {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
-                        </>
-                      )}
-                    />
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      {s.status === 'running' && (
-                        <Button size="small" variant="outlined" disabled>Join</Button>
-                      )}
-                      {(s.quiz || s.practiceQuiz) && s.status !== 'done' && (
-                        <Button size="small" variant="outlined" disabled>Start Quiz</Button>
-                      )}
-                      {s.status === 'done' && (
-                        <Button size="small" variant="text" disabled>Review</Button>
-                      )}
-                    </Box>
-                  </ListItem>
-                </Box>
-              ))}
-            </List>
-          </Paper>
-        )}
-      </Paper>
+      <TabPanel value={tab} index={0}>
+        <Typography variant="h6" sx={{ mb: 2 }}>Lectures</Typography>
+        {renderSessionList(interactiveSessions, 'No lectures available.')}
+      </TabPanel>
 
-      <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
-        Unenroll from Course
-      </Button>
+      <TabPanel value={tab} index={1}>
+        <Typography variant="h6" sx={{ mb: 2 }}>Quizzes</Typography>
+        {renderSessionList(quizSessions, 'No quizzes available.')}
+      </TabPanel>
+
+      <Box sx={{ mt: 3 }}>
+        <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
+          Unenroll from Course
+        </Button>
+      </Box>
 
       {/* Unenroll Confirmation */}
       <Dialog open={unenrollOpen} onClose={() => setUnenrollOpen(false)}>

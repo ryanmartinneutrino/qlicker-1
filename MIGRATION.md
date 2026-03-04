@@ -49,6 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **Email** | Nodemailer | Password reset, verification emails |
 | **File Upload** | AWS SDK v3, @azure/storage-blob | S3, Azure, local storage |
 | **UI Framework** | Material UI (MUI) | Material Design components |
+| **Typography** | Helvetica Neue, Helvetica, Arial | Global UI font stack (client theme) |
 | **Charts** | Recharts | Data visualization |
 | **Math** | KaTeX | Equation rendering |
 | **Rich Text** | TipTap | WYSIWYG editor |

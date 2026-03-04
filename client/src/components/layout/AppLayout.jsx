@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button,
+  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectionStatus from '../common/ConnectionStatus';
@@ -56,14 +56,6 @@ export default function AppLayout() {
             >
               Qlicker
             </Typography>
-            <Button
-              color="inherit"
-              size="large"
-              onClick={() => navigate(dashboardPath)}
-              sx={{ ml: 2, px: 2.25, fontSize: '1.05rem', fontWeight: 600 }}
-            >
-              Dashboard
-            </Button>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
           <IconButton onClick={handleMenuOpen} color="inherit">
