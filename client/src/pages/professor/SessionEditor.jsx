@@ -339,8 +339,17 @@ export default function SessionEditor() {
 
   const renderInlineEditorCard = ({ key, index, initialQuestion = null }) => (
     <Card key={key} variant="outlined" sx={{ mb: 1.5 }}>
-      <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', '&:last-child': { pb: 2 } }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+      <CardContent
+        sx={{
+          display: 'flex',
+          gap: 2,
+          alignItems: 'flex-start',
+          minWidth: 0,
+          overflow: 'hidden',
+          '&:last-child': { pb: 2 },
+        }}
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <Tooltip title={initialQuestion ? 'Move up' : 'Move insertion up'}>
             <span>
               <IconButton
@@ -371,13 +380,13 @@ export default function SessionEditor() {
           </Tooltip>
         </Box>
 
-        <Box sx={{ minWidth: 28, pt: 0.75 }}>
+        <Box sx={{ minWidth: 28, pt: 0.75, flexShrink: 0 }}>
           <Typography variant="subtitle2" color="text.secondary">
             {index + 1}.
           </Typography>
         </Box>
 
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <QuestionEditor
             key={`inline-editor-${inlineEditor?.key}-${initialQuestion?._id || 'new'}`}
             inline
@@ -389,7 +398,7 @@ export default function SessionEditor() {
         </Box>
 
         {initialQuestion ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flexShrink: 0 }}>
             <Tooltip title="Delete">
               <IconButton size="small" color="error" onClick={() => setDeleteQTarget(initialQuestion)}>
                 <DeleteIcon fontSize="small" />
@@ -600,8 +609,17 @@ export default function SessionEditor() {
                   })
                 ) : (
                   <Card key={currentQuestion._id} variant="outlined" sx={{ mb: 1.5 }}>
-                    <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', '&:last-child': { pb: 2 } }}>
-                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <CardContent
+                      sx={{
+                        display: 'flex',
+                        gap: 2,
+                        alignItems: 'flex-start',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        '&:last-child': { pb: 2 },
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
                         <Tooltip title="Move up">
                           <span>
                             <IconButton size="small" disabled={slotIdx === 0} onClick={() => handleMove(slotIdx, -1)}>
@@ -618,13 +636,13 @@ export default function SessionEditor() {
                         </Tooltip>
                       </Box>
 
-                      <Box sx={{ minWidth: 28, pt: 0.75 }}>
+                      <Box sx={{ minWidth: 28, pt: 0.75, flexShrink: 0 }}>
                         <Typography variant="subtitle2" color="text.secondary">
                           {slotIdx + 1}.
                         </Typography>
                       </Box>
 
-                      <Box sx={{ flexGrow: 1 }}>
+                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                         <Box
                           sx={{
                             maxHeight: expandedQuestions[currentQuestion._id] ? 'none' : 120,
@@ -656,7 +674,7 @@ export default function SessionEditor() {
                         </Button>
                       </Box>
 
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, flexShrink: 0 }}>
                         <Tooltip title="Edit">
                           <IconButton size="small" onClick={() => openEditEditor(currentQuestion._id)}>
                             <EditIcon fontSize="small" />

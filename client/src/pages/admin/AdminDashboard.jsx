@@ -6,6 +6,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
   CircularProgress, Tooltip,
+  Avatar,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
 import apiClient from '../../api/client';
@@ -157,6 +158,14 @@ function UsersTab({ currentUserId }) {
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [imageViewUser, setImageViewUser] = useState(null);
+
+  const getFullName = (u) => `${u.profile?.firstname || ''} ${u.profile?.lastname || ''}`.trim() || 'Unknown';
+  const getInitials = (u) => {
+    const firstInitial = u.profile?.firstname?.[0] || '';
+    const lastInitial = u.profile?.lastname?.[0] || '';
+    return (firstInitial + lastInitial).toUpperCase() || '?';
+  };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -266,7 +275,28 @@ function UsersTab({ currentUserId }) {
             ) : (
               users.map((u) => (
                 <TableRow key={u._id}>
-                  <TableCell>{u.profile?.firstname} {u.profile?.lastname}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                      <Avatar
+                        src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
+                        sx={{ width: 34, height: 34 }}
+                      >
+                        {getInitials(u)}
+                      </Avatar>
+                      <Button
+                        variant="text"
+                        sx={{ minWidth: 0, px: 0, justifyContent: 'flex-start', textTransform: 'none' }}
+                        disabled={!u.profile?.profileImage}
+                        onClick={() => {
+                          if (u.profile?.profileImage) {
+                            setImageViewUser(u);
+                          }
+                        }}
+                      >
+                        {getFullName(u)}
+                      </Button>
+                    </Box>
+                  </TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
                   <TableCell>
                     {u.emails?.[0]?.verified ? (
@@ -359,6 +389,24 @@ function UsersTab({ currentUserId }) {
         </DialogActions>
       </Dialog>
 
+      <Dialog open={!!imageViewUser} onClose={() => setImageViewUser(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>{getFullName(imageViewUser || {})}</DialogTitle>
+        <DialogContent sx={{ textAlign: 'center' }}>
+          {imageViewUser?.profile?.profileImage ? (
+            <img
+              src={imageViewUser.profile.profileImage}
+              alt={`${getFullName(imageViewUser)} profile`}
+              style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+            />
+          ) : (
+            <Typography variant="body2" color="text.secondary">No profile image available.</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageViewUser(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>
         {msg ? <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert> : undefined}
       </Snackbar>
@@ -369,7 +417,14 @@ function UsersTab({ currentUserId }) {
 // ── Storage Tab ─────────────────────────────────────────────────────────────
 function StorageTab() {
   const [storageType, setStorageType] = useState('local');
-  const [s3, setS3] = useState({ AWS_bucket: '', AWS_region: '', AWS_accessKeyId: '', AWS_secretAccessKey: '' });
+  const [s3, setS3] = useState({
+    AWS_bucket: '',
+    AWS_region: '',
+    AWS_accessKeyId: '',
+    AWS_secretAccessKey: '',
+    AWS_endpoint: '',
+    AWS_forcePathStyle: false,
+  });
   const [azure, setAzure] = useState({ Azure_storageAccount: '', Azure_storageAccessKey: '', Azure_storageContainer: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -387,6 +442,8 @@ function StorageTab() {
         AWS_region: data.AWS_region ?? '',
         AWS_accessKeyId: data.resolvedAWSAccessKeyId ?? data.AWS_accessKeyId ?? data.AWS_accessKey ?? '',
         AWS_secretAccessKey: data.resolvedAWSSecretAccessKey ?? data.AWS_secretAccessKey ?? data.AWS_secret ?? '',
+        AWS_endpoint: data.AWS_endpoint ?? data.S3_endpoint ?? '',
+        AWS_forcePathStyle: !!(data.AWS_forcePathStyle ?? data.S3_forcePathStyle ?? false),
       });
       setAzure({
         Azure_storageAccount: data.resolvedAzureStorageAccount ?? data.Azure_storageAccount ?? data.Azure_accountName ?? '',
@@ -457,6 +514,16 @@ function StorageTab() {
           <TextField label="Region" value={s3.AWS_region} onChange={(e) => setS3((s) => ({ ...s, AWS_region: e.target.value }))} fullWidth />
           <TextField label="Access Key ID" value={s3.AWS_accessKeyId} onChange={(e) => setS3((s) => ({ ...s, AWS_accessKeyId: e.target.value }))} fullWidth />
           <TextField label="Secret Access Key" type="password" value={s3.AWS_secretAccessKey} onChange={(e) => setS3((s) => ({ ...s, AWS_secretAccessKey: e.target.value }))} fullWidth />
+          <TextField
+            label="Endpoint URL (optional, for MinIO/local S3)"
+            value={s3.AWS_endpoint}
+            onChange={(e) => setS3((s) => ({ ...s, AWS_endpoint: e.target.value }))}
+            fullWidth
+          />
+          <FormControlLabel
+            control={<Checkbox checked={!!s3.AWS_forcePathStyle} onChange={(e) => setS3((s) => ({ ...s, AWS_forcePathStyle: e.target.checked }))} />}
+            label="Use path-style URLs (recommended for local S3 endpoints)"
+          />
         </>
       )}
 
