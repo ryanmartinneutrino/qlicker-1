@@ -9,7 +9,7 @@ const theme = createTheme({
     background: { default: '#FAFAFA', paper: '#FFFFFF' },
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Helvetica Neue", "Helvetica", "Arial", sans-serif',
   },
   components: {
     MuiButton: {

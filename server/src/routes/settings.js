@@ -51,6 +51,7 @@ export default async function settingsRoutes(app) {
     }
     return {
       SSO_enabled: settings.SSO_enabled || false,
+      SSO_institutionName: settings.SSO_institutionName || '',
       restrictDomain: settings.restrictDomain || false,
       requireVerified: settings.requireVerified || false,
     };

@@ -15,6 +15,8 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [ssoInstitutionName, setSsoInstitutionName] = useState('SSO');
+  const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotMsg, setForgotMsg] = useState(null);
@@ -22,9 +24,25 @@ export default function Login() {
   const { login, register } = useAuth();
 
   useEffect(() => {
+    let active = true;
+
     apiClient.get('/settings/public').then(({ data }) => {
-      if (data.SSO_enabled) setSsoEnabled(true);
-    }).catch(() => { /* ignore */ });
+      if (!active) return;
+      const enabled = !!data.SSO_enabled;
+      setSsoEnabled(enabled);
+      const institution = (data.SSO_institutionName || '').trim();
+      setSsoInstitutionName(institution || 'SSO');
+      setShowEmailLogin(!enabled);
+    }).catch(() => {
+      if (!active) return;
+      setSsoEnabled(false);
+      setSsoInstitutionName('SSO');
+      setShowEmailLogin(true);
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
   const navigate = useNavigate();
   const location = useLocation();
@@ -79,6 +97,24 @@ export default function Login() {
     }
   };
 
+  const renderEmailLoginForm = ({ showBackToSso = false } = {}) => (
+    <Box component="form" onSubmit={handleLogin}>
+      <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
+      <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+      <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
+        {loading ? 'Logging in...' : 'Login'}
+      </Button>
+      <Button type="button" size="small" sx={{ mt: 1 }} onClick={() => { setForgotOpen(true); setForgotMsg(null); setForgotEmail(''); }}>
+        Forgot Password?
+      </Button>
+      {showBackToSso && (
+        <Button type="button" size="small" sx={{ mt: 1 }} onClick={() => { setShowEmailLogin(false); setError(''); }}>
+          Back to SSO login
+        </Button>
+      )}
+    </Box>
+  );
+
   return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="background.default">
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
@@ -86,45 +122,57 @@ export default function Login() {
           <Typography variant="h4" textAlign="center" color="primary" gutterBottom>
             Qlicker
           </Typography>
-          <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }}>
-            <Tab label="Login" />
-            <Tab label="Register" />
-          </Tabs>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          {tab === 0 ? (
-            <Box component="form" onSubmit={handleLogin}>
-              <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-              <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
-              <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
-                {loading ? 'Logging in...' : 'Login'}
+          {ssoEnabled ? (
+            <>
+              <Button
+                fullWidth
+                variant="contained"
+                size="large"
+                // Full page redirect required — SSO login is an external IdP redirect, not an API call
+                onClick={() => { window.location.href = '/api/v1/auth/sso/login'; }}
+                sx={{ py: 1.6, mt: 1, fontWeight: 700 }}
+              >
+                Login through {ssoInstitutionName || 'SSO'}
               </Button>
-              <Button size="small" sx={{ mt: 1 }} onClick={() => { setForgotOpen(true); setForgotMsg(null); setForgotEmail(''); }}>
-                Forgot Password?
-              </Button>
-              {ssoEnabled && (
+              {!showEmailLogin ? (
+                <Box textAlign="center" sx={{ mt: 1.5 }}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => { setShowEmailLogin(true); setError(''); }}
+                    sx={{ textTransform: 'none', minHeight: 'unset', p: 0, fontSize: '0.8rem' }}
+                  >
+                    Have an email-based account
+                  </Button>
+                </Box>
+              ) : (
                 <>
                   <Divider sx={{ my: 2 }}>or</Divider>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    // Full page redirect required — SSO login is an external IdP redirect, not an API call
-                    onClick={() => { window.location.href = '/api/v1/auth/sso/login'; }}
-                  >
-                    Login with SSO
-                  </Button>
+                  {renderEmailLoginForm({ showBackToSso: true })}
                 </>
               )}
-            </Box>
+            </>
           ) : (
-            <Box component="form" onSubmit={handleRegister}>
-              <TextField fullWidth label="First Name" value={firstname} onChange={(e) => setFirstname(e.target.value)} required margin="normal" />
-              <TextField fullWidth label="Last Name" value={lastname} onChange={(e) => setLastname(e.target.value)} required margin="normal" />
-              <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-              <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
-              <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
-                {loading ? 'Creating account...' : 'Create Account'}
-              </Button>
-            </Box>
+            <>
+              <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }}>
+                <Tab label="Login" />
+                <Tab label="Register" />
+              </Tabs>
+              {tab === 0 ? (
+                renderEmailLoginForm()
+              ) : (
+                <Box component="form" onSubmit={handleRegister}>
+                  <TextField fullWidth label="First Name" value={firstname} onChange={(e) => setFirstname(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label="Last Name" value={lastname} onChange={(e) => setLastname(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+                  <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
+                    {loading ? 'Creating account...' : 'Create Account'}
+                  </Button>
+                </Box>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
