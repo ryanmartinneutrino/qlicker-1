@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions,
+  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
@@ -21,7 +21,12 @@ export default function Login() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotMsg, setForgotMsg] = useState(null);
   const [forgotLoading, setForgotLoading] = useState(false);
-  const { login, register } = useAuth();
+  const {
+    user,
+    loading: authLoading,
+    login,
+    register,
+  } = useAuth();
 
   useEffect(() => {
     let active = true;
@@ -45,7 +50,6 @@ export default function Login() {
     };
   }, []);
   const navigate = useNavigate();
-  const location = useLocation();
 
   const getDashboard = (user) => {
     const roles = user?.profile?.roles || [];
@@ -60,8 +64,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await login(email, password);
-      const from = location.state?.from?.pathname || getDashboard(user);
-      navigate(from, { replace: true });
+      navigate(getDashboard(user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -114,6 +117,18 @@ export default function Login() {
       )}
     </Box>
   );
+
+  if (authLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (user) {
+    return <Navigate to={getDashboard(user)} replace />;
+  }
 
   return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="background.default">
