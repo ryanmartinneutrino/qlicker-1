@@ -11,6 +11,8 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
+  const roles = user?.profile?.roles || [];
+  const isAdmin = roles.includes('admin');
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -18,7 +20,7 @@ export default function AppLayout() {
   const handleLogout = async () => {
     handleMenuClose();
     await logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   const handleProfile = () => {
@@ -34,7 +36,6 @@ export default function AppLayout() {
   };
 
   const getDashboardPath = () => {
-    const roles = user?.profile?.roles || [];
     if (roles.includes('admin')) return '/admin';
     if (roles.includes('professor')) return '/manage';
     return '/student';
@@ -42,6 +43,7 @@ export default function AppLayout() {
 
   const currentPath = location.pathname;
   const dashboardPath = getDashboardPath();
+  const isOnCourseList = currentPath === '/manage';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -76,8 +78,8 @@ export default function AppLayout() {
             {currentPath !== '/profile' && (
               <MenuItem onClick={handleProfile}>Profile</MenuItem>
             )}
-            {user?.profile?.roles?.includes('admin') && currentPath !== '/admin' && (
-              <MenuItem onClick={() => { handleMenuClose(); navigate('/admin'); }}>Admin Panel</MenuItem>
+            {isAdmin && !isOnCourseList && (
+              <MenuItem onClick={() => { handleMenuClose(); navigate('/manage'); }}>Courses</MenuItem>
             )}
             <MenuItem onClick={handleLogout}>Logout</MenuItem>
           </Menu>
