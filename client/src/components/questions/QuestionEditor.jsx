@@ -110,7 +110,6 @@ function MathLivePreview({
         '& img': {
           display: 'block',
           maxWidth: '90% !important',
-          width: 'auto !important',
           height: 'auto !important',
           borderRadius: 0,
           my: 0.5,
