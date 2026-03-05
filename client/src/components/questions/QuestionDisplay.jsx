@@ -16,7 +16,6 @@ const questionRichContentSx = {
   '& img': {
     display: 'block',
     maxWidth: '90% !important',
-    width: 'auto !important',
     height: 'auto !important',
     borderRadius: 0,
     my: 0.75,
@@ -96,7 +95,6 @@ export default function QuestionDisplay({ question }) {
                       '& img': {
                         display: 'block',
                         maxWidth: '90% !important',
-                        width: 'auto !important',
                         height: 'auto !important',
                         borderRadius: 0,
                         my: 0.5,
