@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 5 In Progress — Student Session Review Page Implemented; Image Uploads Verified
+## Status: Phase 5 In Progress — Interactive Sessions Implemented; Token Expiry & Stats Display Updated
 
 ---
 
@@ -975,9 +975,9 @@ The following issues were identified during testing and have been resolved:
 Phase 4 is now complete — both backend and frontend work is done. The TipTap/KaTeX question editor integration is complete (replacing MathJax and plain text fields). All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
 
 1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
-2. **Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)
-3. **Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)
-4. **Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)
+2. ~~**Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)~~ ✅ Done (PR 119)
+3. ~~**Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)~~ ✅ Done (PR 119)
+4. ~~**Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)~~ ✅ Done (PR 119)
 5. **Phase 6 Prep:** Grade calculation service (Agent 6)
 6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
 7. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
@@ -1004,7 +1004,29 @@ The following Phase 5 work has been completed:
 - ✅ **README updated** — All scripts documented, S3/Azure/MinIO/Azurite setup instructions added.
 - ✅ **UI consistency** (PRs 108–112) — Helvetica font stack, student course page mirrors professor layout, image rendering constrained in questions, SSO-first login UX.
 
-**Testable by human (all phases through Phase 4 + TipTap/KaTeX):**
+#### PR 119: Interactive Sessions (Full Live Session System)
+
+- ✅ **10 new session API endpoints** — `POST start`, `POST join`, `GET live`, `POST respond`, `PATCH question-visibility`, `POST new-attempt`, `PATCH toggle-responses`, `POST refresh-join-code`, `PATCH join-code-settings`, `GET results`
+- ✅ **Session model extensions** — `joinCodeEnabled`, `joinCodeActive`, `currentJoinCode`, `joinCodeInterval`, `joinCodeExpiresAt`; `joinRecords` array with join timestamps (backward-compatible with legacy `joined` string array)
+- ✅ **Response model** — Compound indexes on `(questionId, studentUserId, attempt)` and `(questionId, attempt)`
+- ✅ **Question sessionOptions** — `hidden`, `stats`, `correct` flags drive student-visible state; `attempts[]` tracks attempt lifecycle
+- ✅ **Professor LiveSession page** — WebSocket real-time updates (polling fallback), question navigation, visibility/stats/correct toggles, join code controls, end session dialog (with reviewable prompt)
+- ✅ **Professor SecondDesktop page** — Projector view: large join code overlay or clean student-facing question display
+- ✅ **Professor SessionReview page** — Questions/Students tabs, response distributions, participation scores, CSV blob download
+- ✅ **Student LiveSession page** — Auto-join or 6-digit numpad code entry, question display with MC/MS/SA/numerical answer controls, submit + lock, stats/correct/solution views
+- ✅ **WebSocket session:updated events** — Real-time notifications broadcast to all course members on session mutations (start, end, question change, visibility, responses)
+- ✅ **Response distribution calculation** — `buildResponseStats()` computes per-option counts for MC/MS/TF, numerical stats (mean/median/min/max) with values array, and short answer lists with answerWysiwyg support
+
+#### PR 120: Interactive Session Refinements
+
+- ✅ **Token expiry (2h default, admin-adjustable)** — Added `tokenExpiryMinutes` field to Settings model (default: 120). `signAccessToken()` reads from DB. Admin dashboard has "Login Token Expiry (minutes)" field with auto-save.
+- ✅ **Controls above the question** — Professor LiveSession control bar (visibility, navigation, stats, correct, new attempt, toggle responses) moved from bottom of page to above the question content (applies to both desktop and mobile).
+- ✅ **Meteor-style response bars for MC/MS/TF** — Replaced Recharts BarChart with inline LinearProgress bars showing percentage fill for each option. Color-coded green/red when correct answer is shown. Applied to professor LiveSession, student LiveSession, and SecondDesktop.
+- ✅ **Numerical histogram** — Added Recharts BarChart histogram for numerical question responses, with automatic binning (sqrt-n bins, capped at 20). Displayed alongside summary stats cards (count, mean, median, min, max). Applied to all three views.
+- ✅ **Short answer rendered list** — SA responses display rich text via RichContent component (renders answerWysiwyg HTML with KaTeX). Scrollable container (max-height 400px). Applied to all three views.
+- ✅ **Student SA input with TipTap** — Created `StudentRichTextEditor` component using TipTap with StarterKit + Underline + Placeholder. Supports bold/italic/underline via bubble menu. Math via `\(...\)` inline and `$$...$$` display delimiters. Live KaTeX preview shown only when math delimiters are detected. Submits both `answer` (plain text) and `answerWysiwyg` (HTML).
+
+**Testable by human (all phases through Phase 5):**
 - Log in as professor → create a course → click course title to view
 - Students can enroll → student sees course in dashboard → click title to view
 - Professor: add/remove students with confirmation dialog, avatars shown at far left
@@ -1021,6 +1043,7 @@ The following Phase 5 work has been completed:
 - Connection status: warning banner appears when backend is unreachable, disappears when restored
 - Admin: see Verified column, click to verify email, see Last Login column
 - Admin: **cannot change their own role** (dropdown is disabled with tooltip)
+- Admin: Login Token Expiry (minutes) field with auto-save (default: 120 = 2 hours)
 - Forgot password: click "Forgot Password?" → receive email → modal auto-closes with spam warning
 - Email verification: click link in email → /verify-email/:token page → email marked verified
 - Smart semester: create course dialog uses "Semester" label, Fall/Winter shows 2025/2026
@@ -1029,5 +1052,15 @@ The following Phase 5 work has been completed:
 - Student can unenroll from a course (no more "Insufficient permissions" error)
 - Student/instructor lists auto-refresh every 15 seconds
 - API: POST/GET/PATCH/DELETE sessions and questions via REST endpoints
+- **Professor: Launch session → live session page with all controls above the question**
+- **Professor: See Meteor-style response bars for MC/MS/TF questions during live session**
+- **Professor: See histogram for numerical questions, scrollable rendered list for short answers**
+- **Professor: Real-time updates via WebSocket when students respond**
+- **Professor: SecondDesktop projector view with same stats display**
+- **Professor: Session review page with CSV export**
+- **Student: Join session → see question → select/type answer → submit**
+- **Student: SA answer input uses TipTap editor with math preview (shown only when `\(` or `$$` detected)**
+- **Student: See Meteor-style response bars and numerical histogram when prof enables stats**
+- **Student: Join code numpad entry for protected sessions**
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.

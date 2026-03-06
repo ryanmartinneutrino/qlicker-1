@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
+import { Box, Typography, Paper, Alert, CircularProgress, Chip, LinearProgress } from '@mui/material';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
@@ -15,11 +19,6 @@ const COMPACT_CHIP_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-const BAR_COLORS = [
-  '#1976d2', '#388e3c', '#f57c00', '#d32f2f',
-  '#7b1fa2', '#0097a7', '#c2185b', '#455a64',
-];
 
 const richContentSx = {
   '& p': { my: 0.5 },
@@ -62,56 +61,46 @@ function RichContent({ html, fallback }) {
   );
 }
 
-/** Horizontal bar chart for response distribution. */
-function DistributionBars({ data, highlightCorrect, correctIndices }) {
-  if (!data || !data.length) {
+/** Horizontal bar chart for response distribution (Meteor-style percentage bars). */
+function DistributionBars({ distribution, options, showCorrect }) {
+  if (!distribution || !distribution.length) {
     return (
       <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
         No responses yet.
       </Typography>
     );
   }
-  const total = data.reduce((sum, d) => sum + d.count, 0);
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
+  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-      {data.map((item, i) => {
-        const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-        const pctOfTotal = total > 0 ? ((item.count / total) * 100).toFixed(0) : 0;
-        const isCorrect = highlightCorrect && correctIndices?.includes(i);
+      {distribution.map((d, i) => {
+        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
+        const isCorrect = showCorrect && options?.[i]?.correct;
+        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
         return (
-          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography
-              variant="h6"
-              sx={{ fontWeight: 700, minWidth: 32, textAlign: 'center' }}
-            >
-              {item.label}
-            </Typography>
-            <Box
-              sx={{
-                flex: 1,
-                position: 'relative',
-                height: 40,
-                bgcolor: 'grey.100',
-                borderRadius: 1,
-                overflow: 'hidden',
-              }}
-            >
-              <Box
-                sx={{
-                  height: '100%',
-                  width: `${pct}%`,
-                  bgcolor: isCorrect ? 'success.main' : BAR_COLORS[i % BAR_COLORS.length],
-                  borderRadius: 1,
-                  transition: 'width 0.4s ease',
-                  minWidth: item.count > 0 ? 4 : 0,
-                }}
-              />
+          <Box key={i}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.25 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, minWidth: 32, textAlign: 'center' }}>
+                {OPTION_LETTERS[i]}
+              </Typography>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
+              </Box>
+              <Typography variant="h6" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600 }}>
+                {pct}% ({d.count || 0})
+              </Typography>
             </Box>
-            <Typography variant="h6" sx={{ minWidth: 64, textAlign: 'right', fontWeight: 600 }}>
-              {item.count} ({pctOfTotal}%)
-            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={pct}
+              sx={{
+                height: 12,
+                borderRadius: 1,
+                bgcolor: 'grey.200',
+                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
+              }}
+            />
           </Box>
         );
       })}
@@ -119,8 +108,8 @@ function DistributionBars({ data, highlightCorrect, correctIndices }) {
   );
 }
 
-/** Numerical statistics display (large format). */
-function NumericalStats({ stats }) {
+/** Numerical statistics display (large format) with histogram. */
+function NumericalStats({ stats, allResponses }) {
   if (!stats) {
     return (
       <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
@@ -128,6 +117,37 @@ function NumericalStats({ stats }) {
       </Typography>
     );
   }
+
+  const values = (allResponses || [])
+    .map((r) => Number(r.answer))
+    .filter((v) => !isNaN(v));
+
+  let histogramData = [];
+  if (values.length > 1) {
+    const vmin = Math.min(...values);
+    const vmax = Math.max(...values);
+    const range = vmax - vmin;
+    let nbins = Math.max(1, Math.floor(Math.sqrt(values.length)) + 1);
+    if (nbins > 20) nbins = 20;
+    if (range === 0) nbins = 1;
+    const binWidth = range > 0 ? range / nbins : 1;
+    const counts = new Array(nbins).fill(0);
+    values.forEach((v) => {
+      let idx = Math.floor((v - vmin) / binWidth);
+      if (idx >= nbins) idx = nbins - 1;
+      if (idx < 0) idx = 0;
+      counts[idx]++;
+    });
+    for (let i = 0; i < nbins; i++) {
+      histogramData.push({
+        bin: Number((vmin + (i + 0.5) * binWidth).toPrecision(4)),
+        count: counts[i],
+      });
+    }
+  } else if (values.length === 1) {
+    histogramData = [{ bin: values[0], count: 1 }];
+  }
+
   const entries = [
     { label: 'Count', value: stats.count ?? 0 },
     { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
@@ -136,18 +156,32 @@ function NumericalStats({ stats }) {
     { label: 'Max', value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}>
-      {entries.map((e) => (
-        <Paper key={e.label} variant="outlined" sx={{ p: 2, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="body2" color="text.secondary">{e.label}</Typography>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>{e.value}</Typography>
-        </Paper>
-      ))}
+    <Box>
+      {histogramData.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
+              <XAxis dataKey="bin" />
+              <YAxis allowDecimals={false} />
+              <RechartsTooltip />
+              <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}>
+        {entries.map((e) => (
+          <Paper key={e.label} variant="outlined" sx={{ p: 2, minWidth: 110, textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">{e.label}</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 700 }}>{e.value}</Typography>
+          </Paper>
+        ))}
+      </Box>
     </Box>
   );
 }
 
-/** Short-answer responses list (large format). */
+/** Short-answer responses list (large format, rendered rich text). */
 function ShortAnswerList({ responses }) {
   if (!responses || !responses.length) {
     return (
@@ -160,7 +194,11 @@ function ShortAnswerList({ responses }) {
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
       {responses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1.5, mb: 0.75 }}>
-          <Typography variant="body1">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+          {r.answerWysiwyg ? (
+            <RichContent html={r.answerWysiwyg} />
+          ) : (
+            <Typography variant="body1">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+          )}
         </Paper>
       ))}
     </Box>
@@ -292,21 +330,6 @@ export default function SecondDesktop() {
   const totalQ = session?.questions?.length || 0;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
   const responseCount = liveData?.responseCount ?? allResponses.length;
-
-  // Chart data for distribution
-  let chartData = null;
-  let correctIndices = [];
-  if (responseStats?.type === 'distribution' && responseStats.distribution) {
-    chartData = responseStats.distribution.map((d, i) => ({
-      label: OPTION_LETTERS[i] || String(i + 1),
-      count: d.count || 0,
-    }));
-    if (currentQ?.options) {
-      correctIndices = (currentQ.options || [])
-        .map((opt, i) => (opt.correct ? i : -1))
-        .filter((i) => i >= 0);
-    }
-  }
 
   // ---- Window title ----
 
@@ -550,16 +573,16 @@ export default function SecondDesktop() {
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
             Response Distribution
           </Typography>
-          {responseStats?.type === 'distribution' && chartData ? (
+          {responseStats?.type === 'distribution' && responseStats.distribution ? (
             <DistributionBars
-              data={chartData}
-              highlightCorrect={showCorrect}
-              correctIndices={correctIndices}
+              distribution={responseStats.distribution}
+              options={currentQ?.options}
+              showCorrect={showCorrect}
             />
           ) : responseStats?.type === 'shortAnswer' ? (
             <ShortAnswerList responses={responseStats.answers || allResponses} />
           ) : responseStats?.type === 'numerical' ? (
-            <NumericalStats stats={responseStats} />
+            <NumericalStats stats={responseStats} allResponses={allResponses} />
           ) : allResponses.length > 0 ? (
             <ShortAnswerList responses={allResponses} />
           ) : (
