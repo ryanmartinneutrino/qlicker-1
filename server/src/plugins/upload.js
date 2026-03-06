@@ -186,6 +186,8 @@ async function uploadPlugin(fastify) {
           Key: key,
           Body: fileBuffer,
           ContentType: mimetype,
+          // Match legacy Meteor Slingshot behavior (acl: 'public-read').
+          ACL: 'public-read',
         }));
 
         const url = toS3ObjectUrl({
