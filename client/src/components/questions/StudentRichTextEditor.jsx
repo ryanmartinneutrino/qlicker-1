@@ -151,10 +151,10 @@ export function MathPreview({ html }) {
   const ref = useRef(null);
   const prepared = useMemo(() => prepareRichTextInput(html || ''), [html]);
 
-  // Check if there's any math content
+  // Check if there's any math content (uses patterns compatible with all modern browsers)
   const hasMath = useMemo(() => {
     if (!html) return false;
-    return /\\\(.*?\\\)|(?<!\$)\$\$[\s\S]*?\$\$|\\begin\{|\\frac|\\sqrt|\\sum|\\int/.test(html);
+    return /\\\(.*?\\\)|\$\$[\s\S]*?\$\$|\\begin\{|\\frac|\\sqrt|\\sum|\\int/.test(html);
   }, [html]);
 
   useEffect(() => {

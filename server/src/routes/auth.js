@@ -19,10 +19,21 @@ function sanitizeUser(user) {
   return obj;
 }
 
+// Cache token expiry setting to avoid DB query on every token generation.
+// Refreshes every 60 seconds.
+let _cachedTokenExpiryMinutes = null;
+let _cacheExpiry = 0;
+
 async function getTokenExpiryMinutes() {
+  const now = Date.now();
+  if (_cachedTokenExpiryMinutes != null && now < _cacheExpiry) {
+    return _cachedTokenExpiryMinutes;
+  }
   const settings = await Settings.findOne();
   const mins = settings?.tokenExpiryMinutes;
-  return (typeof mins === 'number' && mins > 0) ? mins : 120;
+  _cachedTokenExpiryMinutes = (typeof mins === 'number' && mins > 0) ? mins : 120;
+  _cacheExpiry = now + 60_000; // refresh cache every 60 seconds
+  return _cachedTokenExpiryMinutes;
 }
 
 async function signAccessToken(app, user) {

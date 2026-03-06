@@ -8,6 +8,7 @@ import {
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import { buildHistogramData } from '../../utils/histogram';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -122,31 +123,7 @@ function NumericalStats({ stats, allResponses }) {
     .map((r) => Number(r.answer))
     .filter((v) => !isNaN(v));
 
-  let histogramData = [];
-  if (values.length > 1) {
-    const vmin = Math.min(...values);
-    const vmax = Math.max(...values);
-    const range = vmax - vmin;
-    let nbins = Math.max(1, Math.floor(Math.sqrt(values.length)) + 1);
-    if (nbins > 20) nbins = 20;
-    if (range === 0) nbins = 1;
-    const binWidth = range > 0 ? range / nbins : 1;
-    const counts = new Array(nbins).fill(0);
-    values.forEach((v) => {
-      let idx = Math.floor((v - vmin) / binWidth);
-      if (idx >= nbins) idx = nbins - 1;
-      if (idx < 0) idx = 0;
-      counts[idx]++;
-    });
-    for (let i = 0; i < nbins; i++) {
-      histogramData.push({
-        bin: Number((vmin + (i + 0.5) * binWidth).toPrecision(4)),
-        count: counts[i],
-      });
-    }
-  } else if (values.length === 1) {
-    histogramData = [{ bin: values[0], count: 1 }];
-  }
+  const histogramData = buildHistogramData(values);
 
   const entries = [
     { label: 'Count', value: stats.count ?? 0 },
