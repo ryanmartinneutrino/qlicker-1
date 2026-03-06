@@ -277,24 +277,40 @@ function UsersTab({ currentUserId }) {
                 <TableRow key={u._id}>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-                      <Avatar
-                        src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
-                        sx={{ width: 34, height: 34 }}
-                      >
-                        {getInitials(u)}
-                      </Avatar>
-                      <Button
-                        variant="text"
-                        sx={{ minWidth: 0, px: 0, justifyContent: 'flex-start', textTransform: 'none' }}
-                        disabled={!u.profile?.profileImage}
+                      <Box
+                        component="button"
+                        type="button"
                         onClick={() => {
                           if (u.profile?.profileImage) {
                             setImageViewUser(u);
                           }
                         }}
+                        sx={{
+                          p: 0,
+                          border: 0,
+                          bgcolor: 'transparent',
+                          display: 'inline-flex',
+                          borderRadius: '50%',
+                          lineHeight: 0,
+                          cursor: u.profile?.profileImage ? 'pointer' : 'default',
+                          '&:focus-visible': {
+                            outline: '2px solid',
+                            outlineColor: 'primary.main',
+                            outlineOffset: 2,
+                          },
+                        }}
+                        aria-label={u.profile?.profileImage ? `View profile image for ${getFullName(u)}` : `${getFullName(u)} has no profile image`}
                       >
+                        <Avatar
+                          src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
+                          sx={{ width: 34, height: 34 }}
+                        >
+                          {getInitials(u)}
+                        </Avatar>
+                      </Box>
+                      <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 400 }}>
                         {getFullName(u)}
-                      </Button>
+                      </Typography>
                     </Box>
                   </TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
