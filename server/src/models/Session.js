@@ -19,6 +19,14 @@ const TagSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const JoinRecordSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    joinedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const SessionSchema = new mongoose.Schema(
   {
     _id: { type: String, default: () => generateMeteorId() },
@@ -35,10 +43,18 @@ const SessionSchema = new mongoose.Schema(
     questions: { type: [String], default: [] },
     createdAt: { type: Date, default: Date.now },
     currentQuestion: { type: String, default: '' },
+    // Legacy: plain userId strings. New sessions also populate joinRecords.
     joined: { type: [String], default: [] },
+    joinRecords: { type: [JoinRecordSchema], default: [] },
     submittedQuiz: { type: [String], default: [] },
     tags: { type: [TagSchema], default: [] },
     reviewable: { type: Boolean, default: false },
+    // Interactive session join-code settings
+    joinCodeEnabled: { type: Boolean, default: false },
+    joinCodeActive: { type: Boolean, default: false },
+    currentJoinCode: { type: String, default: '' },
+    joinCodeInterval: { type: Number, default: 10 },
+    joinCodeExpiresAt: { type: Date },
   },
   {
     collection: 'sessions',

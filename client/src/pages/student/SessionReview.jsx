@@ -177,6 +177,7 @@ export default function SessionReview() {
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [responsesByQuestion, setResponsesByQuestion] = useState({});
 
   // View mode: 'one' (single question) or 'all'
   const [viewMode, setViewMode] = useState('one');
@@ -184,12 +185,17 @@ export default function SessionReview() {
   const [questionIdx, setQuestionIdx] = useState(0);
   // Track which questions have their solution revealed (keyed by question._id)
   const [solutionVisible, setSolutionVisible] = useState({});
+  // Track which questions show "my response" (keyed by question._id)
+  const [myResponseVisible, setMyResponseVisible] = useState({});
+  // Track which attempt index is shown per question (keyed by question._id)
+  const [responseAttemptIdx, setResponseAttemptIdx] = useState({});
 
   const fetchReview = useCallback(async ({ background = false } = {}) => {
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/review`);
       setSession(data.session);
       setQuestions(data.questions || []);
+      setResponsesByQuestion(data.responses || {});
       if (!background) {
         setError(null);
       }
@@ -247,6 +253,8 @@ export default function SessionReview() {
     if (!next) return;
     setViewMode(next);
     setSolutionVisible({});
+    setMyResponseVisible({});
+    setResponseAttemptIdx({});
     setQuestionIdx(0);
   };
 
@@ -254,10 +262,31 @@ export default function SessionReview() {
   const goTo = (idx) => {
     setQuestionIdx(idx);
     setSolutionVisible({});
+    setMyResponseVisible({});
+    setResponseAttemptIdx({});
   };
 
   const toggleSolution = (qId) => {
     setSolutionVisible((prev) => ({ ...prev, [qId]: !prev[qId] }));
+  };
+
+  const toggleMyResponse = (qId) => {
+    setMyResponseVisible((prev) => ({ ...prev, [qId]: !prev[qId] }));
+    // Reset attempt index when toggling
+    if (!myResponseVisible[qId]) {
+      setResponseAttemptIdx((prev) => ({ ...prev, [qId]: 0 }));
+    }
+  };
+
+  const cycleAttempt = (qId, direction) => {
+    const responses = (responsesByQuestion[qId] || []).sort((a, b) => a.attempt - b.attempt);
+    if (responses.length === 0) return;
+    setResponseAttemptIdx((prev) => {
+      const current = prev[qId] || 0;
+      const next = current + direction;
+      if (next < 0 || next >= responses.length) return prev;
+      return { ...prev, [qId]: next };
+    });
   };
 
   /* ---------------------------------------------------------------- */
@@ -332,6 +361,65 @@ export default function SessionReview() {
                 onToggleSolution={() => toggleSolution(currentQ._id)}
               />
 
+              {/* My Response section */}
+              {(() => {
+                const responses = (responsesByQuestion[currentQ._id] || []).sort((a, b) => a.attempt - b.attempt);
+                const hasResponses = responses.length > 0;
+                const showingResponse = !!myResponseVisible[currentQ._id];
+                const attemptIdx = responseAttemptIdx[currentQ._id] || 0;
+                const currentResponse = responses[attemptIdx];
+
+                return (
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => toggleMyResponse(currentQ._id)}
+                      disabled={!hasResponses}
+                      aria-label={showingResponse ? 'Hide my response' : 'Show my response'}
+                    >
+                      {showingResponse ? 'Hide my response' : 'Show my response'}
+                    </Button>
+                    {!hasResponses && (
+                      <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        No response recorded
+                      </Typography>
+                    )}
+                    {showingResponse && currentResponse && (
+                      <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+                        {responses.length > 1 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <Button
+                              size="small"
+                              disabled={attemptIdx <= 0}
+                              onClick={() => cycleAttempt(currentQ._id, -1)}
+                            >
+                              ← Prev attempt
+                            </Button>
+                            <Typography variant="body2" color="text.secondary">
+                              Attempt {currentResponse.attempt} of {responses.length}
+                            </Typography>
+                            <Button
+                              size="small"
+                              disabled={attemptIdx >= responses.length - 1}
+                              onClick={() => cycleAttempt(currentQ._id, 1)}
+                            >
+                              Next attempt →
+                            </Button>
+                          </Box>
+                        )}
+                        <Typography variant="body2">
+                          <strong>Your answer:</strong>{' '}
+                          {Array.isArray(currentResponse.answer)
+                            ? currentResponse.answer.join(', ')
+                            : String(currentResponse.answer)}
+                        </Typography>
+                      </Paper>
+                    )}
+                  </Box>
+                );
+              })()}
+
               {/* Navigation controls */}
               {total > 1 && (
                 <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
@@ -340,6 +428,7 @@ export default function SessionReview() {
                     startIcon={<PrevIcon />}
                     disabled={questionIdx <= 0}
                     onClick={() => goTo(questionIdx - 1)}
+                    aria-label="Previous question"
                   >
                     Previous
                   </Button>
@@ -348,6 +437,7 @@ export default function SessionReview() {
                     endIcon={<NextIcon />}
                     disabled={questionIdx >= total - 1}
                     onClick={() => goTo(questionIdx + 1)}
+                    aria-label="Next question"
                   >
                     Next
                   </Button>
@@ -359,16 +449,71 @@ export default function SessionReview() {
           {/* All questions view */}
           {viewMode === 'all' && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {questions.map((q, i) => (
-                <ReviewQuestionCard
-                  key={q._id}
-                  question={q}
-                  index={i}
-                  total={total}
-                  solutionVisible={!!solutionVisible[q._id]}
-                  onToggleSolution={() => toggleSolution(q._id)}
-                />
-              ))}
+              {questions.map((q, i) => {
+                const responses = (responsesByQuestion[q._id] || []).sort((a, b) => a.attempt - b.attempt);
+                const hasResponses = responses.length > 0;
+                const showingResponse = !!myResponseVisible[q._id];
+                const attemptIdx = responseAttemptIdx[q._id] || 0;
+                const currentResponse = responses[attemptIdx];
+
+                return (
+                  <Box key={q._id}>
+                    <ReviewQuestionCard
+                      question={q}
+                      index={i}
+                      total={total}
+                      solutionVisible={!!solutionVisible[q._id]}
+                      onToggleSolution={() => toggleSolution(q._id)}
+                    />
+                    <Box sx={{ mt: 1, ml: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => toggleMyResponse(q._id)}
+                        disabled={!hasResponses}
+                      >
+                        {showingResponse ? 'Hide my response' : 'Show my response'}
+                      </Button>
+                      {!hasResponses && (
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          No response recorded
+                        </Typography>
+                      )}
+                      {showingResponse && currentResponse && (
+                        <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+                          {responses.length > 1 && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <Button
+                                size="small"
+                                disabled={attemptIdx <= 0}
+                                onClick={() => cycleAttempt(q._id, -1)}
+                              >
+                                ← Prev attempt
+                              </Button>
+                              <Typography variant="body2" color="text.secondary">
+                                Attempt {currentResponse.attempt} of {responses.length}
+                              </Typography>
+                              <Button
+                                size="small"
+                                disabled={attemptIdx >= responses.length - 1}
+                                onClick={() => cycleAttempt(q._id, 1)}
+                              >
+                                Next attempt →
+                              </Button>
+                            </Box>
+                          )}
+                          <Typography variant="body2">
+                            <strong>Your answer:</strong>{' '}
+                            {Array.isArray(currentResponse.answer)
+                              ? currentResponse.answer.join(', ')
+                              : String(currentResponse.answer)}
+                          </Typography>
+                        </Paper>
+                      )}
+                    </Box>
+                  </Box>
+                );
+              })}
             </Box>
           )}
         </>

@@ -14,6 +14,7 @@ import {
   KeyboardArrowUp as UpIcon, KeyboardArrowDown as DownIcon,
   ExpandMore as ExpandMoreIcon,
   MoreVert as MoreIcon,
+  PlayArrow as LaunchIcon, Login as JoinIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
@@ -63,6 +64,10 @@ export default function SessionEditor() {
   const [status, setStatus] = useState('hidden');
   const [sessionDate, setSessionDate] = useState('');
 
+  // Join code settings
+  const [joinCodeEnabled, setJoinCodeEnabled] = useState(false);
+  const [joinCodeInterval, setJoinCodeInterval] = useState(10);
+
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -90,6 +95,8 @@ export default function SessionEditor() {
       setReviewable(!!s.reviewable);
       setStatus(s.status || 'hidden');
       setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
+      setJoinCodeEnabled(!!s.joinCodeEnabled);
+      setJoinCodeInterval(s.joinCodeInterval || 10);
 
       // Fetch full question objects
       const qIds = s.questions || [];
@@ -145,10 +152,14 @@ export default function SessionEditor() {
     saveSessionPatch({ status: nextStatus });
   };
 
-  const confirmGoLive = () => {
+  const confirmGoLive = async () => {
     setConfirmGoLiveOpen(false);
-    setStatus('running');
-    saveSessionPatch({ status: 'running' });
+    try {
+      await apiClient.post(`/sessions/${sessionId}/start`);
+      navigate(`/manage/course/${courseId}/session/${sessionId}/live`);
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to launch session' });
+    }
   };
 
   // Delete session
@@ -608,6 +619,30 @@ export default function SessionEditor() {
         <IconButton onClick={() => navigate(courseBackLink)}><BackIcon /></IconButton>
         <Typography variant="h5" sx={{ flexGrow: 1, lineHeight: 1.15 }}>{session.name}</Typography>
         <SessionStatusChip status={status} />
+        {!session.quiz && status !== 'running' && status !== 'done' && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<LaunchIcon />}
+            onClick={() => setConfirmGoLiveOpen(true)}
+            size="small"
+            aria-label="Launch session"
+          >
+            Launch
+          </Button>
+        )}
+        {!session.quiz && status === 'running' && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<JoinIcon />}
+            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}/live`)}
+            size="small"
+            aria-label="Join live session"
+          >
+            Join Session
+          </Button>
+        )}
       </Box>
 
       {/* Session Properties */}
@@ -720,6 +755,44 @@ export default function SessionEditor() {
               label="Reviewable"
             />
           </Box>
+
+          {/* Join code settings (for interactive sessions only) */}
+          {!quiz && (
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP, alignItems: { sm: 'center' } }}>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={joinCodeEnabled}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setJoinCodeEnabled(checked);
+                      saveSessionPatch({ joinCodeEnabled: checked });
+                    }}
+                    disabled={savingSession}
+                  />
+                )}
+                label="Require Join Code"
+              />
+              {joinCodeEnabled && (
+                <TextField
+                  label="Code refresh interval (seconds)"
+                  size="small"
+                  type="number"
+                  inputProps={{ min: 5, max: 120 }}
+                  value={joinCodeInterval}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (val >= 5 && val <= 120) {
+                      setJoinCodeInterval(val);
+                      saveSessionPatch({ joinCodeInterval: val });
+                    }
+                  }}
+                  disabled={savingSession}
+                  sx={{ maxWidth: 220 }}
+                />
+              )}
+            </Box>
+          )}
 
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>

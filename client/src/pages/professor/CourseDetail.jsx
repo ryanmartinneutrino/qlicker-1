@@ -9,7 +9,8 @@ import {
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
-  Quiz as QuizIcon,
+  Quiz as QuizIcon, PlayArrow as LaunchIcon, Login as JoinIcon,
+  RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
@@ -478,6 +479,16 @@ export default function CourseDetail() {
     }
   };
 
+  const handleLaunchSession = async (sessionId) => {
+    try {
+      await apiClient.post(`/sessions/${sessionId}/start`);
+      fetchSessions();
+      navigate(`/manage/course/${id}/session/${sessionId}/live`);
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to launch session' });
+    }
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
 
@@ -550,6 +561,42 @@ export default function CourseDetail() {
                     borderColor: { xs: 'divider', md: 'transparent' },
                   }}
                 >
+                  {!s.quiz && s.status !== 'running' && s.status !== 'done' && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      startIcon={<LaunchIcon />}
+                      onClick={() => handleLaunchSession(s._id)}
+                      disabled={!!sessionUpdatesInFlight[s._id]}
+                      aria-label={`Launch session ${s.name}`}
+                    >
+                      Launch
+                    </Button>
+                  )}
+                  {!s.quiz && s.status === 'running' && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="success"
+                      startIcon={<JoinIcon />}
+                      onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
+                      aria-label={`Join live session ${s.name}`}
+                    >
+                      Join Session
+                    </Button>
+                  )}
+                  {s.status === 'done' && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<ReviewIcon />}
+                      onClick={() => navigate(`/manage/course/${id}/session/${s._id}/review`)}
+                      aria-label={`Review session ${s.name}`}
+                    >
+                      Review
+                    </Button>
+                  )}
                   <TextField
                     select
                     size="small"

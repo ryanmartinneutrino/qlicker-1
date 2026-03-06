@@ -21,6 +21,9 @@ const ResponseSchema = new mongoose.Schema(
   }
 );
 
+ResponseSchema.index({ questionId: 1, studentUserId: 1, attempt: 1 });
+ResponseSchema.index({ questionId: 1, attempt: 1 });
+
 const Response = mongoose.model('Response', ResponseSchema);
 
 export default Response;

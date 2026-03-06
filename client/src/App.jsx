@@ -15,9 +15,13 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import ProfDashboard from './pages/professor/ProfDashboard';
 import ProfCourseDetail from './pages/professor/CourseDetail';
 import SessionEditor from './pages/professor/SessionEditor';
+import ProfLiveSession from './pages/professor/LiveSession';
+import SecondDesktop from './pages/professor/SecondDesktop';
+import ProfSessionReview from './pages/professor/SessionReview';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseDetail from './pages/student/CourseDetail';
 import SessionReview from './pages/student/SessionReview';
+import StudentLiveSession from './pages/student/LiveSession';
 
 export default function App() {
   return (
@@ -37,9 +41,13 @@ export default function App() {
               <Route path="/manage" element={<RequireRole role="professor"><ProfDashboard /></RequireRole>} />
               <Route path="/manage/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
+              <Route path="/manage/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor"><ProfLiveSession /></RequireRole>} />
+              <Route path="/manage/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><SecondDesktop /></RequireRole>} />
+              <Route path="/manage/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />
               <Route path="/student/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
+              <Route path="/student/course/:courseId/session/:sessionId/live" element={<StudentLiveSession />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
