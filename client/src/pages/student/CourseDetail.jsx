@@ -9,9 +9,7 @@ import { Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
-
-const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
-const STATUS_LABELS = { hidden: 'Draft', visible: 'Upcoming', running: 'Live', done: 'Ended' };
+import SessionStatusChip from '../../components/common/SessionStatusChip';
 
 function getSessionSortTime(session) {
   return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
@@ -28,6 +26,19 @@ function sortSessions(items) {
 
 function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
+}
+
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
+
+function buildWebsocketUrl(token) {
+  const encodedToken = encodeURIComponent(token);
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
 }
 
 function TabPanel({ children, value, index }) {
@@ -74,6 +85,94 @@ export default function StudentCourseDetail() {
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimer = null;
+    let pollingTimer = null;
+    let closed = false;
+
+    const refreshSessions = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchSessions();
+    };
+
+    const startPolling = () => {
+      if (pollingTimer || closed) return;
+      pollingTimer = setInterval(refreshSessions, 4000);
+    };
+
+    const stopPolling = () => {
+      if (!pollingTimer) return;
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const latestToken = localStorage.getItem('token');
+      if (!latestToken) return;
+      try {
+        ws = new WebSocket(buildWebsocketUrl(latestToken));
+      } catch {
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      ws.onopen = () => {
+        stopPolling();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message?.event !== 'session:updated') return;
+          if (String(message?.data?.courseId || '') !== String(id)) return;
+          fetchSessions();
+        } catch {
+          // Ignore malformed websocket payloads.
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+      };
+    };
+
+    const initializeTransport = async () => {
+      try {
+        const { data } = await apiClient.get('/health');
+        const websocketAvailable = data?.websocket === true;
+        if (!websocketAvailable) {
+          startPolling();
+          return;
+        }
+        connect();
+      } catch {
+        startPolling();
+      }
+    };
+
+    initializeTransport();
+
+    const handleVisibilityChange = () => refreshSessions();
+    window.addEventListener('focus', refreshSessions);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+      window.removeEventListener('focus', refreshSessions);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchSessions, id]);
+
   const handleUnenroll = async () => {
     setUnenrolling(true);
     try {
@@ -119,14 +218,21 @@ export default function StudentCourseDetail() {
               >
                 <ListItemText
                   primary={(
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                      {s.name}
-                      <Chip
-                        label={STATUS_LABELS[s.status] || s.status}
-                        color={STATUS_COLORS[s.status] || 'default'}
-                        size="small"
-                      />
-                      {isQuizSession(s) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
+                      <Typography variant="subtitle2" sx={{ lineHeight: 1.3 }}>
+                        {s.name}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                        <SessionStatusChip status={s.status} />
+                        <Chip
+                          label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}
+                          size="small"
+                          variant="outlined"
+                          color={s.reviewable ? 'success' : 'default'}
+                          sx={COMPACT_CHIP_SX}
+                        />
+                        {isQuizSession(s) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                      </Box>
                     </Box>
                   )}
                   secondary={(
@@ -140,6 +246,7 @@ export default function StudentCourseDetail() {
                   sx={{
                     display: 'flex',
                     gap: 1,
+                    flexWrap: 'wrap',
                     width: { xs: '100%', sm: 'auto' },
                     justifyContent: { xs: 'flex-start', sm: 'flex-end' },
                   }}

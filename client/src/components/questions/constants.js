@@ -35,7 +35,7 @@ function countCorrect(options = []) {
 /**
  * Normalize question type values.
  * Canonical mapping follows Meteor app configs:
- * MC=0, TF=1, SA=2, MS=3, NU=4.
+ * MC=0 (exactly one correct option), TF=1, SA=2, MS=3 (one or more correct options), NU=4.
  */
 export function normalizeQuestionType(question = {}) {
   const rawType = Number(question?.type);

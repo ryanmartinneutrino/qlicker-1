@@ -215,7 +215,7 @@ export default function Home() {
         <div className="homeHeroContent">
           <div className="homeHeroCopy">
             <div className="homeHeroEyebrow">An open-source in-class response system, and so much more.</div>
-            <h1 className="homeHeroTitle">Active learning by answering questions.</h1>
+            <h1 className="homeHeroTitle">Learning by answering questions.</h1>
             <p className="homeHeroSubtitle">
               In-class polling, at home quizzes, student practice sessions, grade management,
               statistics, and so much more. All at your fingertips and for free!

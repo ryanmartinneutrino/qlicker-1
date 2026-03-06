@@ -5,11 +5,15 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Box, IconButton, FormControlLabel, Typography, Divider, Paper,
-  Checkbox, FormGroup, Alert,
+  Checkbox, FormGroup,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+} from '@mui/icons-material';
 import { TYPE_LABELS, QUESTION_TYPES, normalizeQuestionType } from './constants';
 import RichTextEditor from './RichTextEditor';
+import AutoSaveStatus from '../common/AutoSaveStatus';
 import {
   extractPlainTextFromHtml,
   hasRichTextContent,
@@ -39,6 +43,22 @@ function normalizeTrueFalseOptions(opts) {
   return buildTrueFalseOptions(correctIndex === 1 ? 1 : 0);
 }
 
+function enforceSingleCorrectOption(options = []) {
+  let foundCorrect = false;
+  return (options || []).map((option) => {
+    const shouldStayCorrect = !!option?.correct && !foundCorrect;
+    if (shouldStayCorrect) foundCorrect = true;
+    return {
+      content: option?.content || '',
+      correct: shouldStayCorrect,
+    };
+  });
+}
+
+function hasAnyOptionContent(options = []) {
+  return (options || []).some((option) => hasRichTextContent(option?.content || ''));
+}
+
 const emptyForm = () => ({
   type: QUESTION_TYPES.MULTIPLE_CHOICE,
   content: '',
@@ -48,6 +68,30 @@ const emptyForm = () => ({
   solution: '',
   points: 1,
 });
+
+function cloneFormState(form) {
+  return {
+    type: form.type,
+    content: form.content || '',
+    options: (form.options || []).map((option) => ({
+      content: option?.content || '',
+      correct: !!option?.correct,
+    })),
+    correctNumerical: form.correctNumerical ?? '',
+    toleranceNumerical: form.toleranceNumerical ?? '',
+    solution: form.solution || '',
+    points: form.points ?? 1,
+  };
+}
+
+const COMPACT_FIELD_SX = {
+  '& .MuiInputBase-input': {
+    py: 1.05,
+  },
+  '& .MuiSelect-select': {
+    py: 1.05,
+  },
+};
 
 function buildQuestionPayload(form) {
   const content = normalizeStoredHtml(form.content);
@@ -64,6 +108,8 @@ function buildQuestionPayload(form) {
   if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)) {
     const optionSource = form.type === QUESTION_TYPES.TRUE_FALSE
       ? normalizeTrueFalseOptions(form.options)
+      : form.type === QUESTION_TYPES.MULTIPLE_CHOICE
+        ? enforceSingleCorrectOption(form.options)
       : form.options;
     payload.options = optionSource.map((o) => {
       const optionHtml = normalizeStoredHtml(o.content);
@@ -124,6 +170,7 @@ export default function QuestionEditor({
   onClose,
   onAutoSave,
   initial,
+  initialBaseline = null,
   inline = false,
 }) {
   const [form, setForm] = useState(emptyForm());
@@ -131,10 +178,12 @@ export default function QuestionEditor({
   const [autosaveState, setAutosaveState] = useState('idle');
   const [autosaveError, setAutosaveError] = useState('');
   const [closing, setClosing] = useState(false);
+  const [initialSnapshotHash, setInitialSnapshotHash] = useState('');
 
   const questionIdRef = useRef(null);
   const hydratingRef = useRef(false);
   const lastSavedHashRef = useRef('');
+  const initialFormRef = useRef(emptyForm());
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(null);
 
@@ -189,24 +238,42 @@ export default function QuestionEditor({
 
   useEffect(() => {
     if (!open) return;
+    if (initial?._id && questionIdRef.current && questionIdRef.current === initial._id) {
+      return;
+    }
 
-    const normalizedType = initial ? normalizeQuestionType(initial) : QUESTION_TYPES.MULTIPLE_CHOICE;
-    const nextForm = initial
-      ? {
-        type: normalizedType,
-        content: prepareRichTextInput(initial.content || '', initial.plainText || ''),
-        options: normalizedType === QUESTION_TYPES.TRUE_FALSE
-          ? normalizeTrueFalseOptions(initial.options)
-          : normalizeOptions(initial.options),
-        correctNumerical: initial.correctNumerical ?? '',
-        toleranceNumerical: initial.toleranceNumerical ?? '',
-        solution: prepareRichTextInput(initial.solution || '', initial.solution_plainText || ''),
-        points: initial.sessionOptions?.points ?? 1,
-      }
+    const toFormState = (question) => {
+      const normalizedType = question ? normalizeQuestionType(question) : QUESTION_TYPES.MULTIPLE_CHOICE;
+      return question
+        ? {
+          type: normalizedType,
+          content: prepareRichTextInput(question.content || '', question.plainText || ''),
+          options: normalizedType === QUESTION_TYPES.TRUE_FALSE
+            ? normalizeTrueFalseOptions(question.options)
+            : normalizeOptions(question.options),
+          correctNumerical: question.correctNumerical ?? '',
+          toleranceNumerical: question.toleranceNumerical ?? '',
+          solution: prepareRichTextInput(question.solution || '', question.solution_plainText || ''),
+          points: question.sessionOptions?.points ?? 1,
+        }
+        : emptyForm();
+    };
+
+    const rawNextForm = initial
+      ? toFormState(initial)
       : emptyForm();
+    const rawBaselineForm = initialBaseline
+      ? toFormState(initialBaseline)
+      : rawNextForm;
+    const nextForm = cloneFormState(rawNextForm);
+    const baselineForm = cloneFormState(rawBaselineForm);
+    const currentFormHash = JSON.stringify(buildQuestionPayload(nextForm));
+    const snapshotHash = JSON.stringify(buildQuestionPayload(baselineForm));
 
     hydratingRef.current = true;
     setForm(nextForm);
+    initialFormRef.current = baselineForm;
+    setInitialSnapshotHash(snapshotHash);
     setAutosaveState('idle');
     setAutosaveError('');
     saveInFlightRef.current = false;
@@ -216,7 +283,7 @@ export default function QuestionEditor({
     setPersistedQuestionId(nextId);
     questionIdRef.current = nextId;
 
-    lastSavedHashRef.current = nextId ? JSON.stringify(buildQuestionPayload(nextForm)) : '';
+    lastSavedHashRef.current = nextId ? currentFormHash : '';
 
     const hydrationTimer = setTimeout(() => {
       hydratingRef.current = false;
@@ -241,9 +308,36 @@ export default function QuestionEditor({
   }, [open, form, persistPayload]);
 
   const previewPayload = useMemo(() => buildQuestionPayload(form), [form]);
+  const hasChangesSinceOpen = useMemo(() => {
+    if (!open) return false;
+    return JSON.stringify(previewPayload) !== initialSnapshotHash;
+  }, [open, previewPayload, initialSnapshotHash]);
 
-  // When switching to TF, reset options to True/False pair
+  // Warn before erasing option content when leaving option-based types.
   const handleTypeChange = (type) => {
+    if (type === form.type) return;
+
+    const switchingFromOptionBasedType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type);
+    const switchingToNonOptionBasedType = ![QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(type);
+    if (switchingFromOptionBasedType && switchingToNonOptionBasedType && hasAnyOptionContent(form.options)) {
+      const confirmReset = window.confirm(
+        'Changing this question type will erase existing options. Continue?'
+      );
+      if (!confirmReset) return;
+    }
+
+    let nextOptions = form.options;
+    if (form.type === QUESTION_TYPES.MULTI_SELECT && type === QUESTION_TYPES.MULTIPLE_CHOICE) {
+      const correctCount = form.options.filter((option) => !!option.correct).length;
+      if (correctCount > 1) {
+        const confirmSingleCorrect = window.confirm(
+          'Multiple Choice allows only one correct option. Continue and keep only the first correct selection?'
+        );
+        if (!confirmSingleCorrect) return;
+      }
+      nextOptions = enforceSingleCorrectOption(form.options);
+    }
+
     const update = { ...form, type };
     if (type === QUESTION_TYPES.TRUE_FALSE) {
       update.options = normalizeTrueFalseOptions(form.options);
@@ -257,6 +351,8 @@ export default function QuestionEditor({
       || form.type === QUESTION_TYPES.NUMERICAL
     ) {
       update.options = [{ content: '', correct: false }, { content: '', correct: false }];
+    } else if (nextOptions !== form.options) {
+      update.options = nextOptions;
     }
     setForm(update);
   };
@@ -275,13 +371,7 @@ export default function QuestionEditor({
   const addOption = () => setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
   const removeOption = (idx) => setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
 
-  const autosaveLabel = autosaveState === 'saving'
-    ? 'Saving...'
-    : autosaveState === 'saved'
-      ? 'All changes saved'
-      : persistedQuestionId
-        ? 'Autosave enabled'
-        : 'Start typing to create question';
+  const autoSaveStatus = autosaveState === 'saved' ? 'success' : autosaveState;
 
   const handleCloseRequest = useCallback(async () => {
     if (closing) return;
@@ -306,28 +396,75 @@ export default function QuestionEditor({
     }
   }, [closing, form, onClose, persistPayload, waitForSaveDrain]);
 
+  const handleUndoAllChanges = useCallback(() => {
+    setAutosaveError('');
+    setAutosaveState('idle');
+    setForm(cloneFormState(initialFormRef.current));
+  }, []);
+
   const editorFields = (
     <>
-        <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
-          <InputLabel>Question Type</InputLabel>
-          <Select
-            value={form.type}
-            label="Question Type"
-            onChange={e => handleTypeChange(Number(e.target.value))}
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1.25,
+            mb: 2,
+            mt: 1,
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+          }}
+        >
+          <FormControl
+            size="small"
+            sx={{
+              flexGrow: 1,
+              minWidth: { xs: '100%', sm: 260 },
+              maxWidth: { sm: 360 },
+              ...COMPACT_FIELD_SX,
+            }}
           >
-            {Object.entries(TYPE_LABELS).map(([k, v]) => (
-              <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+            <InputLabel>Question Type</InputLabel>
+            <Select
+              size="small"
+              value={form.type}
+              label="Question Type"
+              onChange={e => handleTypeChange(Number(e.target.value))}
+            >
+              {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            label="Points"
+            type="number"
+            size="small"
+            sx={{ width: 120, ...COMPACT_FIELD_SX }}
+            inputProps={{ min: 0 }}
+            value={form.points}
+            onChange={e => setForm({ ...form, points: e.target.value })}
+          />
+        </Box>
 
         <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>
+            <Typography variant="subtitle2">Question Text</Typography>
+            {hasChangesSinceOpen ? (
+              <Button
+                size="small"
+                onClick={handleUndoAllChanges}
+                disabled={closing}
+              >
+                Undo all changes
+              </Button>
+            ) : null}
+          </Box>
           <RichTextEditor
-            label="Question Text"
             value={form.content}
             onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
             placeholder="Write the question here..."
-            minHeight={110}
+            minHeight={26}
             resizable
             showTip
           />
@@ -404,23 +541,12 @@ export default function QuestionEditor({
 
         <Divider sx={{ my: 2 }} />
 
-        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-          <TextField
-            label="Points"
-            type="number"
-            sx={{ width: 120 }}
-            inputProps={{ min: 0 }}
-            value={form.points}
-            onChange={e => setForm({ ...form, points: e.target.value })}
-          />
-        </Box>
-
         <RichTextEditor
           label="Solution / Explanation (optional)"
           value={form.solution}
           onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
           placeholder="Add an optional explanation..."
-          minHeight={96}
+          minHeight={26}
           resizable
         />
         <Divider sx={{ my: 2 }} />
@@ -504,14 +630,15 @@ export default function QuestionEditor({
         flexWrap: 'wrap',
       }}
     >
-      <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center' }}>
-        {autosaveError ? (
-          <Alert severity="error" sx={{ py: 0 }}>
-            {autosaveError}
-          </Alert>
-        ) : (
-          <Typography variant="caption" color="text.secondary">{autosaveLabel}</Typography>
-        )}
+      <Box sx={{ minHeight: 24, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <AutoSaveStatus status={autoSaveStatus} errorText={autosaveError} />
+        <Button
+          size="small"
+          onClick={handleUndoAllChanges}
+          disabled={!hasChangesSinceOpen || closing}
+        >
+          Undo all changes
+        </Button>
       </Box>
       <Button onClick={handleCloseRequest} disabled={closing}>
         {closing ? 'Closing…' : 'Close'}
