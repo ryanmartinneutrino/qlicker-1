@@ -296,14 +296,16 @@ export default function SecondDesktop() {
   // Chart data for distribution
   let chartData = null;
   let correctIndices = [];
-  if (responseStats?.type === 'distribution' && responseStats.distribution && currentQ) {
-    chartData = (currentQ.options || []).map((opt, i) => ({
+  if (responseStats?.type === 'distribution' && responseStats.distribution) {
+    chartData = responseStats.distribution.map((d, i) => ({
       label: OPTION_LETTERS[i] || String(i + 1),
-      count: responseStats.distribution[i] ?? responseStats.distribution[opt._id] ?? 0,
+      count: d.count || 0,
     }));
-    correctIndices = (currentQ.options || [])
-      .map((opt, i) => (opt.correct ? i : -1))
-      .filter((i) => i >= 0);
+    if (currentQ?.options) {
+      correctIndices = (currentQ.options || [])
+        .map((opt, i) => (opt.correct ? i : -1))
+        .filter((i) => i >= 0);
+    }
   }
 
   // ---- Window title ----

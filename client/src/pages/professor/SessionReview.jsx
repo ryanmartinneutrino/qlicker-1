@@ -199,7 +199,7 @@ export default function SessionReview() {
   const avgParticipation = useMemo(() => {
     if (!studentResults.length) return 0;
     const sum = studentResults.reduce((acc, s) => acc + (s.participation || 0), 0);
-    return ((sum / studentResults.length) * 100).toFixed(0);
+    return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
 
   // ---- Current question data for Questions tab ----

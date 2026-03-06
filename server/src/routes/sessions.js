@@ -755,12 +755,15 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      await Session.findByIdAndUpdate(request.params.id, {
-        $addToSet: {
-          joined: userId,
-          joinRecords: { userId, joinedAt: now },
-        },
-      });
+      // Add to joined array (deduplicated), and add join record only if no existing record for this user
+      const hasExistingRecord = session.joinRecords?.some((r) => r.userId === userId);
+      const updateOps = {
+        $addToSet: { joined: userId },
+      };
+      if (!hasExistingRecord) {
+        updateOps.$push = { joinRecords: { userId, joinedAt: now } };
+      }
+      await Session.findByIdAndUpdate(request.params.id, updateOps);
 
       notifySessionUpdated(app, course, request.params.id);
 

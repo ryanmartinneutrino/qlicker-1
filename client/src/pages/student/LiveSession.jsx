@@ -313,7 +313,7 @@ export default function LiveSession() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const payload = { answer: Array.isArray(answer) ? answer : answer };
+      const payload = { answer };
       await apiClient.post(`/sessions/${sessionId}/respond`, payload);
       await fetchLive();
     } catch (err) {
@@ -345,12 +345,12 @@ export default function LiveSession() {
   // Build chart data from responseStats
   let chartData = null;
   let correctIndices = [];
-  if (responseStats?.type === 'distribution' && responseStats.distribution && currentQ?.options) {
-    chartData = (currentQ.options || []).map((opt, i) => ({
+  if (responseStats?.type === 'distribution' && responseStats.distribution) {
+    chartData = responseStats.distribution.map((d, i) => ({
       label: OPTION_LETTERS[i] || String(i + 1),
-      count: responseStats.distribution[i] ?? responseStats.distribution[opt._id] ?? 0,
+      count: d.count || 0,
     }));
-    if (showCorrect) {
+    if (showCorrect && currentQ?.options) {
       correctIndices = (currentQ.options || [])
         .map((opt, i) => (opt.correct ? i : -1))
         .filter((i) => i >= 0);
@@ -813,7 +813,7 @@ export default function LiveSession() {
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             {[
-              { label: 'Count', value: responseStats.count ?? 0 },
+              { label: 'Count', value: responseStats.total ?? responseStats.count ?? 0 },
               { label: 'Mean', value: responseStats.mean != null ? Number(responseStats.mean).toFixed(2) : '—' },
               { label: 'Median', value: responseStats.median != null ? Number(responseStats.median).toFixed(2) : '—' },
             ].map((e) => (

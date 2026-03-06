@@ -114,7 +114,7 @@ function NumericalStats({ stats }) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
   const entries = [
-    { label: 'Count', value: stats.count ?? 0 },
+    { label: 'Count', value: stats.total ?? stats.count ?? 0 },
     { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
     { label: 'Median', value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
     { label: 'Min', value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
@@ -378,7 +378,7 @@ export default function LiveSession() {
     setEnding(true);
     try {
       if (makeReviewable) {
-        await apiClient.patch(`/sessions/${sessionId}/reviewable`, { reviewable: true });
+        await apiClient.patch(`/sessions/${sessionId}`, { reviewable: true });
       }
       await apiClient.post(`/sessions/${sessionId}/end`);
       setEndDialogOpen(false);
@@ -476,9 +476,9 @@ export default function LiveSession() {
 
   let chartData = null;
   if (responseStats?.type === 'distribution' && responseStats.distribution) {
-    chartData = (currentQ?.options || []).map((opt, i) => ({
+    chartData = responseStats.distribution.map((d, i) => ({
       label: OPTION_LETTERS[i] || String(i + 1),
-      count: responseStats.distribution[i] ?? responseStats.distribution[opt._id] ?? 0,
+      count: d.count || 0,
     }));
   }
 
