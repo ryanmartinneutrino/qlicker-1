@@ -45,6 +45,7 @@ function SettingsTab() {
     allowedDomains: '',
     requireVerified: false,
     adminEmail: '',
+    tokenExpiryMinutes: 120,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,6 +64,7 @@ function SettingsTab() {
           : data.allowedDomains ?? '',
         requireVerified: data.requireVerified ?? false,
         adminEmail: data.resolvedAdminEmail ?? data.adminEmail ?? data.email ?? '',
+        tokenExpiryMinutes: data.tokenExpiryMinutes ?? 120,
       });
     }).catch(() => {
       if (mounted) {
@@ -97,6 +99,7 @@ function SettingsTab() {
             .split(',')
             .map((d) => d.trim())
             .filter(Boolean),
+          tokenExpiryMinutes: Math.max(1, parseInt(settings.tokenExpiryMinutes, 10) || 120),
         };
         await apiClient.patch('/settings', payload);
         setSaveStatus('success');
@@ -135,6 +138,15 @@ function SettingsTab() {
         label="Admin Email"
         value={settings.adminEmail}
         onChange={(e) => setSettings((s) => ({ ...s, adminEmail: e.target.value }))}
+        fullWidth
+      />
+      <TextField
+        label="Login Token Expiry (minutes)"
+        type="number"
+        value={settings.tokenExpiryMinutes}
+        onChange={(e) => setSettings((s) => ({ ...s, tokenExpiryMinutes: e.target.value }))}
+        helperText="How long login tokens remain valid (default: 120 minutes = 2 hours)"
+        inputProps={{ min: 1 }}
         fullWidth
       />
     </Box>
