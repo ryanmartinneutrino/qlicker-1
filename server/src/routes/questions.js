@@ -385,6 +385,8 @@ export default async function questionRoutes(app) {
 
       const obj = question.toObject();
       delete obj._id;
+      delete obj.__v;
+      delete obj.updatedAt;
 
       const copy = await Question.create({
         ...obj,

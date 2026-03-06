@@ -16,6 +16,8 @@ export async function copyQuestionToSession({
   const originalQuestionId = String(sourceObject._id || sourceQuestion._id || '');
   const copiedPayload = { ...sourceObject };
   delete copiedPayload._id;
+  delete copiedPayload.__v;
+  delete copiedPayload.updatedAt;
 
   const copy = await Question.create({
     ...copiedPayload,

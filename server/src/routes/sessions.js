@@ -397,6 +397,8 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
+
       return { session: updated.toObject() };
     }
   );
@@ -495,6 +497,7 @@ export default async function sessionRoutes(app) {
         practiceQuiz: session.practiceQuiz,
         quizStart: session.quizStart,
         quizEnd: session.quizEnd,
+        date: session.date,
         tags: session.tags,
         reviewable: session.reviewable,
         questions: [],

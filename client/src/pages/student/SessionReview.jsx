@@ -229,7 +229,7 @@ export default function SessionReview() {
       if (document.visibilityState === 'visible') runCheck();
     };
 
-    const intervalId = setInterval(runCheck, 1500);
+    const intervalId = setInterval(runCheck, 30000);
     window.addEventListener('focus', runCheck);
     window.addEventListener('online', runCheck);
     document.addEventListener('visibilitychange', handleVisibilityChange);
