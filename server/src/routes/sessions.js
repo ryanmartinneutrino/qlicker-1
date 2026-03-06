@@ -2,6 +2,7 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
+import { copyQuestionToSession } from '../services/questionCopy.js';
 
 const createSessionSchema = {
   body: {
@@ -97,6 +98,25 @@ function isCourseMember(course, user) {
     course.students.includes(user.userId);
 }
 
+function notifySessionUpdated(app, course, sessionId) {
+  if (typeof app.wsSendToUser !== 'function') return;
+  if (!course || !sessionId) return;
+
+  const memberIds = new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean));
+
+  const payload = {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+  };
+
+  memberIds.forEach((userId) => {
+    app.wsSendToUser(userId, 'session:updated', payload);
+  });
+}
+
 export default async function sessionRoutes(app) {
   const { authenticate } = app;
 
@@ -118,14 +138,16 @@ export default async function sessionRoutes(app) {
       }
 
       const { name, description, quiz, practiceQuiz, quizStart, quizEnd, date } = request.body;
+      const isPracticeQuiz = !!practiceQuiz;
+      const isQuiz = isPracticeQuiz ? true : !!quiz;
 
       const session = await Session.create({
         name,
         description: description || '',
         courseId: course._id,
         status: 'hidden',
-        quiz: quiz || false,
-        practiceQuiz: practiceQuiz || false,
+        quiz: isQuiz,
+        practiceQuiz: isPracticeQuiz,
         quizStart: quizStart ? new Date(quizStart) : undefined,
         quizEnd: quizEnd ? new Date(quizEnd) : undefined,
         date: date ? new Date(date) : undefined,
@@ -226,11 +248,21 @@ export default async function sessionRoutes(app) {
         }
       }
 
+      // Practice quizzes are a subset of quizzes.
+      if (updates.practiceQuiz === true) {
+        updates.quiz = true;
+      }
+      if (updates.quiz === false) {
+        updates.practiceQuiz = false;
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
         { new: true }
       );
+
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject() };
     }
@@ -295,6 +327,8 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
+
       return { session: updated.toObject() };
     }
   );
@@ -323,6 +357,8 @@ export default async function sessionRoutes(app) {
         { $set: { status: 'done' } },
         { new: true }
       );
+
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject() };
     }
@@ -392,6 +428,8 @@ export default async function sessionRoutes(app) {
         { $set: { reviewable: request.body.reviewable } },
         { new: true }
       );
+
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject() };
     }
@@ -470,7 +508,39 @@ export default async function sessionRoutes(app) {
         $addToSet: { sessions: newSession._id },
       });
 
-      return reply.code(201).send({ session: newSession.toObject() });
+      const sourceQuestionIds = session.questions || [];
+      if (sourceQuestionIds.length > 0) {
+        const sourceQuestions = await Question.find({ _id: { $in: sourceQuestionIds } });
+        const sourceQuestionsById = new Map(sourceQuestions.map((q) => [String(q._id), q]));
+        const copiedQuestionIds = [];
+
+        for (const sourceQuestionId of sourceQuestionIds) {
+          const sourceQuestion = sourceQuestionsById.get(String(sourceQuestionId));
+          if (!sourceQuestion) continue;
+
+          const copiedQuestion = await copyQuestionToSession({
+            sourceQuestion,
+            targetSessionId: newSession._id,
+            targetCourseId: course._id,
+            userId: request.user.userId,
+            addToSession: false,
+          });
+
+          copiedQuestionIds.push(copiedQuestion._id);
+        }
+
+        if (copiedQuestionIds.length > 0) {
+          await Session.findByIdAndUpdate(newSession._id, {
+            $set: { questions: copiedQuestionIds },
+          });
+        }
+      }
+
+      const copiedSession = await Session.findById(newSession._id);
+
+      return reply.code(201).send({
+        session: copiedSession ? copiedSession.toObject() : newSession.toObject(),
+      });
     }
   );
 

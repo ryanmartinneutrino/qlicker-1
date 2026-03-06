@@ -34,6 +34,13 @@ const richContentSx = {
   },
 };
 
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
+
 /* ------------------------------------------------------------------ */
 /*  Helper: render rich HTML with fallback                            */
 /* ------------------------------------------------------------------ */
@@ -69,8 +76,8 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           Q{index + 1}{total > 1 ? `/${total}` : ''}
         </Typography>
-        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" />
-        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" />}
+        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
+        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
       {/* Question content */}
@@ -178,26 +185,62 @@ export default function SessionReview() {
   // Track which questions have their solution revealed (keyed by question._id)
   const [solutionVisible, setSolutionVisible] = useState({});
 
-  const fetchReview = useCallback(async () => {
+  const fetchReview = useCallback(async ({ background = false } = {}) => {
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/review`);
       setSession(data.session);
       setQuestions(data.questions || []);
+      if (!background) {
+        setError(null);
+      }
+      return true;
     } catch (err) {
       const status = err.response?.status;
+      const forbiddenMessage = err.response?.data?.message || 'You do not have permission to review this session.';
+      if (background && (status === 403 || status === 404)) {
+        navigate(`/student/course/${courseId}`, { replace: true });
+        return false;
+      }
       if (status === 403) {
-        setError(err.response?.data?.message || 'You do not have permission to review this session.');
+        setError(forbiddenMessage);
       } else if (status === 404) {
         setError('Session not found.');
       } else {
         setError('Failed to load session review.');
       }
+      return false;
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
-  }, [sessionId]);
+  }, [sessionId, navigate, courseId]);
 
   useEffect(() => { fetchReview(); }, [fetchReview]);
+
+  useEffect(() => {
+    if (loading || error) return undefined;
+
+    const runCheck = () => {
+      fetchReview({ background: true });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') runCheck();
+    };
+
+    const intervalId = setInterval(runCheck, 1500);
+    window.addEventListener('focus', runCheck);
+    window.addEventListener('online', runCheck);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', runCheck);
+      window.removeEventListener('online', runCheck);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loading, error, fetchReview]);
 
   // Reset solution visibility and index when switching modes
   const handleViewModeChange = (_e, next) => {

@@ -95,6 +95,24 @@ describe('POST /api/v1/questions', () => {
     expect(body.question.options.length).toBe(2);
   });
 
+  it('rejects multiple-choice questions with more than one correct option', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    const res = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Pick one answer',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: true },
+      ],
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
+  });
+
   it('student cannot create a question (403)', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
@@ -208,6 +226,28 @@ describe('PATCH /api/v1/questions/:id', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().question.content).toBe('Admin edit');
+  });
+
+  it('rejects switching multi-select to multiple-choice when multiple correct options exist', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 3,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: true },
+      ],
+    });
+    const question = qRes.json().question;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: { type: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
   });
 });
 

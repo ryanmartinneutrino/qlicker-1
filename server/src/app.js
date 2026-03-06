@@ -58,7 +58,11 @@ export async function buildApp(opts = {}) {
   }
 
   // Health check
-  app.get('/api/v1/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
+  app.get('/api/v1/health', async () => ({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    websocket: typeof app.wsSendToUser === 'function',
+  }));
 
   // Serve local uploads as static files
   app.get('/uploads/:filename', async (request, reply) => {

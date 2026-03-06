@@ -1,13 +1,14 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
+import { copyQuestionToSession } from '../services/questionCopy.js';
 
 const createQuestionSchema = {
   body: {
     type: 'object',
     required: ['type'],
     properties: {
-      // Canonical mapping: MC=0, TF=1, SA=2, MS=3, NU=4.
+      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4.
       type: { type: 'integer', minimum: 0, maximum: 4 },
       content: { type: 'string' },
       plainText: { type: 'string' },
@@ -70,7 +71,7 @@ const updateQuestionSchema = {
           additionalProperties: false,
         },
       },
-      // Canonical mapping: MC=0, TF=1, SA=2, MS=3, NU=4.
+      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4.
       type: { type: 'integer', minimum: 0, maximum: 4 },
       toleranceNumerical: { type: 'number' },
       correctNumerical: { type: 'number' },
@@ -197,6 +198,22 @@ const correctSchema = {
   },
 };
 
+const QUESTION_TYPE_MULTIPLE_CHOICE = 0;
+
+function countCorrectOptions(options = []) {
+  if (!Array.isArray(options)) return 0;
+  return options.reduce((count, option) => (option?.correct ? count + 1 : count), 0);
+}
+
+function multipleChoiceValidationError(type, options) {
+  if (Number(type) !== QUESTION_TYPE_MULTIPLE_CHOICE) return null;
+  if (countCorrectOptions(options) <= 1) return null;
+  return {
+    error: 'Bad Request',
+    message: 'Multiple Choice questions can only have one correct option',
+  };
+}
+
 // Helper to check if user is instructor of course or admin
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
@@ -219,6 +236,11 @@ export default async function questionRoutes(app) {
         type, content, plainText, options, toleranceNumerical, correctNumerical,
         sessionId, courseId, solution, solution_plainText, tags, imagePath,
       } = request.body;
+
+      const createValidationError = multipleChoiceValidationError(type, options);
+      if (createValidationError) {
+        return reply.code(400).send(createValidationError);
+      }
 
       const questionData = {
         type,
@@ -288,6 +310,13 @@ export default async function questionRoutes(app) {
 
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const nextType = request.body.type !== undefined ? request.body.type : question.type;
+      const nextOptions = request.body.options !== undefined ? request.body.options : question.options;
+      const updateValidationError = multipleChoiceValidationError(nextType, nextOptions);
+      if (updateValidationError) {
+        return reply.code(400).send(updateValidationError);
       }
 
       const allowed = [
@@ -400,21 +429,11 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const obj = question.toObject();
-      delete obj._id;
-
-      const copy = await Question.create({
-        ...obj,
-        creator: userId,
-        owner: userId,
-        sessionId: session._id,
-        courseId: course._id,
-        originalQuestion: question._id,
-        createdAt: new Date(),
-      });
-
-      await Session.findByIdAndUpdate(session._id, {
-        $addToSet: { questions: copy._id },
+      const copy = await copyQuestionToSession({
+        sourceQuestion: question,
+        targetSessionId: session._id,
+        targetCourseId: course._id,
+        userId,
       });
 
       return reply.code(201).send({ question: copy.toObject() });

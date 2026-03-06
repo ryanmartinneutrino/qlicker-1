@@ -17,6 +17,13 @@ import {
   getYearOptions,
 } from '../../utils/courseSemester';
 
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
+
 function getSuggestedSemester() {
   const now = new Date();
   const month = now.getMonth(); // 0-indexed
@@ -171,6 +178,7 @@ export default function ProfDashboard() {
                       label={course.inactive ? 'Inactive' : 'Active'}
                       color={course.inactive ? 'default' : 'success'}
                       size="small"
+                      sx={COMPACT_CHIP_SX}
                     />
                   </Box>
                   {course.enrollmentCode && (

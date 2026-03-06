@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
-import Session from '../../src/models/Session.js';
+import Question from '../../src/models/Question.js';
 
 let app;
 
@@ -109,6 +109,25 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
 
     const updatedCourse = await Course.findById(course._id);
     expect(updatedCourse.sessions).toContain(session._id);
+  });
+
+  it('creating a practice quiz forces quiz=true', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+
+    const res = await createSessionInCourse(profToken, course._id, {
+      name: 'Practice Session',
+      quiz: false,
+      practiceQuiz: true,
+    });
+
+    expect(res.statusCode).toBe(201);
+    const session = res.json().session;
+    expect(session.practiceQuiz).toBe(true);
+    expect(session.quiz).toBe(true);
   });
 });
 
@@ -259,6 +278,44 @@ describe('PATCH /api/v1/sessions/:id', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+
+  it('setting practiceQuiz=true also sets quiz=true', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id, { quiz: false, practiceQuiz: false });
+    const session = sessRes.json().session;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { practiceQuiz: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.practiceQuiz).toBe(true);
+    expect(res.json().session.quiz).toBe(true);
+  });
+
+  it('setting quiz=false also clears practiceQuiz', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id, { quiz: true, practiceQuiz: true });
+    const session = sessRes.json().session;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { quiz: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.quiz).toBe(false);
+    expect(res.json().session.practiceQuiz).toBe(false);
   });
 });
 
@@ -452,6 +509,59 @@ describe('POST /api/v1/sessions/:id/copy', () => {
 
     const updatedCourse = await Course.findById(course._id);
     expect(updatedCourse.sessions).toContain(copiedSession._id);
+  });
+
+  it('copied session receives copied questions in order with updated ownership links', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Original Session' });
+    const session = sessRes.json().session;
+
+    const q1Res = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: { type: 2, content: '<p>Question 1</p>', plainText: 'Question 1', sessionId: session._id, courseId: course._id },
+    });
+    const q2Res = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: { type: 2, content: '<p>Question 2</p>', plainText: 'Question 2', sessionId: session._id, courseId: course._id },
+    });
+    const q1 = q1Res.json().question;
+    const q2 = q2Res.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: q1._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: q2._id },
+    });
+
+    const copyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+    });
+
+    expect(copyRes.statusCode).toBe(201);
+    const copiedSession = copyRes.json().session;
+    expect(copiedSession.questions).toHaveLength(2);
+    expect(copiedSession.questions).not.toEqual([q1._id, q2._id]);
+
+    const copiedQuestions = await Question.find({ _id: { $in: copiedSession.questions } }).lean();
+    const copiedQuestionsById = new Map(copiedQuestions.map((q) => [q._id, q]));
+
+    copiedSession.questions.forEach((copiedQuestionId, idx) => {
+      const copiedQuestion = copiedQuestionsById.get(copiedQuestionId);
+      const sourceQuestionId = idx === 0 ? q1._id : q2._id;
+
+      expect(copiedQuestion).toBeDefined();
+      expect(copiedQuestion.sessionId).toBe(copiedSession._id);
+      expect(copiedQuestion.courseId).toBe(course._id);
+      expect(copiedQuestion.originalQuestion).toBe(sourceQuestionId);
+      expect(copiedQuestion._id).not.toBe(sourceQuestionId);
+    });
   });
 });
 
