@@ -982,6 +982,17 @@ Phase 4 is now complete — both backend and frontend work is done. The TipTap/K
 6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
 7. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
 8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
+9. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
+
+#### Planned Private-Bucket Cutover (Required Before Enforcing Private S3 Bucket)
+
+Target state is a private S3 bucket for all image assets. To avoid breaking legacy image URLs, this must be done in stages:
+
+1. **Compatibility mode (current):** keep Fastify S3 uploads readable by matching Meteor behavior (`ACL: public-read`) while migration work is prepared.
+2. **Introduce private read path:** add signed URL and/or backend proxy delivery so clients do not depend on direct public S3 URLs.
+3. **Staged DB migration:** backfill image references in batches (users profile fields, images collection URLs, and question HTML/image URL references), with dry-run and rollback support.
+4. **Validation window:** verify old and new records render through the new read path in staging and production shadow checks.
+5. **Bucket cutover:** enable private-bucket policy / Block Public Access after application read-path migration is confirmed.
 
 ### Phase 5 Progress
 
@@ -989,6 +1000,7 @@ The following Phase 5 work has been completed:
 
 - ✅ **Student session review page** — `GET /api/v1/sessions/:id/review` endpoint returns session questions with solutions for reviewable (done) sessions. Students access via `/student/course/:courseId/session/:sessionId/review`. Default single-question view with Previous/Next controls; toggle to view all questions at once. Each question has a "Show solution" button that reveals correct answers and solution text (rendered with KaTeX for math). 6 new backend tests cover permission checks.
 - ✅ **Image upload backends verified** — Local, S3 (including MinIO via custom endpoint + path-style), and Azure Blob Storage backends are implemented and tested. See README for configuration instructions.
+- ✅ **S3 Meteor-compat upload behavior restored** — Fastify S3 uploads now set `ACL: public-read` to match legacy Meteor Slingshot behavior and preserve compatibility with existing shared buckets during migration.
 - ✅ **README updated** — All scripts documented, S3/Azure/MinIO/Azurite setup instructions added.
 - ✅ **UI consistency** (PRs 108–112) — Helvetica font stack, student course page mirrors professor layout, image rendering constrained in questions, SSO-first login UX.
 
