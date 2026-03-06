@@ -22,6 +22,13 @@ const questionRichContentSx = {
   },
 };
 
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
+
 function renderRichText(value, fallback = '') {
   const contentHtml = prepareRichTextInput(value || '', fallback || '');
   if (!contentHtml) {
@@ -64,8 +71,8 @@ export default function QuestionDisplay({ question }) {
   return (
     <Paper variant="outlined" sx={{ p: 2, width: '100%', minWidth: 0, overflow: 'hidden' }} ref={containerRef}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" />
-        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" />}
+        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
+        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
       {renderRichText(question.content, question.plainText)}

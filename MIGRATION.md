@@ -351,7 +351,7 @@ The following code changes were made to ensure the app works correctly with a re
 - Session editor now exposes status using user-facing labels (`Draft`, `Upcoming`, `Live`, `Ended`) mapped to backend values (`hidden`, `visible`, `running`, `done`).
 - Session editor supports a session `date` field for non-quiz sessions (`server/src/routes/sessions.js` updated to accept `date` on create/update).
 - Legacy question rendering in session editor now:
-  - uses one canonical question type mapping for all data (legacy + new): `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`,
+  - uses one canonical question type mapping for all data (legacy + new): `MC=0` (exactly one correct option), `TF=1`, `SA=2`, `MS=3` (one or more correct options), `NU=4`,
   - trusts stored `type` for canonical values `0..4`, with a narrow guard for malformed legacy outliers (`type=4` + multiple options => option-based type),
   - falls back to `SA` only when a record has an invalid type value,
   - renders HTML `content`/options/solution fields,
@@ -372,7 +372,7 @@ The following code changes were made to ensure the app works correctly with a re
 
 Use this script once per restored legacy database to normalize invalid question `type` values into canonical Meteor mapping:
 
-- Canonical mapping: `MC=0`, `TF=1`, `SA=2`, `MS=3`, `NU=4`
+- Canonical mapping: `MC=0` (exactly one correct option), `TF=1`, `SA=2`, `MS=3` (one or more correct options), `NU=4`
 - Script path: `server/scripts/migrate-question-types.js`
 - Behavior:
   - default mode is dry-run (reports only),
@@ -942,7 +942,7 @@ The following issues were identified during testing and have been resolved:
 | Frontend | Questions store both `content` (HTML) and `plainText` fields | ✅ Complete |
 | Frontend | Live KaTeX preview in question editor | ✅ Complete |
 | Frontend | Canonical question type mapping aligned to Meteor (MC=0, TF=1, SA=2, MS=3, NU=4) | ✅ Complete |
-| Backend | Question route validation updated for canonical types (0–4) | ✅ Complete |
+| Backend | Question route validation updated for canonical types (0–4) and MC single-correct enforcement | ✅ Complete |
 | Backend | Migration script for legacy question type cleanup (`server/scripts/migrate-question-types.js`) | ✅ Complete |
 | Testing | Server tests updated for canonical question type values | ✅ Complete |
 

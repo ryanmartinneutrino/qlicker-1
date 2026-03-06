@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
 import {
-  Alert, Box, CircularProgress, IconButton, Paper, Tooltip, Typography,
+  Alert, Box, CircularProgress, IconButton, Paper, Typography,
 } from '@mui/material';
 import {
   FormatBold as BoldIcon,
@@ -295,7 +295,7 @@ export default function RichTextEditor({
             editor={editor}
             pluginKey={bubbleMenuKey.current}
             shouldShow={({ editor: menuEditor, from, to }) => menuEditor.isEditable && from < to}
-            tippyOptions={{ duration: 100, placement: 'top', zIndex: 1700 }}
+            options={{ placement: 'top', offset: 8 }}
           >
             <Paper
               elevation={3}
@@ -307,35 +307,36 @@ export default function RichTextEditor({
                 borderRadius: 2,
                 bgcolor: 'grey.900',
                 color: 'common.white',
+                zIndex: 1700,
               }}
             >
-              <Tooltip title="Bold">
-                <IconButton
-                  size="small"
-                  onClick={() => editor.chain().focus().toggleBold().run()}
-                  sx={{ color: editor.isActive('bold') ? 'warning.light' : 'inherit' }}
-                >
-                  <BoldIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Italic">
-                <IconButton
-                  size="small"
-                  onClick={() => editor.chain().focus().toggleItalic().run()}
-                  sx={{ color: editor.isActive('italic') ? 'warning.light' : 'inherit' }}
-                >
-                  <ItalicIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Underline">
-                <IconButton
-                  size="small"
-                  onClick={() => editor.chain().focus().toggleUnderline().run()}
-                  sx={{ color: editor.isActive('underline') ? 'warning.light' : 'inherit' }}
-                >
-                  <UnderlineIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
+              <IconButton
+                size="small"
+                aria-label="Bold"
+                title="Bold"
+                onClick={() => editor.chain().focus().toggleBold().run()}
+                sx={{ color: editor.isActive('bold') ? 'warning.light' : 'inherit' }}
+              >
+                <BoldIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                aria-label="Italic"
+                title="Italic"
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+                sx={{ color: editor.isActive('italic') ? 'warning.light' : 'inherit' }}
+              >
+                <ItalicIcon fontSize="small" />
+              </IconButton>
+              <IconButton
+                size="small"
+                aria-label="Underline"
+                title="Underline"
+                onClick={() => editor.chain().focus().toggleUnderline().run()}
+                sx={{ color: editor.isActive('underline') ? 'warning.light' : 'inherit' }}
+              >
+                <UnderlineIcon fontSize="small" />
+              </IconButton>
             </Paper>
           </BubbleMenu>
         )}

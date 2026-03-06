@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
-  List, ListItem, ListItemAvatar, ListItemText, ListItemSecondaryAction, IconButton,
+  List, ListItem, ListItemAvatar, ListItemText, ListItemButton, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar,
+  CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar, MenuItem,
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -14,13 +14,11 @@ import {
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import SessionStatusChip from '../../components/common/SessionStatusChip';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
-
-const STATUS_COLORS = { hidden: 'default', visible: 'info', running: 'success', done: 'warning' };
-const STATUS_LABELS = { hidden: 'Draft', visible: 'Upcoming', running: 'Live', done: 'Ended' };
 
 function getSessionSortTime(session) {
   return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
@@ -67,6 +65,12 @@ const EMPTY_COURSE_EDIT_FIELDS = {
   semester: '',
 };
 const EMPTY_COURSE_EDIT_FIELDS_HASH = JSON.stringify(EMPTY_COURSE_EDIT_FIELDS);
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
 
 function parseFieldsHash(hashValue) {
   if (!hashValue) return { ...EMPTY_COURSE_EDIT_FIELDS };
@@ -144,6 +148,7 @@ export default function CourseDetail() {
   const [newSessionDesc, setNewSessionDesc] = useState('');
   const [creatingSess, setCreatingSess] = useState(false);
   const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
+  const [sessionUpdatesInFlight, setSessionUpdatesInFlight] = useState({});
 
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
@@ -458,6 +463,21 @@ export default function CourseDetail() {
     }
   };
 
+  const patchSessionFromList = async (sessionId, updates) => {
+    setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: true }));
+    try {
+      const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
+      const updated = data.session || data;
+      setSessions((prev) => prev.map((session) => (session._id === sessionId ? { ...session, ...updated } : session)));
+      setMsg({ severity: 'success', text: 'Session updated' });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
+      fetchSessions();
+    } finally {
+      setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: false }));
+    }
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
 
@@ -485,46 +505,88 @@ export default function CourseDetail() {
             <Box key={s._id}>
               {i > 0 && <Divider />}
               <ListItem
-                button
-                onClick={() => navigate(
-                  `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
-                  { state: { returnTab: tab } }
-                )}
+                disablePadding
                 sx={{
-                  cursor: 'pointer',
-                  transition: 'background-color 120ms ease',
-                  '&:hover': {
-                    backgroundColor: 'action.hover',
-                  },
+                  alignItems: 'stretch',
+                  flexWrap: { xs: 'wrap', md: 'nowrap' },
                 }}
               >
-                <ListItemText
-                  primary={(
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {s.name}
-                      <Chip label={STATUS_LABELS[s.status] || s.status} color={STATUS_COLORS[s.status] || 'default'} size="small" />
-                      {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
-                    </Box>
+                <ListItemButton
+                  onClick={() => navigate(
+                    `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
+                    { state: { returnTab: tab } }
                   )}
-                  secondary={(
-                    <>
-                      {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
-                      {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
-                    </>
-                  )}
-                />
-                <ListItemSecondaryAction>
+                  sx={{ minWidth: 0 }}
+                >
+                  <ListItemText
+                    primary={(
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        {s.name}
+                        <SessionStatusChip status={s.status} />
+                        {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                      </Box>
+                    )}
+                    secondary={(
+                      <>
+                        {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                        {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
+                      </>
+                    )}
+                  />
+                </ListItemButton>
+
+                <Box
+                  onClick={(event) => event.stopPropagation()}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 1,
+                    px: 1,
+                    py: { xs: 0.5, md: 0 },
+                    width: { xs: '100%', md: 'auto' },
+                    justifyContent: { xs: 'flex-start', md: 'flex-end' },
+                    borderTop: { xs: '1px solid', md: 'none' },
+                    borderColor: { xs: 'divider', md: 'transparent' },
+                  }}
+                >
+                  <TextField
+                    select
+                    size="small"
+                    label="Status"
+                    value={s.status || 'hidden'}
+                    onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
+                    disabled={!!sessionUpdatesInFlight[s._id]}
+                    sx={{ minWidth: 122 }}
+                  >
+                    <MenuItem value="hidden">Draft</MenuItem>
+                    <MenuItem value="visible">Upcoming</MenuItem>
+                    <MenuItem value="running">Live</MenuItem>
+                    <MenuItem value="done">Ended</MenuItem>
+                  </TextField>
+                  <FormControlLabel
+                    sx={{ m: 0 }}
+                    control={(
+                      <Switch
+                        size="small"
+                        checked={!!s.reviewable}
+                        onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
+                        disabled={!!sessionUpdatesInFlight[s._id]}
+                      />
+                    )}
+                    label={<Typography variant="caption">Reviewable</Typography>}
+                  />
                   <Tooltip title="Copy session">
-                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleCopySession(s._id); }}>
+                    <IconButton size="small" onClick={() => handleCopySession(s._id)} disabled={!!sessionUpdatesInFlight[s._id]}>
                       <CopyIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Delete session">
-                    <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteSessionTarget(s); }}>
+                    <IconButton size="small" color="error" onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </ListItemSecondaryAction>
+                </Box>
               </ListItem>
             </Box>
           ))}
@@ -547,7 +609,7 @@ export default function CourseDetail() {
             </Typography>
           )}
         </Box>
-        <Chip label={course.inactive ? 'Inactive' : 'Active'} color={course.inactive ? 'default' : 'success'} />
+        <Chip label={course.inactive ? 'Inactive' : 'Active'} color={course.inactive ? 'default' : 'success'} sx={COMPACT_CHIP_SX} />
       </Box>
 
       {/* Tabs */}

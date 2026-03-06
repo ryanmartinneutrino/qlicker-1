@@ -38,7 +38,7 @@ function convertLegacyMathScriptTags(html) {
     const type = (scriptEl.getAttribute('type') || '').toLowerCase();
     const displayMode = type.includes('mode=display');
     const latex = normalizeLatexForKatex((scriptEl.textContent || '').trim());
-    const textNode = document.createTextNode(displayMode ? `$$\n${latex}\n$$` : `$${latex}$`);
+    const textNode = document.createTextNode(displayMode ? `$$\n${latex}\n$$` : `\\(${latex}\\)`);
     scriptEl.parentNode?.replaceChild(textNode, scriptEl);
   });
 
@@ -54,7 +54,7 @@ function convertStoredMathNodesToDelimiters(html) {
     const rawLatex = decodeHtmlAttribute(node.getAttribute('data-latex') || '');
     const latex = normalizeLatexForKatex(rawLatex);
     const isBlock = node.getAttribute('data-type') === 'block-math';
-    const replacement = document.createTextNode(isBlock ? `$$\n${latex}\n$$` : `$${latex}$`);
+    const replacement = document.createTextNode(isBlock ? `$$\n${latex}\n$$` : `\\(${latex}\\)`);
     node.parentNode?.replaceChild(replacement, node);
   });
 
