@@ -251,8 +251,16 @@ export default function StudentCourseDetail() {
                     justifyContent: { xs: 'flex-start', sm: 'flex-end' },
                   }}
                 >
-                  {s.status === 'running' && (
-                    <Button size="small" variant="outlined" disabled>Join</Button>
+                  {s.status === 'running' && !isQuizSession(s) && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/live`)}
+                      aria-label={`Join live session ${s.name}`}
+                    >
+                      Join
+                    </Button>
                   )}
                   {isQuizSession(s) && s.status !== 'done' && (
                     <Button size="small" variant="outlined" disabled>Start Quiz</Button>

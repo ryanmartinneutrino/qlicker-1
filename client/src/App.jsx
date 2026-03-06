@@ -15,6 +15,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import ProfDashboard from './pages/professor/ProfDashboard';
 import ProfCourseDetail from './pages/professor/CourseDetail';
 import SessionEditor from './pages/professor/SessionEditor';
+import ProfLiveSession from './pages/professor/LiveSession';
 import SecondDesktop from './pages/professor/SecondDesktop';
 import ProfSessionReview from './pages/professor/SessionReview';
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/manage" element={<RequireRole role="professor"><ProfDashboard /></RequireRole>} />
               <Route path="/manage/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
+              <Route path="/manage/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor"><ProfLiveSession /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><SecondDesktop /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
