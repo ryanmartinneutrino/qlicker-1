@@ -3,8 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
+  LinearProgress,
 } from '@mui/material';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import apiClient from '../../api/client';
+import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import {
   QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
 } from '../../components/questions/constants';
@@ -20,11 +26,6 @@ const COMPACT_CHIP_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-const BAR_COLORS = [
-  '#1976d2', '#388e3c', '#f57c00', '#d32f2f',
-  '#7b1fa2', '#0097a7', '#c2185b', '#455a64',
-];
 
 const richContentSx = {
   '& p': { my: 0.5 },
@@ -67,41 +68,41 @@ function RichContent({ html, fallback }) {
   );
 }
 
-/** Simple horizontal bar chart using MUI Box (no Recharts). */
-function SimpleBarChart({ data, highlightCorrect, correctIndices }) {
-  if (!data || !data.length) {
+/** Meteor-style inline response bars for MC/MS/TF. */
+function DistributionBars({ distribution, options, showCorrect }) {
+  if (!distribution || !distribution.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
-
+  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {data.map((item, i) => {
-        const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-        const isCorrect = highlightCorrect && correctIndices?.includes(i);
+      {distribution.map((d, i) => {
+        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
+        const isCorrect = showCorrect && options?.[i]?.correct;
+        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
         return (
-          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 700, minWidth: 24, textAlign: 'center' }}
-            >
-              {item.label}
-            </Typography>
-            <Box sx={{ flex: 1, position: 'relative', height: 28, bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden' }}>
-              <Box
-                sx={{
-                  height: '100%',
-                  width: `${pct}%`,
-                  bgcolor: isCorrect ? 'success.main' : BAR_COLORS[i % BAR_COLORS.length],
-                  borderRadius: 1,
-                  transition: 'width 0.4s ease',
-                  minWidth: item.count > 0 ? 4 : 0,
-                }}
-              />
+          <Box key={i}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+              <Typography
+                variant="body2"
+                sx={{ fontWeight: 700, minWidth: 24, textAlign: 'center' }}
+              >
+                {OPTION_LETTERS[i]}
+              </Typography>
+              <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
+                {pct}%
+              </Typography>
             </Box>
-            <Typography variant="body2" sx={{ minWidth: 28, textAlign: 'right' }}>
-              {item.count}
-            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={pct}
+              sx={{
+                height: 8,
+                borderRadius: 1,
+                bgcolor: 'grey.200',
+                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
+              }}
+            />
           </Box>
         );
       })}
@@ -130,6 +131,7 @@ export default function LiveSession() {
 
   // Answer state
   const [answer, setAnswer] = useState(null); // string for MC/TF/SA/NUM, array for MS
+  const [answerWysiwyg, setAnswerWysiwyg] = useState(''); // rich text HTML for SA
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -261,6 +263,7 @@ export default function LiveSession() {
       } else {
         setAnswer('');
       }
+      setAnswerWysiwyg('');
       setSubmitError(null);
     }
 
@@ -314,6 +317,7 @@ export default function LiveSession() {
     setSubmitError(null);
     try {
       const payload = { answer };
+      if (answerWysiwyg) payload.answerWysiwyg = answerWysiwyg;
       await apiClient.post(`/sessions/${sessionId}/respond`, payload);
       await fetchLive();
     } catch (err) {
@@ -321,7 +325,7 @@ export default function LiveSession() {
     } finally {
       setSubmitting(false);
     }
-  }, [answer, sessionId, fetchLive]);
+  }, [answer, answerWysiwyg, sessionId, fetchLive]);
 
   // --------------------------------------------------
   // Derived values
@@ -341,21 +345,6 @@ export default function LiveSession() {
   const hasSubmitted = !!studentResponse;
   const responseClosed = !!currentAttempt?.closed;
   const isLocked = hasSubmitted || responseClosed;
-
-  // Build chart data from responseStats
-  let chartData = null;
-  let correctIndices = [];
-  if (responseStats?.type === 'distribution' && responseStats.distribution) {
-    chartData = responseStats.distribution.map((d, i) => ({
-      label: OPTION_LETTERS[i] || String(i + 1),
-      count: d.count || 0,
-    }));
-    if (showCorrect && currentQ?.options) {
-      correctIndices = (currentQ.options || [])
-        .map((opt, i) => (opt.correct ? i : -1))
-        .filter((i) => i >= 0);
-    }
-  }
 
   // --------------------------------------------------
   // Render: loading state
@@ -721,21 +710,32 @@ export default function LiveSession() {
           </FormGroup>
         )}
 
-        {/* SA: Text field */}
+        {/* SA: TipTap rich text editor with math support */}
         {qType === QUESTION_TYPES.SHORT_ANSWER && (
-          <TextField
-            value={displayAnswer ?? ''}
-            onChange={(e) => {
-              if (!isLocked) setAnswer(e.target.value);
-            }}
-            placeholder="Type your answer…"
-            multiline
-            minRows={3}
-            maxRows={8}
-            fullWidth
-            disabled={isLocked}
-            inputProps={{ 'aria-label': 'Short answer response' }}
-          />
+          <Box>
+            {isLocked ? (
+              <Paper variant="outlined" sx={{ p: 1.5, opacity: 0.85 }}>
+                {studentResponse?.answerWysiwyg ? (
+                  <RichContent html={studentResponse.answerWysiwyg} />
+                ) : (
+                  <Typography variant="body2">{displayAnswer || '(no answer)'}</Typography>
+                )}
+              </Paper>
+            ) : (
+              <>
+                <StudentRichTextEditor
+                  value={answerWysiwyg || ''}
+                  onChange={({ html, plainText }) => {
+                    setAnswerWysiwyg(html);
+                    setAnswer(plainText);
+                  }}
+                  placeholder="Type your answer…"
+                  disabled={isLocked}
+                />
+                <MathPreview html={answerWysiwyg} />
+              </>
+            )}
+          </Box>
         )}
 
         {/* Numerical: Number input */}
@@ -793,15 +793,15 @@ export default function LiveSession() {
       {/* ============================================================ */}
       {/* Stats phase                                                  */}
       {/* ============================================================ */}
-      {showStats && chartData && (
+      {showStats && responseStats?.type === 'distribution' && responseStats.distribution && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Response statistics">
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
             Response Distribution
           </Typography>
-          <SimpleBarChart
-            data={chartData}
-            highlightCorrect={showCorrect}
-            correctIndices={correctIndices}
+          <DistributionBars
+            distribution={responseStats.distribution}
+            options={currentQ?.options}
+            showCorrect={showCorrect}
           />
         </Paper>
       )}
@@ -811,6 +811,46 @@ export default function LiveSession() {
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
             Response Statistics
           </Typography>
+          {(() => {
+            const values = (responseStats.values || []).map(Number).filter((v) => !isNaN(v));
+            let histogramData = [];
+            if (values.length > 1) {
+              const vmin = Math.min(...values);
+              const vmax = Math.max(...values);
+              const range = vmax - vmin;
+              let nbins = Math.max(1, Math.floor(Math.sqrt(values.length)) + 1);
+              if (nbins > 20) nbins = 20;
+              if (range === 0) nbins = 1;
+              const binWidth = range > 0 ? range / nbins : 1;
+              const counts = new Array(nbins).fill(0);
+              values.forEach((v) => {
+                let idx = Math.floor((v - vmin) / binWidth);
+                if (idx >= nbins) idx = nbins - 1;
+                if (idx < 0) idx = 0;
+                counts[idx]++;
+              });
+              for (let i = 0; i < nbins; i++) {
+                histogramData.push({
+                  bin: Number((vmin + (i + 0.5) * binWidth).toPrecision(4)),
+                  count: counts[i],
+                });
+              }
+            } else if (values.length === 1) {
+              histogramData = [{ bin: values[0], count: 1 }];
+            }
+            return histogramData.length > 0 ? (
+              <Box sx={{ mb: 2 }}>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
+                    <XAxis dataKey="bin" />
+                    <YAxis allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Box>
+            ) : null;
+          })()}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             {[
               { label: 'Count', value: responseStats.total ?? responseStats.count ?? 0 },
@@ -820,6 +860,25 @@ export default function LiveSession() {
               <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 80, textAlign: 'center' }}>
                 <Typography variant="caption" color="text.secondary">{e.label}</Typography>
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>{e.value}</Typography>
+              </Paper>
+            ))}
+          </Box>
+        </Paper>
+      )}
+
+      {showStats && responseStats?.type === 'shortAnswer' && (
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Short answer responses">
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+            Responses
+          </Typography>
+          <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+            {(responseStats.answers || []).map((r, i) => (
+              <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                {r.answerWysiwyg ? (
+                  <RichContent html={r.answerWysiwyg} />
+                ) : (
+                  <Typography variant="body2">{r.answer ?? '(no answer)'}</Typography>
+                )}
               </Paper>
             ))}
           </Box>
