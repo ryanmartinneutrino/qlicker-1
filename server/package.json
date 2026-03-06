@@ -25,7 +25,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@node-saml/node-saml": "^5.1.0",
     "dotenv": "^16.4.7",
-    "fastify": "^5.2.1",
+    "fastify": "^5.8.1",
     "fastify-plugin": "^5.0.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.9.5",
