@@ -18,6 +18,7 @@ import SessionEditor from './pages/professor/SessionEditor';
 import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseDetail from './pages/student/CourseDetail';
 import SessionReview from './pages/student/SessionReview';
+import StudentLiveSession from './pages/student/LiveSession';
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/student" element={<StudentDashboard />} />
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />
               <Route path="/student/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
+              <Route path="/student/course/:courseId/session/:sessionId/live" element={<StudentLiveSession />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
