@@ -1,5 +1,6 @@
 import Course from '../models/Course.js';
 import User from '../models/User.js';
+import { escapeForRegex } from '../utils/regex.js';
 
 function generateEnrollmentCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -106,7 +107,7 @@ export default async function courseRoutes(app) {
       }
 
       if (search) {
-        const regex = new RegExp(search, 'i');
+        const regex = new RegExp(escapeForRegex(search), 'i');
         filter.$or = [
           { name: regex },
           { deptCode: regex },

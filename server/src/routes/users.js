@@ -1,6 +1,7 @@
 import User from '../models/User.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
+import { escapeForRegex } from '../utils/regex.js';
 
 function sanitizeUser(user) {
   const obj = user.toObject();
@@ -65,7 +66,7 @@ export default async function userRoutes(app) {
           required: ['currentPassword', 'newPassword'],
           properties: {
             currentPassword: { type: 'string' },
-            newPassword: { type: 'string', minLength: 6 },
+            newPassword: { type: 'string', minLength: 8 },
           },
         },
       },
@@ -145,7 +146,7 @@ export default async function userRoutes(app) {
 
       const filter = {};
       if (search) {
-        const regex = new RegExp(search, 'i');
+        const regex = new RegExp(escapeForRegex(search), 'i');
         filter.$or = [
           { 'profile.firstname': regex },
           { 'profile.lastname': regex },
@@ -272,7 +273,7 @@ export default async function userRoutes(app) {
           required: ['email', 'password', 'firstname', 'lastname'],
           properties: {
             email: { type: 'string', format: 'email' },
-            password: { type: 'string', minLength: 6 },
+            password: { type: 'string', minLength: 8 },
             firstname: { type: 'string', minLength: 1 },
             lastname: { type: 'string', minLength: 1 },
             role: { type: 'string' },
