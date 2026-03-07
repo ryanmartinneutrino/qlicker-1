@@ -390,6 +390,76 @@ describe('POST /api/v1/sessions/:id/start', () => {
   });
 });
 
+// ---------- GET /api/v1/sessions/:id/live ----------
+describe('GET /api/v1/sessions/:id/live', () => {
+  it('student payload is limited to live-participation fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.session).toBeDefined();
+    expect(body.session._id).toBe(session._id);
+    expect(body.session.name).toBe(session.name);
+    expect(body.session.status).toBe('running');
+    expect(body.session).toHaveProperty('joinCodeActive');
+    expect(body.session).toHaveProperty('joinCodeEnabled');
+
+    expect(body.session).not.toHaveProperty('joinedCount');
+    expect(body.session).not.toHaveProperty('joined');
+    expect(body.session).not.toHaveProperty('description');
+    expect(body.session).not.toHaveProperty('courseId');
+    expect(body.session).not.toHaveProperty('questions');
+    expect(body.session).not.toHaveProperty('currentQuestion');
+    expect(body.session).not.toHaveProperty('reviewable');
+    expect(body).not.toHaveProperty('responseCount');
+  });
+
+  it('instructor payload still includes joined and response summary fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session).toHaveProperty('joinedCount');
+    expect(body.session).toHaveProperty('joined');
+    expect(body.session).toHaveProperty('questions');
+    expect(body.session).toHaveProperty('currentQuestion');
+    expect(body).toHaveProperty('responseCount');
+  });
+});
+
 // ---------- POST /api/v1/sessions/:id/end ----------
 describe('POST /api/v1/sessions/:id/end', () => {
   it('instructor can end a session', async (ctx) => {

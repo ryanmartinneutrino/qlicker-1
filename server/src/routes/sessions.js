@@ -93,6 +93,38 @@ function generateJoinCode() {
   return String(crypto.randomInt(100000, 999999));
 }
 
+function optionDisplayContent(option, index) {
+  return option?.content || option?.plainText || option?.answer || `Option ${index + 1}`;
+}
+
+function normalizeAnswerValue(answer) {
+  if (answer === null || answer === undefined) return '';
+  return String(answer).trim();
+}
+
+function resolveOptionIndex(answer, options) {
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    return answer >= 0 && answer < options.length ? answer : -1;
+  }
+
+  const normalized = normalizeAnswerValue(answer);
+  if (!normalized) return -1;
+
+  // Current student UI may submit option index as a string (e.g. "0", "1").
+  if (/^\d+$/.test(normalized)) {
+    const parsed = Number(normalized);
+    if (parsed >= 0 && parsed < options.length) return parsed;
+  }
+
+  return options.findIndex((opt) => {
+    if (normalizeAnswerValue(opt?._id) === normalized) return true;
+    if (normalizeAnswerValue(opt?.answer) === normalized) return true;
+    if (normalizeAnswerValue(opt?.content) === normalized) return true;
+    if (normalizeAnswerValue(opt?.plainText) === normalized) return true;
+    return false;
+  });
+}
+
 // Build response stats for a question's responses (for distribution display)
 function buildResponseStats(question, responses) {
   if (!question || !responses) return null;
@@ -103,24 +135,20 @@ function buildResponseStats(question, responses) {
   if ([0, 1, 3].includes(type) && options.length > 0) {
     const distribution = options.map((opt, i) => ({
       index: i,
-      answer: opt.answer || opt.content || opt.plainText || `Option ${i + 1}`,
+      answer: optionDisplayContent(opt, i),
       correct: !!opt.correct,
       count: 0,
     }));
 
     for (const r of responses) {
       if (Array.isArray(r.answer)) {
-        // MS: answer is array of indices or values
+        // MS: answer can be array of indices, option IDs, or answer strings
         for (const a of r.answer) {
-          const idx = typeof a === 'number' ? a : options.findIndex(
-            (o) => o.answer === a || o.content === a
-          );
+          const idx = resolveOptionIndex(a, options);
           if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
         }
       } else {
-        const idx = typeof r.answer === 'number' ? r.answer : options.findIndex(
-          (o) => o.answer === r.answer || o.content === r.answer
-        );
+        const idx = resolveOptionIndex(r.answer, options);
         if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
       }
     }
@@ -900,26 +928,38 @@ export default async function sessionRoutes(app) {
         }
       }
 
-      // Build response
+      // Build response payload.
+      // Student payload is intentionally minimal and only includes fields needed for live participation.
       const result = {
-        session: {
-          _id: session._id,
-          name: session.name,
-          description: session.description,
-          courseId: session.courseId,
-          status: session.status,
-          questions: session.questions,
-          currentQuestion: session.currentQuestion,
-          joinedCount: session.joined.length,
-          joinCodeActive: session.joinCodeActive,
-          joinCodeEnabled: session.joinCodeEnabled,
-          reviewable: session.reviewable,
-        },
+        session: isInstrOrAdmin
+          ? {
+            _id: session._id,
+            name: session.name,
+            description: session.description,
+            courseId: session.courseId,
+            status: session.status,
+            questions: session.questions,
+            currentQuestion: session.currentQuestion,
+            joinedCount: session.joined.length,
+            joinCodeActive: session.joinCodeActive,
+            joinCodeEnabled: session.joinCodeEnabled,
+            reviewable: session.reviewable,
+          }
+          : {
+            _id: session._id,
+            name: session.name,
+            status: session.status,
+            joinCodeActive: session.joinCodeActive,
+            joinCodeEnabled: session.joinCodeEnabled,
+          },
         currentQuestion: null,
         currentAttempt,
         responseStats,
-        responseCount: allResponses ? allResponses.length : 0,
       };
+
+      if (isInstrOrAdmin) {
+        result.responseCount = allResponses ? allResponses.length : 0;
+      }
 
       if (isInstrOrAdmin) {
         result.session.joined = session.joined;

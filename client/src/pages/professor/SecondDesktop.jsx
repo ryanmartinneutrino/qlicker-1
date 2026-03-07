@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Box, Typography, Paper, Alert, CircularProgress, Chip, LinearProgress } from '@mui/material';
+import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
   ResponsiveContainer,
@@ -39,6 +39,10 @@ function buildWebsocketUrl(token) {
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
 }
 
+function optionDisplayHtml(option) {
+  return option?.content || option?.plainText || option?.answer || '';
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -59,53 +63,6 @@ function RichContent({ html, fallback }) {
       sx={{ ...richContentSx, fontSize: '1.35rem', lineHeight: 1.6 }}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />
-  );
-}
-
-/** Horizontal bar chart for response distribution (Meteor-style percentage bars). */
-function DistributionBars({ distribution, options, showCorrect }) {
-  if (!distribution || !distribution.length) {
-    return (
-      <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
-        No responses yet.
-      </Typography>
-    );
-  }
-  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
-
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-      {distribution.map((d, i) => {
-        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
-        const isCorrect = showCorrect && options?.[i]?.correct;
-        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
-        return (
-          <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.25 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, minWidth: 32, textAlign: 'center' }}>
-                {OPTION_LETTERS[i]}
-              </Typography>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
-              </Box>
-              <Typography variant="h6" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600 }}>
-                {pct}% ({d.count || 0})
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={pct}
-              sx={{
-                height: 12,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
-              }}
-            />
-          </Box>
-        );
-      })}
-    </Box>
   );
 }
 
@@ -305,8 +262,15 @@ export default function SecondDesktop() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;
-  const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
   const responseCount = liveData?.responseCount ?? allResponses.length;
+  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
+    || qType === QUESTION_TYPES.TRUE_FALSE
+    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const showInlineOptionStats = isOptionBasedQuestion
+    && showStats
+    && responseStats?.type === 'distribution';
+  const inlineDistribution = showInlineOptionStats ? (responseStats.distribution || []) : [];
+  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // ---- Auto-close popup window when session ends ----
 
@@ -398,21 +362,14 @@ export default function SecondDesktop() {
         <Typography variant="h6" sx={{ mt: 3, color: 'text.secondary' }}>
           {session.name || 'Live Session'}
         </Typography>
-        <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+        {session.joinCodeInterval && (
           <Chip
-            label={`${joinedCount} student${joinedCount !== 1 ? 's' : ''} joined`}
+            label={`Refreshes every ${session.joinCodeInterval}s`}
             size="small"
-            sx={COMPACT_CHIP_SX}
+            variant="outlined"
+            sx={{ ...COMPACT_CHIP_SX, mt: 2 }}
           />
-          {session.joinCodeInterval && (
-            <Chip
-              label={`Refreshes every ${session.joinCodeInterval}s`}
-              size="small"
-              variant="outlined"
-              sx={COMPACT_CHIP_SX}
-            />
-          )}
-        </Box>
+        )}
       </Box>
     );
   }
@@ -434,11 +391,6 @@ export default function SecondDesktop() {
         <Typography variant="h5" sx={{ color: 'text.secondary' }}>
           Waiting for the next question…
         </Typography>
-        <Chip
-          label={`${joinedCount} student${joinedCount !== 1 ? 's' : ''} joined`}
-          size="small"
-          sx={{ ...COMPACT_CHIP_SX, mt: 3 }}
-        />
       </Box>
     );
   }
@@ -469,12 +421,6 @@ export default function SecondDesktop() {
           sx={COMPACT_CHIP_SX}
         />
         <Chip
-          label={`${joinedCount} joined`}
-          size="small"
-          variant="outlined"
-          sx={COMPACT_CHIP_SX}
-        />
-        <Chip
           label={`${responseCount} response${responseCount !== 1 ? 's' : ''}`}
           size="small"
           variant="outlined"
@@ -492,17 +438,22 @@ export default function SecondDesktop() {
       </Paper>
 
       {/* Options for MC / TF / MS */}
-      {(qType === QUESTION_TYPES.MULTIPLE_CHOICE
-        || qType === QUESTION_TYPES.TRUE_FALSE
-        || qType === QUESTION_TYPES.MULTI_SELECT) && (
+      {isOptionBasedQuestion && (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 3 }}>
           {(currentQ.options || []).map((opt, i) => {
             const isCorrect = showCorrect && !!opt.correct;
+            const count = inlineDistribution?.[i]?.count || 0;
+            const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+            const barColor = showCorrect
+              ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+              : 'rgba(25, 118, 210, 0.18)';
             return (
               <Paper
                 key={opt._id || i}
                 variant="outlined"
                 sx={{
+                  position: 'relative',
+                  overflow: 'hidden',
                   p: { xs: 1.5, sm: 2 },
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -512,6 +463,20 @@ export default function SecondDesktop() {
                   borderWidth: isCorrect ? 2 : 1,
                 }}
               >
+                <Box
+                  aria-hidden
+                  sx={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: `${showInlineOptionStats ? pct : 0}%`,
+                    bgcolor: barColor,
+                    transition: 'width 0.4s ease-out',
+                    pointerEvents: 'none',
+                  }}
+                />
+                <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1.5, width: '100%' }}>
                 <Chip
                   label={OPTION_LETTERS[i]}
                   size="small"
@@ -519,7 +484,13 @@ export default function SecondDesktop() {
                   sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 32, fontSize: '1rem' }}
                 />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <RichContent html={opt.answer || opt.content || opt.plainText} />
+                  <RichContent html={optionDisplayHtml(opt)} />
+                </Box>
+                {showInlineOptionStats && (
+                  <Typography variant="h6" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600 }}>
+                    {pct}% ({count})
+                  </Typography>
+                )}
                 </Box>
               </Paper>
             );
@@ -551,22 +522,16 @@ export default function SecondDesktop() {
       )}
 
       {/* Response statistics */}
-      {showStats && (
+      {showStats && (!isOptionBasedQuestion || responseStats?.type !== 'distribution') && (
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}
           aria-label="Response statistics"
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-            Response Distribution
+            Responses
           </Typography>
-          {responseStats?.type === 'distribution' && responseStats.distribution ? (
-            <DistributionBars
-              distribution={responseStats.distribution}
-              options={currentQ?.options}
-              showCorrect={showCorrect}
-            />
-          ) : responseStats?.type === 'shortAnswer' ? (
+          {responseStats?.type === 'shortAnswer' ? (
             <ShortAnswerList responses={responseStats.answers || allResponses} />
           ) : responseStats?.type === 'numerical' ? (
             <NumericalStats stats={responseStats} allResponses={allResponses} />

@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
-  LinearProgress,
 } from '@mui/material';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
@@ -46,6 +45,10 @@ function buildWebsocketUrl(token) {
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
 }
 
+function optionDisplayHtml(option) {
+  return option?.content || option?.plainText || option?.answer || '';
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -66,51 +69,6 @@ function RichContent({ html, fallback }) {
       sx={richContentSx}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />
-  );
-}
-
-/** Meteor-style inline response bars for MC/MS/TF. */
-function DistributionBars({ distribution, options, showCorrect }) {
-  if (!distribution || !distribution.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
-  }
-  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {distribution.map((d, i) => {
-        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
-        const isCorrect = showCorrect && options?.[i]?.correct;
-        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
-        return (
-          <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Chip
-                label={OPTION_LETTERS[i]}
-                size="small"
-                color={isCorrect ? 'success' : 'default'}
-                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
-              />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
-              </Box>
-              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
-                {pct}% ({d.count || 0})
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={pct}
-              sx={{
-                height: 8,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
-              }}
-            />
-          </Box>
-        );
-      })}
-    </Box>
   );
 }
 
@@ -349,6 +307,14 @@ export default function LiveSession() {
   const hasSubmitted = !!studentResponse;
   const responseClosed = !!currentAttempt?.closed;
   const isLocked = hasSubmitted || responseClosed;
+  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
+    || qType === QUESTION_TYPES.TRUE_FALSE
+    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const showInlineOptionStats = isOptionBasedQuestion
+    && showStats
+    && responseStats?.type === 'distribution';
+  const inlineDistribution = showInlineOptionStats ? (responseStats.distribution || []) : [];
+  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading state
@@ -535,15 +501,8 @@ export default function LiveSession() {
           </Box>
 
           <Typography variant="body1" color="text.secondary">
-            Waiting for the instructor…
+            Waiting for question…
           </Typography>
-
-          <Chip
-            label={`${session.joinedCount ?? 0} students joined`}
-            size="small"
-            variant="outlined"
-            sx={{ ...COMPACT_CHIP_SX, mt: 2 }}
-          />
         </Paper>
       </Box>
     );
@@ -561,6 +520,8 @@ export default function LiveSession() {
   // For SA: text string
   // For Numerical: number string
   const displayAnswer = hasSubmitted ? submittedAnswer : answer;
+  const displayAnswerString = displayAnswer == null ? '' : String(displayAnswer);
+  const displayAnswerArray = Array.isArray(displayAnswer) ? displayAnswer.map((value) => String(value)) : [];
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 600, mx: 'auto' }}>
@@ -611,20 +572,27 @@ export default function LiveSession() {
         {/* MC / TF: Radio buttons */}
         {(qType === QUESTION_TYPES.MULTIPLE_CHOICE || qType === QUESTION_TYPES.TRUE_FALSE) && (
           <RadioGroup
-            value={displayAnswer ?? ''}
+            value={displayAnswerString}
             onChange={(e) => {
               if (!isLocked) setAnswer(e.target.value);
             }}
           >
             {(currentQ.options || []).map((opt, i) => {
-              const optId = opt._id || String(i);
+              const optId = String(opt._id ?? i);
               const isCorrectOpt = showCorrect && !!opt.correct;
-              const isSelected = displayAnswer === optId;
+              const isSelected = displayAnswerString === optId;
+              const count = inlineDistribution?.[i]?.count || 0;
+              const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const barColor = showCorrect
+                ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                : 'rgba(25, 118, 210, 0.18)';
               return (
                 <Paper
                   key={optId}
                   variant="outlined"
                   sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
                     p: 1.5,
                     mb: 0.75,
                     display: 'flex',
@@ -639,6 +607,20 @@ export default function LiveSession() {
                     if (!isLocked) setAnswer(optId);
                   }}
                 >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${showInlineOptionStats ? pct : 0}%`,
+                      bgcolor: barColor,
+                      transition: 'width 0.4s ease-out',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
                   <FormControlLabel
                     value={optId}
                     control={<Radio disabled={isLocked} sx={{ p: 0.5 }} />}
@@ -653,7 +635,13 @@ export default function LiveSession() {
                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
                   />
                   <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={opt.answer || opt.content || opt.plainText} />
+                    <RichContent html={optionDisplayHtml(opt)} />
+                  </Box>
+                  {showInlineOptionStats && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                      {pct}% ({count})
+                    </Typography>
+                  )}
                   </Box>
                 </Paper>
               );
@@ -665,16 +653,21 @@ export default function LiveSession() {
         {qType === QUESTION_TYPES.MULTI_SELECT && (
           <FormGroup>
             {(currentQ.options || []).map((opt, i) => {
-              const optId = opt._id || String(i);
+              const optId = String(opt._id ?? i);
               const isCorrectOpt = showCorrect && !!opt.correct;
-              const checked = Array.isArray(displayAnswer)
-                ? displayAnswer.includes(optId)
-                : false;
+              const checked = displayAnswerArray.includes(optId);
+              const count = inlineDistribution?.[i]?.count || 0;
+              const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const barColor = showCorrect
+                ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                : 'rgba(25, 118, 210, 0.18)';
               return (
                 <Paper
                   key={optId}
                   variant="outlined"
                   sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
                     p: 1.5,
                     mb: 0.75,
                     display: 'flex',
@@ -688,13 +681,27 @@ export default function LiveSession() {
                   onClick={() => {
                     if (isLocked) return;
                     setAnswer((prev) => {
-                      const arr = Array.isArray(prev) ? prev : [];
+                      const arr = Array.isArray(prev) ? prev.map((value) => String(value)) : [];
                       return arr.includes(optId)
                         ? arr.filter((id) => id !== optId)
                         : [...arr, optId];
                     });
                   }}
                 >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${showInlineOptionStats ? pct : 0}%`,
+                      bgcolor: barColor,
+                      transition: 'width 0.4s ease-out',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
                   <FormControlLabel
                     control={
                       <Checkbox
@@ -704,7 +711,7 @@ export default function LiveSession() {
                         onChange={() => {
                           if (isLocked) return;
                           setAnswer((prev) => {
-                            const arr = Array.isArray(prev) ? prev : [];
+                            const arr = Array.isArray(prev) ? prev.map((value) => String(value)) : [];
                             return arr.includes(optId)
                               ? arr.filter((id) => id !== optId)
                               : [...arr, optId];
@@ -723,7 +730,13 @@ export default function LiveSession() {
                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
                   />
                   <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={opt.answer || opt.content || opt.plainText} />
+                    <RichContent html={optionDisplayHtml(opt)} />
+                  </Box>
+                  {showInlineOptionStats && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                      {pct}% ({count})
+                    </Typography>
+                  )}
                   </Box>
                 </Paper>
               );
@@ -814,19 +827,6 @@ export default function LiveSession() {
       {/* ============================================================ */}
       {/* Stats phase                                                  */}
       {/* ============================================================ */}
-      {showStats && responseStats?.type === 'distribution' && responseStats.distribution && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Response statistics">
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Response Distribution
-          </Typography>
-          <DistributionBars
-            distribution={responseStats.distribution}
-            options={currentQ?.options}
-            showCorrect={showCorrect}
-          />
-        </Paper>
-      )}
-
       {showStats && responseStats?.type === 'numerical' && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Numerical statistics">
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>

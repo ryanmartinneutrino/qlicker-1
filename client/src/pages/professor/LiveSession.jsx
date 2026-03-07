@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
-  Switch, FormControlLabel, TextField, Divider, useMediaQuery, LinearProgress,
+  Switch, FormControlLabel, TextField, Divider, useMediaQuery,
 } from '@mui/material';
 import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
@@ -45,6 +45,10 @@ function questionIndex(session, questionId) {
   return ids.indexOf(questionId);
 }
 
+function optionDisplayHtml(option) {
+  return option?.content || option?.plainText || option?.answer || '';
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -65,51 +69,6 @@ function RichContent({ html }) {
       sx={{ '& p': { my: 0.5 }, '& img': { maxWidth: '100%' } }}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />
-  );
-}
-
-/** Bar chart for MC / TF / MS distribution data (Meteor-style inline response bars). */
-function DistributionBars({ distribution, options, showCorrect }) {
-  if (!distribution || !distribution.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
-  }
-  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {distribution.map((d, i) => {
-        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
-        const isCorrect = showCorrect && options?.[i]?.correct;
-        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
-        return (
-          <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Chip
-                label={OPTION_LETTERS[i]}
-                size="small"
-                color={isCorrect ? 'success' : 'default'}
-                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
-              />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
-              </Box>
-              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
-                {pct}% ({d.count || 0})
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={pct}
-              sx={{
-                height: 8,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
-              }}
-            />
-          </Box>
-        );
-      })}
-    </Box>
   );
 }
 
@@ -489,6 +448,13 @@ export default function LiveSession() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const responsesClosed = !!currentAttempt?.closed;
   const attemptNum = currentAttempt?.number ?? 1;
+  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
+    || qType === QUESTION_TYPES.TRUE_FALSE
+    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const inlineDistribution = responseStats?.type === 'distribution'
+    ? responseStats.distribution || []
+    : [];
+  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -787,7 +753,7 @@ export default function LiveSession() {
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
+          flexDirection: { xs: 'column', md: isOptionBasedQuestion ? 'column' : 'row' },
           gap: 2,
           mb: 2,
         }}
@@ -821,17 +787,22 @@ export default function LiveSession() {
               </Box>
 
               {/* Options for MC / TF / MS */}
-              {(qType === QUESTION_TYPES.MULTIPLE_CHOICE
-                || qType === QUESTION_TYPES.TRUE_FALSE
-                || qType === QUESTION_TYPES.MULTI_SELECT) && (
+              {isOptionBasedQuestion && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                   {(currentQ.options || []).map((opt, i) => {
                     const isCorrect = !!opt.correct;
+                    const count = inlineDistribution?.[i]?.count || 0;
+                    const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+                    const barColor = showCorrect
+                      ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                      : 'rgba(25, 118, 210, 0.18)';
                     return (
                       <Paper
                         key={opt._id || i}
                         variant="outlined"
                         sx={{
+                          position: 'relative',
+                          overflow: 'hidden',
                           p: 1,
                           display: 'flex',
                           alignItems: 'flex-start',
@@ -840,6 +811,20 @@ export default function LiveSession() {
                           bgcolor: isCorrect ? 'success.lighter' : 'transparent',
                         }}
                       >
+                        <Box
+                          aria-hidden
+                          sx={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: `${pct}%`,
+                            bgcolor: barColor,
+                            transition: 'width 0.4s ease-out',
+                            pointerEvents: 'none',
+                          }}
+                        />
+                        <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
                         <Chip
                           label={OPTION_LETTERS[i]}
                           size="small"
@@ -847,11 +832,15 @@ export default function LiveSession() {
                           sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
                         />
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <RichContent html={opt.answer || opt.content || opt.plainText} />
+                          <RichContent html={optionDisplayHtml(opt)} />
                         </Box>
+                        <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                          {pct}% ({count})
+                        </Typography>
                         {isCorrect && (
                           <CheckIcon color="success" fontSize="small" aria-label="Correct answer" />
                         )}
+                        </Box>
                       </Paper>
                     );
                   })}
@@ -888,6 +877,7 @@ export default function LiveSession() {
         </Paper>
 
         {/* ---- Right panel: response statistics ---- */}
+        {!isOptionBasedQuestion && (
         <Paper
           variant="outlined"
           sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
@@ -902,11 +892,9 @@ export default function LiveSession() {
               Select a question to view responses.
             </Typography>
           ) : responseStats?.type === 'distribution' ? (
-            <DistributionBars
-              distribution={responseStats.distribution}
-              options={currentQ?.options}
-              showCorrect={showCorrect}
-            />
+            <Typography variant="body2" color="text.secondary">
+              Distribution is shown inline with the answer options.
+            </Typography>
           ) : responseStats?.type === 'shortAnswer' ? (
             <ShortAnswerList responses={responseStats.answers || allResponses} />
           ) : responseStats?.type === 'numerical' ? (
@@ -919,6 +907,7 @@ export default function LiveSession() {
             </Typography>
           )}
         </Paper>
+        )}
       </Box>
 
       {/* ============================================================ */}
