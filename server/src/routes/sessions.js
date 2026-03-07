@@ -111,25 +111,166 @@ function normalizeAnswerValue(answer) {
   return String(answer).trim();
 }
 
-function resolveOptionIndex(answer, options) {
-  if (typeof answer === 'number' && Number.isInteger(answer)) {
-    return answer >= 0 && answer < options.length ? answer : -1;
+function parseBooleanLike(value) {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  return false;
+}
+
+function normalizeComparableText(answer) {
+  return normalizeAnswerValue(answer)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function toPlainText(value) {
+  return normalizeAnswerValue(value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getResponseStudentId(response) {
+  return normalizeAnswerValue(
+    response?.studentUserId || response?.userId || response?.studentId
+  );
+}
+
+function parseBooleanQuery(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = normalizeAnswerValue(value).toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+}
+
+function formatUserDisplayName(user) {
+  const first = normalizeAnswerValue(user?.profile?.firstname);
+  const last = normalizeAnswerValue(user?.profile?.lastname);
+  const fullName = `${first} ${last}`.trim();
+  if (fullName) return fullName;
+  return user?.emails?.[0]?.address || user?.email || 'Unknown Student';
+}
+
+function collectCorrectAnswerHints(question) {
+  const hints = [];
+  const candidateFields = [
+    question?.correctAnswer,
+    question?.correctAnswers,
+    question?.correctOption,
+    question?.correctOptions,
+    question?.correctIndex,
+    question?.correctIndexes,
+    question?.answerKey,
+    question?.answerKeys,
+    question?.rightAnswer,
+    question?.rightAnswers,
+  ];
+
+  for (const candidate of candidateFields) {
+    if (Array.isArray(candidate)) {
+      candidate.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== '') hints.push(entry);
+      });
+    } else if (candidate !== undefined && candidate !== null && candidate !== '') {
+      hints.push(candidate);
+    }
   }
 
-  const normalized = normalizeAnswerValue(answer);
-  if (!normalized) return -1;
+  return hints;
+}
+
+function normalizeQuestionForReview(question) {
+  if (!question) return question;
+  const normalized = { ...question };
+  const options = Array.isArray(normalized.options) ? normalized.options.map((opt) => ({ ...opt })) : [];
+
+  if (options.length > 0) {
+    const hintedIndices = new Set(
+      collectCorrectAnswerHints(normalized)
+        .map((hint) => resolveOptionIndex(hint, options))
+        .filter((idx) => idx >= 0 && idx < options.length)
+    );
+
+    normalized.options = options.map((opt, idx) => ({
+      ...opt,
+      correct: parseBooleanLike(opt?.correct) || parseBooleanLike(opt?.isCorrect) || hintedIndices.has(idx),
+    }));
+  } else {
+    normalized.options = options;
+  }
+
+  const solutionHtml = normalizeAnswerValue(
+    normalized.solution
+      || normalized.solutionHtml
+      || normalized.explanation
+      || normalized.explanationHtml
+      || normalized.rationale
+  );
+  const solutionPlain = normalizeAnswerValue(
+    normalized.solution_plainText
+      || normalized.solutionPlainText
+      || normalized.solutionText
+      || normalized.explanation_plainText
+      || normalized.explanationPlainText
+      || normalized.rationaleText
+  );
+
+  if (solutionHtml) {
+    normalized.solution = solutionHtml;
+  }
+  if (solutionPlain) {
+    normalized.solution_plainText = solutionPlain;
+  } else if (solutionHtml) {
+    normalized.solution_plainText = toPlainText(solutionHtml);
+  }
+
+  return normalized;
+}
+
+function resolveOptionIndex(answer, options) {
+  if (answer && typeof answer === 'object') {
+    if (Array.isArray(answer)) return -1;
+    if (answer.optionId !== undefined) return resolveOptionIndex(answer.optionId, options);
+    if (answer._id !== undefined) return resolveOptionIndex(answer._id, options);
+    if (answer.id !== undefined) return resolveOptionIndex(answer.id, options);
+    if (answer.index !== undefined) return resolveOptionIndex(answer.index, options);
+    if (answer.value !== undefined) return resolveOptionIndex(answer.value, options);
+    if (answer.answer !== undefined) return resolveOptionIndex(answer.answer, options);
+    if (answer.text !== undefined) return resolveOptionIndex(answer.text, options);
+  }
+
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    if (answer >= 0 && answer < options.length) return answer;
+    if (answer >= 1 && answer <= options.length) return answer - 1;
+    return -1;
+  }
+
+  const normalizedRaw = normalizeAnswerValue(answer);
+  if (!normalizedRaw) return -1;
+  const normalized = normalizedRaw.toLowerCase();
 
   // Current student UI may submit option index as a string (e.g. "0", "1").
-  if (/^\d+$/.test(normalized)) {
-    const parsed = Number(normalized);
+  if (/^-?\d+$/.test(normalizedRaw)) {
+    const parsed = Number(normalizedRaw);
     if (parsed >= 0 && parsed < options.length) return parsed;
+    if (parsed >= 1 && parsed <= options.length) return parsed - 1;
+  }
+
+  // Legacy payloads may store option letters (e.g., "A", "B").
+  if (/^[a-z]$/.test(normalized)) {
+    const idx = normalized.charCodeAt(0) - 97;
+    if (idx >= 0 && idx < options.length) return idx;
   }
 
   return options.findIndex((opt) => {
-    if (normalizeAnswerValue(opt?._id) === normalized) return true;
-    if (normalizeAnswerValue(opt?.answer) === normalized) return true;
-    if (normalizeAnswerValue(opt?.content) === normalized) return true;
-    if (normalizeAnswerValue(opt?.plainText) === normalized) return true;
+    if (normalizeAnswerValue(opt?._id).toLowerCase() === normalized) return true;
+    if (normalizeComparableText(opt?.answer) === normalizeComparableText(normalizedRaw)) return true;
+    if (normalizeComparableText(opt?.content) === normalizeComparableText(normalizedRaw)) return true;
+    if (normalizeComparableText(opt?.plainText) === normalizeComparableText(normalizedRaw)) return true;
     return false;
   });
 }
@@ -170,7 +311,7 @@ function buildResponseStats(question, responses) {
     return {
       type: 'shortAnswer',
       answers: responses.map((r) => ({
-        studentUserId: r.studentUserId,
+        studentUserId: getResponseStudentId(r),
         answer: r.answer,
         answerWysiwyg: r.answerWysiwyg,
       })),
@@ -763,6 +904,7 @@ export default async function sessionRoutes(app) {
       const orderedQuestions = questionIds
         .map((id) => questionMap[String(id)])
         .filter(Boolean);
+      const normalizedQuestions = orderedQuestions.map((question) => normalizeQuestionForReview(question));
 
       // Fetch this student's responses for these questions
       const responses = await Response.find({
@@ -773,15 +915,17 @@ export default async function sessionRoutes(app) {
       // Group responses by questionId
       const responsesByQuestion = {};
       for (const r of responses) {
-        if (!responsesByQuestion[r.questionId]) {
-          responsesByQuestion[r.questionId] = [];
+        const questionId = normalizeAnswerValue(r.questionId);
+        if (!questionId) continue;
+        if (!responsesByQuestion[questionId]) {
+          responsesByQuestion[questionId] = [];
         }
-        responsesByQuestion[r.questionId].push(r);
+        responsesByQuestion[questionId].push(r);
       }
 
       return {
         session: session.toObject(),
-        questions: orderedQuestions,
+        questions: normalizedQuestions,
         responses: responsesByQuestion,
       };
     }
@@ -906,6 +1050,7 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      const includeStudentNames = isInstrOrAdmin && parseBooleanQuery(request.query?.includeStudentNames);
       const userId = request.user.userId;
       let isJoined = session.joined.includes(userId);
 
@@ -939,8 +1084,59 @@ export default async function sessionRoutes(app) {
             questionId,
             attempt: currentAttempt.number,
           }).lean();
-          allResponses = responses;
           responseStats = buildResponseStats(currentQuestion, responses);
+
+          const includeNamesInPayload = includeStudentNames && responseStats?.type === 'shortAnswer';
+          let studentNameById = {};
+          if (includeNamesInPayload) {
+            const responderIds = [...new Set(
+              responses
+                .map((response) => getResponseStudentId(response))
+                .filter(Boolean)
+            )];
+            if (responderIds.length > 0) {
+              const users = await User.find({ _id: { $in: responderIds } })
+                .select('_id profile emails email')
+                .lean();
+              users.forEach((user) => {
+                studentNameById[String(user._id)] = formatUserDisplayName(user);
+              });
+            }
+          }
+
+          // Keep response content but strip raw student identifiers from live payloads.
+          allResponses = responses.map((response) => {
+            const base = {
+              _id: response._id,
+              attempt: response.attempt,
+              questionId: response.questionId,
+              answer: response.answer,
+              answerWysiwyg: response.answerWysiwyg,
+              correct: response.correct,
+              mark: response.mark,
+              createdAt: response.createdAt,
+              updatedAt: response.updatedAt,
+              editable: response.editable,
+            };
+            if (!includeNamesInPayload) return base;
+            return {
+              ...base,
+              studentName: studentNameById[getResponseStudentId(response)] || 'Unknown Student',
+            };
+          });
+
+          if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+            responseStats = {
+              ...responseStats,
+              answers: responseStats.answers.map((entry) => ({
+                answer: entry.answer,
+                answerWysiwyg: entry.answerWysiwyg,
+                ...(includeNamesInPayload
+                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+                  : {}),
+              })),
+            };
+          }
         } else if (isJoined && !questionHidden) {
           // Student gets their own response
           studentResponse = await Response.findOne({
@@ -1031,6 +1227,10 @@ export default async function sessionRoutes(app) {
             delete studentQ.toleranceNumerical;
             delete studentQ.solution;
             delete studentQ.solution_plainText;
+            // Legacy compatibility keys from imported data.
+            delete studentQ.solutionPlainText;
+            delete studentQ.solutionText;
+            delete studentQ.solutionHtml;
           }
           result.currentQuestion = studentQ;
         }
@@ -1466,7 +1666,7 @@ export default async function sessionRoutes(app) {
       const joinedUserIds = (session.joined || []).map((id) => String(id));
       const responderUserIds = [...new Set(
         allResponses
-          .map((response) => String(response.studentUserId || ''))
+          .map((response) => getResponseStudentId(response))
           .filter(Boolean)
       )];
       const resultUserIds = [...new Set([...joinedUserIds, ...responderUserIds])];
@@ -1485,7 +1685,7 @@ export default async function sessionRoutes(app) {
 
         const questionResults = orderedQuestions.map((q) => {
           const responses = allResponses.filter(
-            (r) => String(r.questionId) === String(q._id) && String(r.studentUserId) === String(studentId)
+            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
           );
           return {
             questionId: q._id,
@@ -1497,7 +1697,7 @@ export default async function sessionRoutes(app) {
         const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
         const answeredCount = questionsWithPoints.filter((q) =>
           allResponses.some(
-            (r) => String(r.questionId) === String(q._id) && String(r.studentUserId) === String(studentId)
+            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
           )
         ).length;
         let participation = 0;

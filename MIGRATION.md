@@ -1058,6 +1058,20 @@ The following Phase 5 work has been completed:
 - ✅ **Meteor-style inline stats in SessionReview** — SessionReview Questions tab now shows all questions at once (removed prev/next navigation). Each question includes inline DistributionBars with option text and percentage fill. "Students" tab renamed to "Response Data".
 - ✅ **Solution display in SecondDesktop** — When showCorrect is enabled, SecondDesktop now renders the solution text (consistent with student LiveSession behavior).
 
+#### PR 123: Interactive Session Review & Rendering Compatibility Fixes
+
+- ✅ **Student review compatibility with legacy records** — `GET /api/v1/sessions/:id/review` now normalizes legacy question fields (`solutionHtml`, `solutionText`, legacy correct-answer hints/flags) into review payloads so "Show solution" consistently reveals both correct answers and solution content.
+- ✅ **Student review response UX** — Student responses are hidden by default and can be toggled per question. Multiple-attempt controls remain available and cycle the loaded attempt.
+- ✅ **Student review answer rendering by type** — MC/MS/TF responses are overlaid directly on options (selected choices highlighted), while SA/NU responses continue to render as answer content (with rich-text math rendering for SA).
+- ✅ **Legacy answer-shape resilience** — Option-answer resolution now supports numeric/string indices, letters, option IDs, rich-text text matching, object payloads, and delimited/JSON-like legacy values.
+- ✅ **Short-answer live preview improvements** — SA input preview now shows full typed content (not only math-only cases), renders KaTeX, and uses debounced updates for smoother typing feedback.
+- ✅ **Resizable SA input** — Student SA editor is vertically resizable (matching editor-style affordance for longer responses).
+- ✅ **KaTeX re-render safety hardening** — `renderKatexInElement()` now avoids rewriting interactive DOM subtrees, preventing React event-handler detachment in containers that include inputs/buttons/labels.
+- ✅ **Live-session solution gating** — Student live payload continues to withhold solution fields until `showCorrect` is enabled; when enabled, normalized solution fields are returned for consistent rendering.
+- ✅ **Short-answer identity privacy by default** — Instructor live payload now omits raw responder identifiers by default, with optional `includeStudentNames=true` for control-view attribution only.
+- ✅ **Professor review by attempt** — Session review now renders per-attempt rows for each question (attempts are clearly labeled and reported with per-attempt response counts/distributions).
+- ✅ **Coverage expansion** — Added sessions route tests covering student solution gating in live payloads, instructor short-answer name opt-in behavior, and legacy review-field normalization.
+
 **Known issues / future work:**
 - ~~Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`).~~ ✅ Fixed: `@fastify/rate-limit` added on auth endpoints; `@fastify/helmet` added for security headers.
 - Client has no unit tests. Playwright E2E tests should be added for interactive session flows.

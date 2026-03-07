@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
@@ -301,6 +301,20 @@ export default function LiveSession() {
   const responseStats = liveData?.responseStats;
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
+  const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
+  const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
+
+  const displayedQuestionCount = questionCount > 0
+    ? questionCount
+    : Array.isArray(session?.questions)
+      ? session.questions.length
+      : 0;
+  const displayedQuestionNumber = useMemo(() => {
+    if (questionNumber != null) return questionNumber;
+    if (!currentQ?._id || !Array.isArray(session?.questions)) return null;
+    const idx = session.questions.findIndex((id) => String(id) === String(currentQ._id));
+    return idx >= 0 ? idx + 1 : null;
+  }, [questionNumber, currentQ?._id, session?.questions]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const hasSubmitted = !!studentResponse;
@@ -313,7 +327,9 @@ export default function LiveSession() {
     && showStats
     && responseStats?.type === 'distribution';
   const inlineDistribution = showInlineOptionStats ? (responseStats.distribution || []) : [];
-  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const inlineDistributionTotal = Number(responseStats?.total) > 0
+    ? Number(responseStats.total)
+    : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading state
@@ -532,13 +548,13 @@ export default function LiveSession() {
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
           {session.name || 'Live Session'}
         </Typography>
-        {questionCount > 0 && questionNumber != null && (
+        {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
           <Chip
-            label={`Q${questionNumber}/${questionCount}`}
+            label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
             size="small"
             variant="outlined"
             sx={COMPACT_CHIP_SX}
-            aria-label={`Question ${questionNumber} of ${questionCount}`}
+            aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
           />
         )}
         {currentAttempt && (
@@ -628,21 +644,33 @@ export default function LiveSession() {
                       pointerEvents: 'none',
                     }}
                   />
-                  <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      zIndex: 1,
+                      display: 'grid',
+                      gridTemplateColumns: showInlineOptionStats
+                        ? '34px 30px minmax(0, 1fr) 58px'
+                        : '34px 30px minmax(0, 1fr)',
+                      columnGap: 1,
+                      alignItems: 'start',
+                      width: '100%',
+                    }}
+                  >
                   <FormControlLabel
                     value={optId}
-                    control={<Radio disabled={isLocked} sx={{ p: 0.5 }} />}
+                    control={<Radio disabled={isLocked} sx={{ p: 0.5 }} onClick={(e) => e.stopPropagation()} />}
                     label=""
-                    sx={{ m: 0, mr: 0 }}
+                    sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={`Option ${OPTION_LETTERS[i]}`}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}
                     size="small"
                     color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
+                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
                   />
-                  <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
+                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
                     <RichContent html={optionDisplayHtml(opt)} />
                   </Box>
                   {showInlineOptionStats && (
@@ -709,13 +737,26 @@ export default function LiveSession() {
                       pointerEvents: 'none',
                     }}
                   />
-                  <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      zIndex: 1,
+                      display: 'grid',
+                      gridTemplateColumns: showInlineOptionStats
+                        ? '34px 30px minmax(0, 1fr) 58px'
+                        : '34px 30px minmax(0, 1fr)',
+                      columnGap: 1,
+                      alignItems: 'start',
+                      width: '100%',
+                    }}
+                  >
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={checked}
                         disabled={isLocked}
                         sx={{ p: 0.5 }}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={() => {
                           if (isLocked) return;
                           setAnswer((prev) => {
@@ -728,16 +769,16 @@ export default function LiveSession() {
                       />
                     }
                     label=""
-                    sx={{ m: 0, mr: 0 }}
+                    sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={`Option ${OPTION_LETTERS[i]}`}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}
                     size="small"
                     color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
+                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
                   />
-                  <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
+                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
                     <RichContent html={optionDisplayHtml(opt)} />
                   </Box>
                   {showInlineOptionStats && (
@@ -774,7 +815,6 @@ export default function LiveSession() {
                   placeholder="Type your answer…"
                   disabled={isLocked}
                 />
-                <MathPreview html={answerWysiwyg} />
               </>
             )}
           </Box>
@@ -831,6 +871,12 @@ export default function LiveSession() {
           </Button>
         )}
       </Box>
+
+      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && (
+        <Box sx={{ mb: 2 }}>
+          <MathPreview html={answerWysiwyg} />
+        </Box>
+      )}
 
       {/* ============================================================ */}
       {/* Stats phase                                                  */}
@@ -893,12 +939,12 @@ export default function LiveSession() {
         </Paper>
       )}
 
-      {showCorrect && currentQ.solution && (
+      {showCorrect && (liveSolutionHtml || liveSolutionPlainText) && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'success.main' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: 'success.main' }}>
             Solution
           </Typography>
-          <RichContent html={currentQ.solution} />
+          <RichContent html={liveSolutionHtml} fallback={liveSolutionPlainText} />
         </Paper>
       )}
     </Box>

@@ -41,24 +41,59 @@ function normalizeAnswerValue(answer) {
   return String(answer).trim();
 }
 
+function normalizeComparableText(answer) {
+  return normalizeAnswerValue(answer)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function isCorrectOption(option) {
+  const value = option?.correct;
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return Boolean(value);
+}
+
 function resolveOptionIndex(answer, options = []) {
-  if (typeof answer === 'number' && Number.isInteger(answer)) {
-    return answer >= 0 && answer < options.length ? answer : -1;
+  if (answer && typeof answer === 'object') {
+    if (Array.isArray(answer)) return -1;
+    if (answer.optionId !== undefined) return resolveOptionIndex(answer.optionId, options);
+    if (answer._id !== undefined) return resolveOptionIndex(answer._id, options);
+    if (answer.id !== undefined) return resolveOptionIndex(answer.id, options);
+    if (answer.index !== undefined) return resolveOptionIndex(answer.index, options);
+    if (answer.value !== undefined) return resolveOptionIndex(answer.value, options);
+    if (answer.answer !== undefined) return resolveOptionIndex(answer.answer, options);
+    if (answer.text !== undefined) return resolveOptionIndex(answer.text, options);
   }
 
-  const normalized = normalizeAnswerValue(answer);
-  if (!normalized) return -1;
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    if (answer >= 0 && answer < options.length) return answer;
+    if (answer >= 1 && answer <= options.length) return answer - 1;
+    return -1;
+  }
 
-  if (/^\d+$/.test(normalized)) {
-    const parsed = Number(normalized);
+  const normalizedRaw = normalizeAnswerValue(answer);
+  if (!normalizedRaw) return -1;
+  const normalized = normalizedRaw.toLowerCase();
+
+  if (/^-?\d+$/.test(normalizedRaw)) {
+    const parsed = Number(normalizedRaw);
     if (parsed >= 0 && parsed < options.length) return parsed;
+    if (parsed >= 1 && parsed <= options.length) return parsed - 1;
+  }
+
+  if (/^[a-z]$/.test(normalized)) {
+    const idx = normalized.charCodeAt(0) - 97;
+    if (idx >= 0 && idx < options.length) return idx;
   }
 
   return options.findIndex((opt) => (
-    normalizeAnswerValue(opt?._id) === normalized
-    || normalizeAnswerValue(opt?.answer) === normalized
-    || normalizeAnswerValue(opt?.content) === normalized
-    || normalizeAnswerValue(opt?.plainText) === normalized
+    normalizeAnswerValue(opt?._id).toLowerCase() === normalized
+    || normalizeComparableText(opt?.answer) === normalizeComparableText(normalizedRaw)
+    || normalizeComparableText(opt?.content) === normalizeComparableText(normalizedRaw)
+    || normalizeComparableText(opt?.plainText) === normalizeComparableText(normalizedRaw)
   ));
 }
 
@@ -119,11 +154,15 @@ function TabPanel({ children, value, index }) {
 }
 
 /** Meteor-style inline response bars for MC/MS/TF (options as bars). */
-function DistributionBars({ data, highlightCorrect, correctIndices, options }) {
+function DistributionBars({
+  data, highlightCorrect, correctIndices, options, responseCount,
+}) {
   if (!data || !data.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
-  const total = data.reduce((sum, d) => sum + d.count, 0);
+  const total = Number(responseCount) > 0
+    ? Number(responseCount)
+    : data.reduce((sum, d) => sum + d.count, 0);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -133,14 +172,22 @@ function DistributionBars({ data, highlightCorrect, correctIndices, options }) {
         const barColor = isCorrect ? 'success.main' : !highlightCorrect || !correctIndices?.length ? 'primary.main' : 'error.light';
         return (
           <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: '30px minmax(0, 1fr) 72px',
+                columnGap: 1,
+                alignItems: 'start',
+                mb: 0.25,
+              }}
+            >
               <Chip
                 label={item.label}
                 size="small"
                 color={isCorrect ? 'success' : 'default'}
-                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
               />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Box sx={{ minWidth: 0 }}>
                 <RichContent
                   html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''}
                 />
@@ -225,65 +272,91 @@ export default function SessionReview() {
     return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
 
-  // ---- Stats data for ALL questions ----
+  // ---- Stats data for ALL questions / attempts ----
 
-  const allQuestionStats = useMemo(() => {
-    return questions.map((q) => {
-      const qT = normalizeQuestionType(q);
-      const optionType = [
-        QUESTION_TYPES.MULTIPLE_CHOICE,
-        QUESTION_TYPES.TRUE_FALSE,
-        QUESTION_TYPES.MULTI_SELECT,
-      ].includes(qT);
+  const questionAttemptRows = useMemo(() => questions.flatMap((q, qi) => {
+    const qType = normalizeQuestionType(q);
+    const isOptionType = [
+      QUESTION_TYPES.MULTIPLE_CHOICE,
+      QUESTION_TYPES.TRUE_FALSE,
+      QUESTION_TYPES.MULTI_SELECT,
+    ].includes(qType);
 
-      let count = 0;
-      const distribution = optionType && q.options
-        ? q.options.map(() => 0)
-        : [];
+    const responsesByAttempt = new Map();
+    const attemptNumbers = new Set();
 
-      studentResults.forEach((student) => {
-        const qr = (student.questionResults || []).find(
-          (r) => String(r.questionId) === String(q._id),
-        );
-        if (!qr || !qr.responses || !qr.responses.length) return;
-        count += 1;
-        const lastResponse = qr.responses[qr.responses.length - 1];
-        const answer = lastResponse?.answer;
+    (q.sessionOptions?.attempts || []).forEach((attempt) => {
+      const number = Number(attempt?.number);
+      if (Number.isInteger(number) && number > 0) {
+        attemptNumbers.add(number);
+      }
+    });
 
-        if (optionType && q.options && answer) {
-          const answers = Array.isArray(answer) ? answer : [answer];
-          answers.forEach((a) => {
-            const idx = resolveOptionIndex(a, q.options);
-            if (idx >= 0 && idx < distribution.length) distribution[idx] += 1;
-          });
+    studentResults.forEach((student) => {
+      const qr = (student.questionResults || []).find(
+        (result) => String(result.questionId) === String(q._id),
+      );
+      if (!qr?.responses?.length) return;
+
+      qr.responses.forEach((response) => {
+        const attemptNumber = Number(response?.attempt);
+        const normalizedAttempt = Number.isInteger(attemptNumber) && attemptNumber > 0 ? attemptNumber : 1;
+        attemptNumbers.add(normalizedAttempt);
+        if (!responsesByAttempt.has(normalizedAttempt)) {
+          responsesByAttempt.set(normalizedAttempt, []);
         }
+        responsesByAttempt.get(normalizedAttempt).push(response);
       });
+    });
 
-      let chartData = null;
-      const correctIndices = [];
+    const sortedAttempts = [...attemptNumbers].sort((a, b) => a - b);
+    if (sortedAttempts.length === 0) sortedAttempts.push(1);
 
-      if (optionType && q.options) {
-        chartData = q.options.map((opt, i) => {
-          if (opt.correct) correctIndices.push(i);
-          return {
-            label: OPTION_LETTERS[i] || String(i + 1),
-            count: distribution[i] || 0,
-          };
+    const correctIndices = (q.options || []).reduce((acc, option, idx) => {
+      if (isCorrectOption(option)) acc.push(idx);
+      return acc;
+    }, []);
+
+    return sortedAttempts.map((attemptNumber, attemptIndex) => {
+      const attemptResponses = responsesByAttempt.get(attemptNumber) || [];
+      const distribution = isOptionType && q.options ? q.options.map(() => 0) : [];
+
+      if (isOptionType && q.options) {
+        attemptResponses.forEach((response) => {
+          const answer = response?.answer;
+          if (answer === undefined || answer === null || answer === '') return;
+          const answers = Array.isArray(answer) ? answer : [answer];
+          answers
+            .filter((entry) => entry !== undefined && entry !== null && !(typeof entry === 'string' && entry.trim() === ''))
+            .forEach((entry) => {
+              const idx = resolveOptionIndex(entry, q.options);
+              if (idx >= 0 && idx < distribution.length) distribution[idx] += 1;
+            });
         });
       }
 
-      return { qType: qT, chartData, correctIndices, responseCount: count };
+      const chartData = isOptionType && q.options
+        ? q.options.map((_, idx) => ({
+          label: OPTION_LETTERS[idx] || String(idx + 1),
+          count: distribution[idx] || 0,
+        }))
+        : null;
+
+      return {
+        key: `${String(q._id || qi)}-attempt-${attemptNumber}`,
+        question: q,
+        questionNumber: qi + 1,
+        attemptNumber,
+        attemptIndex: attemptIndex + 1,
+        attemptTotal: sortedAttempts.length,
+        qType,
+        isOptionType,
+        chartData,
+        correctIndices,
+        responseCount: attemptResponses.length,
+      };
     });
-  }, [questions, studentResults]);
-
-  // ---- Question content ref for KaTeX ----
-
-  const questionContainerRef = useRef(null);
-  useEffect(() => {
-    if (questionContainerRef.current) {
-      renderKatexInElement(questionContainerRef.current);
-    }
-  }, [questions, tab]);
+  }), [questions, studentResults]);
 
   // ---- CSV export ----
 
@@ -474,23 +547,27 @@ export default function SessionReview() {
         {totalQuestions === 0 ? (
           <Alert severity="info">This session has no questions.</Alert>
         ) : (
-          <Box ref={questionContainerRef} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {questions.map((q, qi) => {
-              const stats = allQuestionStats[qi] || {};
-              const qT = stats.qType;
-              const isOptionType = [
-                QUESTION_TYPES.MULTIPLE_CHOICE,
-                QUESTION_TYPES.TRUE_FALSE,
-                QUESTION_TYPES.MULTI_SELECT,
-              ].includes(qT);
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {questionAttemptRows.map((row) => {
+              const q = row.question;
+              const qT = row.qType;
+              const isOptionType = row.isOptionType;
 
               return (
-                <Paper key={q._id || qi} variant="outlined" sx={{ p: 2.5 }}>
+                <Paper key={row.key} variant="outlined" sx={{ p: 2.5 }}>
                   {/* Question header */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      Q{qi + 1}
+                      Q{row.questionNumber}
                     </Typography>
+                    {row.attemptTotal > 1 && (
+                      <Chip
+                        label={`Attempt ${row.attemptIndex}/${row.attemptTotal}`}
+                        size="small"
+                        variant="outlined"
+                        sx={COMPACT_CHIP_SX}
+                      />
+                    )}
                     <Chip
                       label={TYPE_LABELS[qT] || 'Unknown'}
                       color={TYPE_COLORS[qT] || 'default'}
@@ -506,7 +583,7 @@ export default function SessionReview() {
                       />
                     )}
                     <Chip
-                      label={`${stats.responseCount || 0} response${stats.responseCount !== 1 ? 's' : ''}`}
+                      label={`${row.responseCount || 0} response${row.responseCount !== 1 ? 's' : ''}`}
                       size="small"
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}
@@ -519,22 +596,23 @@ export default function SessionReview() {
                   </Box>
 
                   {/* Inline stats for MC/TF/MS using option bars */}
-                  {isOptionType && stats.chartData && (
+                  {isOptionType && row.chartData && (
                     <Box sx={{ mb: 1 }}>
                       <DistributionBars
-                        data={stats.chartData}
+                        data={row.chartData}
                         highlightCorrect
-                        correctIndices={stats.correctIndices}
+                        correctIndices={row.correctIndices}
                         options={q.options}
+                        responseCount={row.responseCount}
                       />
                     </Box>
                   )}
 
                   {/* Fallback: show options without stats for types that don't have chart data */}
-                  {isOptionType && !stats.chartData && (q.options || []).length > 0 && (
+                  {isOptionType && !row.chartData && (q.options || []).length > 0 && (
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 1 }}>
                       {(q.options || []).map((opt, i) => {
-                        const isCorrect = !!opt.correct;
+                        const isCorrect = isCorrectOption(opt);
                         return (
                           <Paper
                             key={opt._id || i}

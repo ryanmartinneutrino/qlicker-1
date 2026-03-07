@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -13,7 +13,6 @@ import {
   FormatUnderlined as UnderlineIcon,
 } from '@mui/icons-material';
 import {
-  extractPlainTextFromHtml,
   normalizeStoredHtml,
   prepareRichTextInput,
   renderKatexInElement,
@@ -63,7 +62,7 @@ export default function StudentRichTextEditor({
         const html = normalizeStoredHtml(rawHtml);
         if (html === lastNormalizedHtmlRef.current) return;
         lastNormalizedHtmlRef.current = html;
-        const plainText = extractPlainTextFromHtml(rawHtml);
+        const plainText = ed.getText({ blockSeparator: ' ' }).replace(/\s+/g, ' ').trim();
         if (onChange) onChange({ html, plainText });
       },
     },
@@ -102,8 +101,13 @@ export default function StudentRichTextEditor({
           '& .ProseMirror': {
             outline: 'none',
             minHeight: 80,
+            width: '100%',
+            boxSizing: 'border-box',
             p: 1.5,
             fontSize: '0.95rem',
+            resize: 'vertical',
+            overflowX: 'hidden',
+            overflowY: 'auto',
             '& p': { my: 0.5 },
             '& p.is-editor-empty:first-of-type::before': {
               content: 'attr(data-placeholder)',
@@ -161,23 +165,31 @@ export default function StudentRichTextEditor({
 
 /**
  * Live preview component that renders KaTeX from HTML content.
- * Only shows if the content contains math delimiters.
+ * Shows all typed content and renders math when delimiters are present.
  */
 export function MathPreview({ html }) {
   const ref = useRef(null);
   const prepared = useMemo(() => prepareRichTextInput(html || ''), [html]);
-
-  // Check if there's any math content (uses patterns compatible with all modern browsers)
-  const hasMath = useMemo(() => {
-    if (!html) return false;
-    return /\\\(.*?\\\)|\$\$[\s\S]*?\$\$|\\begin\{|\\frac|\\sqrt|\\sum|\\int/.test(html);
-  }, [html]);
+  const [committedPreview, setCommittedPreview] = useState(prepared);
 
   useEffect(() => {
-    if (ref.current && hasMath) renderKatexInElement(ref.current);
-  }, [prepared, hasMath]);
+    if (!prepared) {
+      setCommittedPreview('');
+      return undefined;
+    }
+    // Debounce preview updates to avoid flicker while typing.
+    const timer = setTimeout(() => {
+      setCommittedPreview(prepared);
+    }, 140);
+    return () => clearTimeout(timer);
+  }, [prepared]);
 
-  if (!hasMath || !prepared) return null;
+  useEffect(() => {
+    if (!ref.current || !committedPreview) return;
+    renderKatexInElement(ref.current);
+  }, [committedPreview]);
+
+  if (!committedPreview) return null;
 
   return (
     <Paper
@@ -195,7 +207,7 @@ export function MathPreview({ html }) {
       </Typography>
       <Box
         ref={ref}
-        dangerouslySetInnerHTML={{ __html: prepared }}
+        dangerouslySetInnerHTML={{ __html: committedPreview }}
       />
     </Paper>
   );

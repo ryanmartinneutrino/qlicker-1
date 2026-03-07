@@ -42,42 +42,211 @@ const COMPACT_CHIP_SX = {
 };
 
 function questionKey(question, fallbackIndex = 0) {
-  if (question?._id !== undefined && question?._id !== null && question?._id !== '') {
-    return String(question._id);
+  const rawId = question?._id;
+  if (rawId && typeof rawId === 'object') {
+    if (rawId.$oid) return String(rawId.$oid);
+    if (rawId._id) return String(rawId._id);
+    if (rawId.type === 'Buffer' && Array.isArray(rawId.data)) {
+      return rawId.data.map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+    }
+    const text = String(rawId);
+    if (text && text !== '[object Object]') return text;
+    return `q-${fallbackIndex}`;
+  }
+  if (rawId !== undefined && rawId !== null && rawId !== '') {
+    return String(rawId);
   }
   return `q-${fallbackIndex}`;
+}
+
+function questionStateKey(index) {
+  return `idx-${index}`;
+}
+
+function responseKeysForQuestion(question, fallbackIndex = 0) {
+  const keys = new Set();
+  keys.add(questionKey(question, fallbackIndex));
+
+  const rawId = question?._id;
+  if (rawId && typeof rawId === 'object') {
+    if (rawId.$oid) keys.add(String(rawId.$oid));
+    if (rawId._id) keys.add(String(rawId._id));
+    if (rawId.id) keys.add(String(rawId.id));
+    if (rawId.type === 'Buffer' && Array.isArray(rawId.data)) {
+      keys.add(rawId.data.map((n) => Number(n).toString(16).padStart(2, '0')).join(''));
+    }
+    const text = String(rawId);
+    if (text && text !== '[object Object]') keys.add(text);
+  } else if (rawId !== undefined && rawId !== null && rawId !== '') {
+    keys.add(String(rawId));
+  }
+
+  return [...keys].filter(Boolean);
+}
+
+function getResponsesForQuestion(responsesByQuestion, question, fallbackIndex = 0) {
+  const keys = responseKeysForQuestion(question, fallbackIndex);
+  for (const key of keys) {
+    if (Array.isArray(responsesByQuestion[key])) return responsesByQuestion[key];
+  }
+  return [];
+}
+
+function isCorrectOption(option) {
+  const value = option?.correct;
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return Boolean(value);
+}
+
+function normalizeAnswerValue(answer) {
+  if (answer === null || answer === undefined) return '';
+  return String(answer).trim();
+}
+
+function normalizeComparableText(answer) {
+  return normalizeAnswerValue(answer)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function resolveOptionIndex(answer, options = []) {
+  if (answer && typeof answer === 'object') {
+    if (Array.isArray(answer)) return -1;
+    if (answer.optionId !== undefined) return resolveOptionIndex(answer.optionId, options);
+    if (answer._id !== undefined) return resolveOptionIndex(answer._id, options);
+    if (answer.id !== undefined) return resolveOptionIndex(answer.id, options);
+    if (answer.index !== undefined) return resolveOptionIndex(answer.index, options);
+    if (answer.value !== undefined) return resolveOptionIndex(answer.value, options);
+    if (answer.answer !== undefined) return resolveOptionIndex(answer.answer, options);
+    if (answer.text !== undefined) return resolveOptionIndex(answer.text, options);
+  }
+
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    if (answer >= 0 && answer < options.length) return answer;
+    if (answer >= 1 && answer <= options.length) return answer - 1;
+    return -1;
+  }
+
+  const normalizedRaw = normalizeAnswerValue(answer);
+  if (!normalizedRaw) return -1;
+  const normalized = normalizedRaw.toLowerCase();
+
+  if (/^-?\d+$/.test(normalizedRaw)) {
+    const parsed = Number(normalizedRaw);
+    if (parsed >= 0 && parsed < options.length) return parsed;
+    if (parsed >= 1 && parsed <= options.length) return parsed - 1;
+  }
+
+  if (/^[a-z]$/.test(normalized)) {
+    const idx = normalized.charCodeAt(0) - 97;
+    if (idx >= 0 && idx < options.length) return idx;
+  }
+
+  return options.findIndex((opt) => (
+    normalizeAnswerValue(opt?._id).toLowerCase() === normalized
+    || normalizeComparableText(opt?.answer) === normalizeComparableText(normalizedRaw)
+    || normalizeComparableText(opt?.content) === normalizeComparableText(normalizedRaw)
+    || normalizeComparableText(opt?.plainText) === normalizeComparableText(normalizedRaw)
+  ));
+}
+
+function collectAnswerEntries(answer) {
+  if (answer === null || answer === undefined) return [];
+  if (Array.isArray(answer)) {
+    return answer.flatMap((entry) => collectAnswerEntries(entry));
+  }
+  if (answer && typeof answer === 'object') {
+    if (Array.isArray(answer.answers)) return collectAnswerEntries(answer.answers);
+    if (answer.answer !== undefined) return collectAnswerEntries(answer.answer);
+    if (answer.value !== undefined) return collectAnswerEntries(answer.value);
+  }
+
+  if (typeof answer === 'string') {
+    const trimmed = answer.trim();
+    if (!trimmed) return [];
+
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']'))
+      || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed !== answer) return collectAnswerEntries(parsed);
+      } catch {
+        // Fall back to delimiter parsing below.
+      }
+    }
+
+    if (/[|,;]/.test(trimmed)) {
+      return trimmed
+        .split(/[|,;]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [answer];
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helper: render rich HTML with fallback                            */
 /* ------------------------------------------------------------------ */
-function RichHtml({ value, fallback }) {
-  const html = prepareRichTextInput(value || '', fallback || '');
-  if (!html) return <Typography variant="body1">(no content)</Typography>;
-  return <Box sx={{ ...richContentSx, mb: 1 }} dangerouslySetInnerHTML={{ __html: html }} />;
+function RichHtml({
+  value,
+  fallback = '',
+  sx = {},
+  emptyText = '(no content)',
+}) {
+  const ref = useRef(null);
+  const html = useMemo(() => prepareRichTextInput(value || '', fallback || ''), [value, fallback]);
+
+  useEffect(() => {
+    if (!ref.current || !html) return;
+    renderKatexInElement(ref.current);
+  }, [html]);
+
+  if (!html) return <Typography variant="body1">{emptyText}</Typography>;
+  return <Box ref={ref} sx={sx} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Single question card (shared by both view modes)                  */
 /* ------------------------------------------------------------------ */
-function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleSolution }) {
-  const containerRef = useRef(null);
+function ReviewQuestionCard({
+  question,
+  index,
+  total,
+  responseVisible = false,
+  response = null,
+}) {
+  const [solutionVisible, setSolutionVisible] = useState(false);
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
   const shouldLetter = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
-
-  useEffect(() => {
-    if (!containerRef.current) return undefined;
-    const run = () => { if (containerRef.current) renderKatexInElement(containerRef.current); };
-    run();
-    const raf = requestAnimationFrame(run);
-    const t = setTimeout(run, 60);
-    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
-  }, [question, solutionVisible]);
+  const hasWrittenSolution = Boolean(
+    question.solution
+    || question.solutionHtml
+    || question.solution_plainText
+    || question.solutionPlainText
+    || question.solutionText
+  );
+  const writtenSolutionHtml = question.solution || question.solutionHtml || '';
+  const writtenSolutionPlain = question.solution_plainText || question.solutionPlainText || question.solutionText || '';
+  const hasMarkedCorrectOption = opts.some((opt) => isCorrectOption(opt));
+  const optionType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
+  const selectedOptionIndices = useMemo(() => {
+    if (!responseVisible || !response || !optionType || opts.length === 0) return [];
+    const values = collectAnswerEntries(response.answer);
+    const selected = values
+      .map((entry) => resolveOptionIndex(entry, opts))
+      .filter((idx) => idx >= 0 && idx < opts.length);
+    return [...new Set(selected)];
+  }, [responseVisible, response, optionType, opts]);
 
   return (
-    <Paper variant="outlined" sx={{ p: 2.5, width: '100%', minWidth: 0, overflow: 'hidden' }} ref={containerRef}>
+    <Paper variant="outlined" sx={{ p: 2.5, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       {/* Header row */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
@@ -88,14 +257,15 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
       </Box>
 
       {/* Question content */}
-      <RichHtml value={question.content} fallback={question.plainText} />
+      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...richContentSx, mb: 1 }} />
 
       {/* Options (MC / TF / MS) */}
       {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType)
         && opts.length > 0 && (
         <Box sx={{ pl: 2, mt: 1 }}>
           {opts.map((opt, i) => {
-            const showCorrectMark = solutionVisible && opt.correct;
+            const showCorrectMark = solutionVisible && isCorrectOption(opt);
+            const showResponseMark = responseVisible && selectedOptionIndices.includes(i);
             return (
               <Box
                 key={i}
@@ -107,7 +277,11 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
                   mb: 0.5,
                   px: 0.25,
                   borderRadius: 0.75,
-                  bgcolor: showCorrectMark ? 'rgba(46, 125, 50, 0.08)' : 'transparent',
+                  bgcolor: showCorrectMark
+                    ? 'rgba(46, 125, 50, 0.08)'
+                    : showResponseMark
+                      ? 'rgba(25, 118, 210, 0.10)'
+                      : 'transparent',
                 }}
               >
                 <Box sx={{ width: 20, display: 'flex', justifyContent: 'center', pt: 0.25 }}>
@@ -118,7 +292,9 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
                     {String.fromCharCode(65 + i)}.
                   </Typography>
                 )}
-                <Box
+                <RichHtml
+                  value={opt.content || opt.plainText || opt.answer}
+                  fallback={`Option ${i + 1}`}
                   sx={{
                     color: showCorrectMark ? 'success.main' : 'text.primary',
                     '& p': { my: 0 },
@@ -130,12 +306,21 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
                       borderRadius: 0, my: 0.5,
                     },
                   }}
-                  dangerouslySetInnerHTML={{
-                    __html: prepareRichTextInput(
-                      opt.content || opt.plainText || opt.answer || `Option ${i + 1}`,
-                    ),
-                  }}
                 />
+                {showResponseMark && (
+                  <Typography
+                    variant="caption"
+                    color="primary.main"
+                    sx={{
+                      gridColumn: shouldLetter ? '3 / 4' : '2 / 3',
+                      mt: -0.25,
+                      mb: 0.2,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Your selection
+                  </Typography>
+                )}
               </Box>
             );
           })}
@@ -144,9 +329,11 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
 
       {solutionVisible
         && [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType)
-        && !(question.solution || question.solution_plainText) && (
+        && !hasWrittenSolution && (
         <Typography variant="caption" color="text.secondary" sx={{ pl: 2, mt: 0.5, display: 'block' }}>
-          Correct answer(s) are highlighted above.
+          {hasMarkedCorrectOption
+            ? 'Correct answer(s) are highlighted above.'
+            : 'No written solution or marked correct option was provided for this question.'}
         </Typography>
       )}
 
@@ -163,23 +350,28 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
           size="small"
           variant="outlined"
           startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
-          onClick={onToggleSolution}
+          onClick={() => setSolutionVisible((prev) => !prev)}
         >
           {solutionVisible ? 'Hide solution' : 'Show solution'}
         </Button>
       </Box>
 
       {/* Solution text (when visible) */}
-      {solutionVisible && (question.solution || question.solution_plainText) && (
+      {solutionVisible && hasWrittenSolution && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             Solution
           </Typography>
-          <Box
-            sx={richContentSx}
-            dangerouslySetInnerHTML={{ __html: prepareRichTextInput(question.solution, question.solution_plainText) }}
-          />
+          <RichHtml value={writtenSolutionHtml} fallback={writtenSolutionPlain} sx={richContentSx} />
         </Box>
+      )}
+
+      {solutionVisible
+        && !hasWrittenSolution
+        && ![QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType) && (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          No written solution was provided for this question.
+        </Typography>
       )}
     </Paper>
   );
@@ -202,11 +394,9 @@ export default function SessionReview() {
   const [viewMode, setViewMode] = useState('one');
   // Current question index (for single-question mode)
   const [questionIdx, setQuestionIdx] = useState(0);
-  // Track which questions have their solution revealed (keyed by question._id)
-  const [solutionVisible, setSolutionVisible] = useState({});
-  // Track which questions show "my response" (keyed by question._id)
-  const [myResponseVisible, setMyResponseVisible] = useState({});
-  // Track which attempt index is shown per question (keyed by question._id)
+  // Track whether response is shown per question (keyed by stable question index)
+  const [responseVisible, setResponseVisible] = useState({});
+  // Track which attempt index is shown per question (keyed by stable question index)
   const [responseAttemptIdx, setResponseAttemptIdx] = useState({});
 
   const fetchReview = useCallback(async ({ background = false } = {}) => {
@@ -274,37 +464,25 @@ export default function SessionReview() {
     };
   }, [loading, error, fetchReview]);
 
-  // Reset solution visibility and index when switching modes
+  // Reset attempt index and current question when switching modes
   const handleViewModeChange = (_e, next) => {
     if (!next) return;
     setViewMode(next);
-    setSolutionVisible({});
-    setMyResponseVisible({});
+    setResponseVisible({});
     setResponseAttemptIdx({});
     setQuestionIdx(0);
   };
 
-  // Reset solution visibility when navigating to a new question
+  // Reset attempt index when navigating to a new question
   const goTo = (idx) => {
     const bounded = Math.max(0, Math.min(idx, Math.max(questions.length - 1, 0)));
     setQuestionIdx(bounded);
-    setSolutionVisible({});
-    setMyResponseVisible({});
+    setResponseVisible({});
     setResponseAttemptIdx({});
   };
 
-  const toggleSolution = (qId) => {
-    setSolutionVisible((prev) => ({ ...prev, [qId]: !prev[qId] }));
-  };
-
-  const toggleMyResponse = (qKey) => {
-    setMyResponseVisible((prev) => {
-      const nextVisible = !prev[qKey];
-      if (nextVisible) {
-        setResponseAttemptIdx((prevAttemptIdx) => ({ ...prevAttemptIdx, [qKey]: 0 }));
-      }
-      return { ...prev, [qKey]: nextVisible };
-    });
+  const toggleResponseVisibility = (stateKey) => {
+    setResponseVisible((prev) => ({ ...prev, [stateKey]: !prev[stateKey] }));
   };
 
   const cycleAttempt = (qKey, responses, direction) => {
@@ -338,9 +516,16 @@ export default function SessionReview() {
   const total = questions.length;
   const currentQ = questions[questionIdx];
   const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
-  const currentResponses = currentQ?._id != null
-    ? (responsesByQuestion[String(currentQ._id)] || []).sort((a, b) => a.attempt - b.attempt)
+  const currentStateKey = questionStateKey(questionIdx);
+  const currentResponses = currentQ
+    ? getResponsesForQuestion(responsesByQuestion, currentQ, questionIdx).sort((a, b) => a.attempt - b.attempt)
     : [];
+  const currentQType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const currentIsOptionType = [
+    QUESTION_TYPES.MULTIPLE_CHOICE,
+    QUESTION_TYPES.TRUE_FALSE,
+    QUESTION_TYPES.MULTI_SELECT,
+  ].includes(currentQType);
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
@@ -416,63 +601,78 @@ export default function SessionReview() {
                 question={currentQ}
                 index={questionIdx}
                 total={total}
-                solutionVisible={!!solutionVisible[currentQKey]}
-                onToggleSolution={() => toggleSolution(currentQKey)}
+                responseVisible={!!responseVisible[currentStateKey]}
+                response={currentResponses[Math.min(
+                  responseAttemptIdx[currentStateKey] || 0,
+                  Math.max(currentResponses.length - 1, 0)
+                )] || null}
               />
 
               {/* My Response section */}
               {(() => {
                 const responses = currentResponses;
                 const hasResponses = responses.length > 0;
-                const showingResponse = !!myResponseVisible[currentQKey];
-                const attemptIdx = responseAttemptIdx[currentQKey] || 0;
+                const attemptIdx = Math.min(responseAttemptIdx[currentStateKey] || 0, Math.max(responses.length - 1, 0));
                 const currentResponse = responses[attemptIdx];
+                const isResponseVisible = !!responseVisible[currentStateKey];
 
                 return (
                   <Box sx={{ mt: 2 }}>
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => toggleMyResponse(currentQKey)}
+                      onClick={() => toggleResponseVisibility(currentStateKey)}
                       disabled={!hasResponses}
-                      aria-label={showingResponse ? 'Hide my response' : 'Show my response'}
                     >
-                      {showingResponse ? 'Hide my response' : 'Show my response'}
+                      {isResponseVisible ? 'Hide my response' : 'Show my response'}
                     </Button>
                     {!hasResponses && (
                       <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                         No response recorded
                       </Typography>
                     )}
-                    {showingResponse && currentResponse && (
-                      <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
-                        {responses.length > 1 && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                            <Button
-                              size="small"
-                              disabled={attemptIdx <= 0}
-                              onClick={() => cycleAttempt(currentQKey, responses, -1)}
-                            >
-                              ← Prev attempt
-                            </Button>
-                            <Typography variant="body2" color="text.secondary">
-                              Attempt {currentResponse.attempt} of {responses.length}
-                            </Typography>
-                            <Button
-                              size="small"
-                              disabled={attemptIdx >= responses.length - 1}
-                              onClick={() => cycleAttempt(currentQKey, responses, 1)}
-                            >
-                              Next attempt →
-                            </Button>
-                          </Box>
-                        )}
-                        <Typography variant="body2">
-                          <strong>Your answer:</strong>{' '}
-                          {Array.isArray(currentResponse.answer)
-                            ? currentResponse.answer.join(', ')
-                            : String(currentResponse.answer)}
+                    {currentResponse && responses.length > 1 && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                        <Button
+                          size="small"
+                          disabled={attemptIdx <= 0}
+                          onClick={() => cycleAttempt(currentStateKey, responses, -1)}
+                        >
+                          ← Prev attempt
+                        </Button>
+                        <Typography variant="body2" color="text.secondary">
+                          Attempt {currentResponse.attempt} of {responses.length}
                         </Typography>
+                        <Button
+                          size="small"
+                          disabled={attemptIdx >= responses.length - 1}
+                          onClick={() => cycleAttempt(currentStateKey, responses, 1)}
+                        >
+                          Next attempt →
+                        </Button>
+                      </Box>
+                    )}
+                    {isResponseVisible && currentResponse && currentIsOptionType && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', ml: 0.5 }}>
+                        Your selected option(s) are highlighted above.
+                      </Typography>
+                    )}
+                    {isResponseVisible && currentResponse && !currentIsOptionType && (
+                      <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Your answer
+                        </Typography>
+                        {currentQType === QUESTION_TYPES.SHORT_ANSWER ? (
+                          <RichHtml
+                            value={currentResponse.answerWysiwyg || ''}
+                            fallback={normalizeAnswerValue(currentResponse.answer)}
+                            sx={richContentSx}
+                          />
+                        ) : (
+                          <Typography variant="body2">
+                            {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                          </Typography>
+                        )}
                       </Paper>
                     )}
                   </Box>
@@ -487,13 +687,18 @@ export default function SessionReview() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {questions.map((q, i) => {
                 const qKey = questionKey(q, i);
-                const responses = q?._id != null
-                  ? (responsesByQuestion[String(q._id)] || []).sort((a, b) => a.attempt - b.attempt)
-                  : [];
+                const stateKey = questionStateKey(i);
+                const responses = getResponsesForQuestion(responsesByQuestion, q, i).sort((a, b) => a.attempt - b.attempt);
                 const hasResponses = responses.length > 0;
-                const showingResponse = !!myResponseVisible[qKey];
-                const attemptIdx = responseAttemptIdx[qKey] || 0;
+                const attemptIdx = Math.min(responseAttemptIdx[stateKey] || 0, Math.max(responses.length - 1, 0));
                 const currentResponse = responses[attemptIdx];
+                const qType = normalizeQuestionType(q);
+                const isOptionType = [
+                  QUESTION_TYPES.MULTIPLE_CHOICE,
+                  QUESTION_TYPES.TRUE_FALSE,
+                  QUESTION_TYPES.MULTI_SELECT,
+                ].includes(qType);
+                const isResponseVisible = !!responseVisible[stateKey];
 
                 return (
                   <Box key={qKey}>
@@ -501,52 +706,65 @@ export default function SessionReview() {
                       question={q}
                       index={i}
                       total={total}
-                      solutionVisible={!!solutionVisible[qKey]}
-                      onToggleSolution={() => toggleSolution(qKey)}
+                      responseVisible={isResponseVisible}
+                      response={currentResponse || null}
                     />
                     <Box sx={{ mt: 1, ml: 1 }}>
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => toggleMyResponse(qKey)}
+                        onClick={() => toggleResponseVisibility(stateKey)}
                         disabled={!hasResponses}
                       >
-                        {showingResponse ? 'Hide my response' : 'Show my response'}
+                        {isResponseVisible ? 'Hide my response' : 'Show my response'}
                       </Button>
                       {!hasResponses && (
                         <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                           No response recorded
                         </Typography>
                       )}
-                      {showingResponse && currentResponse && (
-                        <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
-                          {responses.length > 1 && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <Button
-                                size="small"
-                                disabled={attemptIdx <= 0}
-                                onClick={() => cycleAttempt(qKey, responses, -1)}
-                              >
-                                ← Prev attempt
-                              </Button>
-                              <Typography variant="body2" color="text.secondary">
-                                Attempt {currentResponse.attempt} of {responses.length}
-                              </Typography>
-                              <Button
-                                size="small"
-                                disabled={attemptIdx >= responses.length - 1}
-                                onClick={() => cycleAttempt(qKey, responses, 1)}
-                              >
-                                Next attempt →
-                              </Button>
-                            </Box>
-                          )}
-                          <Typography variant="body2">
-                            <strong>Your answer:</strong>{' '}
-                            {Array.isArray(currentResponse.answer)
-                              ? currentResponse.answer.join(', ')
-                              : String(currentResponse.answer)}
+                      {currentResponse && responses.length > 1 && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                          <Button
+                            size="small"
+                            disabled={attemptIdx <= 0}
+                            onClick={() => cycleAttempt(stateKey, responses, -1)}
+                          >
+                            ← Prev attempt
+                          </Button>
+                          <Typography variant="body2" color="text.secondary">
+                            Attempt {currentResponse.attempt} of {responses.length}
                           </Typography>
+                          <Button
+                            size="small"
+                            disabled={attemptIdx >= responses.length - 1}
+                            onClick={() => cycleAttempt(stateKey, responses, 1)}
+                          >
+                            Next attempt →
+                          </Button>
+                        </Box>
+                      )}
+                      {isResponseVisible && currentResponse && isOptionType && (
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', ml: 0.5 }}>
+                          Your selected option(s) are highlighted above.
+                        </Typography>
+                      )}
+                      {isResponseVisible && currentResponse && !isOptionType && (
+                        <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Your answer
+                          </Typography>
+                          {qType === QUESTION_TYPES.SHORT_ANSWER ? (
+                            <RichHtml
+                              value={currentResponse.answerWysiwyg || ''}
+                              fallback={normalizeAnswerValue(currentResponse.answer)}
+                              sx={richContentSx}
+                            />
+                          ) : (
+                            <Typography variant="body2">
+                              {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                            </Typography>
+                          )}
                         </Paper>
                       )}
                     </Box>

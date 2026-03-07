@@ -70,7 +70,7 @@ function RichContent({ html }) {
 }
 
 /** Short-answer responses list (rendered rich text). */
-function ShortAnswerList({ responses, showStudentNames = false, studentNameById = {} }) {
+function ShortAnswerList({ responses, showStudentNames = false }) {
   if (!responses || !responses.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
@@ -80,7 +80,7 @@ function ShortAnswerList({ responses, showStudentNames = false, studentNameById 
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
           {showStudentNames && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              {studentNameById[String(r.studentUserId)] || 'Unknown Student'}
+              {r.studentName || 'Unknown Student'}
             </Typography>
           )}
           {r.answerWysiwyg ? (
@@ -152,10 +152,7 @@ export default function LiveSession() {
   const [makeReviewable, setMakeReviewable] = useState(false);
   const [ending, setEnding] = useState(false);
 
-  // Session ended redirect
-  const [sessionEnded, setSessionEnded] = useState(false);
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
-  const [studentNameById, setStudentNameById] = useState({});
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -166,20 +163,21 @@ export default function LiveSession() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/live`);
+      const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
+        params: { includeStudentNames: true },
+      });
       setLiveData(data);
       setError(null);
 
-      // Redirect if session is done
       if (data?.session?.status === 'done') {
-        setSessionEnded(true);
+        navigate(`/manage/course/${courseId}`, { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load live session');
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, navigate, courseId]);
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
 
@@ -308,41 +306,6 @@ export default function LiveSession() {
     setJoinCodeIntervalInput(String(interval));
   }, [liveData?.session?.joinCodeInterval]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadStudentNames() {
-      try {
-        const { data } = await apiClient.get(`/courses/${courseId}`);
-        const students = data?.course?.students || [];
-        const map = {};
-        students.forEach((student) => {
-          const first = student?.profile?.firstname || '';
-          const last = student?.profile?.lastname || '';
-          const fullName = `${first} ${last}`.trim();
-          map[String(student?._id || '')] = fullName || student?.emails?.[0]?.address || 'Unknown Student';
-        });
-        if (!cancelled) setStudentNameById(map);
-      } catch {
-        if (!cancelled) setStudentNameById({});
-      }
-    }
-
-    loadStudentNames();
-    return () => { cancelled = true; };
-  }, [courseId]);
-
-  // --------------------------------------------------
-  // Session ended → redirect after brief delay
-  // --------------------------------------------------
-
-  useEffect(() => {
-    if (!sessionEnded) return;
-    const timer = setTimeout(() => {
-      navigate(`/manage/course/${courseId}`);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [sessionEnded, navigate, courseId]);
-
   // --------------------------------------------------
   // Action helpers
   // --------------------------------------------------
@@ -409,13 +372,13 @@ export default function LiveSession() {
     try {
       await apiClient.post(`/sessions/${sessionId}/end`, { reviewable: makeReviewable });
       setEndDialogOpen(false);
-      setSessionEnded(true);
+      navigate(`/manage/course/${courseId}`, { replace: true });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to end session' });
     } finally {
       setEnding(false);
     }
-  }, [sessionId, makeReviewable]);
+  }, [sessionId, makeReviewable, navigate, courseId]);
 
   // Join code controls
   const handleTogglePasscodeRequired = useCallback((enabled) => {
@@ -502,7 +465,9 @@ export default function LiveSession() {
   const inlineDistribution = responseStats?.type === 'distribution'
     ? responseStats.distribution || []
     : [];
-  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const inlineDistributionTotal = Number(responseStats?.total) > 0
+    ? Number(responseStats.total)
+    : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -512,15 +477,6 @@ export default function LiveSession() {
     return (
       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress aria-label="Loading live session" />
-      </Box>
-    );
-  }
-
-  if (sessionEnded) {
-    return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
-        <Alert severity="info" sx={{ mb: 2 }}>Session has ended. Redirecting to course…</Alert>
-        <CircularProgress size={24} />
       </Box>
     );
   }
@@ -899,14 +855,24 @@ export default function LiveSession() {
                             pointerEvents: 'none',
                           }}
                         />
-                        <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1, width: '100%' }}>
+                        <Box
+                          sx={{
+                            position: 'relative',
+                            zIndex: 1,
+                            display: 'grid',
+                            gridTemplateColumns: '30px minmax(0, 1fr) 74px 20px',
+                            columnGap: 1,
+                            alignItems: 'start',
+                            width: '100%',
+                          }}
+                        >
                         <Chip
                           label={OPTION_LETTERS[i]}
                           size="small"
                           color={isCorrect ? 'success' : 'default'}
-                          sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+                          sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
                         />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ minWidth: 0 }}>
                           <RichContent html={optionDisplayHtml(opt)} />
                         </Box>
                         <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
@@ -974,7 +940,6 @@ export default function LiveSession() {
             <ShortAnswerList
               responses={responseStats.answers || allResponses}
               showStudentNames
-              studentNameById={studentNameById}
             />
           ) : responseStats?.type === 'numerical' ? (
             <NumericalStats stats={responseStats} allResponses={allResponses} />
@@ -982,7 +947,6 @@ export default function LiveSession() {
             <ShortAnswerList
               responses={allResponses}
               showStudentNames
-              studentNameById={studentNameById}
             />
           ) : (
             <Typography variant="body2" color="text.secondary">

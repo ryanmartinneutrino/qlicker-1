@@ -258,7 +258,9 @@ export default function SecondDesktop() {
     && showStats
     && responseStats?.type === 'distribution';
   const inlineDistribution = showInlineOptionStats ? (responseStats.distribution || []) : [];
-  const inlineDistributionTotal = inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const inlineDistributionTotal = Number(responseStats?.total) > 0
+    ? Number(responseStats.total)
+    : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // ---- Auto-close popup window when session ends ----
 
@@ -464,14 +466,26 @@ export default function SecondDesktop() {
                     pointerEvents: 'none',
                   }}
                 />
-                <Box sx={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', gap: 1.5, width: '100%' }}>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    zIndex: 1,
+                    display: 'grid',
+                    gridTemplateColumns: showInlineOptionStats
+                      ? '34px minmax(0, 1fr) 88px'
+                      : '34px minmax(0, 1fr)',
+                    columnGap: 1.5,
+                    alignItems: 'start',
+                    width: '100%',
+                  }}
+                >
                 <Chip
                   label={OPTION_LETTERS[i]}
                   size="small"
                   color={isCorrect ? 'success' : 'default'}
-                  sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 32, fontSize: '1rem' }}
+                  sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 32, fontSize: '1rem', justifySelf: 'start' }}
                 />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ minWidth: 0 }}>
                   <RichContent html={optionDisplayHtml(opt)} />
                 </Box>
                 {showInlineOptionStats && (
