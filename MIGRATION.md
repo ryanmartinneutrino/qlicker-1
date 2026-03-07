@@ -17,6 +17,7 @@
 7. [Dependency Graph](#dependency-graph)
 8. [Cross-Cutting Concerns](#cross-cutting-concerns)
 9. [Progress Tracking](#progress-tracking)
+10. [Code Review Findings (2026-03-07)](#code-review-findings-2026-03-07)
 
 ---
 
@@ -785,14 +786,26 @@ The existing MongoDB database uses Meteor's conventions:
 
 ### Security
 
-- JWT tokens with short expiry + refresh tokens
+- JWT tokens with short expiry + refresh tokens (httpOnly cookie)
 - CORS restricted to frontend origin
-- Rate limiting on auth endpoints
+- Rate limiting on auth endpoints (`@fastify/rate-limit`, 10 requests / 15 minutes)
+- Security headers via `@fastify/helmet` (X-Content-Type-Options, X-Frame-Options, HSTS, etc.)
 - Input validation (Fastify schema validation)
+- Regex user input escaped to prevent ReDoS (`escapeForRegex()` utility)
+- Password minimum length: 8 characters
+- Failed login attempts logged with email and userId for audit trail
 - WebSocket authentication required
 - File upload validation (type, size)
 - SAML assertion validation
 - No sensitive data in client bundles
+- See [Code Review Findings](#code-review-findings-2026-03-07) for remaining items
+
+### Internationalization (i18n) Readiness
+
+- **Current state:** No i18n framework. All UI strings are hardcoded in English.
+- **Future-proofing strategy:** When `react-i18next` (or equivalent) is introduced, all hardcoded strings must be extracted to translation files. Until then, new UI text should be kept in clearly identifiable constants or component-level variables (not buried in JSX) to simplify future extraction.
+- **Date/number formatting:** `client/src/utils/date.js` uses hardcoded English month abbreviations. Should eventually switch to `Intl.DateTimeFormat` for locale-aware formatting. New formatting code should prefer the built-in `Intl` APIs.
+- **Error messages:** Server error messages are in English. Client-side messages should avoid duplicating server text when possible — prefer error codes that the client maps to localized messages.
 
 ### Styling Guidelines
 
@@ -970,9 +983,9 @@ The following issues were identified during testing and have been resolved:
 5. Complete the next pending task, update the agent file, and update this file's status tables
 6. Submit a PR with your changes
 
-### Current Next Steps (Phase 5)
+### Current Next Steps (Phase 5 → Phase 6)
 
-Phase 4 is now complete — both backend and frontend work is done. The TipTap/KaTeX question editor integration is complete (replacing MathJax and plain text fields). All Comments.md issues have been resolved. Legacy database compatibility has been verified and fixes applied. The following should happen next:
+Phase 5 interactive sessions are functionally complete. A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging) have been applied. The following should happen next:
 
 1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
 2. ~~**Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)~~ ✅ Done (PR 119)
@@ -983,6 +996,10 @@ Phase 4 is now complete — both backend and frontend work is done. The TipTap/K
 7. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
 8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
 9. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
+10. **WebSocket delta messages (performance):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance
+11. **HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security
+12. **Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility
+13. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
 
 #### Planned Private-Bucket Cutover (Required Before Enforcing Private S3 Bucket)
 
@@ -1039,9 +1056,10 @@ The following Phase 5 work has been completed:
 - ✅ **Solution display in SecondDesktop** — When showCorrect is enabled, SecondDesktop now renders the solution text (consistent with student LiveSession behavior).
 
 **Known issues / future work:**
-- Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`). Should be addressed in a future security hardening PR.
+- ~~Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`).~~ ✅ Fixed: `@fastify/rate-limit` added on auth endpoints; `@fastify/helmet` added for security headers.
 - Client has no unit tests. Playwright E2E tests should be added for interactive session flows.
 - RequireAuth component now renders `<Outlet />` when no children provided (needed for routes outside AppLayout). This pattern should be kept consistent if more layout-free routes are added.
+- See [Code Review Findings (2026-03-07)](#code-review-findings-2026-03-07) for comprehensive performance, security, accessibility, and i18n findings.
 
 **Testable by human (all phases through Phase 5):**
 - Log in as professor → create a course → click course title to view
@@ -1083,3 +1101,181 @@ The following Phase 5 work has been completed:
 - **Student: See solution when prof enables show correct**
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.
+
+---
+
+## Code Review Findings (2026-03-07)
+
+A comprehensive code review was conducted covering performance, security, accessibility, and internationalization. This section documents all findings, what has been fixed immediately ("low-hanging fruit"), and what must be addressed in future phases. Items are tagged by priority.
+
+### Alignment with REQUIREMENTS_FOR_MIGRATION_FASTIFY.md
+
+| Requirement | Status | Notes |
+|---|---|---|
+| Same functionality as MeteorJS | 🔄 In progress | Phases 1–5 complete. Grading, groups, quizzes not yet done. |
+| Same database compatibility | ✅ Verified | Legacy DB restores work. Case-insensitive emails, argon2id migration, legacy field compat all applied. |
+| Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, Recharts, TipTap, KaTeX. All actively maintained. |
+| API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. Swagger docs available. |
+| Fast with thousands of concurrent users | ⚠️ Needs work | WebSocket is implemented but messages are coarse-grained; N+1 re-fetch pattern will not scale. See § Performance. |
+| Docker Compose with load balancing | ✅ Complete | Production Docker Compose with Nginx reverse proxy. |
+| SAML SSO | ✅ Implemented | SAML login/callback/metadata/logout endpoints in place. Needs production confirmation (Phase 7). |
+| Unit tests from onset | ✅ 109 tests | 6 test files covering auth, courses, sessions, questions, models, settings. E2E (Playwright) not yet in place. |
+| Image uploads (S3/Azure/local) | ✅ Complete | All three backends verified. |
+| Email (password reset) | ✅ Complete | Nodemailer integration with forgot-password flow. |
+| Reactive UI for interactive sessions | ✅ Functional, ⚠️ performance gap | WebSocket events trigger full re-fetches. Must move to delta updates for production scale. |
+| Reactive course pages | ✅ Polling | 15-second polling interval. Should add WS push for session status changes. |
+| Clean, uniform look (Material Design) | ✅ Complete | MUI theme with Helvetica font stack, consistent spacing, status chips. |
+
+### Performance
+
+#### Critical: N+1 Query Pattern in Live Sessions
+
+**Impact: HIGH — blocks production use with large classes (30+ students)**
+
+The `/sessions/:id/live` endpoint (`server/src/routes/sessions.js`) executes 6+ separate database queries per request:
+1. Session lookup
+2. Question lookup
+3. Join records check
+4. Response count
+5. Response data for stats (when stats enabled)
+6. Response data for individual student (when student role)
+
+Every WebSocket `session:updated` notification causes **every connected client** to re-fetch the entire live endpoint. With 30 students responding:
+- 1 submission → server broadcasts `session:updated` to all 31 clients → 31 × 6 queries = **186 database queries per response**
+- At a rate of 1 response per second with 30 students, this is ~**200,000 queries/hour**
+
+**Root cause:** WebSocket messages are generic (`{ type: 'session:updated', sessionId }`) with no delta payload. Clients have no way to know *what* changed, so they re-fetch everything.
+
+#### Fix Required (Phase 6 or dedicated performance PR)
+
+Replace generic `session:updated` messages with **granular delta events**:
+
+| Event | Payload | Client Action |
+|---|---|---|
+| `session:response-added` | `{ questionId, responseCount, totalJoined }` | Update count in state |
+| `session:question-changed` | `{ questionId, questionIndex }` | Fetch only new question |
+| `session:visibility-changed` | `{ questionId, hidden, stats, correct }` | Update flags in state |
+| `session:status-changed` | `{ status }` | Update session status |
+
+**Expected improvement:** 95%+ reduction in database queries during live sessions.
+
+#### Medium: Duplicate Response Queries
+
+When `showStats=true` in the live endpoint, responses are queried twice — once for the stats calculation and once for the student's individual response. These should be merged into a single query.
+
+#### Medium: Course Page Polling
+
+Course pages use 15-second polling intervals for member list updates. This works for small classes but should be supplemented with WebSocket push events for session status changes (already partially implemented via `course:session-updated` events).
+
+### Security
+
+#### ✅ Fixed (Low-Hanging Fruit — Applied in This Review)
+
+| Issue | Severity | Fix Applied |
+|---|---|---|
+| **No rate limiting** on auth endpoints | CRITICAL | Added `@fastify/rate-limit` with 10 req/15 min on register, login, forgot-password, reset-password |
+| **No security headers** | HIGH | Added `@fastify/helmet` (X-Content-Type-Options, X-Frame-Options, X-DNS-Prefetch-Control, etc.) |
+| **ReDoS vulnerability** in search endpoints | HIGH | User input now escaped via `escapeForRegex()` before use in `new RegExp()` (courses.js, users.js) |
+| **Weak password policy** (6 char min) | MEDIUM | Increased minimum to 8 characters across register, reset-password, change-password, admin-create-user |
+| **No failed login logging** | MEDIUM | Failed login attempts now logged with `request.log.warn()` including email and userId |
+
+#### Remaining (Must Address Before Production)
+
+| Issue | Severity | Recommendation | Target Phase |
+|---|---|---|---|
+| **No CSRF protection** | HIGH | Add `@fastify/csrf-protection` for state-changing endpoints, or rely on SameSite cookies + custom header pattern | Phase 7/8 |
+| **JWT access token in localStorage** | HIGH | Access token is stored in `localStorage` (vulnerable to XSS). Refresh token is correctly in httpOnly cookie. Consider moving access token to memory-only storage with automatic refresh, or to an httpOnly cookie. | Phase 7/8 |
+| **No HTML sanitization** for `dangerouslySetInnerHTML` | HIGH | 11 instances of `dangerouslySetInnerHTML` in client render user-generated rich text without sanitization. Add `dompurify` library and sanitize all HTML before rendering. Files: QuestionDisplay.jsx, LiveSession.jsx (prof/student), SessionReview.jsx, SecondDesktop.jsx, StudentRichTextEditor.jsx | Phase 6 |
+| **SAML logout not cryptographically validated** | MEDIUM | `POST /sso/logout` manually parses XML without signature verification. Should use node-saml's built-in validation. | Phase 7 |
+| **No refresh token rotation** | LOW-MEDIUM | Refresh tokens remain valid for 7 days without rotation. Implement one-time-use refresh tokens. | Phase 8 |
+| **File upload content validation** | MEDIUM | MIME type is checked from the extension but not validated against file content (magic bytes). Add `file-type` library check. | Phase 7 |
+| **No account lockout** | LOW-MEDIUM | After rate limiting is in place, consider adding temporary account lockout after repeated failed attempts. | Phase 8 |
+| **Hardcoded dev secrets in config** | LOW | `config/index.js` has fallback `'dev-secret-change-me'` strings. These are blocked in production by the existing guard, but the fallbacks should be removed to force explicit configuration. | Phase 8 |
+
+### Accessibility
+
+#### Current State: Moderate
+
+MUI components provide a strong baseline for accessibility (proper ARIA roles, keyboard focus management, semantic HTML elements). Several areas need attention:
+
+#### Good Practices Already in Place
+
+- ✅ ARIA labels on icon-only buttons (LiveSession navigation, controls)
+- ✅ MUI Dialog/Menu components with built-in focus trapping
+- ✅ `prefers-reduced-motion` respected in Home.jsx canvas animation
+- ✅ `aria-hidden="true"` on decorative elements
+- ✅ Semantic form elements via MUI TextField/Select/Checkbox
+- ✅ `CircularProgress` with `aria-label="Loading live session"`
+
+#### Must Fix (Priority)
+
+| Issue | Impact | Location | Fix |
+|---|---|---|---|
+| **Rich text editor missing ARIA roles** | Screen readers cannot navigate editor | `RichTextEditor.jsx`, `StudentRichTextEditor.jsx` | Add `role="textbox"`, `aria-multiline="true"`, `aria-label` to editor container |
+| **No `aria-live` regions for dynamic updates** | Screen readers miss response counts, session status changes | professor/student LiveSession.jsx | Wrap dynamic counters/status in `<Box role="status" aria-live="polite">` |
+| **Clickable Typography without button semantics** | Keyboard/screen reader users cannot activate logo | `AppLayout.jsx` (Qlicker logo) | Convert to `<Button component={Link}>` or add `role="link"` with `tabIndex` |
+| **`dangerouslySetInnerHTML` breaks semantic structure** | Rich text content loses heading/list structure for screen readers | 11 files (see Security section) | Sanitize HTML with `dompurify` preserving semantic tags |
+
+#### Should Fix (Before Phase 8)
+
+| Issue | Impact | Location | Fix |
+|---|---|---|---|
+| Table headers missing `scope` | Screen readers cannot associate headers with cells | SessionReview.jsx, admin tables | Add `component="th" scope="col"` to `<TableCell>` in headers |
+| No skip-to-content link | Keyboard users must tab through navbar on every page | `AppLayout.jsx` | Add visually-hidden "Skip to main content" link |
+| No page titles per route | Screen readers announce same title for every page | `App.jsx` or per-page | Use `document.title` or `react-helmet` to set descriptive page titles |
+| Focus not managed after route changes | Screen readers may not announce new page content | `App.jsx` | Focus main content area after navigation |
+
+### Internationalization (i18n)
+
+#### Current State: Not Implemented
+
+There is no i18n framework installed. All user-facing text is hardcoded in English across ~50+ components. This includes:
+- UI labels ("Dashboard", "Courses", "Login", "Draft", "Live", "Ended")
+- Status messages ("Changes saved", "Logging in...", "Failed to load")
+- Error messages ("Invalid email or password", "Email already registered")
+- Date formatting (`client/src/utils/date.js` uses hardcoded English month abbreviations)
+- Number formatting (uses `.toFixed(2)` without locale awareness)
+
+#### Recommended Approach
+
+1. **Phase 7:** Install `react-i18next` + `i18next`. Create `client/src/i18n/` with English translation file as baseline.
+2. **Phase 7–8:** Extract all hardcoded strings to translation keys. Start with high-traffic pages (Login, Dashboard, LiveSession).
+3. **Phase 8:** Switch `client/src/utils/date.js` from `MONTH_SHORT[]` array to `Intl.DateTimeFormat` for locale-aware date display.
+4. **Phase 8:** Switch number formatting to `Intl.NumberFormat`.
+
+#### Immediate Best Practice (No Framework Needed)
+
+Until `react-i18next` is introduced, new UI text should be placed in **named constants at the top of files** (not buried inline in JSX). This makes future extraction mechanical. Example:
+
+```jsx
+// Good — easy to extract later
+const LABELS = { save: 'Save', cancel: 'Cancel', delete: 'Delete' };
+// ...
+<Button>{LABELS.save}</Button>
+
+// Avoid — hard to find and extract
+<Button>Save</Button>
+```
+
+### Legacy Database Compatibility Check
+
+All findings from this review are consistent with the existing legacy compatibility work:
+
+- ✅ Meteor-style string `_id` fields preserved in all models
+- ✅ Case-insensitive email lookup via `emailRegex()` utility
+- ✅ Legacy `services.password.bcrypt` triggers password-reset-required flow
+- ✅ Legacy question types normalized via migration script
+- ✅ Settings model uses `strict: false` to preserve extra legacy fields
+- ✅ Image model has optional fields for legacy compatibility
+- ⚠️ Group categories shape mismatch (`groupNumber/groupName/students` vs `name/members`) — noted in Phase 7 tasks
+- ⚠️ `meteor_accounts_loginServiceConfiguration` collection has no equivalent model — decide if needed or can be deprecated
+
+### Summary of Actions
+
+| Category | Fixed Now | Remaining Items | Target |
+|---|---|---|---|
+| **Performance** | — | Delta WebSocket messages, query deduplication, WS push for course pages | Phase 6 / dedicated PR |
+| **Security** | Rate limiting, helmet, ReDoS, passwords, login logging | CSRF, localStorage token, HTML sanitization, SAML validation, token rotation | Phases 6–8 |
+| **Accessibility** | — | ARIA on editors, aria-live regions, semantic logo, table headers, page titles | Phases 6–7 |
+| **i18n** | — | Install react-i18next, extract strings, locale-aware formatting | Phases 7–8 |
+| **Legacy DB** | All known issues addressed | Group categories shape, loginServiceConfiguration decision | Phase 7 |

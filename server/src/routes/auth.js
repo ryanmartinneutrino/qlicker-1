@@ -58,7 +58,7 @@ const registerSchema = {
     required: ['email', 'password', 'firstname', 'lastname'],
     properties: {
       email: { type: 'string', format: 'email' },
-      password: { type: 'string', minLength: 6 },
+      password: { type: 'string', minLength: 8 },
       firstname: { type: 'string', minLength: 1 },
       lastname: { type: 'string', minLength: 1 },
     },
@@ -77,8 +77,15 @@ const loginSchema = {
 };
 
 export default async function authRoutes(app) {
+  // Shared rate-limit config for sensitive auth endpoints
+  const authRateLimit = {
+    config: {
+      rateLimit: { max: 10, timeWindow: '15 minutes' },
+    },
+  };
+
   // POST /register
-  app.post('/register', { schema: registerSchema }, async (request, reply) => {
+  app.post('/register', { schema: registerSchema, ...authRateLimit }, async (request, reply) => {
     const { email, password, firstname, lastname } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -148,13 +155,14 @@ export default async function authRoutes(app) {
   });
 
   // POST /login
-  app.post('/login', { schema: loginSchema }, async (request, reply) => {
+  app.post('/login', { schema: loginSchema, ...authRateLimit }, async (request, reply) => {
     const { email, password } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
     // Case-insensitive lookup for legacy DB compatibility
     const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
     if (!user) {
+      request.log.warn({ email: normalizedEmail }, 'Login failed: unknown email');
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
@@ -174,6 +182,7 @@ export default async function authRoutes(app) {
 
     const valid = await user.verifyPassword(password);
     if (!valid) {
+      request.log.warn({ email: normalizedEmail, userId: user._id }, 'Login failed: invalid password');
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
@@ -231,6 +240,7 @@ export default async function authRoutes(app) {
   app.post(
     '/forgot-password',
     {
+      ...authRateLimit,
       schema: {
         body: {
           type: 'object',
@@ -270,13 +280,14 @@ export default async function authRoutes(app) {
   app.post(
     '/reset-password',
     {
+      ...authRateLimit,
       schema: {
         body: {
           type: 'object',
           required: ['token', 'newPassword'],
           properties: {
             token: { type: 'string' },
-            newPassword: { type: 'string', minLength: 6 },
+            newPassword: { type: 'string', minLength: 8 },
           },
         },
       },

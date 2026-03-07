@@ -3,6 +3,8 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import fs from 'fs';
 import path from 'path';
 import config from './config/index.js';
@@ -32,6 +34,12 @@ export async function buildApp(opts = {}) {
   await app.register(cors, { origin: app.config.rootUrl, credentials: true });
   await app.register(formbody);
   await app.register(cookie);
+  await app.register(helmet, {
+    contentSecurityPolicy: false, // CSP managed by the frontend reverse-proxy / nginx
+  });
+  await app.register(rateLimit, {
+    global: false, // only apply to routes that opt-in
+  });
   await app.register(jwt, {
     secret: app.config.jwtSecret,
     sign: { expiresIn: '15m' },
