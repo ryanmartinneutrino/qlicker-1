@@ -759,7 +759,7 @@ export default function SessionEditor() {
           {/* Join code settings (for interactive sessions only) */}
           {!quiz && (
             <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP, alignItems: { sm: 'center' } }}>
-              <FormControlLabel
+                <FormControlLabel
                 control={(
                   <Switch
                     checked={joinCodeEnabled}
@@ -771,7 +771,7 @@ export default function SessionEditor() {
                     disabled={savingSession}
                   />
                 )}
-                label="Require Join Code"
+                label="Require Passcode"
               />
               {joinCodeEnabled && (
                 <TextField

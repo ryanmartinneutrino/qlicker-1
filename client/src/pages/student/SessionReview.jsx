@@ -41,6 +41,13 @@ const COMPACT_CHIP_SX = {
   },
 };
 
+function questionKey(question, fallbackIndex = 0) {
+  if (question?._id !== undefined && question?._id !== null && question?._id !== '') {
+    return String(question._id);
+  }
+  return `q-${fallbackIndex}`;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Helper: render rich HTML with fallback                            */
 /* ------------------------------------------------------------------ */
@@ -225,6 +232,13 @@ export default function SessionReview() {
   useEffect(() => { fetchReview(); }, [fetchReview]);
 
   useEffect(() => {
+    setQuestionIdx((prev) => {
+      if (!questions.length) return 0;
+      return Math.min(prev, questions.length - 1);
+    });
+  }, [questions.length]);
+
+  useEffect(() => {
     if (loading || error) return undefined;
 
     const runCheck = () => {
@@ -260,7 +274,8 @@ export default function SessionReview() {
 
   // Reset solution visibility when navigating to a new question
   const goTo = (idx) => {
-    setQuestionIdx(idx);
+    const bounded = Math.max(0, Math.min(idx, Math.max(questions.length - 1, 0)));
+    setQuestionIdx(bounded);
     setSolutionVisible({});
     setMyResponseVisible({});
     setResponseAttemptIdx({});
@@ -270,22 +285,23 @@ export default function SessionReview() {
     setSolutionVisible((prev) => ({ ...prev, [qId]: !prev[qId] }));
   };
 
-  const toggleMyResponse = (qId) => {
-    setMyResponseVisible((prev) => ({ ...prev, [qId]: !prev[qId] }));
-    // Reset attempt index when toggling
-    if (!myResponseVisible[qId]) {
-      setResponseAttemptIdx((prev) => ({ ...prev, [qId]: 0 }));
-    }
+  const toggleMyResponse = (qKey) => {
+    setMyResponseVisible((prev) => {
+      const nextVisible = !prev[qKey];
+      if (nextVisible) {
+        setResponseAttemptIdx((prevAttemptIdx) => ({ ...prevAttemptIdx, [qKey]: 0 }));
+      }
+      return { ...prev, [qKey]: nextVisible };
+    });
   };
 
-  const cycleAttempt = (qId, direction) => {
-    const responses = (responsesByQuestion[qId] || []).sort((a, b) => a.attempt - b.attempt);
+  const cycleAttempt = (qKey, responses, direction) => {
     if (responses.length === 0) return;
     setResponseAttemptIdx((prev) => {
-      const current = prev[qId] || 0;
+      const current = prev[qKey] || 0;
       const next = current + direction;
       if (next < 0 || next >= responses.length) return prev;
-      return { ...prev, [qId]: next };
+      return { ...prev, [qKey]: next };
     });
   };
 
@@ -309,6 +325,10 @@ export default function SessionReview() {
 
   const total = questions.length;
   const currentQ = questions[questionIdx];
+  const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
+  const currentResponses = currentQ?._id != null
+    ? (responsesByQuestion[String(currentQ._id)] || []).sort((a, b) => a.attempt - b.attempt)
+    : [];
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
@@ -354,19 +374,20 @@ export default function SessionReview() {
           {viewMode === 'one' && currentQ && (
             <Box>
               <ReviewQuestionCard
+                key={currentQKey}
                 question={currentQ}
                 index={questionIdx}
                 total={total}
-                solutionVisible={!!solutionVisible[currentQ._id]}
-                onToggleSolution={() => toggleSolution(currentQ._id)}
+                solutionVisible={!!solutionVisible[currentQKey]}
+                onToggleSolution={() => toggleSolution(currentQKey)}
               />
 
               {/* My Response section */}
               {(() => {
-                const responses = (responsesByQuestion[currentQ._id] || []).sort((a, b) => a.attempt - b.attempt);
+                const responses = currentResponses;
                 const hasResponses = responses.length > 0;
-                const showingResponse = !!myResponseVisible[currentQ._id];
-                const attemptIdx = responseAttemptIdx[currentQ._id] || 0;
+                const showingResponse = !!myResponseVisible[currentQKey];
+                const attemptIdx = responseAttemptIdx[currentQKey] || 0;
                 const currentResponse = responses[attemptIdx];
 
                 return (
@@ -374,7 +395,7 @@ export default function SessionReview() {
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => toggleMyResponse(currentQ._id)}
+                      onClick={() => toggleMyResponse(currentQKey)}
                       disabled={!hasResponses}
                       aria-label={showingResponse ? 'Hide my response' : 'Show my response'}
                     >
@@ -392,7 +413,7 @@ export default function SessionReview() {
                             <Button
                               size="small"
                               disabled={attemptIdx <= 0}
-                              onClick={() => cycleAttempt(currentQ._id, -1)}
+                              onClick={() => cycleAttempt(currentQKey, responses, -1)}
                             >
                               ← Prev attempt
                             </Button>
@@ -402,7 +423,7 @@ export default function SessionReview() {
                             <Button
                               size="small"
                               disabled={attemptIdx >= responses.length - 1}
-                              onClick={() => cycleAttempt(currentQ._id, 1)}
+                              onClick={() => cycleAttempt(currentQKey, responses, 1)}
                             >
                               Next attempt →
                             </Button>
@@ -450,26 +471,29 @@ export default function SessionReview() {
           {viewMode === 'all' && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {questions.map((q, i) => {
-                const responses = (responsesByQuestion[q._id] || []).sort((a, b) => a.attempt - b.attempt);
+                const qKey = questionKey(q, i);
+                const responses = q?._id != null
+                  ? (responsesByQuestion[String(q._id)] || []).sort((a, b) => a.attempt - b.attempt)
+                  : [];
                 const hasResponses = responses.length > 0;
-                const showingResponse = !!myResponseVisible[q._id];
-                const attemptIdx = responseAttemptIdx[q._id] || 0;
+                const showingResponse = !!myResponseVisible[qKey];
+                const attemptIdx = responseAttemptIdx[qKey] || 0;
                 const currentResponse = responses[attemptIdx];
 
                 return (
-                  <Box key={q._id}>
+                  <Box key={qKey}>
                     <ReviewQuestionCard
                       question={q}
                       index={i}
                       total={total}
-                      solutionVisible={!!solutionVisible[q._id]}
-                      onToggleSolution={() => toggleSolution(q._id)}
+                      solutionVisible={!!solutionVisible[qKey]}
+                      onToggleSolution={() => toggleSolution(qKey)}
                     />
                     <Box sx={{ mt: 1, ml: 1 }}>
                       <Button
                         size="small"
                         variant="outlined"
-                        onClick={() => toggleMyResponse(q._id)}
+                        onClick={() => toggleMyResponse(qKey)}
                         disabled={!hasResponses}
                       >
                         {showingResponse ? 'Hide my response' : 'Show my response'}
@@ -486,7 +510,7 @@ export default function SessionReview() {
                               <Button
                                 size="small"
                                 disabled={attemptIdx <= 0}
-                                onClick={() => cycleAttempt(q._id, -1)}
+                                onClick={() => cycleAttempt(qKey, responses, -1)}
                               >
                                 ← Prev attempt
                               </Button>
@@ -496,7 +520,7 @@ export default function SessionReview() {
                               <Button
                                 size="small"
                                 disabled={attemptIdx >= responses.length - 1}
-                                onClick={() => cycleAttempt(q._id, 1)}
+                                onClick={() => cycleAttempt(qKey, responses, 1)}
                               >
                                 Next attempt →
                               </Button>

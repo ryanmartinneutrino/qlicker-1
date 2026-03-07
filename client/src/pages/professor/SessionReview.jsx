@@ -36,6 +36,38 @@ const richContentSx = {
   },
 };
 
+function normalizeAnswerValue(answer) {
+  if (answer === null || answer === undefined) return '';
+  return String(answer).trim();
+}
+
+function resolveOptionIndex(answer, options = []) {
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    return answer >= 0 && answer < options.length ? answer : -1;
+  }
+
+  const normalized = normalizeAnswerValue(answer);
+  if (!normalized) return -1;
+
+  if (/^\d+$/.test(normalized)) {
+    const parsed = Number(normalized);
+    if (parsed >= 0 && parsed < options.length) return parsed;
+  }
+
+  return options.findIndex((opt) => (
+    normalizeAnswerValue(opt?._id) === normalized
+    || normalizeAnswerValue(opt?.answer) === normalized
+    || normalizeAnswerValue(opt?.content) === normalized
+    || normalizeAnswerValue(opt?.plainText) === normalized
+  ));
+}
+
+function formatParticipation(participation) {
+  const numeric = Number(participation);
+  if (!Number.isFinite(numeric)) return '0%';
+  return `${Math.round(numeric)}%`;
+}
+
 function escapeCsvCell(value) {
   if (value == null) return '';
   const str = String(value);
@@ -189,7 +221,7 @@ export default function SessionReview() {
   const totalStudents = session?.joined?.length || studentResults.length || 0;
   const avgParticipation = useMemo(() => {
     if (!studentResults.length) return 0;
-    const sum = studentResults.reduce((acc, s) => acc + (s.participation || 0), 0);
+    const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);
     return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
 
@@ -205,29 +237,24 @@ export default function SessionReview() {
       ].includes(qT);
 
       let count = 0;
-      const distribution = {};
-
-      if (optionType && q.options) {
-        q.options.forEach((opt) => {
-          distribution[opt._id || ''] = 0;
-        });
-      }
+      const distribution = optionType && q.options
+        ? q.options.map(() => 0)
+        : [];
 
       studentResults.forEach((student) => {
         const qr = (student.questionResults || []).find(
-          (r) => r.questionId === q._id,
+          (r) => String(r.questionId) === String(q._id),
         );
         if (!qr || !qr.responses || !qr.responses.length) return;
         count += 1;
         const lastResponse = qr.responses[qr.responses.length - 1];
         const answer = lastResponse?.answer;
 
-        if (optionType && answer) {
+        if (optionType && q.options && answer) {
           const answers = Array.isArray(answer) ? answer : [answer];
           answers.forEach((a) => {
-            if (distribution[a] != null) {
-              distribution[a] += 1;
-            }
+            const idx = resolveOptionIndex(a, q.options);
+            if (idx >= 0 && idx < distribution.length) distribution[idx] += 1;
           });
         }
       });
@@ -240,7 +267,7 @@ export default function SessionReview() {
           if (opt.correct) correctIndices.push(i);
           return {
             label: OPTION_LETTERS[i] || String(i + 1),
-            count: distribution[opt._id || ''] || 0,
+            count: distribution[i] || 0,
           };
         });
       }
@@ -274,16 +301,12 @@ export default function SessionReview() {
         escapeCsvCell(student.lastname),
         escapeCsvCell(student.firstname),
         escapeCsvCell(student.email),
-        escapeCsvCell(
-          student.participation != null
-            ? `${(student.participation * 100).toFixed(0)}%`
-            : '0%',
-        ),
+        escapeCsvCell(formatParticipation(student.participation)),
       ];
 
       questions.forEach((q) => {
         const qr = (student.questionResults || []).find(
-          (r) => r.questionId === q._id,
+          (r) => String(r.questionId) === String(q._id),
         );
         if (!qr || !qr.responses || !qr.responses.length) {
           row.push(escapeCsvCell(''));
@@ -302,7 +325,7 @@ export default function SessionReview() {
           const answers = Array.isArray(answerText) ? answerText : [answerText];
           answerText = answers
             .map((a) => {
-              const idx = q.options.findIndex((o) => o._id === a);
+              const idx = resolveOptionIndex(a, q.options);
               return idx >= 0 ? OPTION_LETTERS[idx] : a;
             })
             .join(', ');
@@ -577,13 +600,11 @@ export default function SessionReview() {
                     </TableCell>
                     <TableCell>{student.email}</TableCell>
                     <TableCell align="center">
-                      {student.participation != null
-                        ? `${(student.participation * 100).toFixed(0)}%`
-                        : '0%'}
+                      {formatParticipation(student.participation)}
                     </TableCell>
                     {questions.map((q, qi) => {
                       const qr = (student.questionResults || []).find(
-                        (r) => r.questionId === q._id,
+                        (r) => String(r.questionId) === String(q._id),
                       );
                       if (!qr || !qr.responses || !qr.responses.length) {
                         return (
@@ -603,7 +624,7 @@ export default function SessionReview() {
                         const answers = Array.isArray(display) ? display : [display];
                         display = answers
                           .map((a) => {
-                            const idx = q.options.findIndex((o) => o._id === a);
+                            const idx = resolveOptionIndex(a, q.options);
                             return idx >= 0 ? OPTION_LETTERS[idx] : a;
                           })
                           .join(', ');

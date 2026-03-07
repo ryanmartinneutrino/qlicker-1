@@ -161,6 +161,7 @@ export default function LiveSession() {
 
   // Session ended redirect
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -285,7 +286,7 @@ export default function LiveSession() {
     const session = liveData?.session;
     if (!session?.joinCodeEnabled || !session?.joinCodeActive) return;
 
-    const interval = (session.joinCodeInterval || 60) * 1000;
+    const interval = (session.joinCodeInterval || 10) * 1000;
     joinCodeTimerRef.current = setInterval(async () => {
       try {
         await apiClient.post(`/sessions/${sessionId}/refresh-join-code`);
@@ -306,6 +307,12 @@ export default function LiveSession() {
     sessionId,
     fetchLive,
   ]);
+
+  useEffect(() => {
+    const interval = liveData?.session?.joinCodeInterval;
+    if (interval == null) return;
+    setJoinCodeIntervalInput(String(interval));
+  }, [liveData?.session?.joinCodeInterval]);
 
   // --------------------------------------------------
   // Session ended → redirect after brief delay
@@ -383,10 +390,7 @@ export default function LiveSession() {
   const handleEndSession = useCallback(async () => {
     setEnding(true);
     try {
-      if (makeReviewable) {
-        await apiClient.patch(`/sessions/${sessionId}`, { reviewable: true });
-      }
-      await apiClient.post(`/sessions/${sessionId}/end`);
+      await apiClient.post(`/sessions/${sessionId}/end`, { reviewable: makeReviewable });
       setEndDialogOpen(false);
       setSessionEnded(true);
     } catch (err) {
@@ -397,13 +401,19 @@ export default function LiveSession() {
   }, [sessionId, makeReviewable]);
 
   // Join code controls
+  const handleTogglePasscodeRequired = useCallback((enabled) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeEnabled: enabled }),
+      enabled ? 'Passcode requirement enabled' : 'Passcode requirement disabled',
+    );
+  }, [doAction, sessionId]);
+
   const handleToggleJoinCode = useCallback((active) => {
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, {
-      joinCodeActive: active,
-      joinCodeEnabled: liveData?.session?.joinCodeEnabled ?? true,
-      joinCodeInterval: liveData?.session?.joinCodeInterval ?? 60,
-    }));
-  }, [doAction, sessionId, liveData]);
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeActive: active }),
+      active ? 'Join period started' : 'Join period closed',
+    );
+  }, [doAction, sessionId]);
 
   const handleRefreshJoinCode = useCallback(() => {
     doAction(
@@ -411,6 +421,27 @@ export default function LiveSession() {
       'Join code refreshed',
     );
   }, [doAction, sessionId]);
+
+  const handleJoinCodeIntervalBlur = useCallback(() => {
+    const currentInterval = Number(liveData?.session?.joinCodeInterval || 10);
+    const parsed = Number(joinCodeIntervalInput);
+    if (!Number.isFinite(parsed)) {
+      setJoinCodeIntervalInput(String(currentInterval));
+      return;
+    }
+    const rounded = Math.round(parsed);
+    if (rounded < 5 || rounded > 120) {
+      setMsg({ severity: 'error', text: 'Join code interval must be between 5 and 120 seconds' });
+      setJoinCodeIntervalInput(String(currentInterval));
+      return;
+    }
+    if (rounded === currentInterval) return;
+
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeInterval: rounded }),
+      'Join code interval updated',
+    );
+  }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
   // Second desktop / present window
   const secondDesktopRef = useRef(null);
@@ -590,7 +621,19 @@ export default function LiveSession() {
           gap: 1,
         }}
       >
-        {/* Join code toggle */}
+        {/* Passcode requirement + join period controls */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!session.joinCodeEnabled}
+              onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
+              disabled={actionLoading}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">Require Passcode</Typography>}
+        />
+
         {session.joinCodeEnabled && (
           <>
             <FormControlLabel
@@ -602,7 +645,21 @@ export default function LiveSession() {
                   size="small"
                 />
               }
-              label={<Typography variant="body2">Join Code</Typography>}
+              label={<Typography variant="body2">Join Period</Typography>}
+            />
+            <TextField
+              size="small"
+              label="Refresh (sec)"
+              type="number"
+              value={joinCodeIntervalInput}
+              onChange={(e) => setJoinCodeIntervalInput(e.target.value)}
+              onBlur={handleJoinCodeIntervalBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              inputProps={{ min: 5, max: 120 }}
+              disabled={actionLoading}
+              sx={{ width: 130 }}
             />
             {session.joinCodeActive && session.currentJoinCode && (
               <>
@@ -624,9 +681,10 @@ export default function LiveSession() {
                 </Tooltip>
               </>
             )}
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           </>
         )}
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
         {/* Visibility toggle */}
         <FormControlLabel

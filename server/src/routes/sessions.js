@@ -93,6 +93,15 @@ function generateJoinCode() {
   return String(crypto.randomInt(100000, 999999));
 }
 
+function getParticipationQuestionPoints(question) {
+  // Meteor behavior: default to 1 point per question, except SA defaults to 0 unless explicitly set.
+  let points = Number(question?.type) === 2 ? 0 : 1;
+  if (question?.sessionOptions && Object.prototype.hasOwnProperty.call(question.sessionOptions, 'points')) {
+    points = Number(question.sessionOptions.points) || 0;
+  }
+  return points;
+}
+
 function optionDisplayContent(option, index) {
   return option?.content || option?.plainText || option?.answer || `Option ${index + 1}`;
 }
@@ -364,6 +373,14 @@ export default async function sessionRoutes(app) {
         updates.practiceQuiz = false;
       }
 
+      // If passcode requirement is disabled through the generic session patch,
+      // also close any active join period for consistent behavior.
+      if (updates.joinCodeEnabled === false) {
+        updates.joinCodeActive = false;
+        updates.currentJoinCode = '';
+        updates.joinCodeExpiresAt = null;
+      }
+
       // Reviewable can only be set to true when session is ended
       // Allow if session is already done or if status is being set to done in this request
       if (updates.reviewable === true && session.status !== 'done' && updates.status !== 'done') {
@@ -434,7 +451,14 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      const updates = { status: 'running', date: now };
+      const updates = {
+        status: 'running',
+        date: now,
+        // Join period is always explicit; starting a session does not auto-open passcode entry.
+        joinCodeActive: false,
+        currentJoinCode: '',
+        joinCodeExpiresAt: null,
+      };
       if (session.questions.length > 0 && !session.currentQuestion) {
         updates.currentQuestion = session.questions[0];
 
@@ -442,12 +466,6 @@ export default async function sessionRoutes(app) {
         await Question.findByIdAndUpdate(session.questions[0], {
           $set: { 'sessionOptions.hidden': true },
         });
-      }
-      // Activate join code if enabled
-      if (session.joinCodeEnabled) {
-        updates.joinCodeActive = true;
-        updates.currentJoinCode = generateJoinCode();
-        updates.joinCodeExpiresAt = new Date(now.getTime() + (session.joinCodeInterval || 10) * 1000);
       }
 
       const updated = await Session.findByIdAndUpdate(
@@ -481,9 +499,19 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const updates = {
+        status: 'done',
+        joinCodeActive: false,
+        currentJoinCode: '',
+        joinCodeExpiresAt: null,
+      };
+      if (request.body?.reviewable !== undefined) {
+        updates.reviewable = request.body.reviewable;
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { status: 'done' } },
+        { $set: updates },
         { new: true }
       );
 
@@ -801,13 +829,20 @@ export default async function sessionRoutes(app) {
       const alreadyInList = session.joined.includes(userId);
       const existingRecord = (session.joinRecords || []).find((r) => r.userId === userId);
 
-      // If already joined with code or no code needed, return early
-      if (alreadyInList && (!session.joinCodeEnabled || existingRecord?.joinedWithCode)) {
+      // Already joined students remain joined even if passcode settings change later.
+      if (alreadyInList) {
         return { success: true, alreadyJoined: true };
       }
 
-      // Verify join code if active
-      if (session.joinCodeActive) {
+      // Enforce passcode requirement only at join time.
+      const joinCodeRequired = !!session.joinCodeEnabled;
+      if (joinCodeRequired && !session.joinCodeActive) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'Join period is closed. Please wait for your instructor.',
+        });
+      }
+      if (joinCodeRequired) {
         const providedCode = String(request.body?.joinCode || '').trim();
         if (!providedCode) {
           return reply.code(400).send({ error: 'Bad Request', message: 'Join code is required' });
@@ -818,7 +853,7 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      const joinedWithCode = !!session.joinCodeActive;
+      const joinedWithCode = joinCodeRequired && session.joinCodeActive;
 
       if (existingRecord) {
         // Upgrade existing record to mark joinedWithCode
@@ -873,14 +908,6 @@ export default async function sessionRoutes(app) {
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       const userId = request.user.userId;
       let isJoined = session.joined.includes(userId);
-
-      // If passcode join applies, verify student joined with a valid code
-      if (!isInstrOrAdmin && session.joinCodeEnabled && isJoined) {
-        const joinRecord = (session.joinRecords || []).find((r) => r.userId === userId);
-        if (!joinRecord || !joinRecord.joinedWithCode) {
-          isJoined = false; // Treat as not joined — they need to rejoin with a code
-        }
-      }
 
       // Fetch current question
       let currentQuestion = null;
@@ -1280,6 +1307,16 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      if (session.status !== 'running') {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not live' });
+      }
+      if (!session.joinCodeEnabled) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Passcode is not required for this session' });
+      }
+      if (!session.joinCodeActive) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Join period is closed' });
+      }
+
       const now = new Date();
       const code = generateJoinCode();
       const updated = await Session.findByIdAndUpdate(
@@ -1332,17 +1369,35 @@ export default async function sessionRoutes(app) {
       }
 
       const updates = {};
-      if (request.body.joinCodeEnabled !== undefined) updates.joinCodeEnabled = request.body.joinCodeEnabled;
-      if (request.body.joinCodeInterval !== undefined) updates.joinCodeInterval = request.body.joinCodeInterval;
+      const nextJoinCodeEnabled = request.body.joinCodeEnabled ?? session.joinCodeEnabled;
+      const nextJoinCodeInterval = request.body.joinCodeInterval ?? session.joinCodeInterval ?? 10;
 
-      if (request.body.joinCodeActive !== undefined) {
+      if (request.body.joinCodeEnabled !== undefined) {
+        updates.joinCodeEnabled = request.body.joinCodeEnabled;
+      }
+      if (request.body.joinCodeInterval !== undefined) {
+        updates.joinCodeInterval = request.body.joinCodeInterval;
+      }
+
+      if (!nextJoinCodeEnabled) {
+        if (request.body.joinCodeActive === true) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Passcode requirement must be enabled before opening a join period',
+          });
+        }
+        updates.joinCodeActive = false;
+        updates.currentJoinCode = '';
+        updates.joinCodeExpiresAt = null;
+      } else if (request.body.joinCodeActive !== undefined) {
         updates.joinCodeActive = request.body.joinCodeActive;
         if (request.body.joinCodeActive) {
           const now = new Date();
           updates.currentJoinCode = generateJoinCode();
-          updates.joinCodeExpiresAt = new Date(now.getTime() + (request.body.joinCodeInterval || session.joinCodeInterval || 10) * 1000);
+          updates.joinCodeExpiresAt = new Date(now.getTime() + nextJoinCodeInterval * 1000);
         } else {
           updates.currentJoinCode = '';
+          updates.joinCodeExpiresAt = null;
         }
       }
 
@@ -1417,17 +1472,21 @@ export default async function sessionRoutes(app) {
         });
 
         // Calculate participation
-        const questionsWithPoints = orderedQuestions.filter(
-          (q) => (q.sessionOptions?.points || 0) > 0
-        );
+        const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
         const answeredCount = questionsWithPoints.filter((q) =>
           allResponses.some(
             (r) => String(r.questionId) === String(q._id) && String(r.studentUserId) === String(studentId)
           )
         ).length;
-        const participation = questionsWithPoints.length > 0
-          ? Math.round(1000 * answeredCount / questionsWithPoints.length) / 10
-          : 100;
+        let participation = 0;
+        if (answeredCount > 0) {
+          participation = questionsWithPoints.length > 0
+            ? Math.round(1000 * answeredCount / questionsWithPoints.length) / 10
+            : 100;
+        }
+        if (questionsWithPoints.length === 0) {
+          participation = 100;
+        }
 
         return {
           studentId,
