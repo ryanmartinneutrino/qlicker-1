@@ -6,8 +6,6 @@ import {
   TableHead, TableRow, Tabs, Tab, LinearProgress,
 } from '@mui/material';
 import {
-  ChevronLeft as PrevIcon,
-  ChevronRight as NextIcon,
   Download as DownloadIcon,
   ArrowBack as BackIcon,
 } from '@mui/icons-material';
@@ -150,7 +148,6 @@ export default function SessionReview() {
   const [questions, setQuestions] = useState([]);
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
-  const [questionIdx, setQuestionIdx] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
 
   // ---- Data fetching ----
@@ -196,65 +193,61 @@ export default function SessionReview() {
     return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
 
-  // ---- Current question data for Questions tab ----
+  // ---- Stats data for ALL questions ----
 
-  const currentQ = questions[questionIdx];
-  const qType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const allQuestionStats = useMemo(() => {
+    return questions.map((q) => {
+      const qT = normalizeQuestionType(q);
+      const optionType = [
+        QUESTION_TYPES.MULTIPLE_CHOICE,
+        QUESTION_TYPES.TRUE_FALSE,
+        QUESTION_TYPES.MULTI_SELECT,
+      ].includes(qT);
 
-  const { chartData, correctIndices, responseCount } = useMemo(() => {
-    if (!currentQ || !studentResults.length) {
-      return { chartData: null, correctIndices: [], responseCount: 0 };
-    }
+      let count = 0;
+      const distribution = {};
 
-    const optionType = [
-      QUESTION_TYPES.MULTIPLE_CHOICE,
-      QUESTION_TYPES.TRUE_FALSE,
-      QUESTION_TYPES.MULTI_SELECT,
-    ].includes(qType);
-
-    let count = 0;
-    const distribution = {};
-
-    if (optionType && currentQ.options) {
-      currentQ.options.forEach((opt) => {
-        distribution[opt._id || ''] = 0;
-      });
-    }
-
-    studentResults.forEach((student) => {
-      const qr = (student.questionResults || []).find(
-        (r) => r.questionId === currentQ._id,
-      );
-      if (!qr || !qr.responses || !qr.responses.length) return;
-      count += 1;
-      const lastResponse = qr.responses[qr.responses.length - 1];
-      const answer = lastResponse?.answer;
-
-      if (optionType && answer) {
-        const answers = Array.isArray(answer) ? answer : [answer];
-        answers.forEach((a) => {
-          if (distribution[a] != null) {
-            distribution[a] += 1;
-          }
+      if (optionType && q.options) {
+        q.options.forEach((opt) => {
+          distribution[opt._id || ''] = 0;
         });
       }
-    });
 
-    let cData = null;
-    const cIndices = [];
+      studentResults.forEach((student) => {
+        const qr = (student.questionResults || []).find(
+          (r) => r.questionId === q._id,
+        );
+        if (!qr || !qr.responses || !qr.responses.length) return;
+        count += 1;
+        const lastResponse = qr.responses[qr.responses.length - 1];
+        const answer = lastResponse?.answer;
 
-    if (optionType && currentQ.options) {
-      cData = currentQ.options.map((opt, i) => {
-        if (opt.correct) cIndices.push(i);
-        return {
-          label: OPTION_LETTERS[i] || String(i + 1),
-          count: distribution[opt._id || ''] || 0,
-        };
+        if (optionType && answer) {
+          const answers = Array.isArray(answer) ? answer : [answer];
+          answers.forEach((a) => {
+            if (distribution[a] != null) {
+              distribution[a] += 1;
+            }
+          });
+        }
       });
-    }
 
-    return { chartData: cData, correctIndices: cIndices, responseCount: count };
-  }, [currentQ, studentResults, qType]);
+      let chartData = null;
+      const correctIndices = [];
+
+      if (optionType && q.options) {
+        chartData = q.options.map((opt, i) => {
+          if (opt.correct) correctIndices.push(i);
+          return {
+            label: OPTION_LETTERS[i] || String(i + 1),
+            count: distribution[opt._id || ''] || 0,
+          };
+        });
+      }
+
+      return { qType: qT, chartData, correctIndices, responseCount: count };
+    });
+  }, [questions, studentResults]);
 
   // ---- Question content ref for KaTeX ----
 
@@ -263,7 +256,7 @@ export default function SessionReview() {
     if (questionContainerRef.current) {
       renderKatexInElement(questionContainerRef.current);
     }
-  }, [currentQ, questionIdx]);
+  }, [questions, tab]);
 
   // ---- CSV export ----
 
@@ -450,145 +443,114 @@ export default function SessionReview() {
         aria-label="Session review tabs"
       >
         <Tab label="Questions" />
-        <Tab label="Students" />
+        <Tab label="Response Data" />
       </Tabs>
 
-      {/* Questions tab */}
+      {/* Questions tab – all questions shown at once with inline stats */}
       <TabPanel value={tab} index={0}>
         {totalQuestions === 0 ? (
           <Alert severity="info">This session has no questions.</Alert>
         ) : (
-          <Box>
-            {/* Navigation */}
-            {totalQuestions > 1 && (
-              <Box
-                sx={{
-                  display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', gap: 2, mb: 2,
-                }}
-              >
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<PrevIcon />}
-                  disabled={questionIdx <= 0}
-                  onClick={() => setQuestionIdx((prev) => prev - 1)}
-                  aria-label="Previous question"
-                >
-                  Prev
-                </Button>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Question {questionIdx + 1} of {totalQuestions}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  endIcon={<NextIcon />}
-                  disabled={questionIdx >= totalQuestions - 1}
-                  onClick={() => setQuestionIdx((prev) => prev + 1)}
-                  aria-label="Next question"
-                >
-                  Next
-                </Button>
-              </Box>
-            )}
+          <Box ref={questionContainerRef} sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {questions.map((q, qi) => {
+              const stats = allQuestionStats[qi] || {};
+              const qT = stats.qType;
+              const isOptionType = [
+                QUESTION_TYPES.MULTIPLE_CHOICE,
+                QUESTION_TYPES.TRUE_FALSE,
+                QUESTION_TYPES.MULTI_SELECT,
+              ].includes(qT);
 
-            {currentQ && (
-              <Paper
-                variant="outlined"
-                sx={{ p: 2.5, mb: 2 }}
-                ref={questionContainerRef}
-              >
-                {/* Question header */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Q{questionIdx + 1}
-                  </Typography>
-                  <Chip
-                    label={TYPE_LABELS[qType] || 'Unknown'}
-                    color={TYPE_COLORS[qType] || 'default'}
-                    size="small"
-                    sx={COMPACT_CHIP_SX}
-                  />
-                  {currentQ.sessionOptions?.points != null && (
+              return (
+                <Paper key={q._id || qi} variant="outlined" sx={{ p: 2.5 }}>
+                  {/* Question header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      Q{qi + 1}
+                    </Typography>
                     <Chip
-                      label={`${currentQ.sessionOptions.points} pt${currentQ.sessionOptions.points !== 1 ? 's' : ''}`}
+                      label={TYPE_LABELS[qT] || 'Unknown'}
+                      color={TYPE_COLORS[qT] || 'default'}
+                      size="small"
+                      sx={COMPACT_CHIP_SX}
+                    />
+                    {q.sessionOptions?.points != null && (
+                      <Chip
+                        label={`${q.sessionOptions.points} pt${q.sessionOptions.points !== 1 ? 's' : ''}`}
+                        size="small"
+                        variant="outlined"
+                        sx={COMPACT_CHIP_SX}
+                      />
+                    )}
+                    <Chip
+                      label={`${stats.responseCount || 0} response${stats.responseCount !== 1 ? 's' : ''}`}
                       size="small"
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}
                     />
-                  )}
-                  <Chip
-                    label={`${responseCount} response${responseCount !== 1 ? 's' : ''}`}
-                    size="small"
-                    variant="outlined"
-                    sx={COMPACT_CHIP_SX}
-                  />
-                </Box>
-
-                {/* Question content */}
-                <Box sx={{ mb: 2 }}>
-                  <RichContent html={currentQ.content} fallback={currentQ.plainText} />
-                </Box>
-
-                {/* Options for MC / TF / MS */}
-                {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
-                  .includes(qType) && (currentQ.options || []).length > 0 && (
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 2 }}>
-                    {(currentQ.options || []).map((opt, i) => {
-                      const isCorrect = !!opt.correct;
-                      return (
-                        <Paper
-                          key={opt._id || i}
-                          variant="outlined"
-                          sx={{
-                            p: 1, display: 'flex', alignItems: 'flex-start', gap: 1,
-                            borderColor: isCorrect ? 'success.main' : 'divider',
-                            bgcolor: isCorrect ? 'success.50' : 'transparent',
-                          }}
-                        >
-                          <Chip
-                            label={OPTION_LETTERS[i]}
-                            size="small"
-                            color={isCorrect ? 'success' : 'default'}
-                            sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
-                          />
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <RichContent html={opt.answer || opt.content || opt.plainText} />
-                          </Box>
-                        </Paper>
-                      );
-                    })}
                   </Box>
-                )}
 
-                {/* Numerical correct answer */}
-                {qType === QUESTION_TYPES.NUMERICAL && currentQ.correctNumerical != null && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Correct: {currentQ.correctNumerical} (± {currentQ.toleranceNumerical ?? 0})
-                  </Typography>
-                )}
-              </Paper>
-            )}
+                  {/* Question content */}
+                  <Box sx={{ mb: 2 }}>
+                    <RichContent html={q.content} fallback={q.plainText} />
+                  </Box>
 
-            {/* Response distribution */}
-            {currentQ && chartData && (
-              <Paper variant="outlined" sx={{ p: 2.5 }} aria-label="Response distribution">
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                  Response Distribution
-                </Typography>
-                <DistributionBars
-                  data={chartData}
-                  highlightCorrect
-                  correctIndices={correctIndices}
-                />
-              </Paper>
-            )}
+                  {/* Inline stats for MC/TF/MS using option bars */}
+                  {isOptionType && stats.chartData && (
+                    <Box sx={{ mb: 1 }}>
+                      <DistributionBars
+                        data={stats.chartData}
+                        highlightCorrect
+                        correctIndices={stats.correctIndices}
+                        options={q.options}
+                      />
+                    </Box>
+                  )}
+
+                  {/* Fallback: show options without stats for types that don't have chart data */}
+                  {isOptionType && !stats.chartData && (q.options || []).length > 0 && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 1 }}>
+                      {(q.options || []).map((opt, i) => {
+                        const isCorrect = !!opt.correct;
+                        return (
+                          <Paper
+                            key={opt._id || i}
+                            variant="outlined"
+                            sx={{
+                              p: 1, display: 'flex', alignItems: 'flex-start', gap: 1,
+                              borderColor: isCorrect ? 'success.main' : 'divider',
+                              bgcolor: isCorrect ? 'success.50' : 'transparent',
+                            }}
+                          >
+                            <Chip
+                              label={OPTION_LETTERS[i]}
+                              size="small"
+                              color={isCorrect ? 'success' : 'default'}
+                              sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+                            />
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <RichContent html={opt.answer || opt.content || opt.plainText} />
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Box>
+                  )}
+
+                  {/* Numerical correct answer */}
+                  {qT === QUESTION_TYPES.NUMERICAL && q.correctNumerical != null && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Correct: {q.correctNumerical} (± {q.toleranceNumerical ?? 0})
+                    </Typography>
+                  )}
+                </Paper>
+              );
+            })}
           </Box>
         )}
       </TabPanel>
 
-      {/* Students tab */}
+      {/* Response Data tab */}
       <TabPanel value={tab} index={1}>
         {studentResults.length === 0 ? (
           <Alert severity="info">No student results available.</Alert>

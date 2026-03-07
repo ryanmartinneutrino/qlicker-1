@@ -337,7 +337,8 @@ export default async function sessionRoutes(app) {
       }
 
       // Reviewable can only be set to true when session is ended
-      if (updates.reviewable === true && session.status !== 'done') {
+      // Allow if session is already done or if status is being set to done in this request
+      if (updates.reviewable === true && session.status !== 'done' && updates.status !== 'done') {
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'Session must be in ended state to be made reviewable',

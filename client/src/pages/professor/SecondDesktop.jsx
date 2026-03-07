@@ -579,6 +579,20 @@ export default function SecondDesktop() {
           )}
         </Paper>
       )}
+
+      {/* Solution (shown when showCorrect is enabled) */}
+      {showCorrect && currentQ.solution && (
+        <Paper
+          variant="outlined"
+          sx={{ p: { xs: 2, sm: 3 }, mb: 3, borderColor: 'success.main' }}
+          aria-label="Solution"
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
+            Solution
+          </Typography>
+          <RichContent html={currentQ.solution} />
+        </Paper>
+      )}
     </Box>
   );
 }
