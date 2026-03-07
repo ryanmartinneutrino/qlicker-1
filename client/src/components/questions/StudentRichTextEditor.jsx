@@ -36,7 +36,7 @@ export default function StudentRichTextEditor({
   placeholder = 'Type your answer…',
   disabled = false,
 }) {
-  const lastEditorHtmlRef = useRef('');
+  const lastNormalizedHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`sa-bubble-${Math.random().toString(36).slice(2)}`);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
 
@@ -60,20 +60,36 @@ export default function StudentRichTextEditor({
       },
       onUpdate({ editor: ed }) {
         const rawHtml = ed.getHTML();
-        if (rawHtml === lastEditorHtmlRef.current) return;
-        lastEditorHtmlRef.current = rawHtml;
         const html = normalizeStoredHtml(rawHtml);
+        if (html === lastNormalizedHtmlRef.current) return;
+        lastNormalizedHtmlRef.current = html;
         const plainText = extractPlainTextFromHtml(rawHtml);
         if (onChange) onChange({ html, plainText });
       },
     },
-    [preparedValue, disabled]
+    [disabled, placeholder]
   );
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const nextHtml = normalizeStoredHtml(preparedValue || '');
+    const currentHtml = normalizeStoredHtml(editor.getHTML());
+    if (nextHtml === currentHtml) {
+      lastNormalizedHtmlRef.current = currentHtml;
+      return;
+    }
+
+    // Avoid resetting the user's cursor/typing when parent state echoes updates.
+    if (editor.isFocused) return;
+
+    editor.commands.setContent(preparedValue || '<p></p>', false);
+    lastNormalizedHtmlRef.current = nextHtml;
+  }, [editor, preparedValue]);
 
   if (!editor) return null;
 

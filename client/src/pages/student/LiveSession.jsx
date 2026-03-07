@@ -299,6 +299,8 @@ export default function LiveSession() {
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
   const responseStats = liveData?.responseStats;
+  const questionNumber = liveData?.questionNumber;
+  const questionCount = liveData?.questionCount ?? 0;
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const hasSubmitted = !!studentResponse;
@@ -530,6 +532,15 @@ export default function LiveSession() {
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
           {session.name || 'Live Session'}
         </Typography>
+        {questionCount > 0 && questionNumber != null && (
+          <Chip
+            label={`Q${questionNumber}/${questionCount}`}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+            aria-label={`Question ${questionNumber} of ${questionCount}`}
+          />
+        )}
         {currentAttempt && (
           <Chip
             label={`Attempt ${currentAttempt.number ?? 1}`}

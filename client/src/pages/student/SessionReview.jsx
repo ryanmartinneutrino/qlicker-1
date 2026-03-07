@@ -97,45 +97,57 @@ function ReviewQuestionCard({ question, index, total, solutionVisible, onToggleS
           {opts.map((opt, i) => {
             const showCorrectMark = solutionVisible && opt.correct;
             return (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, mb: 0.5 }}>
+              <Box
+                key={i}
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: shouldLetter ? '20px 20px minmax(0, 1fr)' : '20px minmax(0, 1fr)',
+                  columnGap: 0.5,
+                  alignItems: 'start',
+                  mb: 0.5,
+                  px: 0.25,
+                  borderRadius: 0.75,
+                  bgcolor: showCorrectMark ? 'rgba(46, 125, 50, 0.08)' : 'transparent',
+                }}
+              >
                 <Box sx={{ width: 20, display: 'flex', justifyContent: 'center', pt: 0.25 }}>
                   {showCorrectMark ? <CorrectIcon color="success" fontSize="small" /> : null}
                 </Box>
-                <Box sx={{ color: showCorrectMark ? 'success.main' : 'text.primary' }}>
-                  <Box sx={{
-                    display: 'grid',
-                    gridTemplateColumns: shouldLetter ? '20px minmax(0, 1fr)' : 'minmax(0, 1fr)',
-                    columnGap: 0.5,
-                    alignItems: 'start',
-                  }}>
-                    {shouldLetter && (
-                      <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
-                        {String.fromCharCode(65 + i)}.
-                      </Typography>
-                    )}
-                    <Box
-                      sx={{
-                        '& p': { my: 0 },
-                        '& ul, & ol': { my: 0, pl: 2.5 },
-                        '& li': { my: 0 },
-                        '& img': {
-                          display: 'block', maxWidth: '90% !important',
-                          height: 'auto !important',
-                          borderRadius: 0, my: 0.5,
-                        },
-                      }}
-                      dangerouslySetInnerHTML={{
-                        __html: prepareRichTextInput(
-                          opt.content || opt.plainText || opt.answer || `Option ${i + 1}`,
-                        ),
-                      }}
-                    />
-                  </Box>
-                </Box>
+                {shouldLetter && (
+                  <Typography variant="body2" sx={{ lineHeight: 1.5 }}>
+                    {String.fromCharCode(65 + i)}.
+                  </Typography>
+                )}
+                <Box
+                  sx={{
+                    color: showCorrectMark ? 'success.main' : 'text.primary',
+                    '& p': { my: 0 },
+                    '& ul, & ol': { my: 0, pl: 2.5 },
+                    '& li': { my: 0 },
+                    '& img': {
+                      display: 'block', maxWidth: '90% !important',
+                      height: 'auto !important',
+                      borderRadius: 0, my: 0.5,
+                    },
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: prepareRichTextInput(
+                      opt.content || opt.plainText || opt.answer || `Option ${i + 1}`,
+                    ),
+                  }}
+                />
               </Box>
             );
           })}
         </Box>
+      )}
+
+      {solutionVisible
+        && [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType)
+        && !(question.solution || question.solution_plainText) && (
+        <Typography variant="caption" color="text.secondary" sx={{ pl: 2, mt: 0.5, display: 'block' }}>
+          Correct answer(s) are highlighted above.
+        </Typography>
       )}
 
       {/* Numerical correct answer */}

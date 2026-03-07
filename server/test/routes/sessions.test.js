@@ -430,6 +430,8 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(body.session).not.toHaveProperty('currentQuestion');
     expect(body.session).not.toHaveProperty('reviewable');
     expect(body).not.toHaveProperty('responseCount');
+    expect(body).toHaveProperty('questionCount');
+    expect(body).toHaveProperty('questionNumber');
   });
 
   it('instructor payload still includes joined and response summary fields', async (ctx) => {
@@ -458,6 +460,78 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(body.session).toHaveProperty('questions');
     expect(body.session).toHaveProperty('currentQuestion');
     expect(body).toHaveProperty('responseCount');
+  });
+
+  it('student short-answer stats do not include responder identifiers', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({ email: 'student-live-two@example.com', roles: ['student'] });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'First response',
+    });
+    await Response.create({
+      questionId: question._id,
+      studentUserId: studentTwo._id,
+      attempt: 1,
+      answer: 'Second response',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('shortAnswer');
+    expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
   });
 });
 

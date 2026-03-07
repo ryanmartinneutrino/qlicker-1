@@ -70,7 +70,7 @@ function RichContent({ html }) {
 }
 
 /** Short-answer responses list (rendered rich text). */
-function ShortAnswerList({ responses }) {
+function ShortAnswerList({ responses, showStudentNames = false, studentNameById = {} }) {
   if (!responses || !responses.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
@@ -78,6 +78,11 @@ function ShortAnswerList({ responses }) {
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
       {responses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+          {showStudentNames && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              {studentNameById[String(r.studentUserId)] || 'Unknown Student'}
+            </Typography>
+          )}
           {r.answerWysiwyg ? (
             <RichContent html={r.answerWysiwyg} />
           ) : (
@@ -150,6 +155,7 @@ export default function LiveSession() {
   // Session ended redirect
   const [sessionEnded, setSessionEnded] = useState(false);
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
+  const [studentNameById, setStudentNameById] = useState({});
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -301,6 +307,29 @@ export default function LiveSession() {
     if (interval == null) return;
     setJoinCodeIntervalInput(String(interval));
   }, [liveData?.session?.joinCodeInterval]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStudentNames() {
+      try {
+        const { data } = await apiClient.get(`/courses/${courseId}`);
+        const students = data?.course?.students || [];
+        const map = {};
+        students.forEach((student) => {
+          const first = student?.profile?.firstname || '';
+          const last = student?.profile?.lastname || '';
+          const fullName = `${first} ${last}`.trim();
+          map[String(student?._id || '')] = fullName || student?.emails?.[0]?.address || 'Unknown Student';
+        });
+        if (!cancelled) setStudentNameById(map);
+      } catch {
+        if (!cancelled) setStudentNameById({});
+      }
+    }
+
+    loadStudentNames();
+    return () => { cancelled = true; };
+  }, [courseId]);
 
   // --------------------------------------------------
   // Session ended → redirect after brief delay
@@ -942,11 +971,19 @@ export default function LiveSession() {
               Distribution is shown inline with the answer options.
             </Typography>
           ) : responseStats?.type === 'shortAnswer' ? (
-            <ShortAnswerList responses={responseStats.answers || allResponses} />
+            <ShortAnswerList
+              responses={responseStats.answers || allResponses}
+              showStudentNames
+              studentNameById={studentNameById}
+            />
           ) : responseStats?.type === 'numerical' ? (
             <NumericalStats stats={responseStats} allResponses={allResponses} />
           ) : allResponses.length > 0 ? (
-            <ShortAnswerList responses={allResponses} />
+            <ShortAnswerList
+              responses={allResponses}
+              showStudentNames
+              studentNameById={studentNameById}
+            />
           ) : (
             <Typography variant="body2" color="text.secondary">
               No responses yet.

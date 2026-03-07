@@ -914,6 +914,11 @@ export default async function sessionRoutes(app) {
       if (session.currentQuestion) {
         currentQuestion = await Question.findById(session.currentQuestion).lean();
       }
+      const questionCount = Array.isArray(session.questions) ? session.questions.length : 0;
+      const questionIndex = session.currentQuestion
+        ? (session.questions || []).findIndex((id) => String(id) === String(session.currentQuestion))
+        : -1;
+      const questionNumber = questionIndex >= 0 ? questionIndex + 1 : null;
 
       // For students: strip answer info and limit data
       const questionHidden = currentQuestion?.sessionOptions?.hidden ?? true;
@@ -951,6 +956,15 @@ export default async function sessionRoutes(app) {
               attempt: currentAttempt.number,
             }).lean();
             responseStats = buildResponseStats(currentQuestion, responses);
+            if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+              responseStats = {
+                ...responseStats,
+                answers: responseStats.answers.map((entry) => ({
+                  answer: entry.answer,
+                  answerWysiwyg: entry.answerWysiwyg,
+                })),
+              };
+            }
           }
         }
       }
@@ -982,6 +996,8 @@ export default async function sessionRoutes(app) {
         currentQuestion: null,
         currentAttempt,
         responseStats,
+        questionNumber,
+        questionCount,
       };
 
       if (isInstrOrAdmin) {
