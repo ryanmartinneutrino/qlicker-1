@@ -1,4 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import {
+  BrowserRouter, Routes, Route, Navigate, useLocation,
+} from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import theme from './theme/index';
 import { AuthProvider } from './contexts/AuthContext';
@@ -23,12 +26,65 @@ import StudentCourseDetail from './pages/student/CourseDetail';
 import SessionReview from './pages/student/SessionReview';
 import StudentLiveSession from './pages/student/LiveSession';
 
+function getPageTitle(pathname) {
+  const routes = [
+    [/^\/$/, 'Home'],
+    [/^\/login$/, 'Login'],
+    [/^\/sso-callback$/, 'Signing In'],
+    [/^\/reset\/[^/]+$/, 'Reset Password'],
+    [/^\/verify-email\/[^/]+$/, 'Verify Email'],
+    [/^\/profile$/, 'Profile'],
+    [/^\/admin$/, 'Admin Dashboard'],
+    [/^\/manage$/, 'Professor Dashboard'],
+    [/^\/manage\/course\/[^/]+$/, 'Course Details'],
+    [/^\/manage\/course\/[^/]+\/session\/[^/]+$/, 'Session Editor'],
+    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/live$/, 'Live Session'],
+    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/review$/, 'Session Review'],
+    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/present$/, 'Presentation View'],
+    [/^\/student$/, 'Student Dashboard'],
+    [/^\/student\/course\/[^/]+$/, 'Course'],
+    [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, 'Session Review'],
+    [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, 'Live Session'],
+  ];
+
+  const match = routes.find(([pattern]) => pattern.test(pathname));
+  if (!match) return 'Qlicker';
+  return `${match[1]} | Qlicker`;
+}
+
+function RouteAccessibility() {
+  const location = useLocation();
+
+  useEffect(() => {
+    document.title = getPageTitle(location.pathname);
+
+    const rafId = window.requestAnimationFrame(() => {
+      const mainContent = document.getElementById('main-content');
+      if (mainContent) return;
+
+      const heading = document.querySelector('h1, h2, [role="heading"]');
+      if (!(heading instanceof HTMLElement)) return;
+      const hadTabIndex = heading.hasAttribute('tabindex');
+      if (!hadTabIndex) heading.setAttribute('tabindex', '-1');
+      heading.focus();
+      if (!hadTabIndex) {
+        heading.addEventListener('blur', () => heading.removeAttribute('tabindex'), { once: true });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [location.pathname]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AuthProvider>
+          <RouteAccessibility />
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />

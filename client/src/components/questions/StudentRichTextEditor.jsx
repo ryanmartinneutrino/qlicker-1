@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -34,9 +34,11 @@ export default function StudentRichTextEditor({
   onChange,
   placeholder = 'Type your answer…',
   disabled = false,
+  ariaLabel = 'Short answer response editor',
 }) {
   const lastNormalizedHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`sa-bubble-${Math.random().toString(36).slice(2)}`);
+  const mathHintId = useId();
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
 
   const editor = useEditor(
@@ -55,7 +57,14 @@ export default function StudentRichTextEditor({
         Placeholder.configure({ placeholder }),
       ],
       editorProps: {
-        attributes: { class: 'student-rich-text-editor' },
+        attributes: {
+          class: 'student-rich-text-editor',
+          role: 'textbox',
+          'aria-multiline': 'true',
+          'aria-label': ariaLabel,
+          'aria-disabled': disabled ? 'true' : 'false',
+          'aria-describedby': mathHintId,
+        },
       },
       onUpdate({ editor: ed }) {
         const rawHtml = ed.getHTML();
@@ -66,7 +75,7 @@ export default function StudentRichTextEditor({
         if (onChange) onChange({ html, plainText });
       },
     },
-    [disabled, placeholder]
+    [ariaLabel, disabled, mathHintId, placeholder]
   );
 
   useEffect(() => {
@@ -156,7 +165,7 @@ export default function StudentRichTextEditor({
         )}
         <EditorContent editor={editor} />
       </Paper>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+      <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
         Use \( ... \) for inline math or $$ ... $$ for display math
       </Typography>
     </Box>

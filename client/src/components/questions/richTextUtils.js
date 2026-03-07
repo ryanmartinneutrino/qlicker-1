@@ -1,4 +1,5 @@
 import renderMathInElement from 'katex/contrib/auto-render';
+import DOMPurify from 'dompurify';
 
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
@@ -150,17 +151,28 @@ export function prepareRichTextInput(value, fallback = '') {
     return `<p>${escapeHtml(normalized)}</p>`;
   }
 
-  return normalized;
+  return sanitizeRichHtml(normalized);
+}
+
+export function sanitizeRichHtml(html) {
+  const source = String(html || '').trim();
+  if (!source) return '';
+  if (typeof window === 'undefined') return source;
+
+  return DOMPurify.sanitize(source, {
+    USE_PROFILES: { html: true },
+  });
 }
 
 export function normalizeStoredHtml(html) {
   const trimmed = String(html || '').trim();
   if (!trimmed) return '';
-  if (trimmed === '<p></p>' || trimmed === '<p><br></p>') return '';
+  const sanitized = sanitizeRichHtml(trimmed).trim();
+  if (!sanitized || sanitized === '<p></p>' || sanitized === '<p><br></p>') return '';
 
-  const noEmptyParagraphs = trimmed.replace(EMPTY_PARAGRAPH_REGEX, '').trim();
+  const noEmptyParagraphs = sanitized.replace(EMPTY_PARAGRAPH_REGEX, '').trim();
   if (!noEmptyParagraphs) return '';
-  return trimmed;
+  return sanitized;
 }
 
 export function extractPlainTextFromHtml(html) {

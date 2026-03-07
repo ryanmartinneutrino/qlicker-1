@@ -110,6 +110,7 @@ export default function RichTextEditor({
   const lastEditorHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
+  const editorAriaLabel = label ? `${label} editor` : 'Rich text editor';
 
   const uploadImage = async (file, maxEditorImageWidth) => {
     const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
@@ -139,7 +140,13 @@ export default function RichTextEditor({
         Placeholder.configure({ placeholder }),
       ],
       editorProps: {
-        attributes: { class: 'question-rich-text-editor' },
+        attributes: {
+          class: 'question-rich-text-editor',
+          role: 'textbox',
+          'aria-multiline': 'true',
+          'aria-label': editorAriaLabel,
+          'aria-disabled': disabled ? 'true' : 'false',
+        },
         handleDrop(view, event) {
           const droppedFiles = Array.from(event.dataTransfer?.files || []).filter(isImageFile);
           if (!droppedFiles.length) return false;
@@ -226,7 +233,7 @@ export default function RichTextEditor({
         onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
       },
     },
-    [disabled]
+    [disabled, editorAriaLabel, placeholder]
   );
 
   useEffect(() => {
