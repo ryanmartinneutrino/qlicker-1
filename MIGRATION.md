@@ -1050,10 +1050,27 @@ The following Phase 5 work has been completed:
 - ✅ **Control bar toggle switches** — Professor LiveSession visibility/stats/correct controls converted from buttons to MUI Switch toggles. Join code controls moved to top control bar. Session settings button added.
 - ✅ **Visibility persistence** — First question set to hidden (`sessionOptions.hidden: true`) on session launch. When navigating to next/prev question, visibility state carries over from current question.
 - ✅ **Reviewable enforcement** — Reviewable toggle disabled in professor CourseDetail unless session status is 'done'. Server validates: returns 400 if attempting to set reviewable on non-ended session (both PATCH /sessions/:id and PATCH /sessions/:id/reviewable endpoints). Student CourseDetail only shows reviewable chip for ended sessions.
-- ✅ **Passcode join tracking** — `joinedWithCode` boolean added to JoinRecordSchema. Join endpoint records whether student joined during active passcode mode. Students who haven't joined with a code are treated as not-joined when joinCodeEnabled is true. Student LiveSession shows "waiting for passcode entry" message when joinCodeEnabled but not active.
+- ✅ **Passcode join lifecycle** — `joinCodeEnabled` is the passcode-required toggle (available in SessionEditor and LiveSession), and `joinCodeActive` is the explicit join period start/stop control. Students can join with a passcode only during an active join period; when passcode requirement is off they can join without a code. Disabling passcode requirement auto-closes the join period and clears the active code.
+- ✅ **Non-retroactive passcode enforcement** — passcode requirement applies to new joins only; students already in `joined` remain joined if requirement is turned on mid-session.
+- ✅ **End session reviewable atomically** — `POST /api/v1/sessions/:id/end` now accepts optional `{ reviewable: boolean }` so ending and making reviewable happen in one write (avoids ordering failures from separate calls).
+- ✅ **Meteor-compatible participation scoring** — Session review participation follows legacy Meteor logic: default question points are `1` (except Short Answer defaults to `0` unless explicit `sessionOptions.points` exists), participation is based on answered questions with points > 0, and participation is reported as a percentage (0–100, one decimal).
 - ✅ **Session settings button** — Settings button in session control bar navigates to session editor page.
 - ✅ **Meteor-style inline stats in SessionReview** — SessionReview Questions tab now shows all questions at once (removed prev/next navigation). Each question includes inline DistributionBars with option text and percentage fill. "Students" tab renamed to "Response Data".
 - ✅ **Solution display in SecondDesktop** — When showCorrect is enabled, SecondDesktop now renders the solution text (consistent with student LiveSession behavior).
+
+#### PR 123: Interactive Session Review & Rendering Compatibility Fixes
+
+- ✅ **Student review compatibility with legacy records** — `GET /api/v1/sessions/:id/review` now normalizes legacy question fields (`solutionHtml`, `solutionText`, legacy correct-answer hints/flags) into review payloads so "Show solution" consistently reveals both correct answers and solution content.
+- ✅ **Student review response UX** — Student responses are hidden by default and can be toggled per question. Multiple-attempt controls remain available and cycle the loaded attempt.
+- ✅ **Student review answer rendering by type** — MC/MS/TF responses are overlaid directly on options (selected choices highlighted), while SA/NU responses continue to render as answer content (with rich-text math rendering for SA).
+- ✅ **Legacy answer-shape resilience** — Option-answer resolution now supports numeric/string indices, letters, option IDs, rich-text text matching, object payloads, and delimited/JSON-like legacy values.
+- ✅ **Short-answer live preview improvements** — SA input preview now shows full typed content (not only math-only cases), renders KaTeX, and uses debounced updates for smoother typing feedback.
+- ✅ **Resizable SA input** — Student SA editor is vertically resizable (matching editor-style affordance for longer responses).
+- ✅ **KaTeX re-render safety hardening** — `renderKatexInElement()` now avoids rewriting interactive DOM subtrees, preventing React event-handler detachment in containers that include inputs/buttons/labels.
+- ✅ **Live-session solution gating** — Student live payload continues to withhold solution fields until `showCorrect` is enabled; when enabled, normalized solution fields are returned for consistent rendering.
+- ✅ **Short-answer identity privacy by default** — Instructor live payload now omits raw responder identifiers by default, with optional `includeStudentNames=true` for control-view attribution only.
+- ✅ **Professor review by attempt** — Session review now renders per-attempt rows for each question (attempts are clearly labeled and reported with per-attempt response counts/distributions).
+- ✅ **Coverage expansion** — Added sessions route tests covering student solution gating in live payloads, instructor short-answer name opt-in behavior, and legacy review-field normalization.
 
 **Known issues / future work:**
 - ~~Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`).~~ ✅ Fixed: `@fastify/rate-limit` added on auth endpoints; `@fastify/helmet` added for security headers.

@@ -93,6 +93,188 @@ function generateJoinCode() {
   return String(crypto.randomInt(100000, 999999));
 }
 
+function getParticipationQuestionPoints(question) {
+  // Meteor behavior: default to 1 point per question, except SA defaults to 0 unless explicitly set.
+  let points = Number(question?.type) === 2 ? 0 : 1;
+  if (question?.sessionOptions && Object.prototype.hasOwnProperty.call(question.sessionOptions, 'points')) {
+    points = Number(question.sessionOptions.points) || 0;
+  }
+  return points;
+}
+
+function optionDisplayContent(option, index) {
+  return option?.content || option?.plainText || option?.answer || `Option ${index + 1}`;
+}
+
+function normalizeAnswerValue(answer) {
+  if (answer === null || answer === undefined) return '';
+  return String(answer).trim();
+}
+
+function parseBooleanLike(value) {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', 'yes', 'y', 'on'].includes(normalized)) return true;
+    if (['false', 'no', 'n', 'off'].includes(normalized)) return false;
+  }
+  return false;
+}
+
+function normalizeComparableText(answer) {
+  return normalizeAnswerValue(answer)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function toPlainText(value) {
+  return normalizeAnswerValue(value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function getResponseStudentId(response) {
+  return normalizeAnswerValue(
+    response?.studentUserId || response?.userId || response?.studentId
+  );
+}
+
+function parseBooleanQuery(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = normalizeAnswerValue(value).toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+}
+
+function formatUserDisplayName(user) {
+  const first = normalizeAnswerValue(user?.profile?.firstname);
+  const last = normalizeAnswerValue(user?.profile?.lastname);
+  const fullName = `${first} ${last}`.trim();
+  if (fullName) return fullName;
+  return user?.emails?.[0]?.address || user?.email || 'Unknown Student';
+}
+
+function collectCorrectAnswerHints(question) {
+  const hints = [];
+  const candidateFields = [
+    question?.correctAnswer,
+    question?.correctAnswers,
+    question?.correctOption,
+    question?.correctOptions,
+    question?.correctIndex,
+    question?.correctIndexes,
+    question?.answerKey,
+    question?.answerKeys,
+    question?.rightAnswer,
+    question?.rightAnswers,
+  ];
+
+  for (const candidate of candidateFields) {
+    if (Array.isArray(candidate)) {
+      candidate.forEach((entry) => {
+        if (entry !== undefined && entry !== null && entry !== '') hints.push(entry);
+      });
+    } else if (candidate !== undefined && candidate !== null && candidate !== '') {
+      hints.push(candidate);
+    }
+  }
+
+  return hints;
+}
+
+function normalizeQuestionForReview(question) {
+  if (!question) return question;
+  const normalized = { ...question };
+  const options = Array.isArray(normalized.options) ? normalized.options.map((opt) => ({ ...opt })) : [];
+
+  if (options.length > 0) {
+    const hintedIndices = new Set(
+      collectCorrectAnswerHints(normalized)
+        .map((hint) => resolveOptionIndex(hint, options))
+        .filter((idx) => idx >= 0 && idx < options.length)
+    );
+
+    normalized.options = options.map((opt, idx) => ({
+      ...opt,
+      correct: parseBooleanLike(opt?.correct) || parseBooleanLike(opt?.isCorrect) || hintedIndices.has(idx),
+    }));
+  } else {
+    normalized.options = options;
+  }
+
+  const solutionHtml = normalizeAnswerValue(
+    normalized.solution
+      || normalized.solutionHtml
+      || normalized.explanation
+      || normalized.explanationHtml
+      || normalized.rationale
+  );
+  const solutionPlain = normalizeAnswerValue(
+    normalized.solution_plainText
+      || normalized.solutionPlainText
+      || normalized.solutionText
+      || normalized.explanation_plainText
+      || normalized.explanationPlainText
+      || normalized.rationaleText
+  );
+
+  if (solutionHtml) {
+    normalized.solution = solutionHtml;
+  }
+  if (solutionPlain) {
+    normalized.solution_plainText = solutionPlain;
+  } else if (solutionHtml) {
+    normalized.solution_plainText = toPlainText(solutionHtml);
+  }
+
+  return normalized;
+}
+
+function resolveOptionIndex(answer, options) {
+  if (answer && typeof answer === 'object') {
+    if (Array.isArray(answer)) return -1;
+    if (answer.optionId !== undefined) return resolveOptionIndex(answer.optionId, options);
+    if (answer._id !== undefined) return resolveOptionIndex(answer._id, options);
+    if (answer.id !== undefined) return resolveOptionIndex(answer.id, options);
+    if (answer.index !== undefined) return resolveOptionIndex(answer.index, options);
+    if (answer.value !== undefined) return resolveOptionIndex(answer.value, options);
+    if (answer.answer !== undefined) return resolveOptionIndex(answer.answer, options);
+    if (answer.text !== undefined) return resolveOptionIndex(answer.text, options);
+  }
+
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    if (answer >= 0 && answer < options.length) return answer;
+    if (answer >= 1 && answer <= options.length) return answer - 1;
+    return -1;
+  }
+
+  const normalizedRaw = normalizeAnswerValue(answer);
+  if (!normalizedRaw) return -1;
+  const normalized = normalizedRaw.toLowerCase();
+
+  // Current student UI may submit option index as a string (e.g. "0", "1").
+  if (/^-?\d+$/.test(normalizedRaw)) {
+    const parsed = Number(normalizedRaw);
+    if (parsed >= 0 && parsed < options.length) return parsed;
+    if (parsed >= 1 && parsed <= options.length) return parsed - 1;
+  }
+
+  // Legacy payloads may store option letters (e.g., "A", "B").
+  if (/^[a-z]$/.test(normalized)) {
+    const idx = normalized.charCodeAt(0) - 97;
+    if (idx >= 0 && idx < options.length) return idx;
+  }
+
+  return options.findIndex((opt) => {
+    if (normalizeAnswerValue(opt?._id).toLowerCase() === normalized) return true;
+    if (normalizeComparableText(opt?.answer) === normalizeComparableText(normalizedRaw)) return true;
+    if (normalizeComparableText(opt?.content) === normalizeComparableText(normalizedRaw)) return true;
+    if (normalizeComparableText(opt?.plainText) === normalizeComparableText(normalizedRaw)) return true;
+    return false;
+  });
+}
+
 // Build response stats for a question's responses (for distribution display)
 function buildResponseStats(question, responses) {
   if (!question || !responses) return null;
@@ -103,24 +285,20 @@ function buildResponseStats(question, responses) {
   if ([0, 1, 3].includes(type) && options.length > 0) {
     const distribution = options.map((opt, i) => ({
       index: i,
-      answer: opt.answer || opt.content || opt.plainText || `Option ${i + 1}`,
+      answer: optionDisplayContent(opt, i),
       correct: !!opt.correct,
       count: 0,
     }));
 
     for (const r of responses) {
       if (Array.isArray(r.answer)) {
-        // MS: answer is array of indices or values
+        // MS: answer can be array of indices, option IDs, or answer strings
         for (const a of r.answer) {
-          const idx = typeof a === 'number' ? a : options.findIndex(
-            (o) => o.answer === a || o.content === a
-          );
+          const idx = resolveOptionIndex(a, options);
           if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
         }
       } else {
-        const idx = typeof r.answer === 'number' ? r.answer : options.findIndex(
-          (o) => o.answer === r.answer || o.content === r.answer
-        );
+        const idx = resolveOptionIndex(r.answer, options);
         if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
       }
     }
@@ -133,7 +311,7 @@ function buildResponseStats(question, responses) {
     return {
       type: 'shortAnswer',
       answers: responses.map((r) => ({
-        studentUserId: r.studentUserId,
+        studentUserId: getResponseStudentId(r),
         answer: r.answer,
         answerWysiwyg: r.answerWysiwyg,
       })),
@@ -336,6 +514,14 @@ export default async function sessionRoutes(app) {
         updates.practiceQuiz = false;
       }
 
+      // If passcode requirement is disabled through the generic session patch,
+      // also close any active join period for consistent behavior.
+      if (updates.joinCodeEnabled === false) {
+        updates.joinCodeActive = false;
+        updates.currentJoinCode = '';
+        updates.joinCodeExpiresAt = null;
+      }
+
       // Reviewable can only be set to true when session is ended
       // Allow if session is already done or if status is being set to done in this request
       if (updates.reviewable === true && session.status !== 'done' && updates.status !== 'done') {
@@ -406,7 +592,14 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      const updates = { status: 'running', date: now };
+      const updates = {
+        status: 'running',
+        date: now,
+        // Join period is always explicit; starting a session does not auto-open passcode entry.
+        joinCodeActive: false,
+        currentJoinCode: '',
+        joinCodeExpiresAt: null,
+      };
       if (session.questions.length > 0 && !session.currentQuestion) {
         updates.currentQuestion = session.questions[0];
 
@@ -414,12 +607,6 @@ export default async function sessionRoutes(app) {
         await Question.findByIdAndUpdate(session.questions[0], {
           $set: { 'sessionOptions.hidden': true },
         });
-      }
-      // Activate join code if enabled
-      if (session.joinCodeEnabled) {
-        updates.joinCodeActive = true;
-        updates.currentJoinCode = generateJoinCode();
-        updates.joinCodeExpiresAt = new Date(now.getTime() + (session.joinCodeInterval || 10) * 1000);
       }
 
       const updated = await Session.findByIdAndUpdate(
@@ -453,9 +640,19 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const updates = {
+        status: 'done',
+        joinCodeActive: false,
+        currentJoinCode: '',
+        joinCodeExpiresAt: null,
+      };
+      if (request.body?.reviewable !== undefined) {
+        updates.reviewable = request.body.reviewable;
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { status: 'done' } },
+        { $set: updates },
         { new: true }
       );
 
@@ -707,6 +904,7 @@ export default async function sessionRoutes(app) {
       const orderedQuestions = questionIds
         .map((id) => questionMap[String(id)])
         .filter(Boolean);
+      const normalizedQuestions = orderedQuestions.map((question) => normalizeQuestionForReview(question));
 
       // Fetch this student's responses for these questions
       const responses = await Response.find({
@@ -717,15 +915,17 @@ export default async function sessionRoutes(app) {
       // Group responses by questionId
       const responsesByQuestion = {};
       for (const r of responses) {
-        if (!responsesByQuestion[r.questionId]) {
-          responsesByQuestion[r.questionId] = [];
+        const questionId = normalizeAnswerValue(r.questionId);
+        if (!questionId) continue;
+        if (!responsesByQuestion[questionId]) {
+          responsesByQuestion[questionId] = [];
         }
-        responsesByQuestion[r.questionId].push(r);
+        responsesByQuestion[questionId].push(r);
       }
 
       return {
         session: session.toObject(),
-        questions: orderedQuestions,
+        questions: normalizedQuestions,
         responses: responsesByQuestion,
       };
     }
@@ -773,13 +973,20 @@ export default async function sessionRoutes(app) {
       const alreadyInList = session.joined.includes(userId);
       const existingRecord = (session.joinRecords || []).find((r) => r.userId === userId);
 
-      // If already joined with code or no code needed, return early
-      if (alreadyInList && (!session.joinCodeEnabled || existingRecord?.joinedWithCode)) {
+      // Already joined students remain joined even if passcode settings change later.
+      if (alreadyInList) {
         return { success: true, alreadyJoined: true };
       }
 
-      // Verify join code if active
-      if (session.joinCodeActive) {
+      // Enforce passcode requirement only at join time.
+      const joinCodeRequired = !!session.joinCodeEnabled;
+      if (joinCodeRequired && !session.joinCodeActive) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'Join period is closed. Please wait for your instructor.',
+        });
+      }
+      if (joinCodeRequired) {
         const providedCode = String(request.body?.joinCode || '').trim();
         if (!providedCode) {
           return reply.code(400).send({ error: 'Bad Request', message: 'Join code is required' });
@@ -790,7 +997,7 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      const joinedWithCode = !!session.joinCodeActive;
+      const joinedWithCode = joinCodeRequired && session.joinCodeActive;
 
       if (existingRecord) {
         // Upgrade existing record to mark joinedWithCode
@@ -843,22 +1050,20 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      const includeStudentNames = isInstrOrAdmin && parseBooleanQuery(request.query?.includeStudentNames);
       const userId = request.user.userId;
       let isJoined = session.joined.includes(userId);
-
-      // If passcode join applies, verify student joined with a valid code
-      if (!isInstrOrAdmin && session.joinCodeEnabled && isJoined) {
-        const joinRecord = (session.joinRecords || []).find((r) => r.userId === userId);
-        if (!joinRecord || !joinRecord.joinedWithCode) {
-          isJoined = false; // Treat as not joined — they need to rejoin with a code
-        }
-      }
 
       // Fetch current question
       let currentQuestion = null;
       if (session.currentQuestion) {
         currentQuestion = await Question.findById(session.currentQuestion).lean();
       }
+      const questionCount = Array.isArray(session.questions) ? session.questions.length : 0;
+      const questionIndex = session.currentQuestion
+        ? (session.questions || []).findIndex((id) => String(id) === String(session.currentQuestion))
+        : -1;
+      const questionNumber = questionIndex >= 0 ? questionIndex + 1 : null;
 
       // For students: strip answer info and limit data
       const questionHidden = currentQuestion?.sessionOptions?.hidden ?? true;
@@ -879,8 +1084,59 @@ export default async function sessionRoutes(app) {
             questionId,
             attempt: currentAttempt.number,
           }).lean();
-          allResponses = responses;
           responseStats = buildResponseStats(currentQuestion, responses);
+
+          const includeNamesInPayload = includeStudentNames && responseStats?.type === 'shortAnswer';
+          let studentNameById = {};
+          if (includeNamesInPayload) {
+            const responderIds = [...new Set(
+              responses
+                .map((response) => getResponseStudentId(response))
+                .filter(Boolean)
+            )];
+            if (responderIds.length > 0) {
+              const users = await User.find({ _id: { $in: responderIds } })
+                .select('_id profile emails email')
+                .lean();
+              users.forEach((user) => {
+                studentNameById[String(user._id)] = formatUserDisplayName(user);
+              });
+            }
+          }
+
+          // Keep response content but strip raw student identifiers from live payloads.
+          allResponses = responses.map((response) => {
+            const base = {
+              _id: response._id,
+              attempt: response.attempt,
+              questionId: response.questionId,
+              answer: response.answer,
+              answerWysiwyg: response.answerWysiwyg,
+              correct: response.correct,
+              mark: response.mark,
+              createdAt: response.createdAt,
+              updatedAt: response.updatedAt,
+              editable: response.editable,
+            };
+            if (!includeNamesInPayload) return base;
+            return {
+              ...base,
+              studentName: studentNameById[getResponseStudentId(response)] || 'Unknown Student',
+            };
+          });
+
+          if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+            responseStats = {
+              ...responseStats,
+              answers: responseStats.answers.map((entry) => ({
+                answer: entry.answer,
+                answerWysiwyg: entry.answerWysiwyg,
+                ...(includeNamesInPayload
+                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+                  : {}),
+              })),
+            };
+          }
         } else if (isJoined && !questionHidden) {
           // Student gets their own response
           studentResponse = await Response.findOne({
@@ -896,30 +1152,53 @@ export default async function sessionRoutes(app) {
               attempt: currentAttempt.number,
             }).lean();
             responseStats = buildResponseStats(currentQuestion, responses);
+            if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+              responseStats = {
+                ...responseStats,
+                answers: responseStats.answers.map((entry) => ({
+                  answer: entry.answer,
+                  answerWysiwyg: entry.answerWysiwyg,
+                })),
+              };
+            }
           }
         }
       }
 
-      // Build response
+      // Build response payload.
+      // Student payload is intentionally minimal and only includes fields needed for live participation.
       const result = {
-        session: {
-          _id: session._id,
-          name: session.name,
-          description: session.description,
-          courseId: session.courseId,
-          status: session.status,
-          questions: session.questions,
-          currentQuestion: session.currentQuestion,
-          joinedCount: session.joined.length,
-          joinCodeActive: session.joinCodeActive,
-          joinCodeEnabled: session.joinCodeEnabled,
-          reviewable: session.reviewable,
-        },
+        session: isInstrOrAdmin
+          ? {
+            _id: session._id,
+            name: session.name,
+            description: session.description,
+            courseId: session.courseId,
+            status: session.status,
+            questions: session.questions,
+            currentQuestion: session.currentQuestion,
+            joinedCount: session.joined.length,
+            joinCodeActive: session.joinCodeActive,
+            joinCodeEnabled: session.joinCodeEnabled,
+            reviewable: session.reviewable,
+          }
+          : {
+            _id: session._id,
+            name: session.name,
+            status: session.status,
+            joinCodeActive: session.joinCodeActive,
+            joinCodeEnabled: session.joinCodeEnabled,
+          },
         currentQuestion: null,
         currentAttempt,
         responseStats,
-        responseCount: allResponses ? allResponses.length : 0,
+        questionNumber,
+        questionCount,
       };
+
+      if (isInstrOrAdmin) {
+        result.responseCount = allResponses ? allResponses.length : 0;
+      }
 
       if (isInstrOrAdmin) {
         result.session.joined = session.joined;
@@ -948,6 +1227,10 @@ export default async function sessionRoutes(app) {
             delete studentQ.toleranceNumerical;
             delete studentQ.solution;
             delete studentQ.solution_plainText;
+            // Legacy compatibility keys from imported data.
+            delete studentQ.solutionPlainText;
+            delete studentQ.solutionText;
+            delete studentQ.solutionHtml;
           }
           result.currentQuestion = studentQ;
         }
@@ -1240,6 +1523,16 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      if (session.status !== 'running') {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not live' });
+      }
+      if (!session.joinCodeEnabled) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Passcode is not required for this session' });
+      }
+      if (!session.joinCodeActive) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Join period is closed' });
+      }
+
       const now = new Date();
       const code = generateJoinCode();
       const updated = await Session.findByIdAndUpdate(
@@ -1292,17 +1585,35 @@ export default async function sessionRoutes(app) {
       }
 
       const updates = {};
-      if (request.body.joinCodeEnabled !== undefined) updates.joinCodeEnabled = request.body.joinCodeEnabled;
-      if (request.body.joinCodeInterval !== undefined) updates.joinCodeInterval = request.body.joinCodeInterval;
+      const nextJoinCodeEnabled = request.body.joinCodeEnabled ?? session.joinCodeEnabled;
+      const nextJoinCodeInterval = request.body.joinCodeInterval ?? session.joinCodeInterval ?? 10;
 
-      if (request.body.joinCodeActive !== undefined) {
+      if (request.body.joinCodeEnabled !== undefined) {
+        updates.joinCodeEnabled = request.body.joinCodeEnabled;
+      }
+      if (request.body.joinCodeInterval !== undefined) {
+        updates.joinCodeInterval = request.body.joinCodeInterval;
+      }
+
+      if (!nextJoinCodeEnabled) {
+        if (request.body.joinCodeActive === true) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Passcode requirement must be enabled before opening a join period',
+          });
+        }
+        updates.joinCodeActive = false;
+        updates.currentJoinCode = '';
+        updates.joinCodeExpiresAt = null;
+      } else if (request.body.joinCodeActive !== undefined) {
         updates.joinCodeActive = request.body.joinCodeActive;
         if (request.body.joinCodeActive) {
           const now = new Date();
           updates.currentJoinCode = generateJoinCode();
-          updates.joinCodeExpiresAt = new Date(now.getTime() + (request.body.joinCodeInterval || session.joinCodeInterval || 10) * 1000);
+          updates.joinCodeExpiresAt = new Date(now.getTime() + nextJoinCodeInterval * 1000);
         } else {
           updates.currentJoinCode = '';
+          updates.joinCodeExpiresAt = null;
         }
       }
 
@@ -1351,16 +1662,22 @@ export default async function sessionRoutes(app) {
         questionId: { $in: questionIds },
       }).lean();
 
-      // Fetch all joined students
-      const joinedUserIds = session.joined || [];
-      const students = await User.find({ _id: { $in: joinedUserIds } }).lean();
+      // Include students who joined live plus anyone who has responses recorded for this session.
+      const joinedUserIds = (session.joined || []).map((id) => String(id));
+      const responderUserIds = [...new Set(
+        allResponses
+          .map((response) => getResponseStudentId(response))
+          .filter(Boolean)
+      )];
+      const resultUserIds = [...new Set([...joinedUserIds, ...responderUserIds])];
+      const students = await User.find({ _id: { $in: resultUserIds } }).lean();
       const studentMap = {};
       for (const s of students) {
         studentMap[String(s._id)] = s;
       }
 
       // Build per-student results
-      const studentResults = joinedUserIds.map((studentId) => {
+      const studentResults = resultUserIds.map((studentId) => {
         const student = studentMap[String(studentId)];
         const firstname = student?.profile?.firstname || '';
         const lastname = student?.profile?.lastname || '';
@@ -1368,7 +1685,7 @@ export default async function sessionRoutes(app) {
 
         const questionResults = orderedQuestions.map((q) => {
           const responses = allResponses.filter(
-            (r) => String(r.questionId) === String(q._id) && String(r.studentUserId) === String(studentId)
+            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
           );
           return {
             questionId: q._id,
@@ -1377,17 +1694,21 @@ export default async function sessionRoutes(app) {
         });
 
         // Calculate participation
-        const questionsWithPoints = orderedQuestions.filter(
-          (q) => (q.sessionOptions?.points || 0) > 0
-        );
+        const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
         const answeredCount = questionsWithPoints.filter((q) =>
           allResponses.some(
-            (r) => String(r.questionId) === String(q._id) && String(r.studentUserId) === String(studentId)
+            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
           )
         ).length;
-        const participation = questionsWithPoints.length > 0
-          ? Math.round(1000 * answeredCount / questionsWithPoints.length) / 10
-          : 100;
+        let participation = 0;
+        if (answeredCount > 0) {
+          participation = questionsWithPoints.length > 0
+            ? Math.round(1000 * answeredCount / questionsWithPoints.length) / 10
+            : 100;
+        }
+        if (questionsWithPoints.length === 0) {
+          participation = 100;
+        }
 
         return {
           studentId,

@@ -3,25 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
-  Switch, FormControlLabel, TextField, Divider, useMediaQuery, LinearProgress,
+  Switch, FormControlLabel, TextField, Divider, useMediaQuery,
 } from '@mui/material';
 import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
   Stop as StopIcon, OpenInNew as OpenInNewIcon,
   Visibility as ShowIcon, VisibilityOff as HideIcon,
-  BarChart as ChartIcon, Check as CheckIcon,
+  Check as CheckIcon,
   Replay as AttemptIcon, Lock as LockIcon, LockOpen as UnlockIcon,
   People as PeopleIcon, Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
+import HistogramBars from '../../components/common/HistogramBars';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -43,6 +40,10 @@ function buildWebsocketUrl(token) {
 function questionIndex(session, questionId) {
   const ids = session?.questions || [];
   return ids.indexOf(questionId);
+}
+
+function optionDisplayHtml(option) {
+  return option?.content || option?.plainText || option?.answer || '';
 }
 
 // ---------------------------------------------------------------------------
@@ -68,53 +69,8 @@ function RichContent({ html }) {
   );
 }
 
-/** Bar chart for MC / TF / MS distribution data (Meteor-style inline response bars). */
-function DistributionBars({ distribution, options, showCorrect }) {
-  if (!distribution || !distribution.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
-  }
-  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {distribution.map((d, i) => {
-        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
-        const isCorrect = showCorrect && options?.[i]?.correct;
-        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
-        return (
-          <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Chip
-                label={OPTION_LETTERS[i]}
-                size="small"
-                color={isCorrect ? 'success' : 'default'}
-                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
-              />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
-              </Box>
-              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
-                {pct}% ({d.count || 0})
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={pct}
-              sx={{
-                height: 8,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
-              }}
-            />
-          </Box>
-        );
-      })}
-    </Box>
-  );
-}
-
 /** Short-answer responses list (rendered rich text). */
-function ShortAnswerList({ responses }) {
+function ShortAnswerList({ responses, showStudentNames = false }) {
   if (!responses || !responses.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
@@ -122,6 +78,11 @@ function ShortAnswerList({ responses }) {
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
       {responses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+          {showStudentNames && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              {r.studentName || 'Unknown Student'}
+            </Typography>
+          )}
           {r.answerWysiwyg ? (
             <RichContent html={r.answerWysiwyg} />
           ) : (
@@ -156,16 +117,7 @@ function NumericalStats({ stats, allResponses }) {
   return (
     <Box>
       {histogramData.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-              <XAxis dataKey="bin" />
-              <YAxis allowDecimals={false} />
-              <RechartsTooltip />
-              <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Box>
+        <HistogramBars data={histogramData} height={170} />
       )}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         {entries.map((e) => (
@@ -200,8 +152,7 @@ export default function LiveSession() {
   const [makeReviewable, setMakeReviewable] = useState(false);
   const [ending, setEnding] = useState(false);
 
-  // Session ended redirect
-  const [sessionEnded, setSessionEnded] = useState(false);
+  const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -212,20 +163,21 @@ export default function LiveSession() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/live`);
+      const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
+        params: { includeStudentNames: true },
+      });
       setLiveData(data);
       setError(null);
 
-      // Redirect if session is done
       if (data?.session?.status === 'done') {
-        setSessionEnded(true);
+        navigate(`/manage/course/${courseId}`, { replace: true });
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load live session');
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, navigate, courseId]);
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
 
@@ -326,7 +278,7 @@ export default function LiveSession() {
     const session = liveData?.session;
     if (!session?.joinCodeEnabled || !session?.joinCodeActive) return;
 
-    const interval = (session.joinCodeInterval || 60) * 1000;
+    const interval = (session.joinCodeInterval || 10) * 1000;
     joinCodeTimerRef.current = setInterval(async () => {
       try {
         await apiClient.post(`/sessions/${sessionId}/refresh-join-code`);
@@ -348,17 +300,11 @@ export default function LiveSession() {
     fetchLive,
   ]);
 
-  // --------------------------------------------------
-  // Session ended → redirect after brief delay
-  // --------------------------------------------------
-
   useEffect(() => {
-    if (!sessionEnded) return;
-    const timer = setTimeout(() => {
-      navigate(`/manage/course/${courseId}`);
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [sessionEnded, navigate, courseId]);
+    const interval = liveData?.session?.joinCodeInterval;
+    if (interval == null) return;
+    setJoinCodeIntervalInput(String(interval));
+  }, [liveData?.session?.joinCodeInterval]);
 
   // --------------------------------------------------
   // Action helpers
@@ -424,27 +370,30 @@ export default function LiveSession() {
   const handleEndSession = useCallback(async () => {
     setEnding(true);
     try {
-      if (makeReviewable) {
-        await apiClient.patch(`/sessions/${sessionId}`, { reviewable: true });
-      }
-      await apiClient.post(`/sessions/${sessionId}/end`);
+      await apiClient.post(`/sessions/${sessionId}/end`, { reviewable: makeReviewable });
       setEndDialogOpen(false);
-      setSessionEnded(true);
+      navigate(`/manage/course/${courseId}`, { replace: true });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to end session' });
     } finally {
       setEnding(false);
     }
-  }, [sessionId, makeReviewable]);
+  }, [sessionId, makeReviewable, navigate, courseId]);
 
   // Join code controls
+  const handleTogglePasscodeRequired = useCallback((enabled) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeEnabled: enabled }),
+      enabled ? 'Passcode requirement enabled' : 'Passcode requirement disabled',
+    );
+  }, [doAction, sessionId]);
+
   const handleToggleJoinCode = useCallback((active) => {
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, {
-      joinCodeActive: active,
-      joinCodeEnabled: liveData?.session?.joinCodeEnabled ?? true,
-      joinCodeInterval: liveData?.session?.joinCodeInterval ?? 60,
-    }));
-  }, [doAction, sessionId, liveData]);
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeActive: active }),
+      active ? 'Join period started' : 'Join period closed',
+    );
+  }, [doAction, sessionId]);
 
   const handleRefreshJoinCode = useCallback(() => {
     doAction(
@@ -452,6 +401,27 @@ export default function LiveSession() {
       'Join code refreshed',
     );
   }, [doAction, sessionId]);
+
+  const handleJoinCodeIntervalBlur = useCallback(() => {
+    const currentInterval = Number(liveData?.session?.joinCodeInterval || 10);
+    const parsed = Number(joinCodeIntervalInput);
+    if (!Number.isFinite(parsed)) {
+      setJoinCodeIntervalInput(String(currentInterval));
+      return;
+    }
+    const rounded = Math.round(parsed);
+    if (rounded < 5 || rounded > 120) {
+      setMsg({ severity: 'error', text: 'Join code interval must be between 5 and 120 seconds' });
+      setJoinCodeIntervalInput(String(currentInterval));
+      return;
+    }
+    if (rounded === currentInterval) return;
+
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeInterval: rounded }),
+      'Join code interval updated',
+    );
+  }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
   // Second desktop / present window
   const secondDesktopRef = useRef(null);
@@ -489,6 +459,15 @@ export default function LiveSession() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const responsesClosed = !!currentAttempt?.closed;
   const attemptNum = currentAttempt?.number ?? 1;
+  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
+    || qType === QUESTION_TYPES.TRUE_FALSE
+    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const inlineDistribution = responseStats?.type === 'distribution'
+    ? responseStats.distribution || []
+    : [];
+  const inlineDistributionTotal = Number(responseStats?.total) > 0
+    ? Number(responseStats.total)
+    : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -498,15 +477,6 @@ export default function LiveSession() {
     return (
       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress aria-label="Loading live session" />
-      </Box>
-    );
-  }
-
-  if (sessionEnded) {
-    return (
-      <Box sx={{ p: 4, textAlign: 'center' }}>
-        <Alert severity="info" sx={{ mb: 2 }}>Session has ended. Redirecting to course…</Alert>
-        <CircularProgress size={24} />
       </Box>
     );
   }
@@ -624,7 +594,19 @@ export default function LiveSession() {
           gap: 1,
         }}
       >
-        {/* Join code toggle */}
+        {/* Passcode requirement + join period controls */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!session.joinCodeEnabled}
+              onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
+              disabled={actionLoading}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">Require Passcode</Typography>}
+        />
+
         {session.joinCodeEnabled && (
           <>
             <FormControlLabel
@@ -636,7 +618,21 @@ export default function LiveSession() {
                   size="small"
                 />
               }
-              label={<Typography variant="body2">Join Code</Typography>}
+              label={<Typography variant="body2">Join Period</Typography>}
+            />
+            <TextField
+              size="small"
+              label="Refresh (sec)"
+              type="number"
+              value={joinCodeIntervalInput}
+              onChange={(e) => setJoinCodeIntervalInput(e.target.value)}
+              onBlur={handleJoinCodeIntervalBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              inputProps={{ min: 5, max: 120 }}
+              disabled={actionLoading}
+              sx={{ width: 130 }}
             />
             {session.joinCodeActive && session.currentJoinCode && (
               <>
@@ -658,9 +654,10 @@ export default function LiveSession() {
                 </Tooltip>
               </>
             )}
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           </>
         )}
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
         {/* Visibility toggle */}
         <FormControlLabel
@@ -787,7 +784,7 @@ export default function LiveSession() {
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
+          flexDirection: { xs: 'column', md: isOptionBasedQuestion ? 'column' : 'row' },
           gap: 2,
           mb: 2,
         }}
@@ -821,17 +818,22 @@ export default function LiveSession() {
               </Box>
 
               {/* Options for MC / TF / MS */}
-              {(qType === QUESTION_TYPES.MULTIPLE_CHOICE
-                || qType === QUESTION_TYPES.TRUE_FALSE
-                || qType === QUESTION_TYPES.MULTI_SELECT) && (
+              {isOptionBasedQuestion && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
                   {(currentQ.options || []).map((opt, i) => {
                     const isCorrect = !!opt.correct;
+                    const count = inlineDistribution?.[i]?.count || 0;
+                    const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+                    const barColor = showCorrect
+                      ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                      : 'rgba(25, 118, 210, 0.18)';
                     return (
                       <Paper
                         key={opt._id || i}
                         variant="outlined"
                         sx={{
+                          position: 'relative',
+                          overflow: 'hidden',
                           p: 1,
                           display: 'flex',
                           alignItems: 'flex-start',
@@ -840,18 +842,46 @@ export default function LiveSession() {
                           bgcolor: isCorrect ? 'success.lighter' : 'transparent',
                         }}
                       >
+                        <Box
+                          aria-hidden
+                          sx={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: `${pct}%`,
+                            bgcolor: barColor,
+                            transition: 'width 0.4s ease-out',
+                            pointerEvents: 'none',
+                          }}
+                        />
+                        <Box
+                          sx={{
+                            position: 'relative',
+                            zIndex: 1,
+                            display: 'grid',
+                            gridTemplateColumns: '30px minmax(0, 1fr) 74px 20px',
+                            columnGap: 1,
+                            alignItems: 'start',
+                            width: '100%',
+                          }}
+                        >
                         <Chip
                           label={OPTION_LETTERS[i]}
                           size="small"
                           color={isCorrect ? 'success' : 'default'}
-                          sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+                          sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
                         />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <RichContent html={opt.answer || opt.content || opt.plainText} />
+                        <Box sx={{ minWidth: 0 }}>
+                          <RichContent html={optionDisplayHtml(opt)} />
                         </Box>
+                        <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                          {pct}% ({count})
+                        </Typography>
                         {isCorrect && (
                           <CheckIcon color="success" fontSize="small" aria-label="Correct answer" />
                         )}
+                        </Box>
                       </Paper>
                     );
                   })}
@@ -888,6 +918,7 @@ export default function LiveSession() {
         </Paper>
 
         {/* ---- Right panel: response statistics ---- */}
+        {!isOptionBasedQuestion && (
         <Paper
           variant="outlined"
           sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
@@ -902,23 +933,28 @@ export default function LiveSession() {
               Select a question to view responses.
             </Typography>
           ) : responseStats?.type === 'distribution' ? (
-            <DistributionBars
-              distribution={responseStats.distribution}
-              options={currentQ?.options}
-              showCorrect={showCorrect}
-            />
+            <Typography variant="body2" color="text.secondary">
+              Distribution is shown inline with the answer options.
+            </Typography>
           ) : responseStats?.type === 'shortAnswer' ? (
-            <ShortAnswerList responses={responseStats.answers || allResponses} />
+            <ShortAnswerList
+              responses={responseStats.answers || allResponses}
+              showStudentNames
+            />
           ) : responseStats?.type === 'numerical' ? (
             <NumericalStats stats={responseStats} allResponses={allResponses} />
           ) : allResponses.length > 0 ? (
-            <ShortAnswerList responses={allResponses} />
+            <ShortAnswerList
+              responses={allResponses}
+              showStudentNames
+            />
           ) : (
             <Typography variant="body2" color="text.secondary">
               No responses yet.
             </Typography>
           )}
         </Paper>
+        )}
       </Box>
 
       {/* ============================================================ */}

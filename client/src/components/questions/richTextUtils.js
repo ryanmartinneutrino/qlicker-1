@@ -3,6 +3,7 @@ import renderMathInElement from 'katex/contrib/auto-render';
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
+const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
 
 function isHtmlLike(value) {
   return /<\/?[a-z][\s\S]*>/i.test(value);
@@ -80,6 +81,27 @@ function normalizeBlockMathMarkup(container) {
     cleaned = cleaned.trim();
     if (!cleaned) return fullMatch;
     return `$$\n${normalizeLatexForKatex(cleaned)}\n$$`;
+  });
+}
+
+function hasInteractiveNodes(container) {
+  if (!container || typeof container.querySelector !== 'function') return false;
+  if (typeof container.matches === 'function' && container.matches(INTERACTIVE_SELECTOR)) return true;
+  return Boolean(container.querySelector(INTERACTIVE_SELECTOR));
+}
+
+function normalizeBlockMathMarkupSafely(container) {
+  if (!container) return;
+
+  // Avoid rewriting an interactive container's innerHTML, which would detach React handlers.
+  if (!hasInteractiveNodes(container)) {
+    normalizeBlockMathMarkup(container);
+    return;
+  }
+
+  container.querySelectorAll('p, li, div, span').forEach((node) => {
+    if (hasInteractiveNodes(node)) return;
+    normalizeBlockMathMarkup(node);
   });
 }
 
@@ -165,7 +187,7 @@ export function hasRichTextContent(html) {
 export function renderKatexInElement(container) {
   if (!container) return;
 
-  normalizeBlockMathMarkup(container);
+  normalizeBlockMathMarkupSafely(container);
   const restoreCurrency = maskCurrencyTokens(container);
   const renderOptions = {
     throwOnError: false,

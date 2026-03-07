@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
 import Question from '../../src/models/Question.js';
+import Response from '../../src/models/Response.js';
 
 let app;
 
@@ -390,6 +391,365 @@ describe('POST /api/v1/sessions/:id/start', () => {
   });
 });
 
+// ---------- GET /api/v1/sessions/:id/live ----------
+describe('GET /api/v1/sessions/:id/live', () => {
+  it('student payload is limited to live-participation fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.session).toBeDefined();
+    expect(body.session._id).toBe(session._id);
+    expect(body.session.name).toBe(session.name);
+    expect(body.session.status).toBe('running');
+    expect(body.session).toHaveProperty('joinCodeActive');
+    expect(body.session).toHaveProperty('joinCodeEnabled');
+
+    expect(body.session).not.toHaveProperty('joinedCount');
+    expect(body.session).not.toHaveProperty('joined');
+    expect(body.session).not.toHaveProperty('description');
+    expect(body.session).not.toHaveProperty('courseId');
+    expect(body.session).not.toHaveProperty('questions');
+    expect(body.session).not.toHaveProperty('currentQuestion');
+    expect(body.session).not.toHaveProperty('reviewable');
+    expect(body).not.toHaveProperty('responseCount');
+    expect(body).toHaveProperty('questionCount');
+    expect(body).toHaveProperty('questionNumber');
+  });
+
+  it('instructor payload still includes joined and response summary fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session).toHaveProperty('joinedCount');
+    expect(body.session).toHaveProperty('joined');
+    expect(body.session).toHaveProperty('questions');
+    expect(body.session).toHaveProperty('currentQuestion');
+    expect(body).toHaveProperty('responseCount');
+  });
+
+  it('student short-answer stats do not include responder identifiers', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({ email: 'student-live-two@example.com', roles: ['student'] });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'First response',
+    });
+    await Response.create({
+      questionId: question._id,
+      studentUserId: studentTwo._id,
+      attempt: 1,
+      answer: 'Second response',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('shortAnswer');
+    expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+  });
+
+  it('student live payload only includes solution content when showCorrect is enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>What is 2+2?</p>',
+        plainText: 'What is 2+2?',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: '3', correct: false },
+          { content: '4', correct: true },
+        ],
+        solution: '<p>Addition gives 4.</p>',
+        solution_plainText: 'Addition gives 4.',
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, correct: false },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const hiddenSolutionRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(hiddenSolutionRes.statusCode).toBe(200);
+    const hiddenBody = hiddenSolutionRes.json();
+    expect(hiddenBody.showCorrect).toBe(false);
+    expect(hiddenBody.currentQuestion).not.toHaveProperty('solution');
+    expect(hiddenBody.currentQuestion).not.toHaveProperty('solution_plainText');
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, correct: true },
+    });
+
+    const visibleSolutionRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+
+    expect(visibleSolutionRes.statusCode).toBe(200);
+    const visibleBody = visibleSolutionRes.json();
+    expect(visibleBody.showCorrect).toBe(true);
+    expect(visibleBody.currentQuestion.options[1].correct).toBe(true);
+    expect(visibleBody.currentQuestion.solution).toBe('<p>Addition gives 4.</p>');
+    expect(visibleBody.currentQuestion.solution_plainText).toBe('Addition gives 4.');
+  });
+
+  it('instructor short-answer payload omits responder identifiers by default', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({ email: 'student-live-prof-default@example.com', roles: ['student'] });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'First response',
+    });
+    await Response.create({
+      questionId: question._id,
+      studentUserId: studentTwo._id,
+      attempt: 1,
+      answer: 'Second response',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('shortAnswer');
+    expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentName');
+    expect(body.allResponses[0]).not.toHaveProperty('studentUserId');
+    expect(body.allResponses[0]).not.toHaveProperty('studentName');
+  });
+
+  it('instructor can opt in to student names for short-answer control view', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({
+      email: 'student-live-prof-names@example.com',
+      roles: ['student'],
+      firstname: 'Second',
+      lastname: 'Learner',
+    });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'First response',
+    });
+    await Response.create({
+      questionId: question._id,
+      studentUserId: studentTwo._id,
+      attempt: 1,
+      answer: 'Second response',
+    });
+
+    const liveRes = await authenticatedRequest(
+      app,
+      'GET',
+      `/api/v1/sessions/${session._id}/live?includeStudentNames=true`,
+      { token: profToken }
+    );
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('shortAnswer');
+    expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+    expect(body.responseStats.answers[0]).toHaveProperty('studentName');
+    expect(body.allResponses[0]).not.toHaveProperty('studentUserId');
+    expect(body.allResponses[0]).toHaveProperty('studentName');
+  });
+});
+
 // ---------- POST /api/v1/sessions/:id/end ----------
 describe('POST /api/v1/sessions/:id/end', () => {
   it('instructor can end a session', async (ctx) => {
@@ -413,6 +773,294 @@ describe('POST /api/v1/sessions/:id/end', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.session.status).toBe('done');
+  });
+
+  it('can end a session and set reviewable in one request', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-end-reviewable@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session.status).toBe('done');
+    expect(body.session.reviewable).toBe(true);
+  });
+});
+
+// ---------- POST /api/v1/sessions/:id/join ----------
+describe('POST /api/v1/sessions/:id/join', () => {
+  it('rejects joins while passcode is required but join period is closed', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const enableReqRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { joinCodeEnabled: true },
+    });
+    expect(enableReqRes.statusCode).toBe(200);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const joinRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    expect(joinRes.statusCode).toBe(403);
+    expect(joinRes.json().message).toContain('Join period is closed');
+  });
+
+  it('keeps already joined students joined when passcode requirement is enabled later', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const joinRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    expect(joinRes.statusCode).toBe(200);
+
+    const toggleReqRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/join-code-settings`, {
+      token: profToken,
+      payload: { joinCodeEnabled: true },
+    });
+    expect(toggleReqRes.statusCode).toBe(200);
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    expect(liveRes.json().isJoined).toBe(true);
+  });
+
+  it('turning off passcode requirement also closes the join period and clears code', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const enableReqRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { joinCodeEnabled: true },
+    });
+    expect(enableReqRes.statusCode).toBe(200);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const openPeriodRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/join-code-settings`, {
+      token: profToken,
+      payload: { joinCodeActive: true },
+    });
+    expect(openPeriodRes.statusCode).toBe(200);
+    expect(openPeriodRes.json().session.joinCodeActive).toBe(true);
+    expect(openPeriodRes.json().session.currentJoinCode).toBeTruthy();
+
+    const disableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/join-code-settings`, {
+      token: profToken,
+      payload: { joinCodeEnabled: false },
+    });
+    expect(disableRes.statusCode).toBe(200);
+    expect(disableRes.json().session.joinCodeEnabled).toBe(false);
+    expect(disableRes.json().session.joinCodeActive).toBe(false);
+    expect(disableRes.json().session.currentJoinCode).toBe('');
+  });
+});
+
+// ---------- GET /api/v1/sessions/:id/results ----------
+describe('GET /api/v1/sessions/:id/results', () => {
+  it('calculates participation using Meteor-compatible points defaults', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const studentTwo = await createTestUser({ email: 'student-two@example.com', roles: ['student'] });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qMcRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>MC</p>',
+        plainText: 'MC',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+        ],
+      },
+    });
+    const qMc = qMcRes.json().question;
+
+    const qSaRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>SA</p>',
+        plainText: 'SA',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const qSa = qSaRes.json().question;
+
+    const qZeroRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 1,
+        content: '<p>TF</p>',
+        plainText: 'TF',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: 'True', correct: true },
+          { content: 'False', correct: false },
+        ],
+      },
+    });
+    const qZero = qZeroRes.json().question;
+
+    const zeroPointsPatchRes = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${qZero._id}`, {
+      token: profToken,
+      payload: { sessionOptions: { points: 0 } },
+    });
+    expect(zeroPointsPatchRes.statusCode).toBe(200);
+
+    for (const qId of [qMc._id, qSa._id, qZero._id]) {
+      const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+        token: profToken,
+        payload: { questionId: qId },
+      });
+      expect(addRes.statusCode).toBe(200);
+    }
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: qMc._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '0',
+    });
+    await Response.create({
+      questionId: qSa._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'free text',
+    });
+
+    const resultsRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/results`, {
+      token: profToken,
+    });
+
+    expect(resultsRes.statusCode).toBe(200);
+    const byStudent = Object.fromEntries(
+      (resultsRes.json().studentResults || []).map((row) => [String(row.studentId), row]),
+    );
+
+    expect(byStudent[String(student._id)].participation).toBe(100);
+    expect(byStudent[String(studentTwo._id)].participation).toBe(0);
+  });
+
+  it('includes responder data even when a student is missing from joined[]', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>MC</p>',
+        plainText: 'MC',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+        ],
+      },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    // Write a response directly without joining to emulate legacy/misaligned data.
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '0',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    expect(liveRes.json().isJoined).toBe(false);
+
+    const resultsRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/results`, {
+      token: profToken,
+    });
+    expect(resultsRes.statusCode).toBe(200);
+
+    const row = (resultsRes.json().studentResults || []).find(
+      (entry) => String(entry.studentId) === String(student._id),
+    );
+    expect(row).toBeDefined();
+    expect(row.participation).toBe(100);
+    expect(row.questionResults[0].responses.length).toBe(1);
   });
 });
 
@@ -624,6 +1272,67 @@ describe('GET /api/v1/sessions/:id/review', () => {
     expect(body.questions[0].solution).toBe('<p>Basic addition: 2+2=4</p>');
     expect(body.questions[0].options[1].correct).toBe(true);
     expect(body.responses).toBeDefined();
+  });
+
+  it('normalizes review question solution/correct fields for legacy-shaped records', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Legacy Review Session' });
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>Legacy question?</p>',
+        plainText: 'Legacy question?',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: '3', correct: false },
+          { content: '4', correct: false },
+        ],
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+
+    await Question.collection.updateOne(
+      { _id: question._id },
+      {
+        $set: {
+          correctAnswer: '4',
+          solutionHtml: '<p>Legacy explanation</p>',
+          solutionText: 'Legacy explanation',
+          creator: prof._id,
+        },
+        $unset: {
+          solution: '',
+          solution_plainText: '',
+          'options.0.correct': '',
+          'options.1.correct': '',
+        },
+      }
+    );
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const reviewQuestion = res.json().questions[0];
+    expect(reviewQuestion.solution).toBe('<p>Legacy explanation</p>');
+    expect(reviewQuestion.solution_plainText).toBe('Legacy explanation');
+    expect(reviewQuestion.options[1].correct).toBe(true);
   });
 
   it('student cannot review a non-reviewable session (403)', async (ctx) => {

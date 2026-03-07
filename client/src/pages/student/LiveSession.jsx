@@ -1,17 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
-  LinearProgress,
 } from '@mui/material';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import { buildHistogramData } from '../../utils/histogram';
+import HistogramBars from '../../components/common/HistogramBars';
 import {
   QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
 } from '../../components/questions/constants';
@@ -46,6 +42,10 @@ function buildWebsocketUrl(token) {
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
 }
 
+function optionDisplayHtml(option) {
+  return option?.content || option?.plainText || option?.answer || '';
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -66,51 +66,6 @@ function RichContent({ html, fallback }) {
       sx={richContentSx}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />
-  );
-}
-
-/** Meteor-style inline response bars for MC/MS/TF. */
-function DistributionBars({ distribution, options, showCorrect }) {
-  if (!distribution || !distribution.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
-  }
-  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
-  return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      {distribution.map((d, i) => {
-        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
-        const isCorrect = showCorrect && options?.[i]?.correct;
-        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
-        return (
-          <Box key={i}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Chip
-                label={OPTION_LETTERS[i]}
-                size="small"
-                color={isCorrect ? 'success' : 'default'}
-                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
-              />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
-              </Box>
-              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
-                {pct}% ({d.count || 0})
-              </Typography>
-            </Box>
-            <LinearProgress
-              variant="determinate"
-              value={pct}
-              sx={{
-                height: 8,
-                borderRadius: 1,
-                bgcolor: 'grey.200',
-                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
-              }}
-            />
-          </Box>
-        );
-      })}
-    </Box>
   );
 }
 
@@ -344,11 +299,37 @@ export default function LiveSession() {
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
   const responseStats = liveData?.responseStats;
+  const questionNumber = liveData?.questionNumber;
+  const questionCount = liveData?.questionCount ?? 0;
+  const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
+  const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
+
+  const displayedQuestionCount = questionCount > 0
+    ? questionCount
+    : Array.isArray(session?.questions)
+      ? session.questions.length
+      : 0;
+  const displayedQuestionNumber = useMemo(() => {
+    if (questionNumber != null) return questionNumber;
+    if (!currentQ?._id || !Array.isArray(session?.questions)) return null;
+    const idx = session.questions.findIndex((id) => String(id) === String(currentQ._id));
+    return idx >= 0 ? idx + 1 : null;
+  }, [questionNumber, currentQ?._id, session?.questions]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const hasSubmitted = !!studentResponse;
   const responseClosed = !!currentAttempt?.closed;
   const isLocked = hasSubmitted || responseClosed;
+  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
+    || qType === QUESTION_TYPES.TRUE_FALSE
+    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const showInlineOptionStats = isOptionBasedQuestion
+    && showStats
+    && responseStats?.type === 'distribution';
+  const inlineDistribution = showInlineOptionStats ? (responseStats.distribution || []) : [];
+  const inlineDistributionTotal = Number(responseStats?.total) > 0
+    ? Number(responseStats.total)
+    : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
 
   // --------------------------------------------------
   // Render: loading state
@@ -535,15 +516,8 @@ export default function LiveSession() {
           </Box>
 
           <Typography variant="body1" color="text.secondary">
-            Waiting for the instructor…
+            Waiting for question…
           </Typography>
-
-          <Chip
-            label={`${session.joinedCount ?? 0} students joined`}
-            size="small"
-            variant="outlined"
-            sx={{ ...COMPACT_CHIP_SX, mt: 2 }}
-          />
         </Paper>
       </Box>
     );
@@ -561,6 +535,8 @@ export default function LiveSession() {
   // For SA: text string
   // For Numerical: number string
   const displayAnswer = hasSubmitted ? submittedAnswer : answer;
+  const displayAnswerString = displayAnswer == null ? '' : String(displayAnswer);
+  const displayAnswerArray = Array.isArray(displayAnswer) ? displayAnswer.map((value) => String(value)) : [];
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 600, mx: 'auto' }}>
@@ -572,6 +548,15 @@ export default function LiveSession() {
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
           {session.name || 'Live Session'}
         </Typography>
+        {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
+          <Chip
+            label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+            aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
+          />
+        )}
         {currentAttempt && (
           <Chip
             label={`Attempt ${currentAttempt.number ?? 1}`}
@@ -611,20 +596,27 @@ export default function LiveSession() {
         {/* MC / TF: Radio buttons */}
         {(qType === QUESTION_TYPES.MULTIPLE_CHOICE || qType === QUESTION_TYPES.TRUE_FALSE) && (
           <RadioGroup
-            value={displayAnswer ?? ''}
+            value={displayAnswerString}
             onChange={(e) => {
               if (!isLocked) setAnswer(e.target.value);
             }}
           >
             {(currentQ.options || []).map((opt, i) => {
-              const optId = opt._id || String(i);
+              const optId = String(opt._id ?? i);
               const isCorrectOpt = showCorrect && !!opt.correct;
-              const isSelected = displayAnswer === optId;
+              const isSelected = displayAnswerString === optId;
+              const count = inlineDistribution?.[i]?.count || 0;
+              const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const barColor = showCorrect
+                ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                : 'rgba(25, 118, 210, 0.18)';
               return (
                 <Paper
                   key={optId}
                   variant="outlined"
                   sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
                     p: 1.5,
                     mb: 0.75,
                     display: 'flex',
@@ -639,21 +631,53 @@ export default function LiveSession() {
                     if (!isLocked) setAnswer(optId);
                   }}
                 >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${showInlineOptionStats ? pct : 0}%`,
+                      bgcolor: barColor,
+                      transition: 'width 0.4s ease-out',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      zIndex: 1,
+                      display: 'grid',
+                      gridTemplateColumns: showInlineOptionStats
+                        ? '34px 30px minmax(0, 1fr) 58px'
+                        : '34px 30px minmax(0, 1fr)',
+                      columnGap: 1,
+                      alignItems: 'start',
+                      width: '100%',
+                    }}
+                  >
                   <FormControlLabel
                     value={optId}
-                    control={<Radio disabled={isLocked} sx={{ p: 0.5 }} />}
+                    control={<Radio disabled={isLocked} sx={{ p: 0.5 }} onClick={(e) => e.stopPropagation()} />}
                     label=""
-                    sx={{ m: 0, mr: 0 }}
+                    sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={`Option ${OPTION_LETTERS[i]}`}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}
                     size="small"
                     color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
+                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
                   />
-                  <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={opt.answer || opt.content || opt.plainText} />
+                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionDisplayHtml(opt)} />
+                  </Box>
+                  {showInlineOptionStats && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                      {pct}%
+                    </Typography>
+                  )}
                   </Box>
                 </Paper>
               );
@@ -665,16 +689,21 @@ export default function LiveSession() {
         {qType === QUESTION_TYPES.MULTI_SELECT && (
           <FormGroup>
             {(currentQ.options || []).map((opt, i) => {
-              const optId = opt._id || String(i);
+              const optId = String(opt._id ?? i);
               const isCorrectOpt = showCorrect && !!opt.correct;
-              const checked = Array.isArray(displayAnswer)
-                ? displayAnswer.includes(optId)
-                : false;
+              const checked = displayAnswerArray.includes(optId);
+              const count = inlineDistribution?.[i]?.count || 0;
+              const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const barColor = showCorrect
+                ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                : 'rgba(25, 118, 210, 0.18)';
               return (
                 <Paper
                   key={optId}
                   variant="outlined"
                   sx={{
+                    position: 'relative',
+                    overflow: 'hidden',
                     p: 1.5,
                     mb: 0.75,
                     display: 'flex',
@@ -688,23 +717,50 @@ export default function LiveSession() {
                   onClick={() => {
                     if (isLocked) return;
                     setAnswer((prev) => {
-                      const arr = Array.isArray(prev) ? prev : [];
+                      const arr = Array.isArray(prev) ? prev.map((value) => String(value)) : [];
                       return arr.includes(optId)
                         ? arr.filter((id) => id !== optId)
                         : [...arr, optId];
                     });
                   }}
                 >
+                  <Box
+                    aria-hidden
+                    sx={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: `${showInlineOptionStats ? pct : 0}%`,
+                      bgcolor: barColor,
+                      transition: 'width 0.4s ease-out',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      zIndex: 1,
+                      display: 'grid',
+                      gridTemplateColumns: showInlineOptionStats
+                        ? '34px 30px minmax(0, 1fr) 58px'
+                        : '34px 30px minmax(0, 1fr)',
+                      columnGap: 1,
+                      alignItems: 'start',
+                      width: '100%',
+                    }}
+                  >
                   <FormControlLabel
                     control={
                       <Checkbox
                         checked={checked}
                         disabled={isLocked}
                         sx={{ p: 0.5 }}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={() => {
                           if (isLocked) return;
                           setAnswer((prev) => {
-                            const arr = Array.isArray(prev) ? prev : [];
+                            const arr = Array.isArray(prev) ? prev.map((value) => String(value)) : [];
                             return arr.includes(optId)
                               ? arr.filter((id) => id !== optId)
                               : [...arr, optId];
@@ -713,17 +769,23 @@ export default function LiveSession() {
                       />
                     }
                     label=""
-                    sx={{ m: 0, mr: 0 }}
+                    sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={`Option ${OPTION_LETTERS[i]}`}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}
                     size="small"
                     color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25 }}
+                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
                   />
-                  <Box sx={{ flex: 1, minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={opt.answer || opt.content || opt.plainText} />
+                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionDisplayHtml(opt)} />
+                  </Box>
+                  {showInlineOptionStats && (
+                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                      {pct}%
+                    </Typography>
+                  )}
                   </Box>
                 </Paper>
               );
@@ -753,7 +815,6 @@ export default function LiveSession() {
                   placeholder="Type your answer…"
                   disabled={isLocked}
                 />
-                <MathPreview html={answerWysiwyg} />
               </>
             )}
           </Box>
@@ -811,22 +872,15 @@ export default function LiveSession() {
         )}
       </Box>
 
+      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && (
+        <Box sx={{ mb: 2 }}>
+          <MathPreview html={answerWysiwyg} />
+        </Box>
+      )}
+
       {/* ============================================================ */}
       {/* Stats phase                                                  */}
       {/* ============================================================ */}
-      {showStats && responseStats?.type === 'distribution' && responseStats.distribution && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Response statistics">
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Response Distribution
-          </Typography>
-          <DistributionBars
-            distribution={responseStats.distribution}
-            options={currentQ?.options}
-            showCorrect={showCorrect}
-          />
-        </Paper>
-      )}
-
       {showStats && responseStats?.type === 'numerical' && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Numerical statistics">
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
@@ -836,16 +890,7 @@ export default function LiveSession() {
             const values = (responseStats.values || []).map(Number).filter((v) => !isNaN(v));
             const histogramData = buildHistogramData(values);
             return histogramData.length > 0 ? (
-              <Box sx={{ mb: 2 }}>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-                    <XAxis dataKey="bin" />
-                    <YAxis allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Box>
+              <HistogramBars data={histogramData} height={150} />
             ) : null;
           })()}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
@@ -894,12 +939,12 @@ export default function LiveSession() {
         </Paper>
       )}
 
-      {showCorrect && currentQ.solution && (
+      {showCorrect && (liveSolutionHtml || liveSolutionPlainText) && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'success.main' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: 'success.main' }}>
             Solution
           </Typography>
-          <RichContent html={currentQ.solution} />
+          <RichContent html={liveSolutionHtml} fallback={liveSolutionPlainText} />
         </Paper>
       )}
     </Box>
