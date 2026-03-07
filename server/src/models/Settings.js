@@ -52,6 +52,9 @@ const SettingsSchema = new mongoose.Schema(
     Azure_accountKey: { type: String, default: '' },
     Azure_containerName: { type: String, default: '' },
 
+    // Token expiry (minutes). Default 120 = 2 hours. Adjustable in admin panel.
+    tokenExpiryMinutes: { type: Number, default: 120 },
+
     // Legacy extra fields (preserved so they aren't stripped on save)
     maxImageSize: { type: Number, default: 0 },
     maxImageWidth: { type: Number, default: 0 },

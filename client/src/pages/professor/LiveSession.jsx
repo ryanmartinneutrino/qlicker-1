@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
-  Switch, FormControlLabel, TextField, Divider, useMediaQuery,
+  Switch, FormControlLabel, TextField, Divider, useMediaQuery, LinearProgress,
 } from '@mui/material';
 import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
@@ -15,11 +15,12 @@ import {
 } from '@mui/icons-material';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
-  ResponsiveContainer, Cell,
+  ResponsiveContainer,
 } from 'recharts';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import { buildHistogramData } from '../../utils/histogram';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -31,11 +32,6 @@ const COMPACT_CHIP_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-const BAR_COLORS = [
-  '#1976d2', '#388e3c', '#f57c00', '#d32f2f',
-  '#7b1fa2', '#0097a7', '#c2185b', '#455a64',
-];
 
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
@@ -71,48 +67,84 @@ function RichContent({ html }) {
   );
 }
 
-/** Bar chart for MC / TF / MS distribution data. */
-function DistributionChart({ data }) {
-  if (!data || !data.length) {
+/** Bar chart for MC / TF / MS distribution data (Meteor-style inline response bars). */
+function DistributionBars({ distribution, options, showCorrect }) {
+  if (!distribution || !distribution.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
+  const total = distribution.reduce((sum, d) => sum + (d.count || 0), 0);
   return (
-    <ResponsiveContainer width="100%" height={280}>
-      <BarChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-        <XAxis dataKey="label" />
-        <YAxis allowDecimals={false} />
-        <RechartsTooltip />
-        <Bar dataKey="count" name="Responses" radius={[4, 4, 0, 0]}>
-          {data.map((_, i) => (
-            <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+      {distribution.map((d, i) => {
+        const pct = total > 0 ? Math.round(100 * (d.count || 0) / total) : 0;
+        const isCorrect = showCorrect && options?.[i]?.correct;
+        const barColor = isCorrect ? 'success.main' : showCorrect && !options?.[i]?.correct ? 'error.light' : 'primary.main';
+        return (
+          <Box key={i}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+              <Chip
+                label={OPTION_LETTERS[i]}
+                size="small"
+                color={isCorrect ? 'success' : 'default'}
+                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+              />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
+              </Box>
+              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
+                {pct}% ({d.count || 0})
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={pct}
+              sx={{
+                height: 8,
+                borderRadius: 1,
+                bgcolor: 'grey.200',
+                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
+              }}
+            />
+          </Box>
+        );
+      })}
+    </Box>
   );
 }
 
-/** Short-answer responses list. */
+/** Short-answer responses list (rendered rich text). */
 function ShortAnswerList({ responses }) {
   if (!responses || !responses.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
   return (
-    <Box sx={{ maxHeight: 320, overflow: 'auto' }}>
+    <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
       {responses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
-          <Typography variant="body2">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+          {r.answerWysiwyg ? (
+            <RichContent html={r.answerWysiwyg} />
+          ) : (
+            <Typography variant="body2">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+          )}
         </Paper>
       ))}
     </Box>
   );
 }
 
-/** Numerical statistics display. */
-function NumericalStats({ stats }) {
+/** Numerical statistics display with histogram. */
+function NumericalStats({ stats, allResponses }) {
   if (!stats) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
+
+  // Build histogram bins from raw values
+  const values = (allResponses || [])
+    .map((r) => Number(r.answer))
+    .filter((v) => !isNaN(v));
+
+  const histogramData = buildHistogramData(values);
+
   const entries = [
     { label: 'Count', value: stats.total ?? stats.count ?? 0 },
     { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
@@ -121,13 +153,27 @@ function NumericalStats({ stats }) {
     { label: 'Max', value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-      {entries.map((e) => (
-        <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 90, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">{e.label}</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{e.value}</Typography>
-        </Paper>
-      ))}
+    <Box>
+      {histogramData.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
+              <XAxis dataKey="bin" />
+              <YAxis allowDecimals={false} />
+              <RechartsTooltip />
+              <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Box>
+      )}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+        {entries.map((e) => (
+          <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 90, textAlign: 'center' }}>
+            <Typography variant="caption" color="text.secondary">{e.label}</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{e.value}</Typography>
+          </Paper>
+        ))}
+      </Box>
     </Box>
   );
 }
@@ -474,14 +520,6 @@ export default function LiveSession() {
   // Build chart data from responseStats
   // --------------------------------------------------
 
-  let chartData = null;
-  if (responseStats?.type === 'distribution' && responseStats.distribution) {
-    chartData = responseStats.distribution.map((d, i) => ({
-      label: OPTION_LETTERS[i] || String(i + 1),
-      count: d.count || 0,
-    }));
-  }
-
   // --------------------------------------------------
   // Render
   // --------------------------------------------------
@@ -564,6 +602,131 @@ export default function LiveSession() {
         >
           End Session
         </Button>
+      </Paper>
+
+      {/* ============================================================ */}
+      {/* Control bar (always above the question)                      */}
+      {/* ============================================================ */}
+      <Paper
+        variant="outlined"
+        sx={{
+          p: { xs: 1.5, sm: 2 },
+          mb: 2,
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 1,
+        }}
+      >
+        {/* Visibility toggle */}
+        <Tooltip title={isHidden ? 'Show question to students' : 'Hide question from students'}>
+          <Button
+            size="small"
+            variant={isHidden ? 'contained' : 'outlined'}
+            color={isHidden ? 'warning' : 'primary'}
+            startIcon={isHidden ? <HideIcon /> : <ShowIcon />}
+            onClick={() => handleToggleVisibility('hidden')}
+            disabled={!currentQ || actionLoading}
+            aria-label={isHidden ? 'Show question' : 'Hide question'}
+          >
+            {isHidden ? 'Hidden' : 'Visible'}
+          </Button>
+        </Tooltip>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Navigation */}
+        <Tooltip title="Previous question">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<PrevIcon />}
+              onClick={handlePrev}
+              disabled={!hasPrev || actionLoading}
+              aria-label="Previous question"
+            >
+              Prev
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Tooltip title="Next question">
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              endIcon={<NextIcon />}
+              onClick={handleNext}
+              disabled={!hasNext || actionLoading}
+              aria-label="Next question"
+            >
+              Next
+            </Button>
+          </span>
+        </Tooltip>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Show stats toggle */}
+        <Tooltip title={showStats ? 'Hide stats from students' : 'Show stats to students'}>
+          <Button
+            size="small"
+            variant={showStats ? 'contained' : 'outlined'}
+            startIcon={<ChartIcon />}
+            onClick={() => handleToggleVisibility('stats')}
+            disabled={!currentQ || actionLoading}
+            aria-label={showStats ? 'Hide stats' : 'Show stats'}
+          >
+            {showStats ? 'Stats On' : 'Stats Off'}
+          </Button>
+        </Tooltip>
+
+        {/* Show correct toggle */}
+        <Tooltip title={showCorrect ? 'Hide correct answer from students' : 'Show correct answer to students'}>
+          <Button
+            size="small"
+            variant={showCorrect ? 'contained' : 'outlined'}
+            color={showCorrect ? 'success' : 'primary'}
+            startIcon={<CheckIcon />}
+            onClick={() => handleToggleVisibility('correct')}
+            disabled={!currentQ || actionLoading}
+            aria-label={showCorrect ? 'Hide correct answer' : 'Show correct answer'}
+          >
+            {showCorrect ? 'Correct On' : 'Correct Off'}
+          </Button>
+        </Tooltip>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* New attempt */}
+        <Tooltip title="Start a new attempt for this question">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AttemptIcon />}
+            onClick={handleNewAttempt}
+            disabled={!currentQ || actionLoading}
+            aria-label="New attempt"
+          >
+            New Attempt
+          </Button>
+        </Tooltip>
+
+        {/* Allow / close responses */}
+        <Tooltip title={responsesClosed ? 'Open responses for students' : 'Close responses'}>
+          <Button
+            size="small"
+            variant={responsesClosed ? 'contained' : 'outlined'}
+            color={responsesClosed ? 'error' : 'success'}
+            startIcon={responsesClosed ? <LockIcon /> : <UnlockIcon />}
+            onClick={handleToggleResponses}
+            disabled={!currentQ || actionLoading}
+            aria-label={responsesClosed ? 'Allow responses' : 'Close responses'}
+          >
+            {responsesClosed ? 'Responses Closed' : 'Responses Open'}
+          </Button>
+        </Tooltip>
       </Paper>
 
       {/* ============================================================ */}
@@ -687,11 +850,15 @@ export default function LiveSession() {
               Select a question to view responses.
             </Typography>
           ) : responseStats?.type === 'distribution' ? (
-            <DistributionChart data={chartData} />
+            <DistributionBars
+              distribution={responseStats.distribution}
+              options={currentQ?.options}
+              showCorrect={showCorrect}
+            />
           ) : responseStats?.type === 'shortAnswer' ? (
             <ShortAnswerList responses={responseStats.answers || allResponses} />
           ) : responseStats?.type === 'numerical' ? (
-            <NumericalStats stats={responseStats} />
+            <NumericalStats stats={responseStats} allResponses={allResponses} />
           ) : allResponses.length > 0 ? (
             <ShortAnswerList responses={allResponses} />
           ) : (
@@ -747,130 +914,6 @@ export default function LiveSession() {
             </>
           )}
         </Box>
-      </Paper>
-
-      {/* ============================================================ */}
-      {/* Bottom control bar                                           */}
-      {/* ============================================================ */}
-      <Paper
-        variant="outlined"
-        sx={{
-          p: { xs: 1.5, sm: 2 },
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 1,
-        }}
-      >
-        {/* Visibility toggle */}
-        <Tooltip title={isHidden ? 'Show question to students' : 'Hide question from students'}>
-          <Button
-            size="small"
-            variant={isHidden ? 'contained' : 'outlined'}
-            color={isHidden ? 'warning' : 'primary'}
-            startIcon={isHidden ? <HideIcon /> : <ShowIcon />}
-            onClick={() => handleToggleVisibility('hidden')}
-            disabled={!currentQ || actionLoading}
-            aria-label={isHidden ? 'Show question' : 'Hide question'}
-          >
-            {isHidden ? 'Hidden' : 'Visible'}
-          </Button>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* Navigation */}
-        <Tooltip title="Previous question">
-          <span>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<PrevIcon />}
-              onClick={handlePrev}
-              disabled={!hasPrev || actionLoading}
-              aria-label="Previous question"
-            >
-              Prev
-            </Button>
-          </span>
-        </Tooltip>
-
-        <Tooltip title="Next question">
-          <span>
-            <Button
-              size="small"
-              variant="outlined"
-              endIcon={<NextIcon />}
-              onClick={handleNext}
-              disabled={!hasNext || actionLoading}
-              aria-label="Next question"
-            >
-              Next
-            </Button>
-          </span>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* Show stats toggle */}
-        <Tooltip title={showStats ? 'Hide stats from students' : 'Show stats to students'}>
-          <Button
-            size="small"
-            variant={showStats ? 'contained' : 'outlined'}
-            startIcon={<ChartIcon />}
-            onClick={() => handleToggleVisibility('stats')}
-            disabled={!currentQ || actionLoading}
-            aria-label={showStats ? 'Hide stats' : 'Show stats'}
-          >
-            {showStats ? 'Stats On' : 'Stats Off'}
-          </Button>
-        </Tooltip>
-
-        {/* Show correct toggle */}
-        <Tooltip title={showCorrect ? 'Hide correct answer from students' : 'Show correct answer to students'}>
-          <Button
-            size="small"
-            variant={showCorrect ? 'contained' : 'outlined'}
-            color={showCorrect ? 'success' : 'primary'}
-            startIcon={<CheckIcon />}
-            onClick={() => handleToggleVisibility('correct')}
-            disabled={!currentQ || actionLoading}
-            aria-label={showCorrect ? 'Hide correct answer' : 'Show correct answer'}
-          >
-            {showCorrect ? 'Correct On' : 'Correct Off'}
-          </Button>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* New attempt */}
-        <Tooltip title="Start a new attempt for this question">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<AttemptIcon />}
-            onClick={handleNewAttempt}
-            disabled={!currentQ || actionLoading}
-            aria-label="New attempt"
-          >
-            New Attempt
-          </Button>
-        </Tooltip>
-
-        {/* Allow / close responses */}
-        <Tooltip title={responsesClosed ? 'Open responses for students' : 'Close responses'}>
-          <Button
-            size="small"
-            variant={responsesClosed ? 'contained' : 'outlined'}
-            color={responsesClosed ? 'error' : 'success'}
-            startIcon={responsesClosed ? <LockIcon /> : <UnlockIcon />}
-            onClick={handleToggleResponses}
-            disabled={!currentQ || actionLoading}
-            aria-label={responsesClosed ? 'Allow responses' : 'Close responses'}
-          >
-            {responsesClosed ? 'Responses Closed' : 'Responses Open'}
-          </Button>
-        </Tooltip>
       </Paper>
 
       {/* ============================================================ */}

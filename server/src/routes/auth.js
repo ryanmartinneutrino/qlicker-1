@@ -19,10 +19,28 @@ function sanitizeUser(user) {
   return obj;
 }
 
-function signAccessToken(app, user) {
+// Cache token expiry setting to avoid DB query on every token generation.
+// Refreshes every 60 seconds.
+let _cachedTokenExpiryMinutes = null;
+let _cacheExpiry = 0;
+
+async function getTokenExpiryMinutes() {
+  const now = Date.now();
+  if (_cachedTokenExpiryMinutes != null && now < _cacheExpiry) {
+    return _cachedTokenExpiryMinutes;
+  }
+  const settings = await Settings.findOne();
+  const mins = settings?.tokenExpiryMinutes;
+  _cachedTokenExpiryMinutes = (typeof mins === 'number' && mins > 0) ? mins : 120;
+  _cacheExpiry = now + 60_000; // refresh cache every 60 seconds
+  return _cachedTokenExpiryMinutes;
+}
+
+async function signAccessToken(app, user) {
+  const mins = await getTokenExpiryMinutes();
   return app.jwt.sign(
     { userId: user._id, roles: user.profile?.roles || [] },
-    { expiresIn: '15m' }
+    { expiresIn: `${mins}m` }
   );
 }
 
@@ -115,7 +133,7 @@ export default async function authRoutes(app) {
       request.log.error('Failed to send verification email:', err);
     }
 
-    const token = signAccessToken(app, user);
+    const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
     reply.setCookie('refreshToken', refreshToken, {
@@ -162,7 +180,7 @@ export default async function authRoutes(app) {
     user.lastLogin = new Date();
     await user.save();
 
-    const token = signAccessToken(app, user);
+    const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
     reply.setCookie('refreshToken', refreshToken, {
@@ -205,7 +223,7 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'User not found' });
     }
 
-    const token = signAccessToken(app, user);
+    const token = await signAccessToken(app, user);
     return { token };
   });
 
@@ -436,7 +454,7 @@ export default async function authRoutes(app) {
       await user.save();
     }
 
-    const token = signAccessToken(app, user);
+    const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
     reply.setCookie('refreshToken', refreshToken, {
