@@ -9,19 +9,16 @@ import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
   Stop as StopIcon, OpenInNew as OpenInNewIcon,
   Visibility as ShowIcon, VisibilityOff as HideIcon,
-  BarChart as ChartIcon, Check as CheckIcon,
+  Check as CheckIcon,
   Replay as AttemptIcon, Lock as LockIcon, LockOpen as UnlockIcon,
   People as PeopleIcon, Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
+import HistogramBars from '../../components/common/HistogramBars';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -115,16 +112,7 @@ function NumericalStats({ stats, allResponses }) {
   return (
     <Box>
       {histogramData.length > 0 && (
-        <Box sx={{ mb: 2 }}>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-              <XAxis dataKey="bin" />
-              <YAxis allowDecimals={false} />
-              <RechartsTooltip />
-              <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Box>
+        <HistogramBars data={histogramData} height={170} />
       )}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         {entries.map((e) => (

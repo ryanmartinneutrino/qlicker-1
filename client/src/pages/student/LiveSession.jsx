@@ -4,13 +4,10 @@ import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
 } from '@mui/material';
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts';
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import { buildHistogramData } from '../../utils/histogram';
+import HistogramBars from '../../components/common/HistogramBars';
 import {
   QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
 } from '../../components/questions/constants';
@@ -639,7 +636,7 @@ export default function LiveSession() {
                   </Box>
                   {showInlineOptionStats && (
                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
-                      {pct}% ({count})
+                      {pct}%
                     </Typography>
                   )}
                   </Box>
@@ -734,7 +731,7 @@ export default function LiveSession() {
                   </Box>
                   {showInlineOptionStats && (
                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
-                      {pct}% ({count})
+                      {pct}%
                     </Typography>
                   )}
                   </Box>
@@ -836,16 +833,7 @@ export default function LiveSession() {
             const values = (responseStats.values || []).map(Number).filter((v) => !isNaN(v));
             const histogramData = buildHistogramData(values);
             return histogramData.length > 0 ? (
-              <Box sx={{ mb: 2 }}>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={histogramData} margin={{ top: 8, right: 16, bottom: 0, left: -12 }}>
-                    <XAxis dataKey="bin" />
-                    <YAxis allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Bar dataKey="count" name="Responses" fill="#1976d2" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </Box>
+              <HistogramBars data={histogramData} height={150} />
             ) : null;
           })()}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>

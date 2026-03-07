@@ -714,6 +714,65 @@ describe('GET /api/v1/sessions/:id/results', () => {
     expect(byStudent[String(student._id)].participation).toBe(100);
     expect(byStudent[String(studentTwo._id)].participation).toBe(0);
   });
+
+  it('includes responder data even when a student is missing from joined[]', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>MC</p>',
+        plainText: 'MC',
+        sessionId: session._id,
+        courseId: course._id,
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+        ],
+      },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    // Write a response directly without joining to emulate legacy/misaligned data.
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '0',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    expect(liveRes.json().isJoined).toBe(false);
+
+    const resultsRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/results`, {
+      token: profToken,
+    });
+    expect(resultsRes.statusCode).toBe(200);
+
+    const row = (resultsRes.json().studentResults || []).find(
+      (entry) => String(entry.studentId) === String(student._id),
+    );
+    expect(row).toBeDefined();
+    expect(row.participation).toBe(100);
+    expect(row.questionResults[0].responses.length).toBe(1);
+  });
 });
 
 // ---------- PATCH /api/v1/sessions/:id/current ----------

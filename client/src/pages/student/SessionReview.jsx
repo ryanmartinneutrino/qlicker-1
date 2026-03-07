@@ -364,9 +364,35 @@ export default function SessionReview() {
             </ToggleButtonGroup>
 
             {viewMode === 'one' && (
-              <Typography variant="body2" color="text.secondary">
-                Question {questionIdx + 1} of {total}
-              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Question {questionIdx + 1} of {total}
+                </Typography>
+                {total > 1 && (
+                  <>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      startIcon={<PrevIcon />}
+                      disabled={questionIdx <= 0}
+                      onClick={() => goTo(questionIdx - 1)}
+                      aria-label="Previous question"
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      endIcon={<NextIcon />}
+                      disabled={questionIdx >= total - 1}
+                      onClick={() => goTo(questionIdx + 1)}
+                      aria-label="Next question"
+                    >
+                      Next
+                    </Button>
+                  </>
+                )}
+              </Box>
             )}
           </Box>
 
@@ -441,29 +467,6 @@ export default function SessionReview() {
                 );
               })()}
 
-              {/* Navigation controls */}
-              {total > 1 && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<PrevIcon />}
-                    disabled={questionIdx <= 0}
-                    onClick={() => goTo(questionIdx - 1)}
-                    aria-label="Previous question"
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="contained"
-                    endIcon={<NextIcon />}
-                    disabled={questionIdx >= total - 1}
-                    onClick={() => goTo(questionIdx + 1)}
-                    aria-label="Next question"
-                  >
-                    Next
-                  </Button>
-                </Box>
-              )}
             </Box>
           )}
 

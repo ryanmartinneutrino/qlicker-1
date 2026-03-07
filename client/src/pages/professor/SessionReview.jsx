@@ -218,7 +218,7 @@ export default function SessionReview() {
   // ---- Summary stats ----
 
   const totalQuestions = questions.length;
-  const totalStudents = session?.joined?.length || studentResults.length || 0;
+  const totalStudents = Math.max(session?.joined?.length || 0, studentResults.length || 0);
   const avgParticipation = useMemo(() => {
     if (!studentResults.length) return 0;
     const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);

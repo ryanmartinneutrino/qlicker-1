@@ -1446,16 +1446,22 @@ export default async function sessionRoutes(app) {
         questionId: { $in: questionIds },
       }).lean();
 
-      // Fetch all joined students
-      const joinedUserIds = session.joined || [];
-      const students = await User.find({ _id: { $in: joinedUserIds } }).lean();
+      // Include students who joined live plus anyone who has responses recorded for this session.
+      const joinedUserIds = (session.joined || []).map((id) => String(id));
+      const responderUserIds = [...new Set(
+        allResponses
+          .map((response) => String(response.studentUserId || ''))
+          .filter(Boolean)
+      )];
+      const resultUserIds = [...new Set([...joinedUserIds, ...responderUserIds])];
+      const students = await User.find({ _id: { $in: resultUserIds } }).lean();
       const studentMap = {};
       for (const s of students) {
         studentMap[String(s._id)] = s;
       }
 
       // Build per-student results
-      const studentResults = joinedUserIds.map((studentId) => {
+      const studentResults = resultUserIds.map((studentId) => {
         const student = studentMap[String(studentId)];
         const firstname = student?.profile?.firstname || '';
         const lastname = student?.profile?.lastname || '';
