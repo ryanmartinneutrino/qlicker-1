@@ -308,7 +308,17 @@ export default function SecondDesktop() {
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
   const responseCount = liveData?.responseCount ?? allResponses.length;
 
-  // ---- Window title ----
+  // ---- Auto-close popup window when session ends ----
+
+  useEffect(() => {
+    if (!sessionEnded) return;
+    const timer = setTimeout(() => {
+      if (window.opener) {
+        window.close();
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [sessionEnded]);
 
   useEffect(() => {
     const name = session?.name || 'Presentation';
@@ -567,6 +577,20 @@ export default function SecondDesktop() {
               No responses yet.
             </Typography>
           )}
+        </Paper>
+      )}
+
+      {/* Solution (shown when showCorrect is enabled) */}
+      {showCorrect && currentQ.solution && (
+        <Paper
+          variant="outlined"
+          sx={{ p: { xs: 2, sm: 3 }, mb: 3, borderColor: 'success.main' }}
+          aria-label="Solution"
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
+            Solution
+          </Typography>
+          <RichContent html={currentQ.solution} />
         </Paper>
       )}
     </Box>

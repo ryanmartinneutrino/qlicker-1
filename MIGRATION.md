@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 5 In Progress — Interactive Sessions Implemented; Token Expiry & Stats Display Updated
+## Status: Phase 5 In Progress — Interactive Sessions Improved; UI Overhaul & Passcode Join Tracking
 
 ---
 
@@ -1026,6 +1026,23 @@ The following Phase 5 work has been completed:
 - ✅ **Short answer rendered list** — SA responses display rich text via RichContent component (renders answerWysiwyg HTML with KaTeX). Scrollable container (max-height 400px). Applied to all three views.
 - ✅ **Student SA input with TipTap** — Created `StudentRichTextEditor` component using TipTap with StarterKit + Underline + Placeholder. Supports bold/italic/underline via bubble menu. Math via `\(...\)` inline and `$$...$$` display delimiters. Live KaTeX preview shown only when math delimiters are detected. Submits both `answer` (plain text) and `answerWysiwyg` (HTML).
 
+#### PR 121: Interactive Session Improvements (UI Overhaul & Passcode Join Tracking)
+
+- ✅ **Second desktop popup window** — SecondDesktop route moved outside AppLayout (no appbar/avatar). Opens as popup window via `window.open()` with specific dimensions. Auto-closes after 3 seconds when session ends.
+- ✅ **Option text in stats bars** — Student DistributionBars now renders actual option text (rich HTML) alongside letter labels and percentages. Previously only showed A, B, C letters. Applied consistently to professor LiveSession, student LiveSession, SecondDesktop, and SessionReview.
+- ✅ **Control bar toggle switches** — Professor LiveSession visibility/stats/correct controls converted from buttons to MUI Switch toggles. Join code controls moved to top control bar. Session settings button added.
+- ✅ **Visibility persistence** — First question set to hidden (`sessionOptions.hidden: true`) on session launch. When navigating to next/prev question, visibility state carries over from current question.
+- ✅ **Reviewable enforcement** — Reviewable toggle disabled in professor CourseDetail unless session status is 'done'. Server validates: returns 400 if attempting to set reviewable on non-ended session (both PATCH /sessions/:id and PATCH /sessions/:id/reviewable endpoints). Student CourseDetail only shows reviewable chip for ended sessions.
+- ✅ **Passcode join tracking** — `joinedWithCode` boolean added to JoinRecordSchema. Join endpoint records whether student joined during active passcode mode. Students who haven't joined with a code are treated as not-joined when joinCodeEnabled is true. Student LiveSession shows "waiting for passcode entry" message when joinCodeEnabled but not active.
+- ✅ **Session settings button** — Settings button in session control bar navigates to session editor page.
+- ✅ **Meteor-style inline stats in SessionReview** — SessionReview Questions tab now shows all questions at once (removed prev/next navigation). Each question includes inline DistributionBars with option text and percentage fill. "Students" tab renamed to "Response Data".
+- ✅ **Solution display in SecondDesktop** — When showCorrect is enabled, SecondDesktop now renders the solution text (consistent with student LiveSession behavior).
+
+**Known issues / future work:**
+- Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`). Should be addressed in a future security hardening PR.
+- Client has no unit tests. Playwright E2E tests should be added for interactive session flows.
+- RequireAuth component now renders `<Outlet />` when no children provided (needed for routes outside AppLayout). This pattern should be kept consistent if more layout-free routes are added.
+
 **Testable by human (all phases through Phase 5):**
 - Log in as professor → create a course → click course title to view
 - Students can enroll → student sees course in dashboard → click title to view
@@ -1052,15 +1069,17 @@ The following Phase 5 work has been completed:
 - Student can unenroll from a course (no more "Insufficient permissions" error)
 - Student/instructor lists auto-refresh every 15 seconds
 - API: POST/GET/PATCH/DELETE sessions and questions via REST endpoints
-- **Professor: Launch session → live session page with all controls above the question**
-- **Professor: See Meteor-style response bars for MC/MS/TF questions during live session**
+- **Professor: Launch session → live session page with toggle switch controls above the question**
+- **Professor: See Meteor-style response bars with actual option text for MC/MS/TF questions**
 - **Professor: See histogram for numerical questions, scrollable rendered list for short answers**
 - **Professor: Real-time updates via WebSocket when students respond**
-- **Professor: SecondDesktop projector view with same stats display**
-- **Professor: Session review page with CSV export**
+- **Professor: SecondDesktop opens as popup window, shows question + stats + solution**
+- **Professor: Session review page shows all questions with inline stats, CSV export, "Response Data" tab**
+- **Professor: Reviewable toggle only available when session has ended**
 - **Student: Join session → see question → select/type answer → submit**
-- **Student: SA answer input uses TipTap editor with math preview (shown only when `\(` or `$$` detected)**
-- **Student: See Meteor-style response bars and numerical histogram when prof enables stats**
-- **Student: Join code numpad entry for protected sessions**
+- **Student: SA answer input uses TipTap editor with math preview**
+- **Student: See Meteor-style response bars with option text when prof enables stats**
+- **Student: Join code entry for passcode-protected sessions**
+- **Student: See solution when prof enables show correct**
 
 **Important:** Always cross-check REQUIREMENTS_FOR_MIGRATION_FASTIFY.md before starting new work to ensure alignment with the master requirements.

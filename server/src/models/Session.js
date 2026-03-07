@@ -23,6 +23,7 @@ const JoinRecordSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
     joinedAt: { type: Date, default: Date.now },
+    joinedWithCode: { type: Boolean, default: false },
   },
   { _id: false }
 );
