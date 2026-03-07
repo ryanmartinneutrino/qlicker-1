@@ -281,7 +281,7 @@ export default function LiveSession() {
 
   useEffect(() => {
     if (!liveData || liveData.isJoined || autoJoinAttempted) return;
-    if (liveData.session?.joinCodeActive || liveData.session?.joinCodeEnabled) return; // needs code
+    if (liveData.session?.joinCodeActive || liveData.session?.joinCodeEnabled) return; // passcode protection enabled
 
     setAutoJoinAttempted(true);
     setJoining(true);

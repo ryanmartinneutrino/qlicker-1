@@ -696,7 +696,6 @@ export default function LiveSession() {
               onChange={() => handleToggleVisibility('correct')}
               disabled={!currentQ || actionLoading}
               size="small"
-              color="success"
             />
           }
           label={<Typography variant="body2">Show Correct</Typography>}
