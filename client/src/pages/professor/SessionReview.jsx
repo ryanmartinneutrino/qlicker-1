@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Tabs, Tab,
+  TableHead, TableRow, Tabs, Tab, LinearProgress,
 } from '@mui/material';
 import {
   ChevronLeft as PrevIcon,
@@ -25,11 +25,6 @@ const COMPACT_CHIP_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-const BAR_COLORS = [
-  '#1976d2', '#388e3c', '#f57c00', '#d32f2f',
-  '#7b1fa2', '#0097a7', '#c2185b', '#455a64',
-];
 
 const richContentSx = {
   '& p': { my: 0.5 },
@@ -93,48 +88,47 @@ function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
 
-/** Horizontal bar chart for response distribution. */
-function DistributionBars({ data, highlightCorrect, correctIndices }) {
+/** Meteor-style inline response bars for MC/MS/TF (options as bars). */
+function DistributionBars({ data, highlightCorrect, correctIndices, options }) {
   if (!data || !data.length) {
     return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
   }
   const total = data.reduce((sum, d) => sum + d.count, 0);
-  const maxCount = Math.max(...data.map((d) => d.count), 1);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
       {data.map((item, i) => {
-        const pct = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
-        const pctOfTotal = total > 0 ? ((item.count / total) * 100).toFixed(0) : 0;
+        const pct = total > 0 ? Math.round(100 * item.count / total) : 0;
         const isCorrect = highlightCorrect && correctIndices?.includes(i);
+        const barColor = isCorrect ? 'success.main' : !highlightCorrect || !correctIndices?.length ? 'primary.main' : 'error.light';
         return (
-          <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography
-              variant="body2"
-              sx={{ fontWeight: 700, minWidth: 24, textAlign: 'center' }}
-            >
-              {item.label}
-            </Typography>
-            <Box
-              sx={{
-                flex: 1, position: 'relative', height: 28,
-                bgcolor: 'grey.100', borderRadius: 1, overflow: 'hidden',
-              }}
-            >
-              <Box
-                sx={{
-                  height: '100%',
-                  width: `${pct}%`,
-                  bgcolor: isCorrect ? 'success.main' : BAR_COLORS[i % BAR_COLORS.length],
-                  borderRadius: 1,
-                  transition: 'width 0.4s ease',
-                  minWidth: item.count > 0 ? 4 : 0,
-                }}
+          <Box key={i}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
+              <Chip
+                label={item.label}
+                size="small"
+                color={isCorrect ? 'success' : 'default'}
+                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
               />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <RichContent
+                  html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''}
+                />
+              </Box>
+              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>
+                {pct}% ({item.count})
+              </Typography>
             </Box>
-            <Typography variant="body2" sx={{ minWidth: 56, textAlign: 'right' }}>
-              {item.count} ({pctOfTotal}%)
-            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={pct}
+              sx={{
+                height: 8,
+                borderRadius: 1,
+                bgcolor: 'grey.200',
+                '& .MuiLinearProgress-bar': { bgcolor: barColor, borderRadius: 1 },
+              }}
+            />
           </Box>
         );
       })}

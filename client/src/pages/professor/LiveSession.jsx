@@ -12,6 +12,7 @@ import {
   BarChart as ChartIcon, Check as CheckIcon,
   Replay as AttemptIcon, Lock as LockIcon, LockOpen as UnlockIcon,
   People as PeopleIcon, Refresh as RefreshIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip,
@@ -453,12 +454,17 @@ export default function LiveSession() {
   }, [doAction, sessionId]);
 
   // Second desktop / present window
+  const secondDesktopRef = useRef(null);
+
   const handleOpenPresent = useCallback(() => {
-    window.open(
-      `/manage/course/${courseId}/session/${sessionId}/present`,
-      '_blank',
-      'noopener,noreferrer',
-    );
+    const url = `/manage/course/${courseId}/session/${sessionId}/present`;
+    const w = Math.min(1200, window.screen.availWidth * 0.8);
+    const h = Math.min(800, window.screen.availHeight * 0.8);
+    const left = Math.round((window.screen.availWidth - w) / 2);
+    const top = Math.round((window.screen.availHeight - h) / 2);
+    const features = `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,location=no,status=no,scrollbars=yes,resizable=yes`;
+    const win = window.open(url, 'qlicker-second-desktop', features);
+    if (win) secondDesktopRef.current = win;
   }, [courseId, sessionId]);
 
   // --------------------------------------------------
@@ -618,20 +624,83 @@ export default function LiveSession() {
           gap: 1,
         }}
       >
+        {/* Join code toggle */}
+        {session.joinCodeEnabled && (
+          <>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={!!session.joinCodeActive}
+                  onChange={(e) => handleToggleJoinCode(e.target.checked)}
+                  disabled={actionLoading}
+                  size="small"
+                />
+              }
+              label={<Typography variant="body2">Join Code</Typography>}
+            />
+            {session.joinCodeActive && session.currentJoinCode && (
+              <>
+                <Chip
+                  label={session.currentJoinCode}
+                  color="primary"
+                  sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
+                  aria-label={`Current join code: ${session.currentJoinCode}`}
+                />
+                <Tooltip title="Refresh join code now">
+                  <IconButton
+                    size="small"
+                    onClick={handleRefreshJoinCode}
+                    disabled={actionLoading}
+                    aria-label="Refresh join code"
+                  >
+                    <RefreshIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+          </>
+        )}
+
         {/* Visibility toggle */}
-        <Tooltip title={isHidden ? 'Show question to students' : 'Hide question from students'}>
-          <Button
-            size="small"
-            variant={isHidden ? 'contained' : 'outlined'}
-            color={isHidden ? 'warning' : 'primary'}
-            startIcon={isHidden ? <HideIcon /> : <ShowIcon />}
-            onClick={() => handleToggleVisibility('hidden')}
-            disabled={!currentQ || actionLoading}
-            aria-label={isHidden ? 'Show question' : 'Hide question'}
-          >
-            {isHidden ? 'Hidden' : 'Visible'}
-          </Button>
-        </Tooltip>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!isHidden}
+              onChange={() => handleToggleVisibility('hidden')}
+              disabled={!currentQ || actionLoading}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">Visible</Typography>}
+        />
+
+        {/* Show stats toggle */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={showStats}
+              onChange={() => handleToggleVisibility('stats')}
+              disabled={!currentQ || actionLoading}
+              size="small"
+            />
+          }
+          label={<Typography variant="body2">Show Stats</Typography>}
+        />
+
+        {/* Show correct toggle */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={showCorrect}
+              onChange={() => handleToggleVisibility('correct')}
+              disabled={!currentQ || actionLoading}
+              size="small"
+              color="success"
+            />
+          }
+          label={<Typography variant="body2">Show Correct</Typography>}
+        />
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
@@ -668,37 +737,6 @@ export default function LiveSession() {
 
         <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
 
-        {/* Show stats toggle */}
-        <Tooltip title={showStats ? 'Hide stats from students' : 'Show stats to students'}>
-          <Button
-            size="small"
-            variant={showStats ? 'contained' : 'outlined'}
-            startIcon={<ChartIcon />}
-            onClick={() => handleToggleVisibility('stats')}
-            disabled={!currentQ || actionLoading}
-            aria-label={showStats ? 'Hide stats' : 'Show stats'}
-          >
-            {showStats ? 'Stats On' : 'Stats Off'}
-          </Button>
-        </Tooltip>
-
-        {/* Show correct toggle */}
-        <Tooltip title={showCorrect ? 'Hide correct answer from students' : 'Show correct answer to students'}>
-          <Button
-            size="small"
-            variant={showCorrect ? 'contained' : 'outlined'}
-            color={showCorrect ? 'success' : 'primary'}
-            startIcon={<CheckIcon />}
-            onClick={() => handleToggleVisibility('correct')}
-            disabled={!currentQ || actionLoading}
-            aria-label={showCorrect ? 'Hide correct answer' : 'Show correct answer'}
-          >
-            {showCorrect ? 'Correct On' : 'Correct Off'}
-          </Button>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
         {/* New attempt */}
         <Tooltip title="Start a new attempt for this question">
           <Button
@@ -725,6 +763,21 @@ export default function LiveSession() {
             aria-label={responsesClosed ? 'Allow responses' : 'Close responses'}
           >
             {responsesClosed ? 'Responses Closed' : 'Responses Open'}
+          </Button>
+        </Tooltip>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        {/* Session settings */}
+        <Tooltip title="Session settings">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
+            aria-label="Session settings"
+          >
+            Settings
           </Button>
         </Tooltip>
       </Paper>
@@ -868,53 +921,6 @@ export default function LiveSession() {
           )}
         </Paper>
       </Box>
-
-      {/* ============================================================ */}
-      {/* Join code controls                                           */}
-      {/* ============================================================ */}
-      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Join Code</Typography>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={!!session.joinCodeActive}
-                onChange={(e) => handleToggleJoinCode(e.target.checked)}
-                disabled={actionLoading}
-                size="small"
-              />
-            }
-            label={session.joinCodeActive ? 'Active' : 'Inactive'}
-          />
-
-          {session.joinCodeActive && session.currentJoinCode && (
-            <>
-              <Chip
-                label={session.currentJoinCode}
-                color="primary"
-                sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
-                aria-label={`Current join code: ${session.currentJoinCode}`}
-              />
-              <Tooltip title="Refresh join code now">
-                <IconButton
-                  size="small"
-                  onClick={handleRefreshJoinCode}
-                  disabled={actionLoading}
-                  aria-label="Refresh join code"
-                >
-                  <RefreshIcon />
-                </IconButton>
-              </Tooltip>
-              {session.joinCodeInterval && (
-                <Typography variant="caption" color="text.secondary">
-                  Refreshes every {session.joinCodeInterval}s
-                </Typography>
-              )}
-            </>
-          )}
-        </Box>
-      </Paper>
 
       {/* ============================================================ */}
       {/* End Session confirmation dialog                              */}

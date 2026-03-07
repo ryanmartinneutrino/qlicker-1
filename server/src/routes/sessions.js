@@ -336,6 +336,14 @@ export default async function sessionRoutes(app) {
         updates.practiceQuiz = false;
       }
 
+      // Reviewable can only be set to true when session is ended
+      if (updates.reviewable === true && session.status !== 'done') {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Session must be in ended state to be made reviewable',
+        });
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
@@ -400,6 +408,11 @@ export default async function sessionRoutes(app) {
       const updates = { status: 'running', date: now };
       if (session.questions.length > 0 && !session.currentQuestion) {
         updates.currentQuestion = session.questions[0];
+
+        // Set first question hidden by default when session launches
+        await Question.findByIdAndUpdate(session.questions[0], {
+          $set: { 'sessionOptions.hidden': true },
+        });
       }
       // Activate join code if enabled
       if (session.joinCodeEnabled) {
@@ -478,6 +491,15 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this session' });
       }
 
+      // Carry over visibility state from previous question to the new one
+      if (session.currentQuestion && session.currentQuestion !== questionId) {
+        const prevQ = await Question.findById(session.currentQuestion).lean();
+        const prevHidden = prevQ?.sessionOptions?.hidden ?? true;
+        await Question.findByIdAndUpdate(questionId, {
+          $set: { 'sessionOptions.hidden': prevHidden },
+        });
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { currentQuestion: questionId } },
@@ -510,6 +532,14 @@ export default async function sessionRoutes(app) {
 
       if (!isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      // Reviewable can only be set to true when session is ended
+      if (request.body.reviewable === true && session.status !== 'done') {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Session must be in ended state to be made reviewable',
+        });
       }
 
       const updated = await Session.findByIdAndUpdate(

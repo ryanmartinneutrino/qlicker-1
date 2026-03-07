@@ -224,13 +224,15 @@ export default function StudentCourseDetail() {
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
                         <SessionStatusChip status={s.status} />
-                        <Chip
-                          label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}
-                          size="small"
-                          variant="outlined"
-                          color={s.reviewable ? 'success' : 'default'}
-                          sx={COMPACT_CHIP_SX}
-                        />
+                        {s.status === 'done' && (
+                          <Chip
+                            label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}
+                            size="small"
+                            variant="outlined"
+                            color={s.reviewable ? 'success' : 'default'}
+                            sx={COMPACT_CHIP_SX}
+                          />
+                        )}
                         {isQuizSession(s) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
                       </Box>
                     </Box>

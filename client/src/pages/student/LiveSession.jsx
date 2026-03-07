@@ -84,14 +84,17 @@ function DistributionBars({ distribution, options, showCorrect }) {
         return (
           <Box key={i}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.25 }}>
-              <Typography
-                variant="body2"
-                sx={{ fontWeight: 700, minWidth: 24, textAlign: 'center' }}
-              >
-                {OPTION_LETTERS[i]}
-              </Typography>
-              <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }}>
-                {pct}%
+              <Chip
+                label={OPTION_LETTERS[i]}
+                size="small"
+                color={isCorrect ? 'success' : 'default'}
+                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
+              />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <RichContent html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''} />
+              </Box>
+              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 50, textAlign: 'right' }}>
+                {pct}% ({d.count || 0})
               </Typography>
             </Box>
             <LinearProgress

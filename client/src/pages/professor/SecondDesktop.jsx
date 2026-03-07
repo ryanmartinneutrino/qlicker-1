@@ -308,7 +308,17 @@ export default function SecondDesktop() {
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
   const responseCount = liveData?.responseCount ?? allResponses.length;
 
-  // ---- Window title ----
+  // ---- Auto-close popup window when session ends ----
+
+  useEffect(() => {
+    if (!sessionEnded) return;
+    const timer = setTimeout(() => {
+      if (window.opener) {
+        window.close();
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [sessionEnded]);
 
   useEffect(() => {
     const name = session?.name || 'Presentation';

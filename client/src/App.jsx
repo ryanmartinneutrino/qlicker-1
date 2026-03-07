@@ -35,6 +35,10 @@ export default function App() {
             <Route path="/sso-callback" element={<SSOCallback />} />
             <Route path="/reset/:token" element={<ResetPassword />} />
             <Route path="/verify-email/:token" element={<VerifyEmail />} />
+            {/* Second desktop route outside AppLayout (no appbar/avatar) */}
+            <Route element={<RequireAuth />}>
+              <Route path="/manage/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><SecondDesktop /></RequireRole>} />
+            </Route>
             <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
               <Route path="/profile" element={<Profile />} />
               <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
@@ -42,7 +46,6 @@ export default function App() {
               <Route path="/manage/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor"><ProfLiveSession /></RequireRole>} />
-              <Route path="/manage/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><SecondDesktop /></RequireRole>} />
               <Route path="/manage/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
               <Route path="/student" element={<StudentDashboard />} />
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />

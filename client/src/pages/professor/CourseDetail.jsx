@@ -618,7 +618,7 @@ export default function CourseDetail() {
                         size="small"
                         checked={!!s.reviewable}
                         onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
-                        disabled={!!sessionUpdatesInFlight[s._id]}
+                        disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
                       />
                     )}
                     label={<Typography variant="caption">Reviewable</Typography>}
