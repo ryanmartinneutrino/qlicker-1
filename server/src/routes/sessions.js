@@ -769,8 +769,12 @@ export default async function sessionRoutes(app) {
 
       const userId = request.user.userId;
 
-      // Already joined — return success
-      if (session.joined.includes(userId)) {
+      // Check if already joined
+      const alreadyInList = session.joined.includes(userId);
+      const existingRecord = (session.joinRecords || []).find((r) => r.userId === userId);
+
+      // If already joined with code or no code needed, return early
+      if (alreadyInList && (!session.joinCodeEnabled || existingRecord?.joinedWithCode)) {
         return { success: true, alreadyJoined: true };
       }
 
@@ -786,15 +790,32 @@ export default async function sessionRoutes(app) {
       }
 
       const now = new Date();
-      // Add to joined array (deduplicated), and add join record only if no existing record for this user
-      const hasExistingRecord = session.joinRecords?.some((r) => r.userId === userId);
-      const updateOps = {
-        $addToSet: { joined: userId },
-      };
-      if (!hasExistingRecord) {
-        updateOps.$push = { joinRecords: { userId, joinedAt: now } };
+      const joinedWithCode = !!session.joinCodeActive;
+
+      if (existingRecord) {
+        // Upgrade existing record to mark joinedWithCode
+        await Session.findOneAndUpdate(
+          { _id: request.params.id, 'joinRecords.userId': userId },
+          {
+            $addToSet: { joined: userId },
+            $set: {
+              'joinRecords.$.joinedWithCode': joinedWithCode || existingRecord.joinedWithCode,
+              'joinRecords.$.joinedAt': now,
+            },
+          },
+        );
+      } else {
+        await Session.findByIdAndUpdate(request.params.id, {
+          $addToSet: { joined: userId },
+          $push: {
+            joinRecords: {
+              userId,
+              joinedAt: now,
+              joinedWithCode,
+            },
+          },
+        });
       }
-      await Session.findByIdAndUpdate(request.params.id, updateOps);
 
       notifySessionUpdated(app, course, request.params.id);
 
@@ -823,7 +844,15 @@ export default async function sessionRoutes(app) {
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       const userId = request.user.userId;
-      const isJoined = session.joined.includes(userId);
+      let isJoined = session.joined.includes(userId);
+
+      // If passcode join applies, verify student joined with a valid code
+      if (!isInstrOrAdmin && session.joinCodeEnabled && isJoined) {
+        const joinRecord = (session.joinRecords || []).find((r) => r.userId === userId);
+        if (!joinRecord || !joinRecord.joinedWithCode) {
+          isJoined = false; // Treat as not joined — they need to rejoin with a code
+        }
+      }
 
       // Fetch current question
       let currentQuestion = null;
@@ -883,6 +912,7 @@ export default async function sessionRoutes(app) {
           currentQuestion: session.currentQuestion,
           joinedCount: session.joined.length,
           joinCodeActive: session.joinCodeActive,
+          joinCodeEnabled: session.joinCodeEnabled,
           reviewable: session.reviewable,
         },
         currentQuestion: null,

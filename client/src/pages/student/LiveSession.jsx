@@ -281,7 +281,7 @@ export default function LiveSession() {
 
   useEffect(() => {
     if (!liveData || liveData.isJoined || autoJoinAttempted) return;
-    if (liveData.session?.joinCodeActive) return; // needs code
+    if (liveData.session?.joinCodeActive || liveData.session?.joinCodeEnabled) return; // needs code
 
     setAutoJoinAttempted(true);
     setJoining(true);
@@ -398,59 +398,76 @@ export default function LiveSession() {
   // Render: join phase (with code)
   // --------------------------------------------------
 
-  if (!isJoined && session.joinCodeActive) {
+  if (!isJoined && (session.joinCodeActive || session.joinCodeEnabled)) {
+    // If join code is active, show the code entry form
+    if (session.joinCodeActive) {
+      return (
+        <Box sx={{ p: 3, maxWidth: 400, mx: 'auto', textAlign: 'center' }}>
+          <Paper variant="outlined" sx={{ p: 4 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+              Join Session
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Enter the 6-digit code shown by your instructor
+            </Typography>
+
+            {joinError && (
+              <Alert severity="error" sx={{ mb: 2 }}>{joinError}</Alert>
+            )}
+
+            <TextField
+              value={joinCode}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                setJoinCode(val);
+              }}
+              placeholder="000000"
+              inputProps={{
+                inputMode: 'numeric',
+                pattern: '[0-9]*',
+                maxLength: 6,
+                'aria-label': 'Join code',
+                style: {
+                  textAlign: 'center',
+                  fontSize: '2rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.35em',
+                },
+              }}
+              fullWidth
+              autoFocus
+              sx={{ mb: 3 }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && joinCode.length === 6) handleJoinWithCode();
+              }}
+            />
+
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              onClick={handleJoinWithCode}
+              disabled={joinCode.length < 6 || joining}
+              sx={{ py: 1.5, fontSize: '1.1rem' }}
+              aria-label="Join session"
+            >
+              {joining ? <CircularProgress size={24} color="inherit" /> : 'Join'}
+            </Button>
+          </Paper>
+        </Box>
+      );
+    }
+
+    // joinCodeEnabled but not active — wait for instructor to activate
     return (
-      <Box sx={{ p: 3, maxWidth: 400, mx: 'auto', textAlign: 'center' }}>
+      <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
         <Paper variant="outlined" sx={{ p: 4 }}>
-          <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-            Join Session
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+            {session.name || 'Live Session'}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Enter the 6-digit code shown by your instructor
+          <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
+            Waiting for the instructor to open passcode entry…
           </Typography>
-
-          {joinError && (
-            <Alert severity="error" sx={{ mb: 2 }}>{joinError}</Alert>
-          )}
-
-          <TextField
-            value={joinCode}
-            onChange={(e) => {
-              const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-              setJoinCode(val);
-            }}
-            placeholder="000000"
-            inputProps={{
-              inputMode: 'numeric',
-              pattern: '[0-9]*',
-              maxLength: 6,
-              'aria-label': 'Join code',
-              style: {
-                textAlign: 'center',
-                fontSize: '2rem',
-                fontWeight: 700,
-                letterSpacing: '0.35em',
-              },
-            }}
-            fullWidth
-            autoFocus
-            sx={{ mb: 3 }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && joinCode.length === 6) handleJoinWithCode();
-            }}
-          />
-
-          <Button
-            variant="contained"
-            size="large"
-            fullWidth
-            onClick={handleJoinWithCode}
-            disabled={joinCode.length < 6 || joining}
-            sx={{ py: 1.5, fontSize: '1.1rem' }}
-            aria-label="Join session"
-          >
-            {joining ? <CircularProgress size={24} color="inherit" /> : 'Join'}
-          </Button>
         </Paper>
       </Box>
     );
