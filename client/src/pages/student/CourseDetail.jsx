@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   List, ListItem, ListItemText, Divider,
@@ -28,6 +28,15 @@ function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
 }
 
+const MAX_STUDENT_TAB_INDEX = 1;
+
+function parseCourseTab(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 0;
+  if (parsed < 0 || parsed > MAX_STUDENT_TAB_INDEX) return 0;
+  return parsed;
+}
+
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
   '& .MuiChip-label': {
@@ -49,6 +58,7 @@ function TabPanel({ children, value, index }) {
 export default function StudentCourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -57,7 +67,7 @@ export default function StudentCourseDetail() {
   const [unenrolling, setUnenrolling] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
-  const [tab, setTab] = useState(0);
+  const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -84,6 +94,11 @@ export default function StudentCourseDetail() {
   }, [id]);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  useEffect(() => {
+    const urlTab = parseCourseTab(searchParams.get('tab'));
+    setTab((currentTab) => (currentTab === urlTab ? currentTab : urlTab));
+  }, [searchParams]);
 
   useEffect(() => {
     let ws = null;
@@ -198,7 +213,7 @@ export default function StudentCourseDetail() {
   const headerCode = `${headerDeptCode} ${headerCourseNumber}`.trim();
   const headerTitle = `${headerCode ? `${headerCode}: ` : ''}${headerCourseName}${headerSemester ? ` (${headerSemester})` : ''}`;
 
-  const renderSessionList = (sessionItems, emptyText) => {
+  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
     if (sessionItems.length === 0) {
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
@@ -253,6 +268,11 @@ export default function StudentCourseDetail() {
                     justifyContent: { xs: 'flex-start', sm: 'flex-end' },
                   }}
                 >
+                  {isQuizSession(s) && s.quizSubmittedByCurrentUser && !s.practiceQuiz && (
+                    <Button size="small" variant="outlined" disabled>
+                      Submitted
+                    </Button>
+                  )}
                   {s.status === 'running' && !isQuizSession(s) && (
                     <Button
                       size="small"
@@ -264,15 +284,25 @@ export default function StudentCourseDetail() {
                       Join
                     </Button>
                   )}
-                  {isQuizSession(s) && s.status !== 'done' && (
-                    <Button size="small" variant="outlined" disabled>Start Quiz</Button>
+                  {isQuizSession(s) && s.status === 'running' && !(s.quizSubmittedByCurrentUser && !s.practiceQuiz) && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/quiz`)}
+                    >
+                      Start Quiz
+                    </Button>
+                  )}
+                  {isQuizSession(s) && s.status === 'visible' && (
+                    <Button size="small" variant="outlined" disabled>Upcoming</Button>
                   )}
                   {s.status === 'done' && (
                     <Button
                       size="small"
                       variant="text"
                       disabled={!s.reviewable}
-                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/review`)}
+                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/review?returnTab=${listTabIndex}`)}
                     >
                       Review
                     </Button>
@@ -303,7 +333,16 @@ export default function StudentCourseDetail() {
 
       <Tabs
         value={tab}
-        onChange={(_, nextTab) => setTab(nextTab)}
+        onChange={(_, nextTab) => {
+          setTab(nextTab);
+          const nextParams = new URLSearchParams(searchParams);
+          if (nextTab === 0) {
+            nextParams.delete('tab');
+          } else {
+            nextParams.set('tab', String(nextTab));
+          }
+          setSearchParams(nextParams, { replace: true });
+        }}
         variant="scrollable"
         allowScrollButtonsMobile
       >
@@ -313,12 +352,12 @@ export default function StudentCourseDetail() {
 
       <TabPanel value={tab} index={0}>
         <Typography variant="h6" sx={{ mb: 2 }}>Lectures</Typography>
-        {renderSessionList(interactiveSessions, 'No lectures available.')}
+        {renderSessionList(interactiveSessions, 'No lectures available.', 0)}
       </TabPanel>
 
       <TabPanel value={tab} index={1}>
         <Typography variant="h6" sx={{ mb: 2 }}>Quizzes</Typography>
-        {renderSessionList(quizSessions, 'No quizzes available.')}
+        {renderSessionList(quizSessions, 'No quizzes available.', 1)}
       </TabPanel>
 
       <Box sx={{ mt: 3 }}>

@@ -88,6 +88,30 @@ const setExtensionsSchema = {
   },
 };
 
+const saveQuizResponseSchema = {
+  body: {
+    type: 'object',
+    required: ['questionId', 'answer'],
+    properties: {
+      questionId: { type: 'string', minLength: 1 },
+      answer: {},
+      answerWysiwyg: { type: 'string' },
+    },
+    additionalProperties: false,
+  },
+};
+
+const submitQuizQuestionSchema = {
+  body: {
+    type: 'object',
+    required: ['questionId'],
+    properties: {
+      questionId: { type: 'string', minLength: 1 },
+    },
+    additionalProperties: false,
+  },
+};
+
 // Generate a 6-digit numeric join code
 function generateJoinCode() {
   return String(crypto.randomInt(100000, 999999));
@@ -145,6 +169,199 @@ function parseBooleanQuery(value) {
   if (typeof value === 'boolean') return value;
   const normalized = normalizeAnswerValue(value).toLowerCase();
   return ['1', 'true', 'yes', 'on'].includes(normalized);
+}
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function isQuizLikeSession(session) {
+  return !!(session?.quiz || session?.practiceQuiz);
+}
+
+function getQuizWindowValidationMessage(session, updates = {}) {
+  const hasQuiz = Object.prototype.hasOwnProperty.call(updates, 'quiz');
+  const hasPracticeQuiz = Object.prototype.hasOwnProperty.call(updates, 'practiceQuiz');
+  const hasQuizStart = Object.prototype.hasOwnProperty.call(updates, 'quizStart');
+  const hasQuizEnd = Object.prototype.hasOwnProperty.call(updates, 'quizEnd');
+
+  const nextQuiz = hasQuiz ? !!updates.quiz : !!session?.quiz;
+  const nextPracticeQuiz = hasPracticeQuiz ? !!updates.practiceQuiz : !!session?.practiceQuiz;
+  if (!nextQuiz && !nextPracticeQuiz) return null;
+
+  const nextQuizStart = hasQuizStart ? updates.quizStart : session?.quizStart;
+  const nextQuizEnd = hasQuizEnd ? updates.quizEnd : session?.quizEnd;
+  const quizStart = toDateOrNull(nextQuizStart);
+  const quizEnd = toDateOrNull(nextQuizEnd);
+  if (quizStart && quizEnd && quizEnd.getTime() <= quizStart.getTime()) {
+    return 'Quiz end time must be later than quiz start time';
+  }
+
+  return null;
+}
+
+function normalizeQuizExtension(extension, session) {
+  const userId = normalizeAnswerValue(extension?.userId);
+  if (!userId) return null;
+
+  const fallbackStart = toDateOrNull(session?.quizStart);
+  const fallbackEnd = toDateOrNull(session?.quizEnd);
+  const quizStart = toDateOrNull(extension?.quizStart) || fallbackStart;
+  const quizEnd = toDateOrNull(extension?.quizEnd) || fallbackEnd;
+  if (!quizStart || !quizEnd) return null;
+  if (quizEnd.getTime() <= quizStart.getTime()) return null;
+
+  return { userId, quizStart, quizEnd };
+}
+
+function getNormalizedQuizExtensions(session) {
+  if (!Array.isArray(session?.quizExtensions)) return [];
+  return session.quizExtensions
+    .map((extension) => normalizeQuizExtension(extension, session))
+    .filter(Boolean);
+}
+
+function getLatestQuizWindowEndMs(session, normalizedExtensions = null) {
+  const extensions = normalizedExtensions || getNormalizedQuizExtensions(session);
+  let latestEndMs = Number.NEGATIVE_INFINITY;
+
+  const quizEnd = toDateOrNull(session?.quizEnd);
+  if (quizEnd) {
+    latestEndMs = Math.max(latestEndMs, quizEnd.getTime());
+  }
+
+  extensions.forEach((extension) => {
+    latestEndMs = Math.max(latestEndMs, extension.quizEnd.getTime());
+  });
+
+  return Number.isFinite(latestEndMs) ? latestEndMs : null;
+}
+
+function extensionIsActive(extension, nowMs) {
+  if (!extension) return false;
+  const startMs = extension.quizStart.getTime();
+  const endMs = extension.quizEnd.getTime();
+  return nowMs >= startMs && nowMs <= endMs;
+}
+
+function extensionIsUpcoming(extension, nowMs) {
+  if (!extension) return false;
+  return nowMs < extension.quizStart.getTime();
+}
+
+function extensionHasRemainingWindow(extension, nowMs) {
+  if (!extension) return false;
+  return nowMs <= extension.quizEnd.getTime();
+}
+
+function getQuizRuntimeState(session, { userId = '', instructorView = false, now = new Date() } = {}) {
+  const defaultState = {
+    effectiveStatus: session?.status || 'hidden',
+    isOpenForUser: false,
+    isUpcomingForUser: false,
+    isClosedForUser: (session?.status || 'hidden') === 'done',
+    quizHasActiveExtensions: false,
+    activeExtensionsCount: 0,
+    userHasActiveQuizExtension: false,
+    userHasUpcomingQuizExtension: false,
+    userHasRemainingQuizExtension: false,
+  };
+
+  if (!isQuizLikeSession(session)) return defaultState;
+
+  const nowMs = now.getTime();
+  const normalizedExtensions = getNormalizedQuizExtensions(session);
+  const userExtension = normalizedExtensions.find((extension) => extension.userId === String(userId)) || null;
+  const activeExtensions = normalizedExtensions.filter((extension) => extensionIsActive(extension, nowMs));
+  const quizHasActiveExtensions = activeExtensions.length > 0;
+  const anyExtensionsRemaining = normalizedExtensions.some((extension) => extensionHasRemainingWindow(extension, nowMs));
+
+  const quizStart = toDateOrNull(session?.quizStart);
+  const quizEnd = toDateOrNull(session?.quizEnd);
+  const startMs = quizStart ? quizStart.getTime() : null;
+  const endMs = quizEnd ? quizEnd.getTime() : null;
+  const hasBaseWindow = Number.isFinite(startMs) && Number.isFinite(endMs);
+  const baseWindowActive = hasBaseWindow && nowMs >= startMs && nowMs <= endMs;
+  const baseWindowEnded = Number.isFinite(endMs) ? nowMs > endMs : false;
+
+  const userHasActiveQuizExtension = extensionIsActive(userExtension, nowMs);
+  const userHasUpcomingQuizExtension = extensionIsUpcoming(userExtension, nowMs);
+  const userHasRemainingQuizExtension = extensionHasRemainingWindow(userExtension, nowMs);
+
+  const latestWindowEndMs = getLatestQuizWindowEndMs(session, normalizedExtensions);
+  const allQuizWindowsElapsed = Number.isFinite(latestWindowEndMs) ? nowMs > latestWindowEndMs : false;
+
+  let effectiveStatus = session?.status || 'hidden';
+
+  if (effectiveStatus === 'visible') {
+    if (instructorView) {
+      if (baseWindowActive || quizHasActiveExtensions) {
+        effectiveStatus = 'running';
+      } else if (allQuizWindowsElapsed || (baseWindowEnded && !anyExtensionsRemaining)) {
+        effectiveStatus = 'done';
+      } else {
+        effectiveStatus = 'visible';
+      }
+    } else if (baseWindowActive || userHasActiveQuizExtension) {
+      effectiveStatus = 'running';
+    } else if (allQuizWindowsElapsed || (baseWindowEnded && !userHasRemainingQuizExtension)) {
+      effectiveStatus = 'done';
+    } else {
+      effectiveStatus = 'visible';
+    }
+  }
+
+  if (effectiveStatus === 'running') {
+    if (session?.status === 'running') {
+      defaultState.isOpenForUser = true;
+    } else {
+      defaultState.isOpenForUser = baseWindowActive || userHasActiveQuizExtension;
+    }
+  }
+
+  defaultState.effectiveStatus = effectiveStatus;
+  defaultState.isUpcomingForUser = !defaultState.isOpenForUser && effectiveStatus === 'visible';
+  defaultState.isClosedForUser = !defaultState.isOpenForUser && effectiveStatus === 'done';
+  defaultState.quizHasActiveExtensions = quizHasActiveExtensions;
+  defaultState.activeExtensionsCount = activeExtensions.length;
+  defaultState.userHasActiveQuizExtension = userHasActiveQuizExtension;
+  defaultState.userHasUpcomingQuizExtension = userHasUpcomingQuizExtension;
+  defaultState.userHasRemainingQuizExtension = userHasRemainingQuizExtension;
+
+  return defaultState;
+}
+
+async function maybeAutoCloseScheduledQuiz(session) {
+  if (!isQuizLikeSession(session)) {
+    return { session, changed: false };
+  }
+  if (session?.status !== 'visible') {
+    return { session, changed: false };
+  }
+
+  const normalizedExtensions = getNormalizedQuizExtensions(session);
+  const latestEndMs = getLatestQuizWindowEndMs(session, normalizedExtensions);
+  if (!Number.isFinite(latestEndMs)) {
+    return { session, changed: false };
+  }
+  if (Date.now() <= latestEndMs) {
+    return { session, changed: false };
+  }
+
+  const updated = await Session.findByIdAndUpdate(
+    session._id,
+    { $set: { status: 'done' } },
+    { new: true }
+  ).lean();
+
+  if (updated) {
+    return { session: updated, changed: true };
+  }
+
+  return { session: { ...session, status: 'done' }, changed: true };
 }
 
 function formatUserDisplayName(user) {
@@ -275,6 +492,29 @@ function resolveOptionIndex(answer, options) {
   });
 }
 
+function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}) {
+  if (!question) return question;
+  const sanitized = { ...question };
+
+  if (!revealAnswers) {
+    if (Array.isArray(sanitized.options)) {
+      sanitized.options = sanitized.options.map((option) => ({
+        ...option,
+        correct: undefined,
+      }));
+    }
+    delete sanitized.correctNumerical;
+    delete sanitized.toleranceNumerical;
+    delete sanitized.solution;
+    delete sanitized.solution_plainText;
+    delete sanitized.solutionText;
+    delete sanitized.solutionPlainText;
+    delete sanitized.solutionHtml;
+  }
+
+  return sanitized;
+}
+
 // Build response stats for a question's responses (for distribution display)
 function buildResponseStats(question, responses) {
   if (!question || !responses) return null;
@@ -342,6 +582,13 @@ function buildResponseStats(question, responses) {
   return { type: 'unknown', total: responses.length };
 }
 
+async function loadOrderedQuestions(questionIds = []) {
+  if (!Array.isArray(questionIds) || questionIds.length === 0) return [];
+  const questions = await Question.find({ _id: { $in: questionIds } }).lean();
+  const byId = new Map(questions.map((question) => [String(question._id), question]));
+  return questionIds.map((questionId) => byId.get(String(questionId))).filter(Boolean);
+}
+
 // Helper to check if user is instructor of course or admin
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
@@ -354,6 +601,33 @@ function isCourseMember(course, user) {
   return roles.includes('admin') ||
     course.instructors.includes(user.userId) ||
     course.students.includes(user.userId);
+}
+
+function buildSessionForUser(session, user, { instructorView = false } = {}) {
+  const normalized = { ...(session || {}) };
+  const runtime = getQuizRuntimeState(normalized, {
+    userId: user?.userId,
+    instructorView,
+  });
+  normalized.status = runtime.effectiveStatus;
+
+  if (isQuizLikeSession(normalized)) {
+    const submittedQuiz = Array.isArray(normalized.submittedQuiz) ? normalized.submittedQuiz : [];
+    normalized.quizSubmittedByCurrentUser = submittedQuiz.includes(user?.userId);
+    normalized.quizHasActiveExtensions = runtime.quizHasActiveExtensions;
+    normalized.activeExtensionsCount = runtime.activeExtensionsCount;
+    normalized.userHasActiveQuizExtension = runtime.userHasActiveQuizExtension;
+    normalized.userHasUpcomingQuizExtension = runtime.userHasUpcomingQuizExtension;
+  }
+
+  if (!instructorView) {
+    delete normalized.submittedQuiz;
+    delete normalized.joinRecords;
+    delete normalized.joined;
+    delete normalized.currentJoinCode;
+  }
+
+  return normalized;
 }
 
 function notifySessionUpdated(app, course, sessionId) {
@@ -398,6 +672,15 @@ export default async function sessionRoutes(app) {
       const { name, description, quiz, practiceQuiz, quizStart, quizEnd, date } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
+      const quizWindowValidationError = getQuizWindowValidationMessage(null, {
+        quiz: isQuiz,
+        practiceQuiz: isPracticeQuiz,
+        quizStart,
+        quizEnd,
+      });
+      if (quizWindowValidationError) {
+        return reply.code(400).send({ error: 'Bad Request', message: quizWindowValidationError });
+      }
 
       const session = await Session.create({
         name,
@@ -441,8 +724,19 @@ export default async function sessionRoutes(app) {
       }
 
       const sessions = await Session.find(filter).lean();
+      const hydratedSessions = [];
 
-      return { sessions };
+      for (const rawSession of sessions) {
+        const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession);
+        if (changed) {
+          notifySessionUpdated(app, course, normalizedSession?._id || rawSession?._id);
+        }
+        hydratedSessions.push(buildSessionForUser(normalizedSession, request.user, {
+          instructorView: isInstrOrAdmin,
+        }));
+      }
+
+      return { sessions: hydratedSessions };
     }
   );
 
@@ -465,14 +759,22 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const obj = session.toObject();
+      const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || session._id);
+      }
 
-      // For students, hide certain fields if session is hidden
-      if (!isInstructorOrAdmin(course, request.user) && session.status === 'hidden') {
+      // For students, hide certain fields if session is hidden.
+      if (!isInstrOrAdmin && normalizedSession.status === 'hidden') {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
 
-      return { session: obj };
+      return {
+        session: buildSessionForUser(normalizedSession, request.user, {
+          instructorView: isInstrOrAdmin,
+        }),
+      };
     }
   );
 
@@ -514,6 +816,11 @@ export default async function sessionRoutes(app) {
         updates.practiceQuiz = false;
       }
 
+      const quizWindowValidationError = getQuizWindowValidationMessage(session.toObject(), updates);
+      if (quizWindowValidationError) {
+        return reply.code(400).send({ error: 'Bad Request', message: quizWindowValidationError });
+      }
+
       // If passcode requirement is disabled through the generic session patch,
       // also close any active join period for consistent behavior.
       if (updates.joinCodeEnabled === false) {
@@ -529,6 +836,22 @@ export default async function sessionRoutes(app) {
           error: 'Bad Request',
           message: 'Session must be in ended state to be made reviewable',
         });
+      }
+
+      if (updates.reviewable === true) {
+        const previewSession = {
+          ...session.toObject(),
+          ...updates,
+        };
+        const runtime = getQuizRuntimeState(previewSession, {
+          instructorView: true,
+        });
+        if (isQuizLikeSession(previewSession) && runtime.quizHasActiveExtensions) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Session cannot be made reviewable while quiz extensions are active',
+          });
+        }
       }
 
       const updated = await Session.findByIdAndUpdate(
@@ -647,6 +970,17 @@ export default async function sessionRoutes(app) {
         joinCodeExpiresAt: null,
       };
       if (request.body?.reviewable !== undefined) {
+        if (request.body.reviewable === true && isQuizLikeSession(session)) {
+          const runtime = getQuizRuntimeState(session.toObject(), {
+            instructorView: true,
+          });
+          if (runtime.quizHasActiveExtensions) {
+            return reply.code(400).send({
+              error: 'Bad Request',
+              message: 'Session cannot be made reviewable while quiz extensions are active',
+            });
+          }
+        }
         updates.reviewable = request.body.reviewable;
       }
 
@@ -740,6 +1074,18 @@ export default async function sessionRoutes(app) {
         });
       }
 
+      if (request.body.reviewable === true && isQuizLikeSession(session)) {
+        const runtime = getQuizRuntimeState(session.toObject(), {
+          instructorView: true,
+        });
+        if (runtime.quizHasActiveExtensions) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Session cannot be made reviewable while quiz extensions are active',
+          });
+        }
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { reviewable: request.body.reviewable } },
@@ -774,11 +1120,61 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      if (!isQuizLikeSession(session)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+
+      const baseQuizStart = toDateOrNull(session.quizStart);
+      const baseQuizEnd = toDateOrNull(session.quizEnd);
+
+      const normalizedExtensionsByUser = new Map();
+      const extensionStudents = new Set((course.students || []).map((studentId) => String(studentId)));
+
+      for (const rawExtension of request.body.extensions || []) {
+        const userId = normalizeAnswerValue(rawExtension?.userId);
+        if (!userId) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Each extension requires a userId' });
+        }
+        if (!extensionStudents.has(userId)) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: `User ${userId} is not enrolled as a student in this course`,
+          });
+        }
+
+        const quizStart = toDateOrNull(rawExtension?.quizStart) || baseQuizStart;
+        const quizEnd = toDateOrNull(rawExtension?.quizEnd) || baseQuizEnd;
+        if (!quizStart || !quizEnd) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Each extension requires a valid start and end time (or quiz defaults)',
+          });
+        }
+        if (quizEnd.getTime() <= quizStart.getTime()) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'Extension end time must be later than extension start time',
+          });
+        }
+
+        normalizedExtensionsByUser.set(userId, {
+          userId,
+          quizStart,
+          quizEnd,
+        });
+      }
+
+      const normalizedExtensions = [...normalizedExtensionsByUser.values()].sort(
+        (a, b) => a.quizEnd.getTime() - b.quizEnd.getTime()
+      );
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { quizExtensions: request.body.extensions } },
+        { $set: { quizExtensions: normalizedExtensions } },
         { new: true }
       );
+
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject() };
     }
@@ -881,19 +1277,24 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || session._id);
+      }
+
       // Students can only review if the session is reviewable and done
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       if (!isInstrOrAdmin) {
-        if (!session.reviewable) {
+        if (!normalizedSession.reviewable) {
           return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
         }
-        if (session.status !== 'done') {
+        if (normalizedSession.status !== 'done') {
           return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
         }
       }
 
       // Fetch questions in session order
-      const questionIds = session.questions || [];
+      const questionIds = normalizedSession.questions || [];
       const questions = await Question.find({ _id: { $in: questionIds } }).lean();
 
       // Maintain session question order
@@ -924,9 +1325,427 @@ export default async function sessionRoutes(app) {
       }
 
       return {
-        session: session.toObject(),
+        session: normalizedSession,
         questions: normalizedQuestions,
         responses: responsesByQuestion,
+      };
+    }
+  );
+
+  // GET /sessions/:id/quiz - Get quiz payload for student quiz mode
+  app.get(
+    '/sessions/:id/quiz',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id);
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can access quiz mode' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (!isQuizLikeSession(normalizedSession)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+
+      if (normalizedSession.status === 'hidden') {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+      }
+
+      const runtime = getQuizRuntimeState(normalizedSession, {
+        userId: request.user.userId,
+        instructorView: false,
+      });
+
+      const submittedByCurrentUser = Array.isArray(normalizedSession.submittedQuiz)
+        && normalizedSession.submittedQuiz.includes(request.user.userId);
+      if (submittedByCurrentUser && !normalizedSession.practiceQuiz) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz already submitted' });
+      }
+
+      if (!runtime.isOpenForUser) {
+        if (runtime.isUpcomingForUser) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is not open yet' });
+        }
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is closed' });
+      }
+
+      // Mark the student as participating once they open an active quiz.
+      const userId = request.user.userId;
+      const now = new Date();
+      const joined = Array.isArray(normalizedSession.joined) ? normalizedSession.joined : [];
+      if (!joined.includes(userId)) {
+        const existingRecord = (normalizedSession.joinRecords || []).find((record) => record.userId === userId);
+        if (existingRecord) {
+          await Session.findOneAndUpdate(
+            { _id: request.params.id, 'joinRecords.userId': userId },
+            {
+              $addToSet: { joined: userId },
+              $set: { 'joinRecords.$.joinedAt': now },
+            },
+          );
+        } else {
+          await Session.findByIdAndUpdate(request.params.id, {
+            $addToSet: { joined: userId },
+            $push: {
+              joinRecords: {
+                userId,
+                joinedAt: now,
+                joinedWithCode: false,
+              },
+            },
+          });
+        }
+      }
+
+      const questionIds = normalizedSession.questions || [];
+      const orderedQuestions = await loadOrderedQuestions(questionIds);
+
+      const responses = questionIds.length > 0
+        ? await Response.find({
+          questionId: { $in: questionIds },
+          studentUserId: userId,
+          attempt: 1,
+        }).lean()
+        : [];
+
+      const latestResponseByQuestionId = {};
+      responses.forEach((response) => {
+        const questionId = String(response.questionId);
+        const current = latestResponseByQuestionId[questionId];
+        if (!current) {
+          latestResponseByQuestionId[questionId] = response;
+          return;
+        }
+        const currentTs = current.updatedAt ? new Date(current.updatedAt).getTime() : new Date(current.createdAt || 0).getTime();
+        const nextTs = response.updatedAt ? new Date(response.updatedAt).getTime() : new Date(response.createdAt || 0).getTime();
+        if (nextTs >= currentTs) {
+          latestResponseByQuestionId[questionId] = response;
+        }
+      });
+
+      const questionPayload = orderedQuestions.map((question) => {
+        const response = latestResponseByQuestionId[String(question._id)];
+        const revealAnswers = !!normalizedSession.practiceQuiz && !!response && response.editable === false;
+        return sanitizeQuizQuestionForStudent(question, { revealAnswers });
+      });
+
+      const answeredQuestionIds = new Set(Object.keys(latestResponseByQuestionId));
+      const allAnswered = questionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
+
+      return {
+        session: buildSessionForUser(normalizedSession, request.user, { instructorView: false }),
+        questions: questionPayload,
+        responses: latestResponseByQuestionId,
+        allAnswered,
+        submitted: submittedByCurrentUser,
+      };
+    }
+  );
+
+  // PATCH /sessions/:id/quiz-response - Auto-save/update a quiz response
+  app.patch(
+    '/sessions/:id/quiz-response',
+    {
+      preHandler: authenticate,
+      schema: saveQuizResponseSchema,
+    },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id);
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (!isQuizLikeSession(normalizedSession)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+
+      const runtime = getQuizRuntimeState(normalizedSession, {
+        userId: request.user.userId,
+        instructorView: false,
+      });
+      if (!runtime.isOpenForUser) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is closed' });
+      }
+
+      if (
+        Array.isArray(normalizedSession.submittedQuiz)
+        && normalizedSession.submittedQuiz.includes(request.user.userId)
+        && !normalizedSession.practiceQuiz
+      ) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz already submitted' });
+      }
+
+      const questionId = request.body.questionId;
+      if (!Array.isArray(normalizedSession.questions) || !normalizedSession.questions.includes(questionId)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this quiz' });
+      }
+
+      const question = await Question.findById(questionId).lean();
+      if (!question || String(question.sessionId) !== String(normalizedSession._id)) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
+      const userId = request.user.userId;
+      const existing = await Response.findOne({
+        questionId,
+        studentUserId: userId,
+        attempt: 1,
+      });
+
+      if (existing && existing.editable === false) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: normalizedSession.practiceQuiz
+            ? 'This question has already been submitted'
+            : 'Quiz answer is already locked',
+        });
+      }
+
+      const now = new Date();
+      const editable = true;
+      const payload = {
+        answer: request.body.answer,
+        answerWysiwyg: request.body.answerWysiwyg || '',
+        updatedAt: now,
+        editable,
+      };
+
+      let response;
+      if (existing) {
+        response = await Response.findByIdAndUpdate(existing._id, { $set: payload }, { new: true });
+      } else {
+        response = await Response.create({
+          questionId,
+          studentUserId: userId,
+          attempt: 1,
+          answer: request.body.answer,
+          answerWysiwyg: request.body.answerWysiwyg || '',
+          createdAt: now,
+          updatedAt: now,
+          editable,
+        });
+      }
+
+      return { response: response.toObject() };
+    }
+  );
+
+  // POST /sessions/:id/quiz-question-submit - Lock a practice-quiz question answer
+  app.post(
+    '/sessions/:id/quiz-question-submit',
+    {
+      preHandler: authenticate,
+      schema: submitQuizQuestionSchema,
+    },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id);
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (!isQuizLikeSession(normalizedSession)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+      if (!normalizedSession.practiceQuiz) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Per-question submission is only available for practice quizzes' });
+      }
+
+      const runtime = getQuizRuntimeState(normalizedSession, {
+        userId: request.user.userId,
+        instructorView: false,
+      });
+      if (!runtime.isOpenForUser) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is closed' });
+      }
+
+      const questionId = request.body.questionId;
+      if (!Array.isArray(normalizedSession.questions) || !normalizedSession.questions.includes(questionId)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this quiz' });
+      }
+
+      const response = await Response.findOne({
+        questionId,
+        studentUserId: request.user.userId,
+        attempt: 1,
+      });
+      if (!response) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Answer this question before submitting it' });
+      }
+
+      if (response.editable === false) {
+        return { response: response.toObject(), alreadySubmitted: true };
+      }
+
+      const locked = await Response.findByIdAndUpdate(
+        response._id,
+        { $set: { editable: false, updatedAt: new Date() } },
+        { new: true }
+      );
+
+      return { response: locked.toObject(), alreadySubmitted: false };
+    }
+  );
+
+  // POST /sessions/:id/submit - Submit a quiz (locks all answers)
+  app.post(
+    '/sessions/:id/submit',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id);
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quizzes' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (!isQuizLikeSession(normalizedSession)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+      if (normalizedSession.practiceQuiz) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Practice quizzes are submitted per question' });
+      }
+
+      const userId = request.user.userId;
+      if (Array.isArray(normalizedSession.submittedQuiz) && normalizedSession.submittedQuiz.includes(userId)) {
+        return reply.code(409).send({ error: 'Conflict', message: 'Quiz already submitted' });
+      }
+
+      const runtime = getQuizRuntimeState(normalizedSession, {
+        userId,
+        instructorView: false,
+      });
+      if (!runtime.isOpenForUser) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is closed' });
+      }
+
+      const questionIds = normalizedSession.questions || [];
+      const responses = questionIds.length > 0
+        ? await Response.find({
+          questionId: { $in: questionIds },
+          studentUserId: userId,
+          attempt: 1,
+        }).lean()
+        : [];
+
+      const answeredQuestionIds = new Set(responses.map((response) => String(response.questionId)));
+      const hasAllAnswers = questionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
+      if (!hasAllAnswers) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Must answer all questions to submit quiz' });
+      }
+
+      const now = new Date();
+      await Response.updateMany(
+        {
+          questionId: { $in: questionIds },
+          studentUserId: userId,
+          attempt: 1,
+          editable: true,
+        },
+        { $set: { editable: false, updatedAt: now } }
+      );
+
+      const hasJoinRecord = Array.isArray(normalizedSession.joinRecords)
+        && normalizedSession.joinRecords.some((record) => record.userId === userId);
+      const updateOps = {
+        $addToSet: { submittedQuiz: userId, joined: userId },
+      };
+      if (hasJoinRecord) {
+        updateOps.$set = { 'joinRecords.$[student].joinedAt': now };
+      } else {
+        updateOps.$push = {
+          joinRecords: {
+            userId,
+            joinedAt: now,
+            joinedWithCode: false,
+          },
+        };
+      }
+
+      const updated = await Session.findByIdAndUpdate(
+        request.params.id,
+        updateOps,
+        hasJoinRecord
+          ? {
+            new: true,
+            arrayFilters: [{ 'student.userId': userId }],
+          }
+          : { new: true }
+      );
+
+      notifySessionUpdated(app, course, updated?._id || request.params.id);
+
+      return {
+        success: true,
+        session: updated ? buildSessionForUser(updated.toObject(), request.user, { instructorView: false }) : undefined,
       };
     }
   );
@@ -1199,7 +2018,13 @@ export default async function sessionRoutes(app) {
             displayName: formatUserDisplayName(user),
             joinedAt: latestJoinByStudentId.get(studentId) || null,
           };
-        }).sort((a, b) => normalizeAnswerValue(a.displayName).localeCompare(normalizeAnswerValue(b.displayName)));
+        }).sort((a, b) => {
+          const lastCmp = normalizeAnswerValue(a.lastname).localeCompare(normalizeAnswerValue(b.lastname));
+          if (lastCmp !== 0) return lastCmp;
+          const firstCmp = normalizeAnswerValue(a.firstname).localeCompare(normalizeAnswerValue(b.firstname));
+          if (firstCmp !== 0) return firstCmp;
+          return normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
+        });
       }
 
       // Build response payload.
@@ -1672,7 +2497,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/results',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id).lean();
+      let session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -1684,6 +2509,12 @@ export default async function sessionRoutes(app) {
 
       if (!isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
+      session = normalizedSession;
+      if (changed) {
+        notifySessionUpdated(app, course, session?._id || request.params.id);
       }
 
       // Fetch questions in session order and normalize legacy fields for review.

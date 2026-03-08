@@ -43,9 +43,36 @@ function parseCourseTab(value) {
   return parsed;
 }
 
+function getDefaultQuizWindowIso() {
+  const start = new Date();
+  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  return {
+    quizStart: start.toISOString(),
+    quizEnd: end.toISOString(),
+  };
+}
+
 function toText(value) {
   if (value === undefined || value === null) return '';
   return String(value);
+}
+
+function sortPeopleByLastName(items = []) {
+  return [...items].sort((a, b) => {
+    const aLast = toText(a?.profile?.lastname).trim();
+    const bLast = toText(b?.profile?.lastname).trim();
+    const lastCmp = aLast.localeCompare(bLast);
+    if (lastCmp !== 0) return lastCmp;
+
+    const aFirst = toText(a?.profile?.firstname).trim();
+    const bFirst = toText(b?.profile?.firstname).trim();
+    const firstCmp = aFirst.localeCompare(bFirst);
+    if (firstCmp !== 0) return firstCmp;
+
+    const aEmail = toText(a?.emails?.[0]?.address || a?.email).trim();
+    const bEmail = toText(b?.emails?.[0]?.address || b?.email).trim();
+    return aEmail.localeCompare(bEmail);
+  });
 }
 
 function getCourseEditFields(course = {}) {
@@ -430,6 +457,12 @@ export default function CourseDetail() {
     try {
       const body = { name: newSessionName.trim() };
       if (newSessionDesc.trim()) body.description = newSessionDesc.trim();
+      if (tab === 1) {
+        const quizWindow = getDefaultQuizWindowIso();
+        body.quiz = true;
+        body.quizStart = quizWindow.quizStart;
+        body.quizEnd = quizWindow.quizEnd;
+      }
       await apiClient.post(`/courses/${id}/sessions`, body);
       setCreateSessionOpen(false);
       setNewSessionName('');
@@ -492,8 +525,8 @@ export default function CourseDetail() {
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
 
-  const students = course.students || [];
-  const instructors = course.instructors || [];
+  const students = sortPeopleByLastName(course.students || []);
+  const instructors = sortPeopleByLastName(course.instructors || []);
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
@@ -535,6 +568,15 @@ export default function CourseDetail() {
                         {s.name}
                         <SessionStatusChip status={s.status} />
                         {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                        {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
+                          <Chip
+                            label="Extensions Active"
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            sx={COMPACT_CHIP_SX}
+                          />
+                        )}
                       </Box>
                     )}
                     secondary={(

@@ -25,6 +25,7 @@ import StudentDashboard from './pages/student/StudentDashboard';
 import StudentCourseDetail from './pages/student/CourseDetail';
 import SessionReview from './pages/student/SessionReview';
 import StudentLiveSession from './pages/student/LiveSession';
+import StudentQuizSession from './pages/student/QuizSession';
 
 function getPageTitle(pathname) {
   const routes = [
@@ -45,6 +46,7 @@ function getPageTitle(pathname) {
     [/^\/student\/course\/[^/]+$/, 'Course'],
     [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, 'Session Review'],
     [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, 'Live Session'],
+    [/^\/student\/course\/[^/]+\/session\/[^/]+\/quiz$/, 'Quiz'],
   ];
 
   const match = routes.find(([pattern]) => pattern.test(pathname));
@@ -107,6 +109,7 @@ export default function App() {
               <Route path="/student/course/:id" element={<StudentCourseDetail />} />
               <Route path="/student/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
               <Route path="/student/course/:courseId/session/:sessionId/live" element={<StudentLiveSession />} />
+              <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<StudentQuizSession />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

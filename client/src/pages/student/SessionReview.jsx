@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress,
   Chip, ToggleButtonGroup, ToggleButton,
@@ -40,6 +40,15 @@ const COMPACT_CHIP_SX = {
     px: 1.15,
   },
 };
+
+const MAX_STUDENT_TAB_INDEX = 1;
+
+function parseCourseTab(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return 0;
+  if (parsed < 0 || parsed > MAX_STUDENT_TAB_INDEX) return 0;
+  return parsed;
+}
 
 function questionKey(question, fallbackIndex = 0) {
   const rawId = question?._id;
@@ -383,6 +392,11 @@ function ReviewQuestionCard({
 export default function SessionReview() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedReturnTab = parseCourseTab(searchParams.get('returnTab'));
+  const fallbackCourseBackLink = requestedReturnTab === 0
+    ? `/student/course/${courseId}`
+    : `/student/course/${courseId}?tab=${requestedReturnTab}`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -413,7 +427,7 @@ export default function SessionReview() {
       const status = err.response?.status;
       const forbiddenMessage = err.response?.data?.message || 'You do not have permission to review this session.';
       if (background && (status === 403 || status === 404)) {
-        navigate(`/student/course/${courseId}`, { replace: true });
+        navigate(fallbackCourseBackLink, { replace: true });
         return false;
       }
       if (status === 403) {
@@ -429,7 +443,7 @@ export default function SessionReview() {
         setLoading(false);
       }
     }
-  }, [sessionId, navigate, courseId]);
+  }, [sessionId, navigate, fallbackCourseBackLink]);
 
   useEffect(() => { fetchReview(); }, [fetchReview]);
 
@@ -506,7 +520,7 @@ export default function SessionReview() {
     return (
       <Box sx={{ p: 3, maxWidth: 700 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
+        <Button variant="outlined" onClick={() => navigate(fallbackCourseBackLink)}>
           Back to course
         </Button>
       </Box>
@@ -514,6 +528,12 @@ export default function SessionReview() {
   }
 
   const total = questions.length;
+  const resolvedReturnTab = session && (session.quiz || session.practiceQuiz)
+    ? 1
+    : requestedReturnTab;
+  const courseBackLink = resolvedReturnTab === 0
+    ? `/student/course/${courseId}`
+    : `/student/course/${courseId}?tab=${resolvedReturnTab}`;
   const currentQ = questions[questionIdx];
   const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
   const currentStateKey = questionStateKey(questionIdx);
@@ -531,7 +551,7 @@ export default function SessionReview() {
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
-        <Button size="small" onClick={() => navigate(`/student/course/${courseId}`)} sx={{ mb: 1 }}>
+        <Button size="small" onClick={() => navigate(courseBackLink)} sx={{ mb: 1 }}>
           ← Back to course
         </Button>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
