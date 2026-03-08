@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TableSortLabel, Tabs, Tab, LinearProgress,
+  TableHead, TableRow, TableSortLabel, Tabs, Tab, LinearProgress, TextField, Autocomplete,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -372,6 +372,7 @@ export default function SessionReview() {
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
   const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
+  const [studentSearch, setStudentSearch] = useState('');
 
   // ---- Data fetching ----
 
@@ -527,6 +528,10 @@ export default function SessionReview() {
       ...student,
       displayName,
       avatarSrc: student.profileThumbnail || student.profileImage || '',
+      sortLastName: last,
+      sortFirstName: first,
+      sortEmail: normalizeAnswerValue(student.email),
+      inSessionValue: student.inSession ? 1 : 0,
       participationValue: Number(student.participation) || 0,
       percentCorrectValue: gradedCount > 0 ? Math.round((1000 * correctCount) / gradedCount) / 10 : null,
       joinedAtValue: Number.isFinite(joinedAtMillis) ? joinedAtMillis : null,
@@ -541,7 +546,8 @@ export default function SessionReview() {
           direction: prev.direction === 'asc' ? 'desc' : 'asc',
         };
       }
-      return { field, direction: 'desc' };
+      const defaultDirection = ['participation', 'percentCorrect'].includes(field) ? 'desc' : 'asc';
+      return { field, direction: defaultDirection };
     });
   }, []);
 
@@ -555,7 +561,20 @@ export default function SessionReview() {
       return a - b;
     };
 
-    const rows = [...studentsTabRows];
+    const query = normalizeAnswerValue(studentSearch).toLowerCase();
+    const rows = studentsTabRows.filter((row) => {
+      if (!query) return true;
+      const haystack = [
+        row.sortFirstName,
+        row.sortLastName,
+        row.displayName,
+        row.sortEmail,
+      ]
+        .map((value) => normalizeAnswerValue(value).toLowerCase())
+        .join(' ');
+      return haystack.includes(query);
+    });
+
     rows.sort((a, b) => {
       let cmp = 0;
       if (studentSort.field === 'participation') {
@@ -564,16 +583,32 @@ export default function SessionReview() {
         cmp = compareNullableNumber(a.percentCorrectValue, b.percentCorrectValue);
       } else if (studentSort.field === 'joinedAt') {
         cmp = compareNullableNumber(a.joinedAtValue, b.joinedAtValue);
+      } else if (studentSort.field === 'inSession') {
+        cmp = compareNullableNumber(a.inSessionValue, b.inSessionValue);
+      } else if (studentSort.field === 'email') {
+        cmp = normalizeAnswerValue(a.sortEmail).localeCompare(normalizeAnswerValue(b.sortEmail));
       } else {
-        cmp = normalizeAnswerValue(a.displayName).localeCompare(normalizeAnswerValue(b.displayName));
+        cmp = normalizeAnswerValue(a.sortLastName).localeCompare(normalizeAnswerValue(b.sortLastName));
         if (cmp === 0) {
-          cmp = normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
+          cmp = normalizeAnswerValue(a.sortFirstName).localeCompare(normalizeAnswerValue(b.sortFirstName));
+        }
+        if (cmp === 0) {
+          cmp = normalizeAnswerValue(a.sortEmail).localeCompare(normalizeAnswerValue(b.sortEmail));
         }
       }
       return studentSort.direction === 'asc' ? cmp : -cmp;
     });
     return rows;
-  }, [studentsTabRows, studentSort]);
+  }, [studentsTabRows, studentSort, studentSearch]);
+
+  const studentSearchOptions = useMemo(() => {
+    const options = new Set();
+    studentsTabRows.forEach((row) => {
+      if (row.displayName) options.add(row.displayName);
+      if (row.sortEmail) options.add(row.sortEmail);
+    });
+    return [...options].sort((a, b) => a.localeCompare(b));
+  }, [studentsTabRows]);
 
   // ---- CSV export ----
 
@@ -978,76 +1013,111 @@ export default function SessionReview() {
         {sortedStudentsTabRows.length === 0 ? (
           <Alert severity="info">No students are available for this session.</Alert>
         ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Session student list">
-              <TableHead>
-                <TableRow>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
-                    Name
-                  </TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
-                    Email
-                  </TableCell>
-                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                    In Session
-                  </TableCell>
-                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                    <TableSortLabel
-                      active={studentSort.field === 'participation'}
-                      direction={studentSort.field === 'participation' ? studentSort.direction : 'asc'}
-                      onClick={() => handleStudentsSort('participation')}
-                    >
-                      Participation
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                    <TableSortLabel
-                      active={studentSort.field === 'percentCorrect'}
-                      direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'asc'}
-                      onClick={() => handleStudentsSort('percentCorrect')}
-                    >
-                      Percent Correct
-                    </TableSortLabel>
-                  </TableCell>
-                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                    <TableSortLabel
-                      active={studentSort.field === 'joinedAt'}
-                      direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
-                      onClick={() => handleStudentsSort('joinedAt')}
-                    >
-                      Joined Session
-                    </TableSortLabel>
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {sortedStudentsTabRows.map((student) => (
-                  <TableRow key={student.studentId}>
-                    <TableCell component="th" scope="row">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar src={student.avatarSrc} sx={{ width: 30, height: 30 }}>
-                          {buildStudentInitials(student)}
-                        </Avatar>
-                        <Typography variant="body2">{student.displayName}</Typography>
-                      </Box>
+          <>
+            <Autocomplete
+              freeSolo
+              options={studentSearchOptions}
+              value={studentSearch}
+              onInputChange={(_, value) => setStudentSearch(value || '')}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Search students"
+                  placeholder="Name or email"
+                  size="small"
+                />
+              )}
+              sx={{ mb: 1.5, maxWidth: 420 }}
+            />
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small" aria-label="Session student list">
+                <TableHead>
+                  <TableRow>
+                    <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'name'}
+                        direction={studentSort.field === 'name' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('name')}
+                      >
+                        Name
+                      </TableSortLabel>
                     </TableCell>
-                    <TableCell>{student.email || '—'}</TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={student.inSession ? 'Yes' : 'No'}
-                        color={student.inSession ? 'success' : 'default'}
-                        size="small"
-                        variant={student.inSession ? 'filled' : 'outlined'}
-                      />
+                    <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'email'}
+                        direction={studentSort.field === 'email' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('email')}
+                      >
+                        Email
+                      </TableSortLabel>
                     </TableCell>
-                    <TableCell align="center">{formatParticipation(student.participationValue)}</TableCell>
-                    <TableCell align="center">{formatPercent(student.percentCorrectValue)}</TableCell>
-                    <TableCell align="center">{formatJoinedAt(student.joinedAt)}</TableCell>
+                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'inSession'}
+                        direction={studentSort.field === 'inSession' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('inSession')}
+                      >
+                        In Session
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'participation'}
+                        direction={studentSort.field === 'participation' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('participation')}
+                      >
+                        Participation
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'percentCorrect'}
+                        direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('percentCorrect')}
+                      >
+                        Percent Correct
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                      <TableSortLabel
+                        active={studentSort.field === 'joinedAt'}
+                        direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
+                        onClick={() => handleStudentsSort('joinedAt')}
+                      >
+                        Joined Session
+                      </TableSortLabel>
+                    </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {sortedStudentsTabRows.map((student) => (
+                    <TableRow key={student.studentId}>
+                      <TableCell component="th" scope="row">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar src={student.avatarSrc} sx={{ width: 30, height: 30 }}>
+                            {buildStudentInitials(student)}
+                          </Avatar>
+                          <Typography variant="body2">{student.displayName}</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>{student.email || '—'}</TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={student.inSession ? 'Yes' : 'No'}
+                          color={student.inSession ? 'success' : 'default'}
+                          size="small"
+                          variant={student.inSession ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">{formatParticipation(student.participationValue)}</TableCell>
+                      <TableCell align="center">{formatPercent(student.percentCorrectValue)}</TableCell>
+                      <TableCell align="center">{formatJoinedAt(student.joinedAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </>
         )}
       </TabPanel>
     </Box>

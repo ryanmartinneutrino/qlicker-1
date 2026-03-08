@@ -80,7 +80,6 @@ function NumericalStats({ stats, allResponses }) {
   const histogramData = buildHistogramData(values);
 
   const entries = [
-    { label: 'Count', value: stats.count ?? 0 },
     { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
     { label: 'Median', value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
     { label: 'Min', value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
@@ -250,7 +249,6 @@ export default function SecondDesktop() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;
-  const responseCount = liveData?.responseCount ?? allResponses.length;
   const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
     || qType === QUESTION_TYPES.TRUE_FALSE
     || qType === QUESTION_TYPES.MULTI_SELECT;
@@ -410,12 +408,6 @@ export default function SecondDesktop() {
           size="small"
           sx={COMPACT_CHIP_SX}
         />
-        <Chip
-          label={`${responseCount} response${responseCount !== 1 ? 's' : ''}`}
-          size="small"
-          variant="outlined"
-          sx={COMPACT_CHIP_SX}
-        />
       </Box>
 
       {/* Question content */}
@@ -490,7 +482,7 @@ export default function SecondDesktop() {
                 </Box>
                 {showInlineOptionStats && (
                   <Typography variant="h6" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600 }}>
-                    {pct}% ({count})
+                    {pct}%
                   </Typography>
                 )}
                 </Box>

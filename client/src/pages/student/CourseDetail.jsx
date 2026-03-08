@@ -253,6 +253,11 @@ export default function StudentCourseDetail() {
                     justifyContent: { xs: 'flex-start', sm: 'flex-end' },
                   }}
                 >
+                  {isQuizSession(s) && s.quizSubmittedByCurrentUser && !s.practiceQuiz && (
+                    <Button size="small" variant="outlined" disabled>
+                      Submitted
+                    </Button>
+                  )}
                   {s.status === 'running' && !isQuizSession(s) && (
                     <Button
                       size="small"
@@ -264,8 +269,18 @@ export default function StudentCourseDetail() {
                       Join
                     </Button>
                   )}
-                  {isQuizSession(s) && s.status !== 'done' && (
-                    <Button size="small" variant="outlined" disabled>Start Quiz</Button>
+                  {isQuizSession(s) && s.status === 'running' && !(s.quizSubmittedByCurrentUser && !s.practiceQuiz) && (
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color="primary"
+                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/quiz`)}
+                    >
+                      Start Quiz
+                    </Button>
+                  )}
+                  {isQuizSession(s) && s.status === 'visible' && (
+                    <Button size="small" variant="outlined" disabled>Upcoming</Button>
                   )}
                   {s.status === 'done' && (
                     <Button

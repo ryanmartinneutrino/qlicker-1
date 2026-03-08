@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 5 In Progress — Interactive Sessions Improved; UI Overhaul & Passcode Join Tracking
+## Status: Phase 5 Complete — Interactive Sessions + Quizzes Functional
 
 ---
 
@@ -201,6 +201,9 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | POST | `/api/v1/sessions/:id/start` | Start session |
 | POST | `/api/v1/sessions/:id/end` | End session |
 | POST | `/api/v1/sessions/:id/join` | Student joins |
+| GET | `/api/v1/sessions/:id/quiz` | Get student quiz payload |
+| PATCH | `/api/v1/sessions/:id/quiz-response` | Auto-save student quiz response |
+| POST | `/api/v1/sessions/:id/quiz-question-submit` | Lock one practice-quiz answer |
 | POST | `/api/v1/sessions/:id/submit` | Submit quiz |
 | PATCH | `/api/v1/sessions/:id/current` | Set current question |
 | PATCH | `/api/v1/sessions/:id/reviewable` | Toggle reviewable |
@@ -853,7 +856,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 2. Profile & uploads | ✅ Complete (bugs fixed) | Phase 2 |
 | 3. Course management | ✅ Complete | Phase 3 |
 | 4. Session editor | ✅ Complete | Phase 4 |
-| 6. Live sessions & quizzes | 🔄 In progress | Phase 5 |
+| 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
 | 7. Grading | ⬜ Not started | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
@@ -985,21 +988,22 @@ The following issues were identified during testing and have been resolved:
 
 ### Current Next Steps (Phase 5 → Phase 6)
 
-Phase 5 interactive sessions are functionally complete. A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging), HTML sanitization, and core accessibility hardening have been applied. The following should happen next:
+Phase 5 is complete (interactive sessions + quizzes). A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging), HTML sanitization, and core accessibility hardening have been applied. The following should happen next:
 
 1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
 2. ~~**Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)~~ ✅ Done (PR 119)
 3. ~~**Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)~~ ✅ Done (PR 119)
 4. ~~**Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)~~ ✅ Done (PR 119)
-5. **Phase 6 Prep:** Grade calculation service (Agent 6)
-6. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
-7. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
-8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
-9. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
-10. **WebSocket delta messages (performance):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance
-11. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security~~ ✅ Done (accessibility branch, 2026-03-07)
-12. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility~~ ✅ Done (accessibility branch, 2026-03-07)
-13. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
+5. ~~**Phase 5 Finish:** Quiz lifecycle + student quiz runtime + extension-aware access/review logic + interactive session follow-up TODOs~~ ✅ Done (this PR)
+6. **Phase 6 Prep:** Grade calculation service (Agent 6)
+7. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
+8. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
+9. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
+10. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
+11. **WebSocket delta messages (performance):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance
+12. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security~~ ✅ Done (accessibility branch, 2026-03-07)
+13. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility~~ ✅ Done (accessibility branch, 2026-03-07)
+14. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
 
 #### Planned Private-Bucket Cutover (Required Before Enforcing Private S3 Bucket)
 
@@ -1020,6 +1024,11 @@ The following Phase 5 work has been completed:
 - ✅ **S3 Meteor-compat upload behavior restored** — Fastify S3 uploads now set `ACL: public-read` to match legacy Meteor Slingshot behavior and preserve compatibility with existing shared buckets during migration.
 - ✅ **README updated** — All scripts documented, S3/Azure/MinIO/Azurite setup instructions added.
 - ✅ **UI consistency** (PRs 108–112) — Helvetica font stack, student course page mirrors professor layout, image rendering constrained in questions, SSO-first login UX.
+- ✅ **Quiz runtime implemented end-to-end** — Added `GET /api/v1/sessions/:id/quiz`, `PATCH /api/v1/sessions/:id/quiz-response`, `POST /api/v1/sessions/:id/quiz-question-submit`, and `POST /api/v1/sessions/:id/submit` for full quiz participation (autosave, practice-question submit/lock, final quiz submission lockout).
+- ✅ **Time-window and extension enforcement** — Quiz access now uses server-side UTC timestamps, supports per-student extension windows, prevents timezone-based bypasses, and auto-closes scheduled quizzes after base + extension windows end.
+- ✅ **Reviewable + extension safety** — Server now blocks making quizzes reviewable while active extensions exist.
+- ✅ **Student quiz page shipped** — New `/student/course/:courseId/session/:sessionId/quiz` flow shows all questions at once (with optional one-question mode), autosaves responses, supports final submission for non-practice quizzes, and per-question solution reveal for practice quizzes.
+- ✅ **Interactive session follow-up TODOs complete** — SessionReview Students tab now supports sortable Name/Email/In Session columns + autocomplete search; SecondDesktop stats now hide raw counts (percentages only); student lists default to last-name ordering.
 
 #### PR 119: Interactive Sessions (Full Live Session System)
 
@@ -1141,7 +1150,7 @@ A comprehensive code review was conducted covering performance, security, access
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Same functionality as MeteorJS | 🔄 In progress | Phases 1–5 complete. Grading, groups, quizzes not yet done. |
+| Same functionality as MeteorJS | 🔄 In progress | Phases 1–5 complete (including quizzes). Grading and groups remain. |
 | Same database compatibility | ✅ Verified | Legacy DB restores work. Case-insensitive emails, argon2id migration, legacy field compat all applied. |
 | Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, Recharts, TipTap, KaTeX. All actively maintained. |
 | API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. Swagger docs available. |

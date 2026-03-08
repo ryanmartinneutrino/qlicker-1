@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Paper,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, CircularProgress,
   Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
-  Menu,
+  Menu, Autocomplete,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -32,6 +32,36 @@ function parseCourseTab(value) {
   if (!Number.isInteger(parsed)) return 0;
   if (parsed < 0 || parsed > MAX_COURSE_TAB_INDEX) return 0;
   return parsed;
+}
+
+function toDateTimeLocalString(value) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString().slice(0, 16);
+}
+
+function formatStudentLabel(student) {
+  const first = String(student?.profile?.firstname || '').trim();
+  const last = String(student?.profile?.lastname || '').trim();
+  const email = String(student?.emails?.[0]?.address || student?.email || '').trim();
+  const fullName = `${first} ${last}`.trim();
+  if (fullName && email) return `${fullName} (${email})`;
+  return fullName || email || 'Unknown Student';
+}
+
+function compareStudentsByLastName(a, b) {
+  const aLast = String(a?.profile?.lastname || '').trim();
+  const bLast = String(b?.profile?.lastname || '').trim();
+  const lastCmp = aLast.localeCompare(bLast);
+  if (lastCmp !== 0) return lastCmp;
+  const aFirst = String(a?.profile?.firstname || '').trim();
+  const bFirst = String(b?.profile?.firstname || '').trim();
+  const firstCmp = aFirst.localeCompare(bFirst);
+  if (firstCmp !== 0) return firstCmp;
+  const aEmail = String(a?.emails?.[0]?.address || a?.email || '').trim();
+  const bEmail = String(b?.emails?.[0]?.address || b?.email || '').trim();
+  return aEmail.localeCompare(bEmail);
 }
 
 export default function SessionEditor() {
@@ -68,6 +98,13 @@ export default function SessionEditor() {
   const [joinCodeEnabled, setJoinCodeEnabled] = useState(false);
   const [joinCodeInterval, setJoinCodeInterval] = useState(10);
 
+  // Quiz extensions
+  const [courseStudents, setCourseStudents] = useState([]);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [extensionDrafts, setExtensionDrafts] = useState([]);
+  const [extensionStudent, setExtensionStudent] = useState(null);
+  const [savingExtensions, setSavingExtensions] = useState(false);
+
   // Dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -99,6 +136,11 @@ export default function SessionEditor() {
       setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
       setJoinCodeEnabled(!!s.joinCodeEnabled);
       setJoinCodeInterval(s.joinCodeInterval || 10);
+      setExtensionDrafts((s.quizExtensions || []).map((extension) => ({
+        userId: extension.userId,
+        quizStart: toDateTimeLocalString(extension.quizStart),
+        quizEnd: toDateTimeLocalString(extension.quizEnd),
+      })));
       setUnlockEndedEditing((prev) => (s.status === 'done' ? prev : true));
 
       // Fetch full question objects
@@ -127,12 +169,20 @@ export default function SessionEditor() {
       } catch {
         setResponseBackedQuestionIds(new Set());
       }
+
+      try {
+        const { data: courseData } = await apiClient.get(`/courses/${courseId}`);
+        const students = (courseData?.course?.students || []).slice().sort(compareStudentsByLastName);
+        setCourseStudents(students);
+      } catch {
+        setCourseStudents([]);
+      }
     } catch {
       setMsg({ severity: 'error', text: 'Failed to load session' });
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [courseId, sessionId]);
 
   useEffect(() => {
     if (status === 'done') {
@@ -544,6 +594,90 @@ export default function SessionEditor() {
   const deleteTargetHasResponses = deleteQTarget?._id
     ? hasResponseDataForQuestion(deleteQTarget._id)
     : false;
+  const studentById = useMemo(
+    () => new Map(courseStudents.map((student) => [String(student._id), student])),
+    [courseStudents]
+  );
+  const availableExtensionStudents = useMemo(
+    () => courseStudents.filter(
+      (student) => !extensionDrafts.some((extension) => String(extension.userId) === String(student._id))
+    ),
+    [courseStudents, extensionDrafts]
+  );
+
+  const openExtensionsDialog = () => {
+    setExtensionStudent(null);
+    setExtensionsOpen(true);
+  };
+
+  const addExtensionStudent = () => {
+    if (!extensionStudent?._id) return;
+    const userId = String(extensionStudent._id);
+    if (extensionDrafts.some((extension) => String(extension.userId) === userId)) {
+      return;
+    }
+
+    const defaultStart = quizStart || toDateTimeLocalString(session?.quizStart) || '';
+    const defaultEnd = quizEnd || toDateTimeLocalString(session?.quizEnd) || '';
+
+    setExtensionDrafts((prev) => [...prev, {
+      userId,
+      quizStart: defaultStart,
+      quizEnd: defaultEnd,
+    }]);
+    setExtensionStudent(null);
+  };
+
+  const updateExtensionDraft = (userId, field, value) => {
+    setExtensionDrafts((prev) => prev.map((extension) => (
+      String(extension.userId) === String(userId)
+        ? { ...extension, [field]: value }
+        : extension
+    )));
+  };
+
+  const removeExtensionDraft = (userId) => {
+    setExtensionDrafts((prev) => prev.filter((extension) => String(extension.userId) !== String(userId)));
+  };
+
+  const saveExtensions = async () => {
+    setSavingExtensions(true);
+    try {
+      const payloadExtensions = extensionDrafts.map((extension) => {
+        const isoStart = toIsoIfValid(extension.quizStart);
+        const isoEnd = toIsoIfValid(extension.quizEnd);
+        if (!isoStart || !isoEnd) {
+          throw new Error('Each extension requires valid start and end times.');
+        }
+        if (new Date(isoEnd).getTime() <= new Date(isoStart).getTime()) {
+          throw new Error('Each extension end time must be later than start time.');
+        }
+        return {
+          userId: extension.userId,
+          quizStart: isoStart,
+          quizEnd: isoEnd,
+        };
+      });
+
+      const { data } = await apiClient.patch(`/sessions/${sessionId}/extensions`, {
+        extensions: payloadExtensions,
+      });
+      const updatedSession = data.session || data;
+      setSession(updatedSession);
+      setExtensionDrafts((updatedSession.quizExtensions || []).map((extension) => ({
+        userId: extension.userId,
+        quizStart: toDateTimeLocalString(extension.quizStart),
+        quizEnd: toDateTimeLocalString(extension.quizEnd),
+      })));
+      setExtensionsOpen(false);
+      setMsg({ severity: 'success', text: 'Quiz extensions updated' });
+    } catch (err) {
+      const fallbackMessage = err.message || 'Failed to update quiz extensions';
+      setMsg({ severity: 'error', text: err.response?.data?.message || fallbackMessage });
+    } finally {
+      setSavingExtensions(false);
+    }
+  };
 
   const renderInlineEditorCard = ({
     key,
@@ -896,37 +1030,52 @@ export default function SessionEditor() {
           )}
 
           {(quiz || practiceQuiz) && (
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
-              <TextField
-                label="Quiz Start"
-                size="small"
-                type="datetime-local"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={quizStart}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setQuizStart(val);
-                  const iso = toIsoIfValid(val);
-                  if (iso) saveSessionPatch({ quizStart: iso });
-                }}
-                disabled={savingSession}
-              />
-              <TextField
-                label="Quiz End"
-                size="small"
-                type="datetime-local"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                value={quizEnd}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setQuizEnd(val);
-                  const iso = toIsoIfValid(val);
-                  if (iso) saveSessionPatch({ quizEnd: iso });
-                }}
-                disabled={savingSession}
-              />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
+                <TextField
+                  label="Quiz Start"
+                  size="small"
+                  type="datetime-local"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={quizStart}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setQuizStart(val);
+                    const iso = toIsoIfValid(val);
+                    if (iso) saveSessionPatch({ quizStart: iso });
+                  }}
+                  disabled={savingSession}
+                />
+                <TextField
+                  label="Quiz End"
+                  size="small"
+                  type="datetime-local"
+                  fullWidth
+                  InputLabelProps={{ shrink: true }}
+                  value={quizEnd}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setQuizEnd(val);
+                    const iso = toIsoIfValid(val);
+                    if (iso) saveSessionPatch({ quizEnd: iso });
+                  }}
+                  disabled={savingSession}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Quiz extensions: {extensionDrafts.length} student{extensionDrafts.length === 1 ? '' : 's'}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={openExtensionsDialog}
+                  disabled={savingSession}
+                >
+                  Manage Extensions
+                </Button>
+              </Box>
             </Box>
           )}
 
@@ -1337,6 +1486,97 @@ export default function SessionEditor() {
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog
+        open={extensionsOpen}
+        onClose={() => {
+          if (!savingExtensions) setExtensionsOpen(false);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Quiz Extensions</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Typography variant="body2" color="text.secondary">
+            Add students who should receive custom quiz access windows.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+            <Autocomplete
+              options={availableExtensionStudents}
+              value={extensionStudent}
+              onChange={(_, value) => setExtensionStudent(value)}
+              getOptionLabel={formatStudentLabel}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  size="small"
+                  label="Select student"
+                  placeholder="Search by name or email"
+                />
+              )}
+              sx={{ flex: 1 }}
+            />
+            <Button
+              variant="outlined"
+              onClick={addExtensionStudent}
+              disabled={!extensionStudent?._id}
+            >
+              Add
+            </Button>
+          </Box>
+
+          {extensionDrafts.length === 0 ? (
+            <Alert severity="info">No student extensions configured.</Alert>
+          ) : (
+            extensionDrafts.map((extension) => {
+              const student = studentById.get(String(extension.userId));
+              return (
+                <Paper key={extension.userId} variant="outlined" sx={{ p: 1.25 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                    <Typography variant="subtitle2">
+                      {student ? formatStudentLabel(student) : extension.userId}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => removeExtensionDraft(extension.userId)}
+                      aria-label="Remove extension"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Box>
+                  <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
+                    <TextField
+                      size="small"
+                      label="Start"
+                      type="datetime-local"
+                      InputLabelProps={{ shrink: true }}
+                      value={extension.quizStart || ''}
+                      onChange={(event) => updateExtensionDraft(extension.userId, 'quizStart', event.target.value)}
+                      fullWidth
+                    />
+                    <TextField
+                      size="small"
+                      label="End"
+                      type="datetime-local"
+                      InputLabelProps={{ shrink: true }}
+                      value={extension.quizEnd || ''}
+                      onChange={(event) => updateExtensionDraft(extension.userId, 'quizEnd', event.target.value)}
+                      fullWidth
+                    />
+                  </Box>
+                </Paper>
+              );
+            })
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExtensionsOpen(false)} disabled={savingExtensions}>Cancel</Button>
+          <Button variant="contained" onClick={saveExtensions} disabled={savingExtensions}>
+            {savingExtensions ? 'Saving...' : 'Save Extensions'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar */}
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>

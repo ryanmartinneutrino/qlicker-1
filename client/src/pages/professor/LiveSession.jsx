@@ -494,9 +494,13 @@ export default function LiveSession() {
   const responseCount = liveData?.responseCount ?? allResponses.length;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
   const joinedStudents = Array.isArray(session?.joinedStudents) ? session.joinedStudents : [];
-  const sortedJoinedStudents = useMemo(() => [...joinedStudents].sort(
-    (a, b) => formatJoinedStudentName(a).localeCompare(formatJoinedStudentName(b)),
-  ), [joinedStudents]);
+  const sortedJoinedStudents = useMemo(() => [...joinedStudents].sort((a, b) => {
+    const lastCmp = normalizeValue(a?.lastname).localeCompare(normalizeValue(b?.lastname));
+    if (lastCmp !== 0) return lastCmp;
+    const firstCmp = normalizeValue(a?.firstname).localeCompare(normalizeValue(b?.firstname));
+    if (firstCmp !== 0) return firstCmp;
+    return normalizeValue(a?.email).localeCompare(normalizeValue(b?.email));
+  }), [joinedStudents]);
 
   const qIdx = session ? questionIndex(session, session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;

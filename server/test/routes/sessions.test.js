@@ -196,6 +196,140 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
 
     expect(res.statusCode).toBe(403);
   });
+
+  it('scheduled visible quizzes appear as running while the quiz window is active', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const now = Date.now();
+    const start = new Date(now - (15 * 60 * 1000)).toISOString();
+    const end = new Date(now + (15 * 60 * 1000)).toISOString();
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Scheduled Quiz',
+      quiz: true,
+      quizStart: start,
+      quizEnd: end,
+    });
+    const session = sessRes.json().session;
+
+    const visibleRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+    expect(visibleRes.statusCode).toBe(200);
+
+    const studentListRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(studentListRes.statusCode).toBe(200);
+
+    const listed = studentListRes.json().sessions.find((row) => row._id === session._id);
+    expect(listed).toBeDefined();
+    expect(listed.status).toBe('running');
+  });
+
+  it('scheduled visible quizzes auto-close to done once all quiz windows end', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseWithStudent();
+
+    const now = Date.now();
+    const start = new Date(now - (2 * 60 * 60 * 1000)).toISOString();
+    const end = new Date(now - (60 * 1000)).toISOString();
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Expired Quiz',
+      quiz: true,
+      quizStart: start,
+      quizEnd: end,
+    });
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+
+    const listRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: profToken,
+    });
+    expect(listRes.statusCode).toBe(200);
+    const listed = listRes.json().sessions.find((row) => row._id === session._id);
+    expect(listed).toBeDefined();
+    expect(listed.status).toBe('done');
+
+    const persisted = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+    expect(persisted.statusCode).toBe(200);
+    expect(persisted.json().session.status).toBe('done');
+  });
+
+  it('extensions keep access open only for extension students after the base quiz window closes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const extensionStudent = await createTestUser({
+      email: 'extension-student@example.com',
+      roles: ['student'],
+    });
+    const extensionStudentToken = await getAuthToken(app, extensionStudent);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: extensionStudentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const now = Date.now();
+    const baseStart = new Date(now - (2 * 60 * 60 * 1000)).toISOString();
+    const baseEnd = new Date(now - (60 * 1000)).toISOString();
+    const extensionStart = new Date(now - (10 * 60 * 1000)).toISOString();
+    const extensionEnd = new Date(now + (10 * 60 * 1000)).toISOString();
+
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Extension Quiz',
+      quiz: true,
+      quizStart: baseStart,
+      quizEnd: baseEnd,
+    });
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+    const extensionsRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/extensions`, {
+      token: profToken,
+      payload: {
+        extensions: [
+          {
+            userId: extensionStudent._id,
+            quizStart: extensionStart,
+            quizEnd: extensionEnd,
+          },
+        ],
+      },
+    });
+    expect(extensionsRes.statusCode).toBe(200);
+
+    const studentOneRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(studentOneRes.statusCode).toBe(200);
+    const studentOneSession = studentOneRes.json().sessions.find((row) => row._id === session._id);
+    expect(studentOneSession.status).toBe('done');
+
+    const studentTwoRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: extensionStudentToken,
+    });
+    expect(studentTwoRes.statusCode).toBe(200);
+    const studentTwoSession = studentTwoRes.json().sessions.find((row) => row._id === session._id);
+    expect(studentTwoSession.status).toBe('running');
+
+    const profRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: profToken,
+    });
+    expect(profRes.statusCode).toBe(200);
+    const profSession = profRes.json().sessions.find((row) => row._id === session._id);
+    expect(profSession.status).toBe('running');
+    expect(profSession.quizHasActiveExtensions).toBe(true);
+  });
 });
 
 // ---------- GET /api/v1/sessions/:id ----------
@@ -317,6 +451,44 @@ describe('PATCH /api/v1/sessions/:id', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().session.quiz).toBe(false);
     expect(res.json().session.practiceQuiz).toBe(false);
+  });
+
+  it('cannot make a quiz reviewable while quiz extensions are active', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student } = await setupCourseWithStudent();
+    const now = Date.now();
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      quiz: true,
+      quizStart: new Date(now - (2 * 60 * 60 * 1000)).toISOString(),
+      quizEnd: new Date(now + (2 * 60 * 60 * 1000)).toISOString(),
+    });
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'done' },
+    });
+
+    const extensionRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/extensions`, {
+      token: profToken,
+      payload: {
+        extensions: [
+          {
+            userId: student._id,
+            quizStart: new Date(now - (10 * 60 * 1000)).toISOString(),
+            quizEnd: new Date(now + (10 * 60 * 1000)).toISOString(),
+          },
+        ],
+      },
+    });
+    expect(extensionRes.statusCode).toBe(200);
+
+    const reviewableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+    expect(reviewableRes.statusCode).toBe(400);
+    expect(reviewableRes.json().message).toContain('quiz extensions are active');
   });
 });
 
@@ -797,6 +969,209 @@ describe('POST /api/v1/sessions/:id/end', () => {
     const body = res.json();
     expect(body.session.status).toBe('done');
     expect(body.session.reviewable).toBe(true);
+  });
+});
+
+// ---------- Student quiz routes ----------
+describe('Student quiz routes', () => {
+  async function createOpenQuiz({ profToken, courseId, practiceQuiz = false }) {
+    const now = Date.now();
+    const sessRes = await createSessionInCourse(profToken, courseId, {
+      name: practiceQuiz ? 'Practice Quiz' : 'Scheduled Quiz',
+      quiz: true,
+      practiceQuiz,
+      quizStart: new Date(now - (30 * 60 * 1000)).toISOString(),
+      quizEnd: new Date(now + (30 * 60 * 1000)).toISOString(),
+    });
+    const session = sessRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+    return session;
+  }
+
+  async function addMcQuestion({ profToken, sessionId, courseId, content = 'Question?' }) {
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: `<p>${content}</p>`,
+        plainText: content,
+        sessionId,
+        courseId,
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+        ],
+        solution: '<p>Because A is correct.</p>',
+        solution_plainText: 'Because A is correct.',
+      },
+    });
+    const question = qRes.json().question;
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${sessionId}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+    return question;
+  }
+
+  it('non-practice quiz supports autosave + final submit and blocks re-entry after submission', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const session = await createOpenQuiz({ profToken, courseId: course._id, practiceQuiz: false });
+    const q1 = await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'First' });
+    const q2 = await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'Second' });
+
+    const quizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(quizRes.statusCode).toBe(200);
+    expect(quizRes.json().session.status).toBe('running');
+    expect(quizRes.json().questions).toHaveLength(2);
+    expect(quizRes.json().questions[0].options[0].correct).toBeUndefined();
+    expect(quizRes.json().questions[0].solution).toBeUndefined();
+
+    const saveOneRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: q1._id, answer: '0' },
+    });
+    expect(saveOneRes.statusCode).toBe(200);
+    expect(saveOneRes.json().response.editable).toBe(true);
+
+    const earlySubmitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/submit`, {
+      token: studentToken,
+    });
+    expect(earlySubmitRes.statusCode).toBe(400);
+    expect(earlySubmitRes.json().message).toContain('Must answer all questions');
+
+    const saveTwoRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: q2._id, answer: '1' },
+    });
+    expect(saveTwoRes.statusCode).toBe(200);
+
+    const submitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/submit`, {
+      token: studentToken,
+    });
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().success).toBe(true);
+
+    const lockedResponses = await Response.find({
+      questionId: { $in: [q1._id, q2._id] },
+      studentUserId: student._id,
+      attempt: 1,
+    }).lean();
+    expect(lockedResponses).toHaveLength(2);
+    lockedResponses.forEach((response) => {
+      expect(response.editable).toBe(false);
+    });
+
+    const persistedSessionRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: studentToken,
+    });
+    expect(persistedSessionRes.statusCode).toBe(200);
+    expect(persistedSessionRes.json().session.quizSubmittedByCurrentUser).toBe(true);
+
+    const reenterRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(reenterRes.statusCode).toBe(403);
+    expect(reenterRes.json().message).toContain('already submitted');
+  });
+
+  it('practice quizzes lock answers per-question and only reveal solutions after question submission', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const session = await createOpenQuiz({ profToken, courseId: course._id, practiceQuiz: true });
+    const question = await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'Practice' });
+
+    const initialQuizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(initialQuizRes.statusCode).toBe(200);
+    expect(initialQuizRes.json().questions[0].options[0].correct).toBeUndefined();
+    expect(initialQuizRes.json().questions[0].solution).toBeUndefined();
+
+    const autosaveRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: question._id, answer: '0' },
+    });
+    expect(autosaveRes.statusCode).toBe(200);
+    expect(autosaveRes.json().response.editable).toBe(true);
+
+    const lockRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/quiz-question-submit`, {
+      token: studentToken,
+      payload: { questionId: question._id },
+    });
+    expect(lockRes.statusCode).toBe(200);
+    expect(lockRes.json().response.editable).toBe(false);
+
+    const revealQuizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(revealQuizRes.statusCode).toBe(200);
+    expect(revealQuizRes.json().questions[0].options[0].correct).toBe(true);
+    expect(revealQuizRes.json().questions[0].solution).toBe('<p>Because A is correct.</p>');
+
+    const submitWholeRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/submit`, {
+      token: studentToken,
+    });
+    expect(submitWholeRes.statusCode).toBe(400);
+    expect(submitWholeRes.json().message).toContain('Practice quizzes');
+  });
+
+  it('quiz access route allows active extension students while rejecting students outside the active window', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const extensionStudent = await createTestUser({
+      email: 'quiz-extension-access@example.com',
+      roles: ['student'],
+    });
+    const extensionStudentToken = await getAuthToken(app, extensionStudent);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: extensionStudentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const now = Date.now();
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Closed Base Quiz',
+      quiz: true,
+      quizStart: new Date(now - (2 * 60 * 60 * 1000)).toISOString(),
+      quizEnd: new Date(now - (60 * 1000)).toISOString(),
+    });
+    const session = sessRes.json().session;
+    await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'Extension only' });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+    const extensionRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/extensions`, {
+      token: profToken,
+      payload: {
+        extensions: [
+          {
+            userId: extensionStudent._id,
+            quizStart: new Date(now - (5 * 60 * 1000)).toISOString(),
+            quizEnd: new Date(now + (5 * 60 * 1000)).toISOString(),
+          },
+        ],
+      },
+    });
+    expect(extensionRes.statusCode).toBe(200);
+
+    const blockedRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(blockedRes.statusCode).toBe(403);
+
+    const openRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: extensionStudentToken,
+    });
+    expect(openRes.statusCode).toBe(200);
+    expect(openRes.json().session.status).toBe('running');
   });
 });
 
