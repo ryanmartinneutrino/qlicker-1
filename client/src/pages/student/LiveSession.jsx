@@ -22,6 +22,18 @@ const COMPACT_CHIP_SX = {
   '& .MuiChip-label': { px: 1.15 },
 };
 
+const SR_ONLY_SX = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  p: 0,
+  m: -1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+};
+
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 const richContentSx = {
@@ -330,6 +342,19 @@ export default function LiveSession() {
   const inlineDistributionTotal = Number(responseStats?.total) > 0
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const liveStatusMessage = [
+    displayedQuestionCount > 0 && displayedQuestionNumber != null
+      ? `Question ${displayedQuestionNumber} of ${displayedQuestionCount}.`
+      : null,
+    currentAttempt ? `Attempt ${currentAttempt.number ?? 1}.` : null,
+    hasSubmitted
+      ? 'Response submitted.'
+      : responseClosed
+        ? 'Responses are currently closed.'
+        : 'Responses are currently open.',
+    showStats ? 'Response statistics are visible.' : null,
+    showCorrect ? 'Correct answer is visible.' : null,
+  ].filter(Boolean).join(' ');
 
   // --------------------------------------------------
   // Render: loading state
@@ -540,6 +565,9 @@ export default function LiveSession() {
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 600, mx: 'auto' }}>
+      <Box role="status" aria-live="polite" aria-atomic="true" sx={SR_ONLY_SX}>
+        {liveStatusMessage}
+      </Box>
 
       {/* ============================================================ */}
       {/* Session header                                               */}
@@ -548,23 +576,25 @@ export default function LiveSession() {
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
           {session.name || 'Live Session'}
         </Typography>
-        {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
-          <Chip
-            label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
-            size="small"
-            variant="outlined"
-            sx={COMPACT_CHIP_SX}
-            aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
-          />
-        )}
-        {currentAttempt && (
-          <Chip
-            label={`Attempt ${currentAttempt.number ?? 1}`}
-            size="small"
-            variant="outlined"
-            sx={COMPACT_CHIP_SX}
-          />
-        )}
+        <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
+            <Chip
+              label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+              aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
+            />
+          )}
+          {currentAttempt && (
+            <Chip
+              label={`Attempt ${currentAttempt.number ?? 1}`}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+          )}
+        </Box>
       </Box>
 
       {/* ============================================================ */}
@@ -843,33 +873,34 @@ export default function LiveSession() {
         {submitError && (
           <Alert severity="error" sx={{ mb: 1.5 }}>{submitError}</Alert>
         )}
-
-        {hasSubmitted ? (
-          <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
-            ✓ Response submitted
-          </Alert>
-        ) : responseClosed ? (
-          <Alert severity="warning" sx={{ justifyContent: 'center' }}>
-            Responses are currently closed
-          </Alert>
-        ) : (
-          <Button
-            variant="contained"
-            size="large"
-            fullWidth
-            onClick={handleSubmit}
-            disabled={
-              submitting
-              || answer === null
-              || answer === ''
-              || (Array.isArray(answer) && answer.length === 0)
-            }
-            sx={{ py: 1.5, fontSize: '1.05rem' }}
-            aria-label="Submit response"
-          >
-            {submitting ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
-          </Button>
-        )}
+        <Box role="status" aria-live="polite" aria-atomic="true">
+          {hasSubmitted ? (
+            <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
+              ✓ Response submitted
+            </Alert>
+          ) : responseClosed ? (
+            <Alert severity="warning" sx={{ justifyContent: 'center' }}>
+              Responses are currently closed
+            </Alert>
+          ) : (
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              onClick={handleSubmit}
+              disabled={
+                submitting
+                || answer === null
+                || answer === ''
+                || (Array.isArray(answer) && answer.length === 0)
+              }
+              sx={{ py: 1.5, fontSize: '1.05rem' }}
+              aria-label="Submit response"
+            >
+              {submitting ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && (

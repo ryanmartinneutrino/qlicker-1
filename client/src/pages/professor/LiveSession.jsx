@@ -29,6 +29,18 @@ const COMPACT_CHIP_SX = {
   '& .MuiChip-label': { px: 1.15 },
 };
 
+const SR_ONLY_SX = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  p: 0,
+  m: -1,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+};
+
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 function buildWebsocketUrl(token) {
@@ -468,6 +480,14 @@ export default function LiveSession() {
   const inlineDistributionTotal = Number(responseStats?.total) > 0
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const liveStatusMessage = [
+    totalQ > 0 && qIdx >= 0 ? `Question ${qIdx + 1} of ${totalQ}.` : null,
+    `${joinedCount} students joined.`,
+    `${responseCount} of ${joinedCount} students responded.`,
+    `Attempt ${attemptNum}.`,
+    responsesClosed ? 'Responses are currently closed.' : 'Responses are currently open.',
+    isHidden ? 'Current question is hidden.' : 'Current question is visible.',
+  ].filter(Boolean).join(' ');
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -502,6 +522,9 @@ export default function LiveSession() {
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 1200, mx: 'auto' }}>
+      <Box role="status" aria-live="polite" aria-atomic="true" sx={SR_ONLY_SX}>
+        {liveStatusMessage}
+      </Box>
 
       {/* ============================================================ */}
       {/* Top bar                                                      */}
@@ -521,40 +544,47 @@ export default function LiveSession() {
           {session.name || 'Live Session'}
         </Typography>
 
-        {totalQ > 0 && (
+        <Box
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}
+        >
+          {totalQ > 0 && (
+            <Chip
+              label={`Q${qIdx + 1} / ${totalQ}`}
+              size="small"
+              color="primary"
+              sx={COMPACT_CHIP_SX}
+              aria-label={`Question ${qIdx + 1} of ${totalQ}`}
+            />
+          )}
+
           <Chip
-            label={`Q${qIdx + 1} / ${totalQ}`}
+            icon={<PeopleIcon />}
+            label={`${joinedCount} joined`}
             size="small"
-            color="primary"
+            variant="outlined"
             sx={COMPACT_CHIP_SX}
-            aria-label={`Question ${qIdx + 1} of ${totalQ}`}
+            aria-label={`${joinedCount} students joined`}
           />
-        )}
 
-        <Chip
-          icon={<PeopleIcon />}
-          label={`${joinedCount} joined`}
-          size="small"
-          variant="outlined"
-          sx={COMPACT_CHIP_SX}
-          aria-label={`${joinedCount} students joined`}
-        />
+          <Chip
+            label={`${responseCount} / ${joinedCount} responded`}
+            size="small"
+            variant="outlined"
+            color={responseCount >= joinedCount && joinedCount > 0 ? 'success' : 'default'}
+            sx={COMPACT_CHIP_SX}
+            aria-label={`${responseCount} of ${joinedCount} students responded`}
+          />
 
-        <Chip
-          label={`${responseCount} / ${joinedCount} responded`}
-          size="small"
-          variant="outlined"
-          color={responseCount >= joinedCount && joinedCount > 0 ? 'success' : 'default'}
-          sx={COMPACT_CHIP_SX}
-          aria-label={`${responseCount} of ${joinedCount} students responded`}
-        />
-
-        <Chip
-          label={`Attempt ${attemptNum}`}
-          size="small"
-          variant="outlined"
-          sx={COMPACT_CHIP_SX}
-        />
+          <Chip
+            label={`Attempt ${attemptNum}`}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+          />
+        </Box>
 
         <Tooltip title="Open presentation view in new window">
           <Button

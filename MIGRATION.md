@@ -985,7 +985,7 @@ The following issues were identified during testing and have been resolved:
 
 ### Current Next Steps (Phase 5 → Phase 6)
 
-Phase 5 interactive sessions are functionally complete. A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging) have been applied. The following should happen next:
+Phase 5 interactive sessions are functionally complete. A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging), HTML sanitization, and core accessibility hardening have been applied. The following should happen next:
 
 1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
 2. ~~**Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)~~ ✅ Done (PR 119)
@@ -997,8 +997,8 @@ Phase 5 interactive sessions are functionally complete. A comprehensive code rev
 8. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
 9. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
 10. **WebSocket delta messages (performance):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance
-11. **HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security
-12. **Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility
+11. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security~~ ✅ Done (accessibility branch, 2026-03-07)
+12. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility~~ ✅ Done (accessibility branch, 2026-03-07)
 13. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
 
 #### Planned Private-Bucket Cutover (Required Before Enforcing Private S3 Bucket)
@@ -1195,6 +1195,7 @@ Course pages use 15-second polling intervals for member list updates. This works
 | **ReDoS vulnerability** in search endpoints | HIGH | User input now escaped via `escapeForRegex()` before use in `new RegExp()` (courses.js, users.js) |
 | **Weak password policy** (6 char min) | MEDIUM | Increased minimum to 8 characters across register, reset-password, change-password, admin-create-user |
 | **No failed login logging** | MEDIUM | Failed login attempts now logged with `request.log.warn()` including email and userId |
+| **No HTML sanitization** for `dangerouslySetInnerHTML` | HIGH | Added `dompurify` and centralized sanitization in `client/src/components/questions/richTextUtils.js` for all rich-text render paths |
 
 #### Remaining (Must Address Before Production)
 
@@ -1202,7 +1203,6 @@ Course pages use 15-second polling intervals for member list updates. This works
 |---|---|---|---|
 | **No CSRF protection** | HIGH | Add `@fastify/csrf-protection` for state-changing endpoints, or rely on SameSite cookies + custom header pattern | Phase 7/8 |
 | **JWT access token in localStorage** | HIGH | Access token is stored in `localStorage` (vulnerable to XSS). Refresh token is correctly in httpOnly cookie. Consider moving access token to memory-only storage with automatic refresh, or to an httpOnly cookie. | Phase 7/8 |
-| **No HTML sanitization** for `dangerouslySetInnerHTML` | HIGH | 11 instances of `dangerouslySetInnerHTML` in client render user-generated rich text without sanitization. Add `dompurify` library and sanitize all HTML before rendering. Files: QuestionDisplay.jsx, LiveSession.jsx (prof/student), SessionReview.jsx, SecondDesktop.jsx, StudentRichTextEditor.jsx | Phase 6 |
 | **SAML logout not cryptographically validated** | MEDIUM | `POST /sso/logout` manually parses XML without signature verification. Should use node-saml's built-in validation. | Phase 7 |
 | **No refresh token rotation** | LOW-MEDIUM | Refresh tokens remain valid for 7 days without rotation. Implement one-time-use refresh tokens. | Phase 8 |
 | **File upload content validation** | MEDIUM | MIME type is checked from the extension but not validated against file content (magic bytes). Add `file-type` library check. | Phase 7 |
@@ -1211,9 +1211,9 @@ Course pages use 15-second polling intervals for member list updates. This works
 
 ### Accessibility
 
-#### Current State: Moderate
+#### Current State: Strong (Core hardening completed on 2026-03-07)
 
-MUI components provide a strong baseline for accessibility (proper ARIA roles, keyboard focus management, semantic HTML elements). Several areas need attention:
+MUI components provide a strong baseline for accessibility (proper ARIA roles, keyboard focus management, semantic HTML elements). The high-priority accessibility items identified in the 2026-03-07 review are now implemented.
 
 #### Good Practices Already in Place
 
@@ -1223,24 +1223,18 @@ MUI components provide a strong baseline for accessibility (proper ARIA roles, k
 - ✅ `aria-hidden="true"` on decorative elements
 - ✅ Semantic form elements via MUI TextField/Select/Checkbox
 - ✅ `CircularProgress` with `aria-label="Loading live session"`
+- ✅ Rich text editors now include `role="textbox"`, `aria-multiline`, and labels (`RichTextEditor.jsx`, `StudentRichTextEditor.jsx`)
+- ✅ Live session counters/status now expose polite live regions in both professor and student views
+- ✅ App logo is now keyboard-accessible as a semantic button (`AppLayout.jsx`)
+- ✅ Rich HTML is now sanitized with `dompurify` before storage/render, preserving safe semantic structure
+- ✅ Table header semantics (`scope`, `th`) added to admin and session review tables
+- ✅ Skip-to-content link added in app shell
+- ✅ Route-level page titles set in `App.jsx`
+- ✅ Focus is moved to main content on route transitions (with heading fallback for pages without app shell)
 
-#### Must Fix (Priority)
+#### Remaining Recommendations
 
-| Issue | Impact | Location | Fix |
-|---|---|---|---|
-| **Rich text editor missing ARIA roles** | Screen readers cannot navigate editor | `RichTextEditor.jsx`, `StudentRichTextEditor.jsx` | Add `role="textbox"`, `aria-multiline="true"`, `aria-label` to editor container |
-| **No `aria-live` regions for dynamic updates** | Screen readers miss response counts, session status changes | professor/student LiveSession.jsx | Wrap dynamic counters/status in `<Box role="status" aria-live="polite">` |
-| **Clickable Typography without button semantics** | Keyboard/screen reader users cannot activate logo | `AppLayout.jsx` (Qlicker logo) | Convert to `<Button component={Link}>` or add `role="link"` with `tabIndex` |
-| **`dangerouslySetInnerHTML` breaks semantic structure** | Rich text content loses heading/list structure for screen readers | 11 files (see Security section) | Sanitize HTML with `dompurify` preserving semantic tags |
-
-#### Should Fix (Before Phase 8)
-
-| Issue | Impact | Location | Fix |
-|---|---|---|---|
-| Table headers missing `scope` | Screen readers cannot associate headers with cells | SessionReview.jsx, admin tables | Add `component="th" scope="col"` to `<TableCell>` in headers |
-| No skip-to-content link | Keyboard users must tab through navbar on every page | `AppLayout.jsx` | Add visually-hidden "Skip to main content" link |
-| No page titles per route | Screen readers announce same title for every page | `App.jsx` or per-page | Use `document.title` or `react-helmet` to set descriptive page titles |
-| Focus not managed after route changes | Screen readers may not announce new page content | `App.jsx` | Focus main content area after navigation |
+- Add automated accessibility regression checks (e.g., `axe-core` in Playwright/Vitest) to prevent regressions.
 
 ### Internationalization (i18n)
 
@@ -1292,7 +1286,7 @@ All findings from this review are consistent with the existing legacy compatibil
 | Category | Fixed Now | Remaining Items | Target |
 |---|---|---|---|
 | **Performance** | — | Delta WebSocket messages, query deduplication, WS push for course pages | Phase 6 / dedicated PR |
-| **Security** | Rate limiting, helmet, ReDoS, passwords, login logging | CSRF, localStorage token, HTML sanitization, SAML validation, token rotation | Phases 6–8 |
-| **Accessibility** | — | ARIA on editors, aria-live regions, semantic logo, table headers, page titles | Phases 6–7 |
+| **Security** | Rate limiting, helmet, ReDoS, passwords, login logging, HTML sanitization | CSRF, localStorage token, SAML validation, token rotation | Phases 6–8 |
+| **Accessibility** | ARIA on editors, aria-live regions, semantic logo, table headers, skip link, page titles, route focus management | Add automated accessibility regression tests | Phase 6–7 |
 | **i18n** | — | Install react-i18next, extract strings, locale-aware formatting | Phases 7–8 |
 | **Legacy DB** | All known issues addressed | Group categories shape, loginServiceConfiguration decision | Phase 7 |

@@ -271,12 +271,12 @@ function UsersTab({ currentUserId }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
-              <TableCell>Verified</TableCell>
-              <TableCell>Last Login</TableCell>
-              <TableCell>Role</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell component="th" scope="col">Name</TableCell>
+              <TableCell component="th" scope="col">Email</TableCell>
+              <TableCell component="th" scope="col">Verified</TableCell>
+              <TableCell component="th" scope="col">Last Login</TableCell>
+              <TableCell component="th" scope="col">Role</TableCell>
+              <TableCell component="th" scope="col" align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -287,7 +287,7 @@ function UsersTab({ currentUserId }) {
             ) : (
               users.map((u) => (
                 <TableRow key={u._id}>
-                  <TableCell>
+                  <TableCell component="th" scope="row">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
                       <Box
                         component="button"

@@ -660,11 +660,11 @@ export default function SessionReview() {
             <Table size="small" aria-label="Student results">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 700 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }}>Email</TableCell>
-                  <TableCell sx={{ fontWeight: 700 }} align="center">Participation</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>Name</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>Email</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">Participation</TableCell>
                   {questions.map((_, i) => (
-                    <TableCell key={i} sx={{ fontWeight: 700 }} align="center">
+                    <TableCell key={i} component="th" scope="col" sx={{ fontWeight: 700 }} align="center">
                       Q{i + 1}
                     </TableCell>
                   ))}
@@ -673,7 +673,7 @@ export default function SessionReview() {
               <TableBody>
                 {studentResults.map((student) => (
                   <TableRow key={student.studentId}>
-                    <TableCell>
+                    <TableCell component="th" scope="row">
                       {student.lastname}, {student.firstname}
                     </TableCell>
                     <TableCell>{student.email}</TableCell>
