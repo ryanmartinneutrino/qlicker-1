@@ -572,43 +572,78 @@ export default function LiveSession() {
           p: { xs: 1.5, sm: 2 },
           mb: 2,
           display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 1.5,
+          flexDirection: 'column',
+          gap: 1.25,
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
-          {session.name || 'Live Session'}
-        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25, width: '100%' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
+            {session.name || 'Live Session'}
+          </Typography>
+
+          <Tooltip title="Open presentation view in new window">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<OpenInNewIcon />}
+              onClick={handleOpenPresent}
+              aria-label="Open second desktop presentation view"
+            >
+              {isMobile ? 'Present' : 'Second Desktop'}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Session settings">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
+              aria-label="Session settings"
+            >
+              Settings
+            </Button>
+          </Tooltip>
+
+          <Button
+            size="small"
+            variant="contained"
+            color="error"
+            startIcon={<StopIcon />}
+            onClick={() => setEndDialogOpen(true)}
+            aria-label="End session"
+          >
+            End Session
+          </Button>
+        </Box>
 
         <Box
           role="tablist"
           aria-label="Live session panels"
-          sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}
+          sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: '100%' }}
         >
-          <Chip
-            label={totalQ > 0 && qIdx >= 0 ? `Q${qIdx + 1} / ${totalQ}` : 'Questions'}
-            size="small"
-            clickable
-            color={activePanel === 'question' ? 'primary' : 'default'}
-            variant={activePanel === 'question' ? 'filled' : 'outlined'}
+          <Button
+            size="medium"
+            variant={activePanel === 'question' ? 'contained' : 'outlined'}
             onClick={() => setActivePanel('question')}
-            sx={COMPACT_CHIP_SX}
-            aria-label={totalQ > 0 && qIdx >= 0 ? `Question ${qIdx + 1} of ${totalQ}` : 'Question panel'}
-          />
-
-          <Chip
-            icon={<PeopleIcon />}
-            label={`${joinedCount} students`}
-            size="small"
-            clickable
-            color={activePanel === 'students' ? 'primary' : 'default'}
-            variant={activePanel === 'students' ? 'filled' : 'outlined'}
+            aria-label={totalQ > 0 && qIdx >= 0 ? `Show question controls. Question ${qIdx + 1} of ${totalQ}` : 'Show question controls'}
+            sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
+          >
+            {totalQ > 0 && qIdx >= 0 ? `Question Controls (Q${qIdx + 1}/${totalQ})` : 'Question Controls'}
+          </Button>
+          <Button
+            size="medium"
+            variant={activePanel === 'students' ? 'contained' : 'outlined'}
+            startIcon={<PeopleIcon />}
             onClick={() => setActivePanel('students')}
-            sx={COMPACT_CHIP_SX}
-            aria-label={`Students panel with ${joinedCount} joined`}
-          />
+            aria-label={`Show students panel with ${joinedCount} joined`}
+            sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
+          >
+            Students ({joinedCount})
+          </Button>
+        </Box>
 
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, width: '100%' }}>
           <Chip
             label={`${responseCount} / ${joinedCount} responded`}
             size="small"
@@ -627,41 +662,6 @@ export default function LiveSession() {
             />
           )}
         </Box>
-
-        <Tooltip title="Open presentation view in new window">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<OpenInNewIcon />}
-            onClick={handleOpenPresent}
-            aria-label="Open second desktop presentation view"
-          >
-            {isMobile ? 'Present' : 'Second Desktop'}
-          </Button>
-        </Tooltip>
-
-        <Tooltip title="Session settings">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
-            aria-label="Session settings"
-          >
-            Settings
-          </Button>
-        </Tooltip>
-
-        <Button
-          size="small"
-          variant="contained"
-          color="error"
-          startIcon={<StopIcon />}
-          onClick={() => setEndDialogOpen(true)}
-          aria-label="End session"
-        >
-          End Session
-        </Button>
       </Paper>
 
       {activePanel === 'question' ? (
