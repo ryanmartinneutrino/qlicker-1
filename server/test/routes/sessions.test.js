@@ -130,6 +130,25 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
     expect(session.practiceQuiz).toBe(true);
     expect(session.quiz).toBe(true);
   });
+
+  it('rejects quiz creation when quizEnd is not later than quizStart', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-quiz-window@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const now = Date.now();
+
+    const res = await createSessionInCourse(profToken, course._id, {
+      name: 'Invalid Quiz Window',
+      quiz: true,
+      quizStart: new Date(now + (60 * 1000)).toISOString(),
+      quizEnd: new Date(now).toISOString(),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain('Quiz end time must be later than quiz start time');
+  });
 });
 
 // ---------- GET /api/v1/courses/:courseId/sessions ----------
@@ -489,6 +508,30 @@ describe('PATCH /api/v1/sessions/:id', () => {
     });
     expect(reviewableRes.statusCode).toBe(400);
     expect(reviewableRes.json().message).toContain('quiz extensions are active');
+  });
+
+  it('rejects updates when quizEnd is not later than quizStart', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-quiz-window-update@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const now = Date.now();
+
+    const sessRes = await createSessionInCourse(profToken, course._id, {
+      quiz: true,
+      quizStart: new Date(now).toISOString(),
+      quizEnd: new Date(now + (60 * 60 * 1000)).toISOString(),
+    });
+    const session = sessRes.json().session;
+
+    const patchRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { quizEnd: new Date(now - (60 * 1000)).toISOString() },
+    });
+
+    expect(patchRes.statusCode).toBe(400);
+    expect(patchRes.json().message).toContain('Quiz end time must be later than quiz start time');
   });
 });
 

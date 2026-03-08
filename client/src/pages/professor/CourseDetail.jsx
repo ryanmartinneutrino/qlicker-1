@@ -43,6 +43,15 @@ function parseCourseTab(value) {
   return parsed;
 }
 
+function getDefaultQuizWindowIso() {
+  const start = new Date();
+  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  return {
+    quizStart: start.toISOString(),
+    quizEnd: end.toISOString(),
+  };
+}
+
 function toText(value) {
   if (value === undefined || value === null) return '';
   return String(value);
@@ -448,6 +457,12 @@ export default function CourseDetail() {
     try {
       const body = { name: newSessionName.trim() };
       if (newSessionDesc.trim()) body.description = newSessionDesc.trim();
+      if (tab === 1) {
+        const quizWindow = getDefaultQuizWindowIso();
+        body.quiz = true;
+        body.quizStart = quizWindow.quizStart;
+        body.quizEnd = quizWindow.quizEnd;
+      }
       await apiClient.post(`/courses/${id}/sessions`, body);
       setCreateSessionOpen(false);
       setNewSessionName('');

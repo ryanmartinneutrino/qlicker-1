@@ -24,6 +24,7 @@ import SessionStatusChip from '../../components/common/SessionStatusChip';
 
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
+const QUIZ_WINDOW_VALIDATION_MESSAGE = 'Quiz end must be later than quiz start.';
 
 const MAX_COURSE_TAB_INDEX = 4;
 
@@ -39,6 +40,43 @@ function toDateTimeLocalString(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
   return parsed.toISOString().slice(0, 16);
+}
+
+function buildDefaultQuizWindow() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  return {
+    quizStart: toDateTimeLocalString(start),
+    quizEnd: toDateTimeLocalString(end),
+  };
+}
+
+function buildTodayQuizWindow() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  const end = new Date(start);
+  end.setHours(23, 59, 0, 0);
+  if (end.getTime() <= start.getTime()) {
+    end.setDate(end.getDate() + 1);
+  }
+  return {
+    quizStart: toDateTimeLocalString(start),
+    quizEnd: toDateTimeLocalString(end),
+  };
+}
+
+function buildTwentyFourHourQuizWindow(startValue = '') {
+  const parsedStart = startValue ? new Date(startValue) : null;
+  const start = parsedStart && !Number.isNaN(parsedStart.getTime())
+    ? parsedStart
+    : new Date();
+  start.setSeconds(0, 0);
+  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  return {
+    quizStart: toDateTimeLocalString(start),
+    quizEnd: toDateTimeLocalString(end),
+  };
 }
 
 function formatStudentLabel(student) {
@@ -200,6 +238,24 @@ export default function SessionEditor() {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   };
 
+  const validateQuizWindow = (startValue, endValue) => {
+    const startIso = toIsoIfValid(startValue);
+    const endIso = toIsoIfValid(endValue);
+    if (!startIso || !endIso) return null;
+    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
+      return QUIZ_WINDOW_VALIDATION_MESSAGE;
+    }
+    return null;
+  };
+
+  const ensureQuizWindowDefaults = useCallback((startValue, endValue) => {
+    const defaults = buildDefaultQuizWindow();
+    return {
+      quizStart: startValue || defaults.quizStart,
+      quizEnd: endValue || defaults.quizEnd,
+    };
+  }, []);
+
   // Save session properties immediately as fields change
   const saveSessionPatch = async (updates) => {
     setSavingSession(true);
@@ -218,6 +274,36 @@ export default function SessionEditor() {
       setSavingSession(false);
     }
   };
+
+  const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}) => {
+    const validationMessage = validateQuizWindow(nextStart, nextEnd);
+    if (validationMessage) {
+      setMsg({ severity: 'error', text: validationMessage });
+      return false;
+    }
+    const updates = { ...extraUpdates };
+    const startIso = toIsoIfValid(nextStart);
+    const endIso = toIsoIfValid(nextEnd);
+    if (startIso) updates.quizStart = startIso;
+    if (endIso) updates.quizEnd = endIso;
+    if (Object.keys(updates).length === 0) return true;
+    saveSessionPatch(updates);
+    return true;
+  }, [saveSessionPatch]);
+
+  const applyTodayQuizWindow = useCallback(() => {
+    const nextWindow = buildTodayQuizWindow();
+    setQuizStart(nextWindow.quizStart);
+    setQuizEnd(nextWindow.quizEnd);
+    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
+  }, [persistQuizWindow]);
+
+  const applyTwentyFourHourQuizWindow = useCallback(() => {
+    const nextWindow = buildTwentyFourHourQuizWindow(quizStart);
+    setQuizStart(nextWindow.quizStart);
+    setQuizEnd(nextWindow.quizEnd);
+    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
+  }, [persistQuizWindow, quizStart]);
 
   const handleStatusChange = (nextStatus) => {
     if (nextStatus === status) return;
@@ -925,6 +1011,19 @@ export default function SessionEditor() {
                     if (shouldDisablePractice) {
                       setPracticeQuiz(false);
                     }
+                    if (checked) {
+                      const nextWindow = ensureQuizWindowDefaults(quizStart, quizEnd);
+                      setQuizStart(nextWindow.quizStart);
+                      setQuizEnd(nextWindow.quizEnd);
+                      persistQuizWindow(
+                        nextWindow.quizStart,
+                        nextWindow.quizEnd,
+                        shouldDisablePractice
+                          ? { quiz: true, practiceQuiz: false }
+                          : { quiz: true }
+                      );
+                      return;
+                    }
                     saveSessionPatch(
                       shouldDisablePractice
                         ? { quiz: checked, practiceQuiz: false }
@@ -947,9 +1046,12 @@ export default function SessionEditor() {
                   onChange={(e) => {
                     const checked = e.target.checked;
                     setPracticeQuiz(checked);
-                    if (checked && !quiz) {
+                    if (checked && (!quiz || !quizStart || !quizEnd)) {
+                      const nextWindow = ensureQuizWindowDefaults(quizStart, quizEnd);
                       setQuiz(true);
-                      saveSessionPatch({ quiz: true, practiceQuiz: true });
+                      setQuizStart(nextWindow.quizStart);
+                      setQuizEnd(nextWindow.quizEnd);
+                      persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd, { quiz: true, practiceQuiz: true });
                       return;
                     }
                     saveSessionPatch({ practiceQuiz: checked });
@@ -1042,6 +1144,11 @@ export default function SessionEditor() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setQuizStart(val);
+                    const validationMessage = validateQuizWindow(val, quizEnd);
+                    if (validationMessage) {
+                      setMsg({ severity: 'error', text: validationMessage });
+                      return;
+                    }
                     const iso = toIsoIfValid(val);
                     if (iso) saveSessionPatch({ quizStart: iso });
                   }}
@@ -1057,11 +1164,38 @@ export default function SessionEditor() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setQuizEnd(val);
+                    const validationMessage = validateQuizWindow(quizStart, val);
+                    if (validationMessage) {
+                      setMsg({ severity: 'error', text: validationMessage });
+                      return;
+                    }
                     const iso = toIsoIfValid(val);
                     if (iso) saveSessionPatch({ quizEnd: iso });
                   }}
+                  inputProps={quizStart ? { min: quizStart } : undefined}
                   disabled={savingSession}
                 />
+              </Box>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={applyTodayQuizWindow}
+                  disabled={savingSession}
+                >
+                  Today
+                </Button>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={applyTwentyFourHourQuizWindow}
+                  disabled={savingSession}
+                >
+                  Set 24h Window
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Default quiz windows are 24 hours.
+                </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">

@@ -122,6 +122,7 @@ function RichContent({ html, fallback }) {
 export default function QuizSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const courseQuizTabLink = `/student/course/${courseId}?tab=1`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -247,13 +248,13 @@ export default function QuizSession() {
     try {
       await flushAutosaves();
       await apiClient.post(`/sessions/${sessionId}/submit`);
-      navigate(`/student/course/${courseId}`);
+      navigate(courseQuizTabLink);
     } catch (err) {
       setSubmitError(err.response?.data?.message || 'Failed to submit quiz');
     } finally {
       setSubmittingQuiz(false);
     }
-  }, [courseId, flushAutosaves, navigate, sessionId]);
+  }, [courseQuizTabLink, flushAutosaves, navigate, sessionId]);
 
   const handleSubmitPracticeQuestion = useCallback(async (questionId) => {
     const question = questions.find((entry) => String(entry._id) === String(questionId));
@@ -265,7 +266,6 @@ export default function QuizSession() {
       await saveDraftNow(questionId, draftByQuestion[questionId] || getDraftForQuestion(question, responsesByQuestion[questionId]));
       await apiClient.post(`/sessions/${sessionId}/quiz-question-submit`, { questionId });
       await fetchQuiz();
-      setShowSolutionByQuestion((prev) => ({ ...prev, [questionId]: true }));
     } catch (err) {
       setSubmitError(err.response?.data?.message || 'Failed to submit this question');
     } finally {
@@ -313,7 +313,7 @@ export default function QuizSession() {
     return (
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error || 'Quiz not found'}</Alert>
-        <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
+        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           Back to course
         </Button>
       </Box>
@@ -326,7 +326,7 @@ export default function QuizSession() {
         <Alert severity="info" sx={{ mb: 2 }}>
           This quiz is closed.
         </Alert>
-        <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
+        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           Back to course
         </Button>
       </Box>
@@ -339,7 +339,7 @@ export default function QuizSession() {
         <Alert severity="success" sx={{ mb: 2 }}>
           You have already submitted this quiz.
         </Alert>
-        <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
+        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           Back to course
         </Button>
       </Box>
@@ -401,6 +401,11 @@ export default function QuizSession() {
         const autosaveState = autosaveStateByQuestion[qId] || 'idle';
         const showSolution = !!showSolutionByQuestion[qId] && locked;
         const showCorrectForQuestion = showSolution && practiceQuiz;
+        const questionHasRevealableSolution = !!(
+          question.solution
+          || question.correctNumerical != null
+          || hasCorrectOption(question.options)
+        );
         const optionAnswers = qType === QUESTION_TYPES.MULTI_SELECT
           ? (Array.isArray(draft.answer) ? draft.answer : [])
           : [];
@@ -571,8 +576,13 @@ export default function QuizSession() {
                     {lockingQuestionId === qId ? 'Submitting...' : 'Submit Question'}
                   </Button>
                 )}
+                {!locked && questionHasRevealableSolution && (
+                  <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                    Solution becomes available after you submit this question.
+                  </Typography>
+                )}
 
-                {locked && (question.solution || question.correctNumerical != null || hasCorrectOption(question.options)) && (
+                {locked && questionHasRevealableSolution && (
                   <Button
                     size="small"
                     variant="outlined"

@@ -1029,6 +1029,7 @@ The following Phase 5 work has been completed:
 - ✅ **Reviewable + extension safety** — Server now blocks making quizzes reviewable while active extensions exist.
 - ✅ **Student quiz page shipped** — New `/student/course/:courseId/session/:sessionId/quiz` flow shows all questions at once (with optional one-question mode), autosaves responses, supports final submission for non-practice quizzes, and per-question solution reveal for practice quizzes.
 - ✅ **Interactive session follow-up TODOs complete** — SessionReview Students tab now supports sortable Name/Email/In Session columns + autocomplete search; SecondDesktop stats now hide raw counts (percentages only); student lists default to last-name ordering.
+- ✅ **Phase 5 quiz/student-review polish follow-up (2026-03-08)** — Added strict quiz window validation (`quizEnd > quizStart`) on session create/update with new backend tests, improved Session Editor quiz scheduling UX (default 24h window, quick `Today` and `Set 24h Window` actions), made quiz-tab session creation default to quiz mode with initial window values, updated practice quiz UX to keep solutions hidden until manually revealed after per-question submit, and preserved student quiz tab context when returning from quiz/review flows.
 
 #### PR 119: Interactive Sessions (Full Live Session System)
 

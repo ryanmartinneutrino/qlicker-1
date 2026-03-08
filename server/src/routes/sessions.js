@@ -182,6 +182,27 @@ function isQuizLikeSession(session) {
   return !!(session?.quiz || session?.practiceQuiz);
 }
 
+function getQuizWindowValidationMessage(session, updates = {}) {
+  const hasQuiz = Object.prototype.hasOwnProperty.call(updates, 'quiz');
+  const hasPracticeQuiz = Object.prototype.hasOwnProperty.call(updates, 'practiceQuiz');
+  const hasQuizStart = Object.prototype.hasOwnProperty.call(updates, 'quizStart');
+  const hasQuizEnd = Object.prototype.hasOwnProperty.call(updates, 'quizEnd');
+
+  const nextQuiz = hasQuiz ? !!updates.quiz : !!session?.quiz;
+  const nextPracticeQuiz = hasPracticeQuiz ? !!updates.practiceQuiz : !!session?.practiceQuiz;
+  if (!nextQuiz && !nextPracticeQuiz) return null;
+
+  const nextQuizStart = hasQuizStart ? updates.quizStart : session?.quizStart;
+  const nextQuizEnd = hasQuizEnd ? updates.quizEnd : session?.quizEnd;
+  const quizStart = toDateOrNull(nextQuizStart);
+  const quizEnd = toDateOrNull(nextQuizEnd);
+  if (quizStart && quizEnd && quizEnd.getTime() <= quizStart.getTime()) {
+    return 'Quiz end time must be later than quiz start time';
+  }
+
+  return null;
+}
+
 function normalizeQuizExtension(extension, session) {
   const userId = normalizeAnswerValue(extension?.userId);
   if (!userId) return null;
@@ -651,6 +672,15 @@ export default async function sessionRoutes(app) {
       const { name, description, quiz, practiceQuiz, quizStart, quizEnd, date } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
+      const quizWindowValidationError = getQuizWindowValidationMessage(null, {
+        quiz: isQuiz,
+        practiceQuiz: isPracticeQuiz,
+        quizStart,
+        quizEnd,
+      });
+      if (quizWindowValidationError) {
+        return reply.code(400).send({ error: 'Bad Request', message: quizWindowValidationError });
+      }
 
       const session = await Session.create({
         name,
@@ -784,6 +814,11 @@ export default async function sessionRoutes(app) {
       }
       if (updates.quiz === false) {
         updates.practiceQuiz = false;
+      }
+
+      const quizWindowValidationError = getQuizWindowValidationMessage(session.toObject(), updates);
+      if (quizWindowValidationError) {
+        return reply.code(400).send({ error: 'Bad Request', message: quizWindowValidationError });
       }
 
       // If passcode requirement is disabled through the generic session patch,
