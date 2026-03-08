@@ -1,6 +1,7 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
+import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 
 const createQuestionSchema = {
@@ -312,6 +313,17 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const requestedType = request.body.type;
+      if (requestedType !== undefined && Number(requestedType) !== Number(question.type)) {
+        const hasResponses = await Response.exists({ questionId: String(question._id) });
+        if (hasResponses) {
+          return reply.code(409).send({
+            error: 'Conflict',
+            message: 'Question type cannot be changed because this question has response data',
+          });
+        }
+      }
+
       const nextType = request.body.type !== undefined ? request.body.type : question.type;
       const nextOptions = request.body.options !== undefined ? request.body.options : question.options;
       const updateValidationError = multipleChoiceValidationError(nextType, nextOptions);
@@ -356,6 +368,14 @@ export default async function questionRoutes(app) {
 
       if (!isAdmin && question.creator !== userId) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only the creator or an admin can delete this question' });
+      }
+
+      const hasResponses = await Response.exists({ questionId: String(question._id) });
+      if (hasResponses) {
+        return reply.code(409).send({
+          error: 'Conflict',
+          message: 'Questions with response data cannot be deleted',
+        });
       }
 
       // Remove from session if linked
@@ -497,6 +517,14 @@ export default async function questionRoutes(app) {
 
       if (!isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const hasResponses = await Response.exists({ questionId: String(request.params.questionId) });
+      if (hasResponses) {
+        return reply.code(409).send({
+          error: 'Conflict',
+          message: 'Questions with response data cannot be removed from this session',
+        });
       }
 
       const updated = await Session.findByIdAndUpdate(
