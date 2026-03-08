@@ -1072,6 +1072,18 @@ The following Phase 5 work has been completed:
 - ✅ **Professor review by attempt** — Session review now renders per-attempt rows for each question (attempts are clearly labeled and reported with per-attempt response counts/distributions).
 - ✅ **Coverage expansion** — Added sessions route tests covering student solution gating in live payloads, instructor short-answer name opt-in behavior, and legacy review-field normalization.
 
+#### PR 124: Interactive Session + Professor Editor Follow-up Fixes
+
+- ✅ **Session review option rendering fix** — Professor SessionReview now prefers option rich text/content over legacy label fields, preventing duplicate A/B/C label rendering in MC/MS/TF views.
+- ✅ **CSV export includes all attempts** — SessionReview CSV export now emits per-attempt response/points columns for each question (attempts are labeled explicitly, with one column pair per attempt).
+- ✅ **SessionReview Students tab** — Added a new Students tab (to the right of Response Data) with avatars, roster-wide coverage, in-session indicator, and sortable columns for participation, percent correct (latest attempt), and joined timestamp.
+- ✅ **Roster/join metadata in review payload** — `GET /api/v1/sessions/:id/results` now includes all course students (plus joined/responders), avatar fields, `inSession`, `joinedAt`, and normalized review questions for compatibility.
+- ✅ **LiveSession control layout update** — Settings moved to the top action area beside End Session; control area reorganized into passcode row, toggle row (including Responses Open as a switch), and bottom nav row with Prev / New Attempt / Next.
+- ✅ **LiveSession panel chips** — Top chips now switch between question/control view and a live “students currently in session” list with avatars and join times.
+- ✅ **Professor SessionEditor safeguards (ended sessions + response data)** — Ended sessions now lock the question list behind an explicit unlock action; questions with response data cannot be deleted or have their type changed (UI + API enforcement).
+- ✅ **Session editor accessible tooltips** — Added hover tooltips to key settings controls, including Require Passcode (“Students have to enter a passcode to enter.”).
+- ✅ **Local validation for this PR** — `cd server && npm test` (122 tests passed) and `cd client && npm run build` succeeded.
+
 **Known issues / future work:**
 - ~~Rate limiting is not implemented on any route (CodeQL flags `js/missing-rate-limiting`).~~ ✅ Fixed: `@fastify/rate-limit` added on auth endpoints; `@fastify/helmet` added for security headers.
 - Client has no unit tests. Playwright E2E tests should be added for interactive session flows.

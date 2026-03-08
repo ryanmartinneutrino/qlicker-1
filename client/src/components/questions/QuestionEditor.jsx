@@ -172,6 +172,8 @@ export default function QuestionEditor({
   initial,
   initialBaseline = null,
   inline = false,
+  disableTypeSelection = false,
+  typeSelectionLockReason = 'Question type is locked for this question.',
 }) {
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
@@ -315,6 +317,7 @@ export default function QuestionEditor({
 
   // Warn before erasing option content when leaving option-based types.
   const handleTypeChange = (type) => {
+    if (disableTypeSelection) return;
     if (type === form.type) return;
 
     const switchingFromOptionBasedType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type);
@@ -414,27 +417,33 @@ export default function QuestionEditor({
             flexWrap: 'wrap',
           }}
         >
-          <FormControl
-            size="small"
-            sx={{
-              flexGrow: 1,
-              minWidth: { xs: '100%', sm: 260 },
-              maxWidth: { sm: 360 },
-              ...COMPACT_FIELD_SX,
-            }}
-          >
-            <InputLabel>Question Type</InputLabel>
-            <Select
+          <Box sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 }, maxWidth: { sm: 360 } }}>
+            <FormControl
               size="small"
-              value={form.type}
-              label="Question Type"
-              onChange={e => handleTypeChange(Number(e.target.value))}
+              sx={{
+                width: '100%',
+                ...COMPACT_FIELD_SX,
+              }}
             >
-              {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <InputLabel>Question Type</InputLabel>
+              <Select
+                size="small"
+                value={form.type}
+                label="Question Type"
+                disabled={disableTypeSelection}
+                onChange={e => handleTypeChange(Number(e.target.value))}
+              >
+                {Object.entries(TYPE_LABELS).map(([k, v]) => (
+                  <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {disableTypeSelection && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {typeSelectionLockReason}
+              </Typography>
+            )}
+          </Box>
 
           <TextField
             label="Points"

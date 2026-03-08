@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
+  Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Tabs, Tab, LinearProgress,
+  TableHead, TableRow, TableSortLabel, Tabs, Tab, LinearProgress,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -103,6 +103,149 @@ function formatParticipation(participation) {
   return `${Math.round(numeric)}%`;
 }
 
+function formatPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '—';
+  return `${Math.round(numeric * 10) / 10}%`;
+}
+
+function formatJoinedAt(value) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+}
+
+function buildStudentInitials(student) {
+  const first = normalizeAnswerValue(student?.firstname);
+  const last = normalizeAnswerValue(student?.lastname);
+  if (first || last) {
+    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+  }
+  const email = normalizeAnswerValue(student?.email);
+  return email ? email.charAt(0).toUpperCase() : '?';
+}
+
+function optionDisplayHtml(option) {
+  return option?.content
+    || option?.plainText
+    || option?.text
+    || option?.label
+    || option?.value
+    || option?.option
+    || option?.answer
+    || '';
+}
+
+function collectAttemptNumbersForQuestion(question, studentResults = []) {
+  const attemptNumbers = new Set();
+
+  (question?.sessionOptions?.attempts || []).forEach((attempt) => {
+    const number = Number(attempt?.number);
+    if (Number.isInteger(number) && number > 0) {
+      attemptNumbers.add(number);
+    }
+  });
+
+  studentResults.forEach((student) => {
+    const qr = (student?.questionResults || []).find(
+      (result) => String(result?.questionId) === String(question?._id),
+    );
+    (qr?.responses || []).forEach((response) => {
+      const attemptNumber = Number(response?.attempt);
+      if (Number.isInteger(attemptNumber) && attemptNumber > 0) {
+        attemptNumbers.add(attemptNumber);
+      }
+    });
+  });
+
+  const sorted = [...attemptNumbers].sort((a, b) => a - b);
+  if (sorted.length === 0) sorted.push(1);
+  return sorted;
+}
+
+function collectAnswerEntries(answer) {
+  if (answer === undefined || answer === null) return [];
+  if (Array.isArray(answer)) return answer;
+  if (typeof answer === 'string') {
+    const trimmed = answer.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Fall back to scalar interpretation.
+      }
+    }
+    if (trimmed.includes(',') && !/<[^>]*>/.test(trimmed)) {
+      return trimmed.split(',').map((entry) => entry.trim()).filter(Boolean);
+    }
+  }
+  return [answer];
+}
+
+function getLatestResponse(responses = []) {
+  if (!Array.isArray(responses) || responses.length === 0) return null;
+  return [...responses].sort((a, b) => {
+    const attemptDiff = (Number(a?.attempt) || 0) - (Number(b?.attempt) || 0);
+    if (attemptDiff !== 0) return attemptDiff;
+    const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return aTime - bTime;
+  })[responses.length - 1];
+}
+
+function isLatestResponseCorrect(question, response) {
+  if (!question || !response) return null;
+  if (typeof response.correct === 'boolean') return response.correct;
+
+  const score = Number(response?.mark ?? response?.points);
+  if (Number.isFinite(score)) {
+    return score > 0;
+  }
+
+  const qType = normalizeQuestionType(question);
+  const options = Array.isArray(question.options) ? question.options : [];
+
+  if (
+    [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(qType)
+  ) {
+    if (!options.length) return null;
+
+    const correctIndices = options.reduce((acc, option, idx) => {
+      if (isCorrectOption(option)) acc.push(idx);
+      return acc;
+    }, []);
+    if (!correctIndices.length) return null;
+
+    const selectedIndices = [...new Set(
+      collectAnswerEntries(response.answer)
+        .map((entry) => resolveOptionIndex(entry, options))
+        .filter((idx) => idx >= 0 && idx < options.length),
+    )];
+
+    if (selectedIndices.length !== correctIndices.length) return false;
+    return selectedIndices.every((idx) => correctIndices.includes(idx));
+  }
+
+  if (qType === QUESTION_TYPES.NUMERICAL) {
+    const expected = Number(question.correctNumerical);
+    if (!Number.isFinite(expected)) return null;
+
+    const toleranceRaw = Number(question.toleranceNumerical ?? 0);
+    const tolerance = Number.isFinite(toleranceRaw) ? Math.abs(toleranceRaw) : 0;
+    const actual = Number(response.answer);
+    if (!Number.isFinite(actual)) return false;
+    return Math.abs(actual - expected) <= tolerance;
+  }
+
+  return null;
+}
+
 function escapeCsvCell(value) {
   if (value == null) return '';
   const str = String(value);
@@ -189,7 +332,7 @@ function DistributionBars({
               />
               <Box sx={{ minWidth: 0 }}>
                 <RichContent
-                  html={options?.[i]?.answer || options?.[i]?.content || options?.[i]?.plainText || ''}
+                  html={optionDisplayHtml(options?.[i])}
                 />
               </Box>
               <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>
@@ -228,6 +371,7 @@ export default function SessionReview() {
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
+  const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
 
   // ---- Data fetching ----
 
@@ -265,7 +409,7 @@ export default function SessionReview() {
   // ---- Summary stats ----
 
   const totalQuestions = questions.length;
-  const totalStudents = Math.max(session?.joined?.length || 0, studentResults.length || 0);
+  const totalStudents = studentResults.length;
   const avgParticipation = useMemo(() => {
     if (!studentResults.length) return 0;
     const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);
@@ -283,14 +427,7 @@ export default function SessionReview() {
     ].includes(qType);
 
     const responsesByAttempt = new Map();
-    const attemptNumbers = new Set();
-
-    (q.sessionOptions?.attempts || []).forEach((attempt) => {
-      const number = Number(attempt?.number);
-      if (Number.isInteger(number) && number > 0) {
-        attemptNumbers.add(number);
-      }
-    });
+    const attemptNumbers = new Set(collectAttemptNumbersForQuestion(q, studentResults));
 
     studentResults.forEach((student) => {
       const qr = (student.questionResults || []).find(
@@ -310,7 +447,6 @@ export default function SessionReview() {
     });
 
     const sortedAttempts = [...attemptNumbers].sort((a, b) => a - b);
-    if (sortedAttempts.length === 0) sortedAttempts.push(1);
 
     const correctIndices = (q.options || []).reduce((acc, option, idx) => {
       if (isCorrectOption(option)) acc.push(idx);
@@ -358,18 +494,110 @@ export default function SessionReview() {
     });
   }), [questions, studentResults]);
 
+  const csvQuestionAttempts = useMemo(() => questions.map((question, questionIndex) => ({
+    question,
+    questionNumber: questionIndex + 1,
+    attempts: collectAttemptNumbersForQuestion(question, studentResults),
+  })), [questions, studentResults]);
+
+  const studentsTabRows = useMemo(() => studentResults.map((student) => {
+    const questionResultsById = new Map(
+      (student.questionResults || []).map((result) => [String(result.questionId), result]),
+    );
+
+    let gradedCount = 0;
+    let correctCount = 0;
+    questions.forEach((question) => {
+      const qr = questionResultsById.get(String(question._id));
+      const latestResponse = getLatestResponse(qr?.responses || []);
+      if (!latestResponse) return;
+      const correct = isLatestResponseCorrect(question, latestResponse);
+      if (correct === null) return;
+      gradedCount += 1;
+      if (correct) correctCount += 1;
+    });
+
+    const first = normalizeAnswerValue(student.firstname);
+    const last = normalizeAnswerValue(student.lastname);
+    const fullName = `${first} ${last}`.trim();
+    const displayName = fullName || student.email || 'Unknown Student';
+    const joinedAtMillis = student.joinedAt ? new Date(student.joinedAt).getTime() : NaN;
+
+    return {
+      ...student,
+      displayName,
+      avatarSrc: student.profileThumbnail || student.profileImage || '',
+      participationValue: Number(student.participation) || 0,
+      percentCorrectValue: gradedCount > 0 ? Math.round((1000 * correctCount) / gradedCount) / 10 : null,
+      joinedAtValue: Number.isFinite(joinedAtMillis) ? joinedAtMillis : null,
+    };
+  }), [studentResults, questions]);
+
+  const handleStudentsSort = useCallback((field) => {
+    setStudentSort((prev) => {
+      if (prev.field === field) {
+        return {
+          field,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return { field, direction: 'desc' };
+    });
+  }, []);
+
+  const sortedStudentsTabRows = useMemo(() => {
+    const compareNullableNumber = (a, b) => {
+      const aFinite = Number.isFinite(a);
+      const bFinite = Number.isFinite(b);
+      if (!aFinite && !bFinite) return 0;
+      if (!aFinite) return 1;
+      if (!bFinite) return -1;
+      return a - b;
+    };
+
+    const rows = [...studentsTabRows];
+    rows.sort((a, b) => {
+      let cmp = 0;
+      if (studentSort.field === 'participation') {
+        cmp = compareNullableNumber(a.participationValue, b.participationValue);
+      } else if (studentSort.field === 'percentCorrect') {
+        cmp = compareNullableNumber(a.percentCorrectValue, b.percentCorrectValue);
+      } else if (studentSort.field === 'joinedAt') {
+        cmp = compareNullableNumber(a.joinedAtValue, b.joinedAtValue);
+      } else {
+        cmp = normalizeAnswerValue(a.displayName).localeCompare(normalizeAnswerValue(b.displayName));
+        if (cmp === 0) {
+          cmp = normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
+        }
+      }
+      return studentSort.direction === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [studentsTabRows, studentSort]);
+
   // ---- CSV export ----
 
   const handleExportCsv = useCallback(() => {
-    if (!questions.length || !studentResults.length) return;
+    if (!csvQuestionAttempts.length || !studentResults.length) return;
 
     const headers = ['Last Name', 'First Name', 'Email', 'Participation'];
-    questions.forEach((_, i) => {
-      headers.push(`Q${i + 1} Response`);
-      headers.push(`Q${i + 1} Points`);
+    csvQuestionAttempts.forEach(({ questionNumber, attempts }) => {
+      if (attempts.length <= 1) {
+        headers.push(`Q${questionNumber} Response`);
+        headers.push(`Q${questionNumber} Points`);
+        return;
+      }
+      attempts.forEach((attemptNumber) => {
+        headers.push(`Q${questionNumber} Attempt ${attemptNumber} Response`);
+        headers.push(`Q${questionNumber} Attempt ${attemptNumber} Points`);
+      });
     });
 
     const rows = studentResults.map((student) => {
+      const questionResultsById = new Map(
+        (student.questionResults || []).map((result) => [String(result.questionId), result]),
+      );
+
       const row = [
         escapeCsvCell(student.lastname),
         escapeCsvCell(student.firstname),
@@ -377,35 +605,55 @@ export default function SessionReview() {
         escapeCsvCell(formatParticipation(student.participation)),
       ];
 
-      questions.forEach((q) => {
-        const qr = (student.questionResults || []).find(
-          (r) => String(r.questionId) === String(q._id),
-        );
-        if (!qr || !qr.responses || !qr.responses.length) {
-          row.push(escapeCsvCell(''));
-          row.push(escapeCsvCell(''));
-          return;
-        }
-        const lastResponse = qr.responses[qr.responses.length - 1];
-        let answerText = lastResponse?.answer ?? '';
+      csvQuestionAttempts.forEach(({ question, attempts }) => {
+        const qr = questionResultsById.get(String(question._id));
+        const responsesByAttempt = new Map();
+        (qr?.responses || []).forEach((response) => {
+          const attemptNumber = Number(response?.attempt);
+          const normalizedAttempt = Number.isInteger(attemptNumber) && attemptNumber > 0 ? attemptNumber : 1;
+          const current = responsesByAttempt.get(normalizedAttempt);
+          if (!current) {
+            responsesByAttempt.set(normalizedAttempt, response);
+            return;
+          }
+          const currentTime = current?.createdAt ? new Date(current.createdAt).getTime() : 0;
+          const nextTime = response?.createdAt ? new Date(response.createdAt).getTime() : 0;
+          if (nextTime >= currentTime) {
+            responsesByAttempt.set(normalizedAttempt, response);
+          }
+        });
 
-        // Convert option IDs to letters for MC/TF/MS
-        const normType = normalizeQuestionType(q);
-        if (
-          [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
-            .includes(normType) && q.options
-        ) {
-          const answers = Array.isArray(answerText) ? answerText : [answerText];
-          answerText = answers
-            .map((a) => {
-              const idx = resolveOptionIndex(a, q.options);
-              return idx >= 0 ? OPTION_LETTERS[idx] : a;
-            })
-            .join(', ');
-        }
+        attempts.forEach((attemptNumber) => {
+          const attemptResponse = responsesByAttempt.get(attemptNumber);
+          if (!attemptResponse) {
+            row.push(escapeCsvCell(''));
+            row.push(escapeCsvCell(''));
+            return;
+          }
 
-        row.push(escapeCsvCell(answerText));
-        row.push(escapeCsvCell(lastResponse?.points ?? ''));
+          let answerText = attemptResponse?.answer ?? '';
+          const normType = normalizeQuestionType(question);
+          if (
+            [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
+              .includes(normType) && question.options
+          ) {
+            answerText = collectAnswerEntries(answerText)
+              .map((entry) => {
+                const idx = resolveOptionIndex(entry, question.options);
+                return idx >= 0 ? OPTION_LETTERS[idx] : entry;
+              })
+              .join(', ');
+          } else if (answerText && typeof answerText === 'object') {
+            try {
+              answerText = JSON.stringify(answerText);
+            } catch {
+              answerText = String(answerText);
+            }
+          }
+
+          row.push(escapeCsvCell(answerText));
+          row.push(escapeCsvCell(attemptResponse?.points ?? attemptResponse?.mark ?? ''));
+        });
       });
 
       return row.join(',');
@@ -414,7 +662,7 @@ export default function SessionReview() {
     const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
     const filename = `${(session?.name || 'session').replace(/[^a-zA-Z0-9]/g, '_')}_results.csv`;
     downloadCsv(filename, csvContent);
-  }, [questions, studentResults, session?.name]);
+  }, [csvQuestionAttempts, studentResults, session?.name]);
 
   // ---- Render: loading ----
 
@@ -540,6 +788,7 @@ export default function SessionReview() {
       >
         <Tab label="Questions" />
         <Tab label="Response Data" />
+        <Tab label="Students" />
       </Tabs>
 
       {/* Questions tab – all questions shown at once with inline stats */}
@@ -630,7 +879,7 @@ export default function SessionReview() {
                               sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
                             />
                             <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <RichContent html={opt.answer || opt.content || opt.plainText} />
+                              <RichContent html={optionDisplayHtml(opt)} />
                             </Box>
                           </Paper>
                         );
@@ -691,7 +940,7 @@ export default function SessionReview() {
                           </TableCell>
                         );
                       }
-                      const lastResponse = qr.responses[qr.responses.length - 1];
+                      const lastResponse = getLatestResponse(qr.responses);
                       let display = lastResponse?.answer ?? '—';
                       const normType = normalizeQuestionType(q);
 
@@ -699,8 +948,7 @@ export default function SessionReview() {
                         [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
                           .includes(normType) && q.options
                       ) {
-                        const answers = Array.isArray(display) ? display : [display];
-                        display = answers
+                        display = collectAnswerEntries(display)
                           .map((a) => {
                             const idx = resolveOptionIndex(a, q.options);
                             return idx >= 0 ? OPTION_LETTERS[idx] : a;
@@ -717,6 +965,84 @@ export default function SessionReview() {
                         </TableCell>
                       );
                     })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </TabPanel>
+
+      {/* Students tab */}
+      <TabPanel value={tab} index={2}>
+        {sortedStudentsTabRows.length === 0 ? (
+          <Alert severity="info">No students are available for this session.</Alert>
+        ) : (
+          <TableContainer component={Paper} variant="outlined">
+            <Table size="small" aria-label="Session student list">
+              <TableHead>
+                <TableRow>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
+                    Name
+                  </TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
+                    Email
+                  </TableCell>
+                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                    In Session
+                  </TableCell>
+                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                    <TableSortLabel
+                      active={studentSort.field === 'participation'}
+                      direction={studentSort.field === 'participation' ? studentSort.direction : 'asc'}
+                      onClick={() => handleStudentsSort('participation')}
+                    >
+                      Participation
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                    <TableSortLabel
+                      active={studentSort.field === 'percentCorrect'}
+                      direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'asc'}
+                      onClick={() => handleStudentsSort('percentCorrect')}
+                    >
+                      Percent Correct
+                    </TableSortLabel>
+                  </TableCell>
+                  <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                    <TableSortLabel
+                      active={studentSort.field === 'joinedAt'}
+                      direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
+                      onClick={() => handleStudentsSort('joinedAt')}
+                    >
+                      Joined Session
+                    </TableSortLabel>
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {sortedStudentsTabRows.map((student) => (
+                  <TableRow key={student.studentId}>
+                    <TableCell component="th" scope="row">
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Avatar src={student.avatarSrc} sx={{ width: 30, height: 30 }}>
+                          {buildStudentInitials(student)}
+                        </Avatar>
+                        <Typography variant="body2">{student.displayName}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{student.email || '—'}</TableCell>
+                    <TableCell align="center">
+                      <Chip
+                        label={student.inSession ? 'Yes' : 'No'}
+                        color={student.inSession ? 'success' : 'default'}
+                        size="small"
+                        variant={student.inSession ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                    <TableCell align="center">{formatParticipation(student.participationValue)}</TableCell>
+                    <TableCell align="center">{formatPercent(student.percentCorrectValue)}</TableCell>
+                    <TableCell align="center">{formatJoinedAt(student.joinedAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

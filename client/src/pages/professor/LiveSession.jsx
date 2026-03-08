@@ -1,16 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
+  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
   Switch, FormControlLabel, TextField, Divider, useMediaQuery,
 } from '@mui/material';
 import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
   Stop as StopIcon, OpenInNew as OpenInNewIcon,
-  Visibility as ShowIcon, VisibilityOff as HideIcon,
   Check as CheckIcon,
-  Replay as AttemptIcon, Lock as LockIcon, LockOpen as UnlockIcon,
+  Replay as AttemptIcon,
   People as PeopleIcon, Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
@@ -56,6 +55,39 @@ function questionIndex(session, questionId) {
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
+}
+
+function normalizeValue(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function formatJoinedTimestamp(value) {
+  if (!value) return 'Join time unavailable';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Join time unavailable';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+}
+
+function formatJoinedStudentName(student) {
+  const first = normalizeValue(student?.firstname);
+  const last = normalizeValue(student?.lastname);
+  const full = `${first} ${last}`.trim();
+  if (full) return full;
+  return normalizeValue(student?.displayName) || normalizeValue(student?.email) || 'Unknown Student';
+}
+
+function joinedStudentInitials(student) {
+  const first = normalizeValue(student?.firstname);
+  const last = normalizeValue(student?.lastname);
+  if (first || last) {
+    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+  }
+  const fallback = normalizeValue(student?.email) || normalizeValue(student?.displayName);
+  return fallback ? fallback.charAt(0).toUpperCase() : '?';
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +197,7 @@ export default function LiveSession() {
   const [ending, setEnding] = useState(false);
 
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
+  const [activePanel, setActivePanel] = useState('question');
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -460,6 +493,10 @@ export default function LiveSession() {
   const allResponses = liveData?.allResponses || [];
   const responseCount = liveData?.responseCount ?? allResponses.length;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
+  const joinedStudents = Array.isArray(session?.joinedStudents) ? session.joinedStudents : [];
+  const sortedJoinedStudents = useMemo(() => [...joinedStudents].sort(
+    (a, b) => formatJoinedStudentName(a).localeCompare(formatJoinedStudentName(b)),
+  ), [joinedStudents]);
 
   const qIdx = session ? questionIndex(session, session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;
@@ -545,28 +582,31 @@ export default function LiveSession() {
         </Typography>
 
         <Box
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
+          role="tablist"
+          aria-label="Live session panels"
           sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}
         >
-          {totalQ > 0 && (
-            <Chip
-              label={`Q${qIdx + 1} / ${totalQ}`}
-              size="small"
-              color="primary"
-              sx={COMPACT_CHIP_SX}
-              aria-label={`Question ${qIdx + 1} of ${totalQ}`}
-            />
-          )}
+          <Chip
+            label={totalQ > 0 && qIdx >= 0 ? `Q${qIdx + 1} / ${totalQ}` : 'Questions'}
+            size="small"
+            clickable
+            color={activePanel === 'question' ? 'primary' : 'default'}
+            variant={activePanel === 'question' ? 'filled' : 'outlined'}
+            onClick={() => setActivePanel('question')}
+            sx={COMPACT_CHIP_SX}
+            aria-label={totalQ > 0 && qIdx >= 0 ? `Question ${qIdx + 1} of ${totalQ}` : 'Question panel'}
+          />
 
           <Chip
             icon={<PeopleIcon />}
-            label={`${joinedCount} joined`}
+            label={`${joinedCount} students`}
             size="small"
-            variant="outlined"
+            clickable
+            color={activePanel === 'students' ? 'primary' : 'default'}
+            variant={activePanel === 'students' ? 'filled' : 'outlined'}
+            onClick={() => setActivePanel('students')}
             sx={COMPACT_CHIP_SX}
-            aria-label={`${joinedCount} students joined`}
+            aria-label={`Students panel with ${joinedCount} joined`}
           />
 
           <Chip
@@ -578,12 +618,14 @@ export default function LiveSession() {
             aria-label={`${responseCount} of ${joinedCount} students responded`}
           />
 
-          <Chip
-            label={`Attempt ${attemptNum}`}
-            size="small"
-            variant="outlined"
-            sx={COMPACT_CHIP_SX}
-          />
+          {activePanel === 'question' && (
+            <Chip
+              label={`Attempt ${attemptNum}`}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+          )}
         </Box>
 
         <Tooltip title="Open presentation view in new window">
@@ -595,6 +637,18 @@ export default function LiveSession() {
             aria-label="Open second desktop presentation view"
           >
             {isMobile ? 'Present' : 'Second Desktop'}
+          </Button>
+        </Tooltip>
+
+        <Tooltip title="Session settings">
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
+            aria-label="Session settings"
+          >
+            Settings
           </Button>
         </Tooltip>
 
@@ -610,382 +664,428 @@ export default function LiveSession() {
         </Button>
       </Paper>
 
-      {/* ============================================================ */}
-      {/* Control bar (always above the question)                      */}
-      {/* ============================================================ */}
-      <Paper
-        variant="outlined"
-        sx={{
-          p: { xs: 1.5, sm: 2 },
-          mb: 2,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 1,
-        }}
-      >
-        {/* Passcode requirement + join period controls */}
-        <FormControlLabel
-          control={
-            <Switch
-              checked={!!session.joinCodeEnabled}
-              onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
-              disabled={actionLoading}
-              size="small"
-            />
-          }
-          label={<Typography variant="body2">Require Passcode</Typography>}
-        />
-
-        {session.joinCodeEnabled && (
-          <>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={!!session.joinCodeActive}
-                  onChange={(e) => handleToggleJoinCode(e.target.checked)}
-                  disabled={actionLoading}
-                  size="small"
-                />
-              }
-              label={<Typography variant="body2">Join Period</Typography>}
-            />
-            <TextField
-              size="small"
-              label="Refresh (sec)"
-              type="number"
-              value={joinCodeIntervalInput}
-              onChange={(e) => setJoinCodeIntervalInput(e.target.value)}
-              onBlur={handleJoinCodeIntervalBlur}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-              }}
-              inputProps={{ min: 5, max: 120 }}
-              disabled={actionLoading}
-              sx={{ width: 130 }}
-            />
-            {session.joinCodeActive && session.currentJoinCode && (
-              <>
-                <Chip
-                  label={session.currentJoinCode}
-                  color="primary"
-                  sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
-                  aria-label={`Current join code: ${session.currentJoinCode}`}
-                />
-                <Tooltip title="Refresh join code now">
-                  <IconButton
-                    size="small"
-                    onClick={handleRefreshJoinCode}
+      {activePanel === 'question' ? (
+        <>
+          {/* ============================================================ */}
+          {/* Control bar (always above the question)                      */}
+          {/* ============================================================ */}
+          <Paper
+            variant="outlined"
+            sx={{
+              p: { xs: 1.5, sm: 2 },
+              mb: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.25,
+            }}
+          >
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={!!session.joinCodeEnabled}
+                    onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
                     disabled={actionLoading}
-                    aria-label="Refresh join code"
-                  >
-                    <RefreshIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          </>
-        )}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2">Require Passcode</Typography>}
+              />
 
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* Visibility toggle */}
-        <FormControlLabel
-          control={
-            <Switch
-              checked={!isHidden}
-              onChange={() => handleToggleVisibility('hidden')}
-              disabled={!currentQ || actionLoading}
-              size="small"
-            />
-          }
-          label={<Typography variant="body2">Visible</Typography>}
-        />
-
-        {/* Show stats toggle */}
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showStats}
-              onChange={() => handleToggleVisibility('stats')}
-              disabled={!currentQ || actionLoading}
-              size="small"
-            />
-          }
-          label={<Typography variant="body2">Show Stats</Typography>}
-        />
-
-        {/* Show correct toggle */}
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showCorrect}
-              onChange={() => handleToggleVisibility('correct')}
-              disabled={!currentQ || actionLoading}
-              size="small"
-            />
-          }
-          label={<Typography variant="body2">Show Correct</Typography>}
-        />
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* Navigation */}
-        <Tooltip title="Previous question">
-          <span>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<PrevIcon />}
-              onClick={handlePrev}
-              disabled={!hasPrev || actionLoading}
-              aria-label="Previous question"
-            >
-              Prev
-            </Button>
-          </span>
-        </Tooltip>
-
-        <Tooltip title="Next question">
-          <span>
-            <Button
-              size="small"
-              variant="outlined"
-              endIcon={<NextIcon />}
-              onClick={handleNext}
-              disabled={!hasNext || actionLoading}
-              aria-label="Next question"
-            >
-              Next
-            </Button>
-          </span>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* New attempt */}
-        <Tooltip title="Start a new attempt for this question">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<AttemptIcon />}
-            onClick={handleNewAttempt}
-            disabled={!currentQ || actionLoading}
-            aria-label="New attempt"
-          >
-            New Attempt
-          </Button>
-        </Tooltip>
-
-        {/* Allow / close responses */}
-        <Tooltip title={responsesClosed ? 'Open responses for students' : 'Close responses'}>
-          <Button
-            size="small"
-            variant={responsesClosed ? 'contained' : 'outlined'}
-            color={responsesClosed ? 'error' : 'success'}
-            startIcon={responsesClosed ? <LockIcon /> : <UnlockIcon />}
-            onClick={handleToggleResponses}
-            disabled={!currentQ || actionLoading}
-            aria-label={responsesClosed ? 'Allow responses' : 'Close responses'}
-          >
-            {responsesClosed ? 'Responses Closed' : 'Responses Open'}
-          </Button>
-        </Tooltip>
-
-        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-
-        {/* Session settings */}
-        <Tooltip title="Session settings">
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
-            aria-label="Session settings"
-          >
-            Settings
-          </Button>
-        </Tooltip>
-      </Paper>
-
-      {/* ============================================================ */}
-      {/* Main content: question + stats                               */}
-      {/* ============================================================ */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', md: isOptionBasedQuestion ? 'column' : 'row' },
-          gap: 2,
-          mb: 2,
-        }}
-      >
-        {/* ---- Left panel: question content ---- */}
-        <Paper
-          variant="outlined"
-          sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
-          aria-label="Current question"
-        >
-          {currentQ ? (
-            <>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  Question {qIdx + 1}
-                </Typography>
-                <Chip
-                  label={TYPE_LABELS[qType] || 'Unknown'}
-                  size="small"
-                  variant="outlined"
-                  sx={COMPACT_CHIP_SX}
-                />
-                {isHidden && (
-                  <Chip label="Hidden" size="small" color="warning" sx={COMPACT_CHIP_SX} />
-                )}
-              </Box>
-
-              {/* Question content (rich text with KaTeX) */}
-              <Box sx={{ mb: 2 }}>
-                <RichContent html={currentQ.content || currentQ.plainText} />
-              </Box>
-
-              {/* Options for MC / TF / MS */}
-              {isOptionBasedQuestion && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                  {(currentQ.options || []).map((opt, i) => {
-                    const isCorrect = !!opt.correct;
-                    const count = inlineDistribution?.[i]?.count || 0;
-                    const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
-                    const barColor = showCorrect
-                      ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
-                      : 'rgba(25, 118, 210, 0.18)';
-                    return (
-                      <Paper
-                        key={opt._id || i}
-                        variant="outlined"
-                        sx={{
-                          position: 'relative',
-                          overflow: 'hidden',
-                          p: 1,
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: 1,
-                          borderColor: isCorrect ? 'success.main' : 'divider',
-                          bgcolor: isCorrect ? 'success.lighter' : 'transparent',
-                        }}
-                      >
-                        <Box
-                          aria-hidden
-                          sx={{
-                            position: 'absolute',
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: `${pct}%`,
-                            bgcolor: barColor,
-                            transition: 'width 0.4s ease-out',
-                            pointerEvents: 'none',
-                          }}
-                        />
-                        <Box
-                          sx={{
-                            position: 'relative',
-                            zIndex: 1,
-                            display: 'grid',
-                            gridTemplateColumns: '30px minmax(0, 1fr) 74px 20px',
-                            columnGap: 1,
-                            alignItems: 'start',
-                            width: '100%',
-                          }}
-                        >
-                        <Chip
-                          label={OPTION_LETTERS[i]}
+              {session.joinCodeEnabled && (
+                <>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={!!session.joinCodeActive}
+                        onChange={(e) => handleToggleJoinCode(e.target.checked)}
+                        disabled={actionLoading}
+                        size="small"
+                      />
+                    }
+                    label={<Typography variant="body2">Join Period</Typography>}
+                  />
+                  <TextField
+                    size="small"
+                    label="Refresh (sec)"
+                    type="number"
+                    value={joinCodeIntervalInput}
+                    onChange={(e) => setJoinCodeIntervalInput(e.target.value)}
+                    onBlur={handleJoinCodeIntervalBlur}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                    }}
+                    inputProps={{ min: 5, max: 120 }}
+                    disabled={actionLoading}
+                    sx={{ width: 130 }}
+                  />
+                  {session.joinCodeActive && session.currentJoinCode && (
+                    <>
+                      <Chip
+                        label={session.currentJoinCode}
+                        color="primary"
+                        sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
+                        aria-label={`Current join code: ${session.currentJoinCode}`}
+                      />
+                      <Tooltip title="Refresh join code now">
+                        <IconButton
                           size="small"
-                          color={isCorrect ? 'success' : 'default'}
-                          sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
-                        />
-                        <Box sx={{ minWidth: 0 }}>
-                          <RichContent html={optionDisplayHtml(opt)} />
-                        </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
-                          {pct}% ({count})
-                        </Typography>
-                        {isCorrect && (
-                          <CheckIcon color="success" fontSize="small" aria-label="Correct answer" />
-                        )}
-                        </Box>
+                          onClick={handleRefreshJoinCode}
+                          disabled={actionLoading}
+                          aria-label="Refresh join code"
+                        >
+                          <RefreshIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </>
+                  )}
+                </>
+              )}
+            </Box>
+
+            <Divider />
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={!isHidden}
+                    onChange={() => handleToggleVisibility('hidden')}
+                    disabled={!currentQ || actionLoading}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2">Visible</Typography>}
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showStats}
+                    onChange={() => handleToggleVisibility('stats')}
+                    disabled={!currentQ || actionLoading}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2">Show Stats</Typography>}
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showCorrect}
+                    onChange={() => handleToggleVisibility('correct')}
+                    disabled={!currentQ || actionLoading}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2">Show Correct</Typography>}
+              />
+
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={!responsesClosed}
+                    onChange={handleToggleResponses}
+                    disabled={!currentQ || actionLoading}
+                    size="small"
+                  />
+                }
+                label={<Typography variant="body2">Responses Open</Typography>}
+              />
+            </Box>
+
+            <Divider />
+
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
+              <Tooltip title="Previous question">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<PrevIcon />}
+                    onClick={handlePrev}
+                    disabled={!hasPrev || actionLoading}
+                    aria-label="Previous question"
+                  >
+                    Prev
+                  </Button>
+                </span>
+              </Tooltip>
+
+              <Tooltip title="Start a new attempt for this question">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AttemptIcon />}
+                    onClick={handleNewAttempt}
+                    disabled={!currentQ || actionLoading}
+                    aria-label="New attempt"
+                  >
+                    New Attempt
+                  </Button>
+                </span>
+              </Tooltip>
+
+              <Tooltip title="Next question">
+                <span>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    endIcon={<NextIcon />}
+                    onClick={handleNext}
+                    disabled={!hasNext || actionLoading}
+                    aria-label="Next question"
+                  >
+                    Next
+                  </Button>
+                </span>
+              </Tooltip>
+            </Box>
+          </Paper>
+
+          {/* ============================================================ */}
+          {/* Main content: question + stats                               */}
+          {/* ============================================================ */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', md: isOptionBasedQuestion ? 'column' : 'row' },
+              gap: 2,
+              mb: 2,
+            }}
+          >
+            {/* ---- Left panel: question content ---- */}
+            <Paper
+              variant="outlined"
+              sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
+              aria-label="Current question"
+            >
+              {currentQ ? (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      Question {qIdx + 1}
+                    </Typography>
+                    <Chip
+                      label={TYPE_LABELS[qType] || 'Unknown'}
+                      size="small"
+                      variant="outlined"
+                      sx={COMPACT_CHIP_SX}
+                    />
+                    {isHidden && (
+                      <Chip label="Hidden" size="small" color="warning" sx={COMPACT_CHIP_SX} />
+                    )}
+                  </Box>
+
+                  {/* Question content (rich text with KaTeX) */}
+                  <Box sx={{ mb: 2 }}>
+                    <RichContent html={currentQ.content || currentQ.plainText} />
+                  </Box>
+
+                  {/* Options for MC / TF / MS */}
+                  {isOptionBasedQuestion && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                      {(currentQ.options || []).map((opt, i) => {
+                        const isCorrect = !!opt.correct;
+                        const count = inlineDistribution?.[i]?.count || 0;
+                        const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+                        const barColor = showCorrect
+                          ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
+                          : 'rgba(25, 118, 210, 0.18)';
+                        return (
+                          <Paper
+                            key={opt._id || i}
+                            variant="outlined"
+                            sx={{
+                              position: 'relative',
+                              overflow: 'hidden',
+                              p: 1,
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: 1,
+                              borderColor: isCorrect ? 'success.main' : 'divider',
+                              bgcolor: isCorrect ? 'success.lighter' : 'transparent',
+                            }}
+                          >
+                            <Box
+                              aria-hidden
+                              sx={{
+                                position: 'absolute',
+                                left: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: `${pct}%`,
+                                bgcolor: barColor,
+                                transition: 'width 0.4s ease-out',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                            <Box
+                              sx={{
+                                position: 'relative',
+                                zIndex: 1,
+                                display: 'grid',
+                                gridTemplateColumns: '30px minmax(0, 1fr) 74px 20px',
+                                columnGap: 1,
+                                alignItems: 'start',
+                                width: '100%',
+                              }}
+                            >
+                              <Chip
+                                label={OPTION_LETTERS[i]}
+                                size="small"
+                                color={isCorrect ? 'success' : 'default'}
+                                sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
+                              />
+                              <Box sx={{ minWidth: 0 }}>
+                                <RichContent html={optionDisplayHtml(opt)} />
+                              </Box>
+                              <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                                {pct}% ({count})
+                              </Typography>
+                              {isCorrect && (
+                                <CheckIcon color="success" fontSize="small" aria-label="Correct answer" />
+                              )}
+                            </Box>
+                          </Paper>
+                        );
+                      })}
+                    </Box>
+                  )}
+
+                  {/* Correct answer for numerical */}
+                  {qType === QUESTION_TYPES.NUMERICAL && currentQ.correctNumerical != null && (
+                    <Paper variant="outlined" sx={{ p: 1.5, mt: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Correct: <strong>{currentQ.correctNumerical}</strong>
+                        {currentQ.toleranceNumerical != null && ` ± ${currentQ.toleranceNumerical}`}
+                      </Typography>
+                    </Paper>
+                  )}
+
+                  {/* Solution */}
+                  {currentQ.solution && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                        Solution
+                      </Typography>
+                      <Paper variant="outlined" sx={{ p: 1.5 }}>
+                        <RichContent html={currentQ.solution} />
                       </Paper>
-                    );
-                  })}
-                </Box>
+                    </Box>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body1" color="text.secondary">
+                  No question selected. Use the controls above to navigate.
+                </Typography>
               )}
+            </Paper>
 
-              {/* Correct answer for numerical */}
-              {qType === QUESTION_TYPES.NUMERICAL && currentQ.correctNumerical != null && (
-                <Paper variant="outlined" sx={{ p: 1.5, mt: 1 }}>
+            {/* ---- Right panel: response statistics ---- */}
+            {!isOptionBasedQuestion && (
+              <Paper
+                variant="outlined"
+                sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
+                aria-label="Response statistics"
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+                  Responses
+                </Typography>
+
+                {!currentQ ? (
                   <Typography variant="body2" color="text.secondary">
-                    Correct: <strong>{currentQ.correctNumerical}</strong>
-                    {currentQ.toleranceNumerical != null && ` ± ${currentQ.toleranceNumerical}`}
+                    Select a question to view responses.
                   </Typography>
-                </Paper>
-              )}
-
-              {/* Solution */}
-              {currentQ.solution && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    Solution
+                ) : responseStats?.type === 'distribution' ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Distribution is shown inline with the answer options.
                   </Typography>
-                  <Paper variant="outlined" sx={{ p: 1.5 }}>
-                    <RichContent html={currentQ.solution} />
-                  </Paper>
-                </Box>
-              )}
-            </>
-          ) : (
-            <Typography variant="body1" color="text.secondary">
-              No question selected. Use the controls below to navigate.
-            </Typography>
-          )}
-        </Paper>
-
-        {/* ---- Right panel: response statistics ---- */}
-        {!isOptionBasedQuestion && (
+                ) : responseStats?.type === 'shortAnswer' ? (
+                  <ShortAnswerList
+                    responses={responseStats.answers || allResponses}
+                    showStudentNames
+                  />
+                ) : responseStats?.type === 'numerical' ? (
+                  <NumericalStats stats={responseStats} allResponses={allResponses} />
+                ) : allResponses.length > 0 ? (
+                  <ShortAnswerList
+                    responses={allResponses}
+                    showStudentNames
+                  />
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    No responses yet.
+                  </Typography>
+                )}
+              </Paper>
+            )}
+          </Box>
+        </>
+      ) : (
         <Paper
           variant="outlined"
-          sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
-          aria-label="Response statistics"
+          sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}
+          aria-label="Students currently in session"
         >
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Responses
+            Students in Session ({joinedCount})
           </Typography>
 
-          {!currentQ ? (
+          {sortedJoinedStudents.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Select a question to view responses.
+              No students have joined this session yet.
             </Typography>
-          ) : responseStats?.type === 'distribution' ? (
-            <Typography variant="body2" color="text.secondary">
-              Distribution is shown inline with the answer options.
-            </Typography>
-          ) : responseStats?.type === 'shortAnswer' ? (
-            <ShortAnswerList
-              responses={responseStats.answers || allResponses}
-              showStudentNames
-            />
-          ) : responseStats?.type === 'numerical' ? (
-            <NumericalStats stats={responseStats} allResponses={allResponses} />
-          ) : allResponses.length > 0 ? (
-            <ShortAnswerList
-              responses={allResponses}
-              showStudentNames
-            />
           ) : (
-            <Typography variant="body2" color="text.secondary">
-              No responses yet.
-            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {sortedJoinedStudents.map((student) => (
+                <Paper
+                  key={student._id}
+                  variant="outlined"
+                  sx={{
+                    p: 1.1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
+                    <Avatar
+                      src={student.profileThumbnail || student.profileImage || ''}
+                      sx={{ width: 34, height: 34 }}
+                    >
+                      {joinedStudentInitials(student)}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                        {formatJoinedStudentName(student)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
+                        {student.email || student._id}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatJoinedTimestamp(student.joinedAt)}
+                  </Typography>
+                </Paper>
+              ))}
+            </Box>
           )}
         </Paper>
-        )}
-      </Box>
+      )}
 
       {/* ============================================================ */}
       {/* End Session confirmation dialog                              */}

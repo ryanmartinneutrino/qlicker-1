@@ -1165,6 +1165,43 @@ export default async function sessionRoutes(app) {
         }
       }
 
+      let joinedStudents = [];
+      if (isInstrOrAdmin) {
+        const joinedIds = [...new Set((session.joined || []).map((id) => String(id)).filter(Boolean))];
+        const joinedUsers = joinedIds.length > 0
+          ? await User.find({ _id: { $in: joinedIds } })
+            .select('_id profile emails email')
+            .lean()
+          : [];
+        const joinedUserMap = new Map(joinedUsers.map((user) => [String(user._id), user]));
+
+        const latestJoinByStudentId = new Map();
+        (session.joinRecords || []).forEach((record) => {
+          const studentId = normalizeAnswerValue(record?.userId);
+          if (!studentId) return;
+          const joinedAt = record?.joinedAt ? new Date(record.joinedAt) : null;
+          if (!joinedAt || Number.isNaN(joinedAt.getTime())) return;
+          const existing = latestJoinByStudentId.get(studentId);
+          if (!existing || joinedAt > existing) {
+            latestJoinByStudentId.set(studentId, joinedAt);
+          }
+        });
+
+        joinedStudents = joinedIds.map((studentId) => {
+          const user = joinedUserMap.get(studentId);
+          return {
+            _id: studentId,
+            firstname: normalizeAnswerValue(user?.profile?.firstname),
+            lastname: normalizeAnswerValue(user?.profile?.lastname),
+            email: normalizeAnswerValue(user?.emails?.[0]?.address || user?.email),
+            profileImage: normalizeAnswerValue(user?.profile?.profileImage),
+            profileThumbnail: normalizeAnswerValue(user?.profile?.profileThumbnail),
+            displayName: formatUserDisplayName(user),
+            joinedAt: latestJoinByStudentId.get(studentId) || null,
+          };
+        }).sort((a, b) => normalizeAnswerValue(a.displayName).localeCompare(normalizeAnswerValue(b.displayName)));
+      }
+
       // Build response payload.
       // Student payload is intentionally minimal and only includes fields needed for live participation.
       const result = {
@@ -1206,6 +1243,7 @@ export default async function sessionRoutes(app) {
         result.session.joinCodeEnabled = session.joinCodeEnabled;
         result.session.joinCodeInterval = session.joinCodeInterval;
         result.session.currentJoinCode = session.currentJoinCode;
+        result.session.joinedStudents = joinedStudents;
         result.allResponses = allResponses;
 
         if (currentQuestion) {
@@ -1648,62 +1686,102 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      // Fetch questions
+      // Fetch questions in session order and normalize legacy fields for review.
       const questionIds = session.questions || [];
-      const questions = await Question.find({ _id: { $in: questionIds } }).lean();
-      const questionMap = {};
-      for (const q of questions) {
-        questionMap[String(q._id)] = q;
-      }
-      const orderedQuestions = questionIds.map((id) => questionMap[String(id)]).filter(Boolean);
+      const questions = questionIds.length > 0
+        ? await Question.find({ _id: { $in: questionIds } }).lean()
+        : [];
+      const questionMap = new Map(
+        questions.map((question) => [String(question._id), normalizeQuestionForReview(question)])
+      );
+      const orderedQuestions = questionIds
+        .map((id) => questionMap.get(String(id)))
+        .filter(Boolean);
 
-      // Fetch all responses for this session's questions
-      const allResponses = await Response.find({
-        questionId: { $in: questionIds },
-      }).lean();
+      // Fetch all responses for this session's questions.
+      const allResponses = questionIds.length > 0
+        ? await Response.find({ questionId: { $in: questionIds } }).lean()
+        : [];
 
-      // Include students who joined live plus anyone who has responses recorded for this session.
-      const joinedUserIds = (session.joined || []).map((id) => String(id));
-      const responderUserIds = [...new Set(
-        allResponses
-          .map((response) => getResponseStudentId(response))
-          .filter(Boolean)
-      )];
-      const resultUserIds = [...new Set([...joinedUserIds, ...responderUserIds])];
-      const students = await User.find({ _id: { $in: resultUserIds } }).lean();
+      const responsesByStudentQuestion = new Map();
+      const responderUserIds = new Set();
+      allResponses.forEach((response) => {
+        const studentId = getResponseStudentId(response);
+        if (!studentId) return;
+        responderUserIds.add(studentId);
+
+        const key = `${studentId}::${String(response.questionId)}`;
+        if (!responsesByStudentQuestion.has(key)) {
+          responsesByStudentQuestion.set(key, []);
+        }
+        responsesByStudentQuestion.get(key).push(response);
+      });
+      responsesByStudentQuestion.forEach((responses) => {
+        responses.sort((a, b) => {
+          const attemptDiff = (Number(a?.attempt) || 0) - (Number(b?.attempt) || 0);
+          if (attemptDiff !== 0) return attemptDiff;
+          const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return aTime - bTime;
+        });
+      });
+
+      const joinedUserIds = new Set((session.joined || []).map((id) => String(id)).filter(Boolean));
+      const courseStudentIds = new Set((course.students || []).map((id) => String(id)).filter(Boolean));
+      const resultUserIds = [...new Set([
+        ...courseStudentIds,
+        ...joinedUserIds,
+        ...responderUserIds,
+      ])];
+
+      const students = resultUserIds.length > 0
+        ? await User.find({ _id: { $in: resultUserIds } })
+          .select('_id profile emails email')
+          .lean()
+        : [];
       const studentMap = {};
-      for (const s of students) {
-        studentMap[String(s._id)] = s;
+      for (const student of students) {
+        studentMap[String(student._id)] = student;
       }
 
-      // Build per-student results
+      const latestJoinByStudentId = {};
+      (session.joinRecords || []).forEach((record) => {
+        const studentId = String(record?.userId || '');
+        if (!studentId) return;
+        const joinedAt = record?.joinedAt ? new Date(record.joinedAt) : null;
+        if (!joinedAt) return;
+        if (!latestJoinByStudentId[studentId] || joinedAt > latestJoinByStudentId[studentId]) {
+          latestJoinByStudentId[studentId] = joinedAt;
+        }
+      });
+
+      const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
+
+      // Build per-student results (include all course students plus extra responders/joined users).
       const studentResults = resultUserIds.map((studentId) => {
         const student = studentMap[String(studentId)];
         const firstname = student?.profile?.firstname || '';
         const lastname = student?.profile?.lastname || '';
         const email = student?.emails?.[0]?.address || student?.email || '';
 
-        const questionResults = orderedQuestions.map((q) => {
-          const responses = allResponses.filter(
-            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
-          );
+        const questionResults = orderedQuestions.map((question) => {
+          const key = `${studentId}::${String(question._id)}`;
           return {
-            questionId: q._id,
-            responses: responses.sort((a, b) => a.attempt - b.attempt),
+            questionId: question._id,
+            responses: responsesByStudentQuestion.get(key) || [],
           };
         });
 
-        // Calculate participation
-        const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
-        const answeredCount = questionsWithPoints.filter((q) =>
-          allResponses.some(
-            (r) => String(r.questionId) === String(q._id) && getResponseStudentId(r) === String(studentId)
-          )
-        ).length;
+        const answeredCount = questionsWithPoints.filter((question) => {
+          const key = `${studentId}::${String(question._id)}`;
+          const responses = responsesByStudentQuestion.get(key);
+          return Array.isArray(responses) && responses.length > 0;
+        }).length;
+
         let participation = 0;
         if (answeredCount > 0) {
           participation = questionsWithPoints.length > 0
-            ? Math.round(1000 * answeredCount / questionsWithPoints.length) / 10
+            ? Math.round((1000 * answeredCount) / questionsWithPoints.length) / 10
             : 100;
         }
         if (questionsWithPoints.length === 0) {
@@ -1715,9 +1793,19 @@ export default async function sessionRoutes(app) {
           firstname,
           lastname,
           email,
+          profileImage: student?.profile?.profileImage || '',
+          profileThumbnail: student?.profile?.profileThumbnail || '',
+          inSession: joinedUserIds.has(String(studentId)),
+          joinedAt: latestJoinByStudentId[String(studentId)] || null,
           participation,
           questionResults,
         };
+      }).sort((a, b) => {
+        const lastCmp = normalizeAnswerValue(a.lastname).localeCompare(normalizeAnswerValue(b.lastname));
+        if (lastCmp !== 0) return lastCmp;
+        const firstCmp = normalizeAnswerValue(a.firstname).localeCompare(normalizeAnswerValue(b.firstname));
+        if (firstCmp !== 0) return firstCmp;
+        return normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
       });
 
       return {

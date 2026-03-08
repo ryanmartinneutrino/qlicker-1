@@ -81,6 +81,8 @@ export default function SessionEditor() {
   const [deleteQTarget, setDeleteQTarget] = useState(null);
   const [expandedQuestions, setExpandedQuestions] = useState({});
   const [questionActions, setQuestionActions] = useState({ anchorEl: null, context: null });
+  const [responseBackedQuestionIds, setResponseBackedQuestionIds] = useState(new Set());
+  const [unlockEndedEditing, setUnlockEndedEditing] = useState(false);
 
   const fetchSession = useCallback(async () => {
     try {
@@ -97,6 +99,7 @@ export default function SessionEditor() {
       setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
       setJoinCodeEnabled(!!s.joinCodeEnabled);
       setJoinCodeInterval(s.joinCodeInterval || 10);
+      setUnlockEndedEditing((prev) => (s.status === 'done' ? prev : true));
 
       // Fetch full question objects
       const qIds = s.questions || [];
@@ -108,12 +111,36 @@ export default function SessionEditor() {
       } else {
         setQuestions([]);
       }
+
+      // Identify questions that already have response data attached.
+      try {
+        const { data: resultsData } = await apiClient.get(`/sessions/${sessionId}/results`);
+        const backedIds = new Set();
+        (resultsData?.studentResults || []).forEach((studentResult) => {
+          (studentResult?.questionResults || []).forEach((questionResult) => {
+            if ((questionResult?.responses || []).length > 0) {
+              backedIds.add(String(questionResult.questionId));
+            }
+          });
+        });
+        setResponseBackedQuestionIds(backedIds);
+      } catch {
+        setResponseBackedQuestionIds(new Set());
+      }
     } catch {
       setMsg({ severity: 'error', text: 'Failed to load session' });
     } finally {
       setLoading(false);
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    if (status === 'done') {
+      setUnlockEndedEditing(false);
+      return;
+    }
+    setUnlockEndedEditing(true);
+  }, [status]);
 
   useEffect(() => { fetchSession(); }, [fetchSession]);
 
@@ -237,7 +264,17 @@ export default function SessionEditor() {
     return JSON.parse(JSON.stringify(question));
   };
 
+  const hasResponseDataForQuestion = useCallback(
+    (questionId) => responseBackedQuestionIds.has(String(questionId)),
+    [responseBackedQuestionIds]
+  );
+  const questionsEditingLocked = status === 'done' && !unlockEndedEditing;
+
   const openInsertEditorAt = (index) => {
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: 'Unlock editing before adding or changing questions in an ended session.' });
+      return;
+    }
     setInlineEditor((prev) => {
       if (prev?.mode === 'insert' && prev.index === index) return prev;
       return { mode: 'insert', index, key: Date.now() };
@@ -245,6 +282,10 @@ export default function SessionEditor() {
   };
 
   const openEditEditor = (questionId) => {
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: 'Unlock editing before changing questions in an ended session.' });
+      return;
+    }
     const baselineQuestion = questions.find((q) => q._id === questionId) || null;
     setInlineEditor((prev) => {
       if (prev?.mode === 'edit' && prev.questionId === questionId) return prev;
@@ -321,6 +362,15 @@ export default function SessionEditor() {
 
   // Delete question
   const handleDeleteQuestion = async (qId) => {
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: 'Unlock editing before deleting questions in an ended session.' });
+      return;
+    }
+    if (hasResponseDataForQuestion(qId)) {
+      setDeleteQTarget(null);
+      setMsg({ severity: 'warning', text: 'Questions with response data cannot be deleted.' });
+      return;
+    }
     try {
       await apiClient.delete(`/sessions/${sessionId}/questions/${qId}`);
       await apiClient.delete(`/questions/${qId}`);
@@ -332,13 +382,17 @@ export default function SessionEditor() {
       setDeleteQTarget(null);
       fetchSession();
       setMsg({ severity: 'success', text: 'Question deleted' });
-    } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete question' });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to delete question' });
     }
   };
 
   // Move question (reorder)
   const handleMove = async (idx, direction) => {
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: 'Unlock editing before reordering questions in an ended session.' });
+      return;
+    }
     const ids = questions.map(q => q._id);
     const target = idx + direction;
     if (target < 0 || target >= ids.length) return;
@@ -420,6 +474,10 @@ export default function SessionEditor() {
     const context = questionActions.context;
     closeQuestionActions();
     if (!context) return;
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: 'Unlock editing before changing questions in an ended session.' });
+      return;
+    }
 
     if (action === 'move-up') {
       if (context.mode === 'insert') {
@@ -447,6 +505,10 @@ export default function SessionEditor() {
     }
 
     if (action === 'delete' && context.question) {
+      if (hasResponseDataForQuestion(context.question._id)) {
+        setMsg({ severity: 'warning', text: 'Questions with response data cannot be deleted.' });
+        return;
+      }
       setDeleteQTarget(context.question);
     }
   };
@@ -471,10 +533,17 @@ export default function SessionEditor() {
       ? questions.length
       : (insertingAtIndex !== -1 ? questions.length : questions.length - 1))
     : -1;
-  const actionCanMoveUp = !!actionContext && actionContextIndex > 0;
+  const actionCanMoveUp = !questionsEditingLocked && !!actionContext && actionContextIndex > 0;
   const actionCanMoveDown = !!actionContext
+    && !questionsEditingLocked
     && actionContextIndex >= 0
     && actionContextIndex < actionContextMaxIndex;
+  const actionContextQuestionHasResponses = actionContext?.question?._id
+    ? hasResponseDataForQuestion(actionContext.question._id)
+    : false;
+  const deleteTargetHasResponses = deleteQTarget?._id
+    ? hasResponseDataForQuestion(deleteQTarget._id)
+    : false;
 
   const renderInlineEditorCard = ({
     key,
@@ -482,16 +551,19 @@ export default function SessionEditor() {
     initialQuestion = null,
     baselineQuestion = null,
   }) => {
+    const questionHasResponses = initialQuestion?._id
+      ? hasResponseDataForQuestion(initialQuestion._id)
+      : false;
     const resolvedQuestionIndex = initialQuestion?._id
       ? getQuestionVisualIndex(initialQuestion._id)
       : -1;
     const currentIndex = resolvedQuestionIndex >= 0 ? resolvedQuestionIndex : index;
-    const canMoveUp = initialQuestion?._id
+    const canMoveUp = !questionsEditingLocked && (initialQuestion?._id
       ? canMoveQuestionById(initialQuestion._id, -1)
-      : currentIndex > 0;
-    const canMoveDown = initialQuestion?._id
+      : currentIndex > 0);
+    const canMoveDown = !questionsEditingLocked && (initialQuestion?._id
       ? canMoveQuestionById(initialQuestion._id, 1)
-      : currentIndex < questions.length;
+      : currentIndex < questions.length);
 
     return (
     <Card key={key} variant="outlined" sx={{ mb: PAGE_SECTION_GAP }}>
@@ -583,10 +655,17 @@ export default function SessionEditor() {
           </Tooltip>
           {initialQuestion ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 0.5 }}>
-              <Tooltip title="Delete">
-                <IconButton size="small" color="error" onClick={() => setDeleteQTarget(initialQuestion)}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
+              <Tooltip title={questionHasResponses ? 'Cannot delete: this question has response data' : 'Delete'}>
+                <span>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    disabled={questionsEditingLocked || questionHasResponses}
+                    onClick={() => setDeleteQTarget(initialQuestion)}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </span>
               </Tooltip>
             </Box>
           ) : null}
@@ -601,6 +680,8 @@ export default function SessionEditor() {
             onAutoSave={handleAutoSaveQuestion}
             initial={initialQuestion}
             initialBaseline={baselineQuestion}
+            disableTypeSelection={questionHasResponses}
+            typeSelectionLockReason="Question type is locked because this question has response data."
           />
         </Box>
 
@@ -719,7 +800,11 @@ export default function SessionEditor() {
                   disabled={savingSession}
                 />
               )}
-              label="Quiz"
+              label={(
+                <Tooltip title="Enable quiz mode with quiz dates and quiz-specific student behavior." arrow>
+                  <span>Quiz</span>
+                </Tooltip>
+              )}
             />
             <FormControlLabel
               control={(
@@ -738,7 +823,11 @@ export default function SessionEditor() {
                   disabled={savingSession}
                 />
               )}
-              label="Practice Quiz"
+              label={(
+                <Tooltip title="Practice quizzes still use quiz flow but are intended for low-stakes use." arrow>
+                  <span>Practice Quiz</span>
+                </Tooltip>
+              )}
             />
             <FormControlLabel
               control={(
@@ -752,7 +841,11 @@ export default function SessionEditor() {
                   disabled={savingSession}
                 />
               )}
-              label="Reviewable"
+              label={(
+                <Tooltip title="Students can open review mode after the session has ended." arrow>
+                  <span>Reviewable</span>
+                </Tooltip>
+              )}
             />
           </Box>
 
@@ -771,25 +864,33 @@ export default function SessionEditor() {
                     disabled={savingSession}
                   />
                 )}
-                label="Require Passcode"
+                label={(
+                  <Tooltip title="Students have to enter a passcode to enter." arrow>
+                    <span>Require Passcode</span>
+                  </Tooltip>
+                )}
               />
               {joinCodeEnabled && (
-                <TextField
-                  label="Code refresh interval (seconds)"
-                  size="small"
-                  type="number"
-                  inputProps={{ min: 5, max: 120 }}
-                  value={joinCodeInterval}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (val >= 5 && val <= 120) {
-                      setJoinCodeInterval(val);
-                      saveSessionPatch({ joinCodeInterval: val });
-                    }
-                  }}
-                  disabled={savingSession}
-                  sx={{ maxWidth: 220 }}
-                />
+                <Tooltip title="How often the passcode rotates while the join period is open." arrow>
+                  <span>
+                    <TextField
+                      label="Code refresh interval (seconds)"
+                      size="small"
+                      type="number"
+                      inputProps={{ min: 5, max: 120 }}
+                      value={joinCodeInterval}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        if (val >= 5 && val <= 120) {
+                          setJoinCodeInterval(val);
+                          saveSessionPatch({ joinCodeInterval: val });
+                        }
+                      }}
+                      disabled={savingSession}
+                      sx={{ maxWidth: 220 }}
+                    />
+                  </span>
+                </Tooltip>
               )}
             </Box>
           )}
@@ -862,13 +963,45 @@ export default function SessionEditor() {
       <Paper sx={{ p: { xs: 2, sm: 2.25 } }}>
         <Typography variant="h6" sx={{ mb: SETTINGS_STACK_GAP }}>Questions ({questions.length})</Typography>
 
-        {questions.length === 0 && (
-          <Typography color="text.secondary" sx={{ pb: 1.5, textAlign: 'center' }}>
-            No questions yet. Use the button below to add one.
-          </Typography>
+        {status === 'done' && questionsEditingLocked && (
+          <Alert
+            severity="warning"
+            sx={{ mb: SETTINGS_STACK_GAP }}
+            action={(
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => setUnlockEndedEditing(true)}
+                aria-label="Unlock question editing"
+              >
+                Unlock Editing
+              </Button>
+            )}
+          >
+            This session is ended. Unlock editing to modify the question list. Questions with response data still cannot be deleted or have their type changed.
+          </Alert>
+        )}
+        {status === 'done' && !questionsEditingLocked && (
+          <Alert severity="warning" sx={{ mb: SETTINGS_STACK_GAP }}>
+            Editing is unlocked for this ended session. Questions with response data are protected from delete and type-change actions.
+          </Alert>
         )}
 
-        {[...Array(questions.length + 1).keys()].map((slotIdx) => {
+        <Box
+          sx={{
+            opacity: questionsEditingLocked ? 0.42 : 1,
+            transition: 'opacity 0.2s ease',
+            pointerEvents: questionsEditingLocked ? 'none' : 'auto',
+          }}
+          aria-disabled={questionsEditingLocked}
+        >
+          {questions.length === 0 && (
+            <Typography color="text.secondary" sx={{ pb: 1.5, textAlign: 'center' }}>
+              No questions yet. Use the button below to add one.
+            </Typography>
+          )}
+
+          {[...Array(questions.length + 1).keys()].map((slotIdx) => {
           const slotKey = `slot-${slotIdx}`;
           const currentQuestion = questions[slotIdx];
           const isQuestionExpanded = currentQuestion
@@ -880,14 +1013,17 @@ export default function SessionEditor() {
             : null;
           const insertionNumberOffset = insertingAtIndex !== -1 && slotIdx >= insertingAtIndex ? 1 : 0;
           const displayedQuestionNumber = slotIdx + 1 + insertionNumberOffset;
+          const questionHasResponses = currentQuestion?._id
+            ? hasResponseDataForQuestion(currentQuestion._id)
+            : false;
           const canMoveCurrentQuestionUp = currentQuestion?._id
-            ? canMoveQuestionById(currentQuestion._id, -1)
+            ? !questionsEditingLocked && canMoveQuestionById(currentQuestion._id, -1)
             : false;
           const canMoveCurrentQuestionDown = currentQuestion?._id
-            ? canMoveQuestionById(currentQuestion._id, 1)
+            ? !questionsEditingLocked && canMoveQuestionById(currentQuestion._id, 1)
             : false;
 
-          return (
+            return (
             <Box key={slotKey}>
               {activeEditorSlotIndex === slotIdx ? (
                 renderInlineEditorCard({
@@ -904,6 +1040,7 @@ export default function SessionEditor() {
                       size="small"
                       startIcon={<AddIcon />}
                       onClick={() => openInsertEditorAt(slotIdx)}
+                      disabled={questionsEditingLocked}
                       aria-label={`Add question at position ${slotIdx + 1}`}
                     >
                       Add Question
@@ -913,6 +1050,7 @@ export default function SessionEditor() {
                       variant="text"
                       size="small"
                       onClick={() => openInsertEditorAt(slotIdx)}
+                      disabled={questionsEditingLocked}
                       aria-label={`Add question at position ${slotIdx + 1}`}
                       sx={{
                         width: '100%',
@@ -973,6 +1111,7 @@ export default function SessionEditor() {
                         </Typography>
                         <IconButton
                           size="small"
+                          disabled={questionsEditingLocked}
                           onClick={(event) => openQuestionActions(event, {
                             mode: 'view',
                             index: slotIdx,
@@ -993,9 +1132,15 @@ export default function SessionEditor() {
                         }}
                       >
                         <Tooltip title="Edit">
-                          <IconButton size="small" onClick={() => openEditEditor(currentQuestion._id)}>
-                            <EditIcon fontSize="small" />
-                          </IconButton>
+                          <span>
+                            <IconButton
+                              size="small"
+                              disabled={questionsEditingLocked}
+                              onClick={() => openEditEditor(currentQuestion._id)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
                         <Tooltip title="Move up">
                           <span>
@@ -1022,10 +1167,17 @@ export default function SessionEditor() {
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Tooltip title="Delete">
-                          <IconButton size="small" color="error" onClick={() => setDeleteQTarget(currentQuestion)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                        <Tooltip title={questionHasResponses ? 'Cannot delete: this question has response data' : 'Delete'}>
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="error"
+                              disabled={questionsEditingLocked || questionHasResponses}
+                              onClick={() => setDeleteQTarget(currentQuestion)}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
                       </Box>
 
@@ -1099,8 +1251,9 @@ export default function SessionEditor() {
                 
               ) : null}
             </Box>
-          );
-        })}
+            );
+          })}
+        </Box>
       </Paper>
 
       {/* Delete Session Confirmation */}
@@ -1137,11 +1290,22 @@ export default function SessionEditor() {
       <Dialog open={!!deleteQTarget} onClose={() => setDeleteQTarget(null)}>
         <DialogTitle>Delete Question?</DialogTitle>
         <DialogContent>
-          <Typography>This will permanently remove this question from the session.</Typography>
+          <Typography>
+            {deleteTargetHasResponses
+              ? 'This question has response data and cannot be deleted.'
+              : 'This will permanently remove this question from the session.'}
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteQTarget(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={() => handleDeleteQuestion(deleteQTarget._id)}>Delete</Button>
+          <Button
+            color="error"
+            variant="contained"
+            disabled={deleteTargetHasResponses || questionsEditingLocked}
+            onClick={() => handleDeleteQuestion(deleteQTarget._id)}
+          >
+            Delete
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1159,12 +1323,16 @@ export default function SessionEditor() {
           Move down
         </MenuItem>
         {actionContext?.mode === 'view' && (
-          <MenuItem onClick={() => runQuestionAction('edit')}>
+          <MenuItem onClick={() => runQuestionAction('edit')} disabled={questionsEditingLocked}>
             Edit
           </MenuItem>
         )}
         {(actionContext?.mode === 'view' || actionContext?.mode === 'edit') && (
-          <MenuItem onClick={() => runQuestionAction('delete')} sx={{ color: 'error.main' }}>
+          <MenuItem
+            onClick={() => runQuestionAction('delete')}
+            disabled={questionsEditingLocked || actionContextQuestionHasResponses}
+            sx={{ color: 'error.main' }}
+          >
             Delete
           </MenuItem>
         )}
