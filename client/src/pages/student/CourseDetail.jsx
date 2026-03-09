@@ -10,6 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
 function getSessionSortTime(session) {
   return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
@@ -28,7 +29,7 @@ function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
 }
 
-const MAX_STUDENT_TAB_INDEX = 1;
+const MAX_STUDENT_TAB_INDEX = 3;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -348,6 +349,8 @@ export default function StudentCourseDetail() {
       >
         <Tab label={`Lectures (${interactiveSessions.length})`} />
         <Tab label={`Quizzes (${quizSessions.length})`} />
+        <Tab label="Grades" />
+        <Tab label="Settings" />
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -360,11 +363,26 @@ export default function StudentCourseDetail() {
         {renderSessionList(quizSessions, 'No quizzes available.', 1)}
       </TabPanel>
 
-      <Box sx={{ mt: 3 }}>
-        <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
-          Unenroll from Course
-        </Button>
-      </Box>
+      <TabPanel value={tab} index={2}>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>Grades</Typography>
+        <CourseGradesPanel
+          courseId={id}
+          instructorView={false}
+          onOpenSession={(sessionReviewId) => navigate(`/student/course/${id}/session/${sessionReviewId}/review?returnTab=2`)}
+        />
+      </TabPanel>
+
+      <TabPanel value={tab} index={3}>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>Course Settings</Typography>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+            Manage your enrollment for this course.
+          </Typography>
+          <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
+            Unenroll from Course
+          </Button>
+        </Paper>
+      </TabPanel>
 
       {/* Unenroll Confirmation */}
       <Dialog open={unenrollOpen} onClose={() => setUnenrollOpen(false)}>

@@ -41,6 +41,8 @@ const SessionSchema = new mongoose.Schema(
     quizStart: { type: Date },
     quizEnd: { type: Date },
     quizExtensions: { type: [QuizExtensionSchema], default: [] },
+    // Multi-select grading strategy for autograding (Meteor-compatible default).
+    msScoringMethod: { type: String, default: 'right-minus-wrong' },
     questions: { type: [String], default: [] },
     createdAt: { type: Date, default: Date.now },
     currentQuestion: { type: String, default: '' },

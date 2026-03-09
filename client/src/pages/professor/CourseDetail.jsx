@@ -16,6 +16,7 @@ import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -34,7 +35,7 @@ function sortSessions(items) {
   });
 }
 
-const MAX_COURSE_TAB_INDEX = 4;
+const MAX_COURSE_TAB_INDEX = 5;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -171,6 +172,7 @@ export default function CourseDetail() {
   // Sessions
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [gradingSummaryBySessionId, setGradingSummaryBySessionId] = useState({});
   const [createSessionOpen, setCreateSessionOpen] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [newSessionDesc, setNewSessionDesc] = useState('');
@@ -188,9 +190,37 @@ export default function CourseDetail() {
   const fetchSessions = useCallback(async () => {
     try {
       const { data } = await apiClient.get(`/courses/${id}/sessions`);
-      setSessions(data.sessions || []);
+      const nextSessions = data.sessions || [];
+      setSessions(nextSessions);
+
+      if (!nextSessions.length) {
+        setGradingSummaryBySessionId({});
+        return;
+      }
+
+      try {
+        const sessionIds = nextSessions.map((session) => session._id).filter(Boolean).join(',');
+        if (!sessionIds) {
+          setGradingSummaryBySessionId({});
+          return;
+        }
+        const gradeSummaryRes = await apiClient.get(`/courses/${id}/grades`, {
+          params: { sessionIds },
+        });
+        const summaryMap = {};
+        (gradeSummaryRes.data?.sessions || []).forEach((sessionSummary) => {
+          summaryMap[sessionSummary._id] = {
+            studentsNeedingGrading: Number(sessionSummary.studentsNeedingGrading) || 0,
+            marksNeedingGrading: Number(sessionSummary.marksNeedingGrading) || 0,
+          };
+        });
+        setGradingSummaryBySessionId(summaryMap);
+      } catch {
+        setGradingSummaryBySessionId({});
+      }
     } catch {
       /* silently fail – sessions tab will show empty */
+      setGradingSummaryBySessionId({});
     } finally {
       setSessionsLoading(false);
     }
@@ -503,7 +533,13 @@ export default function CourseDetail() {
       const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
       const updated = data.session || data;
       setSessions((prev) => prev.map((session) => (session._id === sessionId ? { ...session, ...updated } : session)));
-      setMsg({ severity: 'success', text: 'Session updated' });
+      const warnings = data.grading?.warnings || [];
+      if (warnings.length > 0) {
+        setMsg({ severity: 'warning', text: warnings.join(' ') });
+      } else {
+        setMsg({ severity: 'success', text: 'Session updated' });
+      }
+      await fetchSessions();
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
       fetchSessions();
@@ -571,6 +607,15 @@ export default function CourseDetail() {
                         {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
                           <Chip
                             label="Extensions Active"
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            sx={COMPACT_CHIP_SX}
+                          />
+                        )}
+                        {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 && (
+                          <Chip
+                            label={`Needs grading: ${gradingSummaryBySessionId[s._id].marksNeedingGrading} mark${gradingSummaryBySessionId[s._id].marksNeedingGrading === 1 ? '' : 's'} / ${gradingSummaryBySessionId[s._id].studentsNeedingGrading} student${gradingSummaryBySessionId[s._id].studentsNeedingGrading === 1 ? '' : 's'}`}
                             size="small"
                             color="warning"
                             variant="outlined"
@@ -719,6 +764,7 @@ export default function CourseDetail() {
       >
         <Tab label={`Interactive Sessions (${interactiveSessions.length})`} />
         <Tab label={`Quizzes (${quizSessions.length})`} />
+        <Tab label="Grades" />
         <Tab label={`Students (${students.length})`} />
         <Tab label={`Instructors (${instructors.length})`} />
         <Tab label="Settings" />
@@ -746,8 +792,18 @@ export default function CourseDetail() {
         {renderSessionList(quizSessions, 'No quizzes yet.')}
       </TabPanel>
 
-      {/* Students Tab */}
+      {/* Grades Tab */}
       <TabPanel value={tab} index={2}>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>Grades</Typography>
+        <CourseGradesPanel
+          courseId={id}
+          instructorView
+          onOpenSession={(sessionId) => navigate(`/manage/course/${id}/session/${sessionId}/review`)}
+        />
+      </TabPanel>
+
+      {/* Students Tab */}
+      <TabPanel value={tab} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Students</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
@@ -792,7 +848,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Instructors Tab */}
-      <TabPanel value={tab} index={3}>
+      <TabPanel value={tab} index={4}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Instructors</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
@@ -847,7 +903,7 @@ export default function CourseDetail() {
       </TabPanel>
 
       {/* Settings Tab */}
-      <TabPanel value={tab} index={4}>
+      <TabPanel value={tab} index={5}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
           {hasMissingCourseProperties && (

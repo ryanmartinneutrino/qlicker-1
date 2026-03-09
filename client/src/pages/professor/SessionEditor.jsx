@@ -25,6 +25,7 @@ import SessionStatusChip from '../../components/common/SessionStatusChip';
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
 const QUIZ_WINDOW_VALIDATION_MESSAGE = 'Quiz end must be later than quiz start.';
+const DEFAULT_MS_SCORING_METHOD = 'right-minus-wrong';
 
 const MAX_COURSE_TAB_INDEX = 4;
 
@@ -128,6 +129,7 @@ export default function SessionEditor() {
   const [practiceQuiz, setPracticeQuiz] = useState(false);
   const [quizStart, setQuizStart] = useState('');
   const [quizEnd, setQuizEnd] = useState('');
+  const [msScoringMethod, setMsScoringMethod] = useState(DEFAULT_MS_SCORING_METHOD);
   const [reviewable, setReviewable] = useState(false);
   const [status, setStatus] = useState('hidden');
   const [sessionDate, setSessionDate] = useState('');
@@ -169,6 +171,7 @@ export default function SessionEditor() {
       setPracticeQuiz(!!s.practiceQuiz);
       setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '');
       setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '');
+      setMsScoringMethod(s.msScoringMethod || DEFAULT_MS_SCORING_METHOD);
       setReviewable(!!s.reviewable);
       setStatus(s.status || 'hidden');
       setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
@@ -264,6 +267,10 @@ export default function SessionEditor() {
     try {
       const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
       setSession(data.session || data);
+      const warnings = data.grading?.warnings || [];
+      if (warnings.length > 0) {
+        setMsg({ severity: 'warning', text: warnings.join(' ') });
+      }
       setSessionSaveStatus('success');
     } catch (err) {
       setSessionSaveStatus('error');
@@ -1133,6 +1140,27 @@ export default function SessionEditor() {
 
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
+              <FormControl size="small" sx={{ maxWidth: 360 }}>
+                <InputLabel id="ms-scoring-method-label">MS Scoring</InputLabel>
+                <Select
+                  labelId="ms-scoring-method-label"
+                  label="MS Scoring"
+                  value={msScoringMethod}
+                  onChange={(e) => {
+                    const nextMethod = e.target.value;
+                    setMsScoringMethod(nextMethod);
+                    saveSessionPatch({ msScoringMethod: nextMethod });
+                  }}
+                  disabled={savingSession}
+                >
+                  <MenuItem value="right-minus-wrong">Right minus wrong (default)</MenuItem>
+                  <MenuItem value="all-or-nothing">All or nothing</MenuItem>
+                  <MenuItem value="correctness-ratio">Correctness ratio</MenuItem>
+                </Select>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                  For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.
+                </Typography>
+              </FormControl>
               <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
                 <TextField
                   label="Quiz Start"

@@ -41,7 +41,7 @@ const COMPACT_CHIP_SX = {
   },
 };
 
-const MAX_STUDENT_TAB_INDEX = 1;
+const MAX_STUDENT_TAB_INDEX = 2;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -99,6 +99,18 @@ function getResponsesForQuestion(responsesByQuestion, question, fallbackIndex = 
     if (Array.isArray(responsesByQuestion[key])) return responsesByQuestion[key];
   }
   return [];
+}
+
+function getMarkForQuestion(grade, question, fallbackIndex = 0) {
+  if (!grade || !Array.isArray(grade.marks)) return null;
+  const keys = new Set(responseKeysForQuestion(question, fallbackIndex).map((key) => String(key)));
+  return grade.marks.find((mark) => keys.has(String(mark?.questionId))) || null;
+}
+
+function formatNumeric(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '0';
+  return String(Math.round(numeric * 10) / 10);
 }
 
 function isCorrectOption(option) {
@@ -228,11 +240,21 @@ function ReviewQuestionCard({
   total,
   responseVisible = false,
   response = null,
+  mark = null,
 }) {
   const [solutionVisible, setSolutionVisible] = useState(false);
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
+  const markChipLabel = useMemo(() => {
+    if (!mark) {
+      if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
+      return null;
+    }
+    if (mark?.needsGrading) return 'Pending manual grade';
+    return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
+  }, [mark, points]);
+  const markChipColor = mark?.needsGrading ? 'warning' : 'success';
   const shouldLetter = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
   const hasWrittenSolution = Boolean(
     question.solution
@@ -262,7 +284,15 @@ function ReviewQuestionCard({
           Q{index + 1}{total > 1 ? `/${total}` : ''}
         </Typography>
         <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
-        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+        {markChipLabel && (
+          <Chip
+            label={markChipLabel}
+            size="small"
+            color={mark ? markChipColor : 'default'}
+            variant={mark ? (mark?.needsGrading ? 'outlined' : 'filled') : 'outlined'}
+            sx={COMPACT_CHIP_SX}
+          />
+        )}
       </Box>
 
       {/* Question content */}
@@ -382,6 +412,15 @@ function ReviewQuestionCard({
           No written solution was provided for this question.
         </Typography>
       )}
+
+      {mark?.feedback && (
+        <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Instructor feedback
+          </Typography>
+          <RichHtml value={mark.feedback} sx={richContentSx} />
+        </Box>
+      )}
     </Paper>
   );
 }
@@ -403,6 +442,7 @@ export default function SessionReview() {
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [responsesByQuestion, setResponsesByQuestion] = useState({});
+  const [sessionGrade, setSessionGrade] = useState(null);
 
   // View mode: 'one' (single question) or 'all'
   const [viewMode, setViewMode] = useState('one');
@@ -415,10 +455,18 @@ export default function SessionReview() {
 
   const fetchReview = useCallback(async ({ background = false } = {}) => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/review`);
+      const [reviewResult, gradeResult] = await Promise.all([
+        apiClient.get(`/sessions/${sessionId}/review`),
+        apiClient.get(`/sessions/${sessionId}/grades`).catch(() => null),
+      ]);
+
+      const data = reviewResult?.data || {};
       setSession(data.session);
       setQuestions(data.questions || []);
       setResponsesByQuestion(data.responses || {});
+
+      const grade = gradeResult?.data?.grades?.[0] || null;
+      setSessionGrade(grade);
       if (!background) {
         setError(null);
       }
@@ -443,7 +491,7 @@ export default function SessionReview() {
         setLoading(false);
       }
     }
-  }, [sessionId, navigate, fallbackCourseBackLink]);
+  }, [courseId, sessionId, navigate, fallbackCourseBackLink]);
 
   useEffect(() => { fetchReview(); }, [fetchReview]);
 
@@ -536,6 +584,7 @@ export default function SessionReview() {
     : `/student/course/${courseId}?tab=${resolvedReturnTab}`;
   const currentQ = questions[questionIdx];
   const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
+  const currentQMark = currentQ ? getMarkForQuestion(sessionGrade, currentQ, questionIdx) : null;
   const currentStateKey = questionStateKey(questionIdx);
   const currentResponses = currentQ
     ? getResponsesForQuestion(responsesByQuestion, currentQ, questionIdx).sort((a, b) => a.attempt - b.attempt)
@@ -562,6 +611,27 @@ export default function SessionReview() {
             {session.description}
           </Typography>
         )}
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+        <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Session Grade
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            {sessionGrade
+              ? `${formatNumeric(sessionGrade.value)}% (${formatNumeric(sessionGrade.points)} / ${formatNumeric(sessionGrade.outOf)})`
+              : 'Not available'}
+          </Typography>
+        </Paper>
+        <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            Participation
+          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+            {sessionGrade ? `${formatNumeric(sessionGrade.participation)}%` : 'Not available'}
+          </Typography>
+        </Paper>
       </Box>
 
       {total === 0 ? (
@@ -626,6 +696,7 @@ export default function SessionReview() {
                   responseAttemptIdx[currentStateKey] || 0,
                   Math.max(currentResponses.length - 1, 0)
                 )] || null}
+                mark={currentQMark}
               />
 
               {/* My Response section */}
@@ -713,6 +784,7 @@ export default function SessionReview() {
                 const attemptIdx = Math.min(responseAttemptIdx[stateKey] || 0, Math.max(responses.length - 1, 0));
                 const currentResponse = responses[attemptIdx];
                 const qType = normalizeQuestionType(q);
+                const mark = getMarkForQuestion(sessionGrade, q, i);
                 const isOptionType = [
                   QUESTION_TYPES.MULTIPLE_CHOICE,
                   QUESTION_TYPES.TRUE_FALSE,
@@ -728,6 +800,7 @@ export default function SessionReview() {
                       total={total}
                       responseVisible={isResponseVisible}
                       response={currentResponse || null}
+                      mark={mark}
                     />
                     <Box sx={{ mt: 1, ml: 1 }}>
                       <Button

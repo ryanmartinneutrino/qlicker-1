@@ -1,4 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  useCallback, useEffect, useId, useMemo, useRef, useState,
+} from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -26,20 +28,46 @@ import {
  * Props:
  *   value    – HTML string (initial content)
  *   onChange – ({ html, plainText }) => void
+ *   onChangeDebounceMs – debounce delay before calling onChange (0 = immediate)
  *   placeholder – placeholder text
  *   disabled – whether the editor is read-only
  */
 export default function StudentRichTextEditor({
   value,
   onChange,
+  onChangeDebounceMs = 0,
   placeholder = 'Type your answer…',
   disabled = false,
   ariaLabel = 'Short answer response editor',
+  showMathHint = true,
 }) {
   const lastNormalizedHtmlRef = useRef('');
+  const onChangeRef = useRef(onChange);
+  const onChangeDebounceMsRef = useRef(onChangeDebounceMs);
+  const debounceTimerRef = useRef(null);
+  const pendingChangeRef = useRef(null);
   const bubbleMenuKey = useRef(`sa-bubble-${Math.random().toString(36).slice(2)}`);
   const mathHintId = useId();
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
+
+  const flushPendingChange = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (!pendingChangeRef.current || typeof onChangeRef.current !== 'function') return;
+    const nextPayload = pendingChangeRef.current;
+    pendingChangeRef.current = null;
+    onChangeRef.current(nextPayload);
+  }, []);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onChangeDebounceMsRef.current = onChangeDebounceMs;
+  }, [onChangeDebounceMs]);
 
   const editor = useEditor(
     {
@@ -63,7 +91,13 @@ export default function StudentRichTextEditor({
           'aria-multiline': 'true',
           'aria-label': ariaLabel,
           'aria-disabled': disabled ? 'true' : 'false',
-          'aria-describedby': mathHintId,
+          ...(showMathHint ? { 'aria-describedby': mathHintId } : {}),
+        },
+        handleDOMEvents: {
+          blur: () => {
+            flushPendingChange();
+            return false;
+          },
         },
       },
       onUpdate({ editor: ed }) {
@@ -72,11 +106,39 @@ export default function StudentRichTextEditor({
         if (html === lastNormalizedHtmlRef.current) return;
         lastNormalizedHtmlRef.current = html;
         const plainText = ed.getText({ blockSeparator: ' ' }).replace(/\s+/g, ' ').trim();
-        if (onChange) onChange({ html, plainText });
+        const nextPayload = { html, plainText };
+        const debounceMs = Number(onChangeDebounceMsRef.current);
+        if (!Number.isFinite(debounceMs) || debounceMs <= 0) {
+          pendingChangeRef.current = null;
+          if (debounceTimerRef.current) {
+            clearTimeout(debounceTimerRef.current);
+            debounceTimerRef.current = null;
+          }
+          if (typeof onChangeRef.current === 'function') {
+            onChangeRef.current(nextPayload);
+          }
+          return;
+        }
+        pendingChangeRef.current = nextPayload;
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(() => {
+          debounceTimerRef.current = null;
+          if (!pendingChangeRef.current || typeof onChangeRef.current !== 'function') return;
+          const pendingPayload = pendingChangeRef.current;
+          pendingChangeRef.current = null;
+          onChangeRef.current(pendingPayload);
+        }, debounceMs);
       },
     },
-    [ariaLabel, disabled, mathHintId, placeholder]
+    [ariaLabel, disabled, flushPendingChange, mathHintId, placeholder]
   );
+
+  useEffect(() => () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -165,9 +227,11 @@ export default function StudentRichTextEditor({
         )}
         <EditorContent editor={editor} />
       </Paper>
-      <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-        Use \( ... \) for inline math or $$ ... $$ for display math
-      </Typography>
+      {showMathHint && (
+        <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+          Use \( ... \) for inline math or $$ ... $$ for display math
+        </Typography>
+      )}
     </Box>
   );
 }
@@ -176,7 +240,7 @@ export default function StudentRichTextEditor({
  * Live preview component that renders KaTeX from HTML content.
  * Shows all typed content and renders math when delimiters are present.
  */
-export function MathPreview({ html }) {
+export function MathPreview({ html, debounceMs = 140, showLabel = true }) {
   const ref = useRef(null);
   const prepared = useMemo(() => prepareRichTextInput(html || ''), [html]);
   const [committedPreview, setCommittedPreview] = useState(prepared);
@@ -186,12 +250,16 @@ export function MathPreview({ html }) {
       setCommittedPreview('');
       return undefined;
     }
+    if (!Number.isFinite(debounceMs) || debounceMs <= 0) {
+      setCommittedPreview(prepared);
+      return undefined;
+    }
     // Debounce preview updates to avoid flicker while typing.
     const timer = setTimeout(() => {
       setCommittedPreview(prepared);
-    }, 140);
+    }, debounceMs);
     return () => clearTimeout(timer);
-  }, [prepared]);
+  }, [debounceMs, prepared]);
 
   useEffect(() => {
     if (!ref.current || !committedPreview) return;
@@ -211,9 +279,11 @@ export function MathPreview({ html }) {
         '& img': { maxWidth: '100%' },
       }}
     >
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-        Preview
-      </Typography>
+      {showLabel && (
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+          Preview
+        </Typography>
+      )}
       <Box
         ref={ref}
         dangerouslySetInnerHTML={{ __html: committedPreview }}

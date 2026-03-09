@@ -12,6 +12,7 @@ import {
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -246,6 +247,21 @@ function isLatestResponseCorrect(question, response) {
   return null;
 }
 
+function isAutoGradeableQuestionType(questionType) {
+  return [
+    QUESTION_TYPES.MULTIPLE_CHOICE,
+    QUESTION_TYPES.TRUE_FALSE,
+    QUESTION_TYPES.MULTI_SELECT,
+    QUESTION_TYPES.NUMERICAL,
+  ].includes(questionType);
+}
+
+function getQuestionPoints(question) {
+  const numeric = Number(question?.sessionOptions?.points);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return numeric;
+}
+
 function escapeCsvCell(value) {
   if (value == null) return '';
   const str = String(value);
@@ -371,6 +387,7 @@ export default function SessionReview() {
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
+  const [reviewableWarning, setReviewableWarning] = useState('');
   const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
   const [studentSearch, setStudentSearch] = useState('');
 
@@ -398,10 +415,13 @@ export default function SessionReview() {
   const handleToggleReviewable = useCallback(async (checked) => {
     setTogglingReviewable(true);
     try {
-      await apiClient.patch(`/sessions/${sessionId}`, { reviewable: checked });
-      setSession((prev) => (prev ? { ...prev, reviewable: checked } : prev));
-    } catch {
-      // Revert on failure
+      const { data } = await apiClient.patch(`/sessions/${sessionId}`, { reviewable: checked });
+      const updatedSession = data.session || data;
+      const warnings = data.grading?.warnings || [];
+      setSession((prev) => (prev ? { ...prev, ...updatedSession } : prev));
+      setReviewableWarning(warnings.join(' '));
+    } catch (err) {
+      setReviewableWarning(err.response?.data?.message || 'Failed to update reviewable setting.');
     } finally {
       setTogglingReviewable(false);
     }
@@ -416,6 +436,21 @@ export default function SessionReview() {
     const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);
     return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
+
+  const hasOutstandingManualGrading = useMemo(() => {
+    return questions.some((question) => {
+      const qType = normalizeQuestionType(question);
+      const outOf = getQuestionPoints(question);
+      if (outOf <= 0 || isAutoGradeableQuestionType(qType)) return false;
+      return studentResults.some((student) => {
+        const questionResult = (student?.questionResults || []).find(
+          (result) => String(result?.questionId) === String(question?._id),
+        );
+        const latestResponse = getLatestResponse(questionResult?.responses || []);
+        return !!latestResponse;
+      });
+    });
+  }, [questions, studentResults]);
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -814,6 +849,11 @@ export default function SessionReview() {
           Export CSV
         </Button>
       </Box>
+      {reviewableWarning ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {reviewableWarning}
+        </Alert>
+      ) : null}
 
       {/* Tabs */}
       <Tabs
@@ -824,6 +864,17 @@ export default function SessionReview() {
         <Tab label="Questions" />
         <Tab label="Response Data" />
         <Tab label="Students" />
+        <Tab
+          label={(
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <span>Grading</span>
+              {hasOutstandingManualGrading && (
+                <Chip size="small" color="error" label="Needs grading" />
+              )}
+            </Box>
+          )}
+          sx={hasOutstandingManualGrading ? { color: 'error.main !important', fontWeight: 700 } : undefined}
+        />
       </Tabs>
 
       {/* Questions tab – all questions shown at once with inline stats */}
@@ -1119,6 +1170,16 @@ export default function SessionReview() {
             </TableContainer>
           </>
         )}
+      </TabPanel>
+
+      {/* Grading tab */}
+      <TabPanel value={tab} index={3}>
+        <SessionQuestionGradingPanel
+          sessionId={sessionId}
+          session={session}
+          questions={questions}
+          studentResults={studentResults}
+        />
       </TabPanel>
     </Box>
   );

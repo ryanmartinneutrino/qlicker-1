@@ -652,15 +652,15 @@ See [agents/AGENT_6_GRADING.md](agents/AGENT_6_GRADING.md)
 
 **Summary of tasks:**
 - [x] Grade Mongoose model
-- [ ] Grade calculation service (auto-grade MC/TF/MS/NU)
-- [ ] Manual grade/mark editing
-- [ ] Feedback per mark
-- [ ] Grade visibility (show/hide to students)
-- [ ] Grade routes (session grades, course grades)
-- [ ] CSV export
-- [ ] Session review data routes
-- [ ] Participation calculation
-- [ ] Attempt weighting
+- [x] Grade calculation service (auto-grade MC/TF/MS/NU)
+- [x] Manual grade/mark editing
+- [x] Feedback per mark
+- [x] Grade visibility (show/hide to students)
+- [x] Grade routes (session grades, course grades)
+- [x] CSV export
+- [x] Session review data routes
+- [x] Participation calculation
+- [x] Attempt weighting
 
 ### Agent 7: Frontend Shell & Shared Components
 See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
@@ -681,8 +681,8 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 - [ ] Run session page (professor)
 - [ ] Present session page (student)
 - [ ] Quiz page (student)
-- [ ] Grading pages and components
-- [ ] Session review pages
+- [x] Grading pages and components
+- [x] Session review pages
 - [x] Question components (display, edit, all types)
 - [ ] Answer distribution charts
 - [ ] Group management UI
@@ -857,7 +857,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 3. Course management | ✅ Complete | Phase 3 |
 | 4. Session editor | ✅ Complete | Phase 4 |
 | 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
-| 7. Grading | ⬜ Not started | Phase 6 |
+| 7. Grading | 🟨 In progress (core grading complete) | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
 
@@ -971,9 +971,9 @@ The following issues were identified during testing and have been resolved:
 | 3 - Courses | Course CRUD + enrollment verification + user population + student self-unenroll | ✅ Phase 4 done |
 | 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 4 backend done |
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
-| 6 - Grading | Grade Mongoose model complete | ✅ Phase 2 done |
-| 7 - Frontend | Session editor, question editor/display, session lists on course pages, connection status, avatar fix | ✅ Phase 4 frontend done |
-| 8 - Testing | All route tests passing (93 tests: auth 20, courses 23, models 11, sessions 20, questions 19) | ✅ Phase 4 done |
+| 6 - Grading | Core grading service/routes complete (auto/manual grading, visibility, conflicts, CSV, course/session grade tables) | ✅ Phase 6 core done |
+| 7 - Frontend | Course/session grading tabs integrated (prof + student), session MS scoring control, grading chips/warnings | ✅ Phase 6 core done |
+| 8 - Testing | Server + client grading tests passing (143 tests total: 141 server across 8 suites + 2 client grading UI tests) | ✅ Phase 6 follow-up done |
 
 ---
 
@@ -995,7 +995,7 @@ Phase 5 is complete (interactive sessions + quizzes). A comprehensive code revie
 3. ~~**Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)~~ ✅ Done (PR 119)
 4. ~~**Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)~~ ✅ Done (PR 119)
 5. ~~**Phase 5 Finish:** Quiz lifecycle + student quiz runtime + extension-aware access/review logic + interactive session follow-up TODOs~~ ✅ Done (this PR)
-6. **Phase 6 Prep:** Grade calculation service (Agent 6)
+6. ~~**Phase 6 Prep:** Grade calculation service (Agent 6)~~ ✅ Done (grading service + routes + UI integration + tests)
 7. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
 8. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
 9. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
@@ -1004,6 +1004,74 @@ Phase 5 is complete (interactive sessions + quizzes). A comprehensive code revie
 12. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security~~ ✅ Done (accessibility branch, 2026-03-07)
 13. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility~~ ✅ Done (accessibility branch, 2026-03-07)
 14. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
+
+### Phase 6 Progress (2026-03-09)
+
+Core grading is now implemented and wired through backend + frontend:
+
+- Added grading service in `server/src/services/grading.js` with:
+  - Auto-grading support for MC/TF/MS/NU and manual-required handling for non-auto-gradeable question types
+  - Manual mark/grade override preservation during recalculation
+  - Conflict reporting when recalculated auto marks differ from existing manual marks
+  - Participation and grade aggregation logic compatible with legacy behavior
+  - Attempt weighting support (`sessionOptions.maxAttempts` + `attemptWeights`)
+  - Low-response exclusion rule for single-attempt questions (`responses < 10% of joined`)
+  - Session-level MS scoring method support (`right-minus-wrong`, `all-or-nothing`, `correctness-ratio`)
+
+- Added grading routes in `server/src/routes/grades.js`:
+  - `POST /sessions/:id/grades/recalculate`
+  - `GET /sessions/:id/grades`
+  - `PATCH /sessions/:id/grades/visibility`
+  - `PATCH /grades/:gradeId/marks/:questionId`
+  - `POST /grades/:gradeId/marks/:questionId/set-automatic`
+  - `PATCH /grades/:gradeId/value`
+  - `POST /grades/:gradeId/value/set-automatic`
+  - `GET /courses/:courseId/grades`
+
+- Integrated reviewable behavior with grading in `sessions` routes:
+  - Making a session reviewable backfills missing grade rows and sets visibility to students
+  - Making a session non-reviewable hides grades from students
+  - Reviewable-triggered autograding now returns warnings for non-auto-gradeable questions
+
+- Frontend grading UI integrated:
+  - Course-level Grades tab for professors and students (`CourseGradesPanel`)
+  - Session Review now includes a dedicated Grading tab (instructor)
+  - Manual mark/grade editing dialog with per-mark feedback editor
+  - Recalculate controls, conflict resolution dialog (accept auto per conflict or all), and CSV export
+  - “Needs grading” chips on professor course session list and in grade table headers
+  - Session Editor includes MS scoring method selection + formula tooltip text
+
+- Phase 6 grading/student follow-up fixes (2026-03-09):
+  - Student session review now emphasizes session-level grading only (session total + participation), and each question chip shows mark/out-of (or pending manual grading) instead of only max points.
+  - Grading feedback editing was optimized with debounced editor updates + blur flush to eliminate per-keystroke blocking in large grading tables.
+  - Student course page now includes a dedicated **Settings** tab; unenroll action moved there.
+  - Student grade-table headers now show `Ungraded` (without numeric counts) in student view while retaining numeric ungraded counts for instructors.
+  - Added grading-focused test coverage:
+    - Server: `server/test/services/grading.test.js` now covers legacy point defaults by question type and zero-point exclusion behavior.
+    - Client: `client/src/components/grades/CourseGradesPanel.test.jsx` verifies student-vs-instructor grade-table behavior for search visibility and ungraded labeling.
+
+- Full verification run (2026-03-09):
+  - `cd server && npm test` → 141 passed (8 files/suites).
+  - `cd client && npm test` → 2 passed (1 file).
+  - `cd client && npm run build` → success.
+
+#### Grade Calculation Notes (Legacy-Compatible)
+
+| Rule | Behavior |
+|---|---|
+| Default question points | SA defaults to `0` unless explicitly configured; other types default to `1` |
+| Grade value | If `points > 0`: `value = 100 * points / outOf`; if `points > 0` and `outOf = 0`: `value = 100`; otherwise `0` |
+| Participation | `100 * numAnswered / numQuestions` for questions with `outOf > 0`; if `numQuestions = 0` and student joined: `100` |
+| Low-response exclusion | For single-attempt questions only, if unique responders `< 10%` of joined students, question `outOf` becomes `0` |
+| Manual overrides | Marks with `automatic=false` and grades with `automatic=false` are preserved across recalculation |
+
+#### Multiple-Select Scoring
+
+| Method | Formula |
+|---|---|
+| `right-minus-wrong` (default) | `max(0, min(1, (2C - S) / K))` where `C=correct selections`, `S=total selections`, `K=# correct options` |
+| `all-or-nothing` | `1` only if selected set exactly matches correct set; otherwise `0` |
+| `correctness-ratio` | `correctly labeled options / total options` |
 
 #### Planned Private-Bucket Cutover (Required Before Enforcing Private S3 Bucket)
 
@@ -1158,7 +1226,7 @@ A comprehensive code review was conducted covering performance, security, access
 | Fast with thousands of concurrent users | ⚠️ Needs work | WebSocket is implemented but messages are coarse-grained; N+1 re-fetch pattern will not scale. See § Performance. |
 | Docker Compose with load balancing | ✅ Complete | Production Docker Compose with Nginx reverse proxy. |
 | SAML SSO | ✅ Implemented | SAML login/callback/metadata/logout endpoints in place. Needs production confirmation (Phase 7). |
-| Unit tests from onset | ✅ 109 tests | 6 test files covering auth, courses, sessions, questions, models, settings. E2E (Playwright) not yet in place. |
+| Unit tests from onset | ✅ 143 tests | 9 test files total: 8 server test files (auth, courses, sessions, questions, models, settings, grading routes, grading helpers) plus 1 client grading UI test file. E2E (Playwright) not yet in place. |
 | Image uploads (S3/Azure/local) | ✅ Complete | All three backends verified. |
 | Email (password reset) | ✅ Complete | Nodemailer integration with forgot-password flow. |
 | Reactive UI for interactive sessions | ✅ Functional, ⚠️ performance gap | WebSocket events trigger full re-fetches. Must move to delta updates for production scale. |
