@@ -1136,6 +1136,7 @@ export default function SessionReview() {
       <TabPanel value={tab} index={3}>
         <SessionQuestionGradingPanel
           sessionId={sessionId}
+          session={session}
           questions={questions}
           studentResults={studentResults}
         />

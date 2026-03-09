@@ -353,7 +353,6 @@ export default function CourseGradesPanel({
   courseId,
   instructorView = false,
   onOpenSession,
-  fixedSessionIds = [],
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -371,20 +370,11 @@ export default function CourseGradesPanel({
     student: null,
     sessionName: '',
   });
-  const normalizedFixedSessionIds = useMemo(
-    () => [...new Set((fixedSessionIds || []).map((id) => normalizeAnswerValue(id)).filter(Boolean))],
-    [fixedSessionIds]
-  );
-  const hasFixedSessions = normalizedFixedSessionIds.length > 0;
-
   const fetchGrades = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const requestConfig = hasFixedSessions
-        ? { params: { sessionIds: normalizedFixedSessionIds.join(',') } }
-        : undefined;
-      const { data } = await apiClient.get(`/courses/${courseId}/grades`, requestConfig);
+      const { data } = await apiClient.get(`/courses/${courseId}/grades`);
       const nextSessions = data.sessions || [];
       const nextRows = (data.rows || []).map((row) => {
         const gradeBySession = {};
@@ -403,7 +393,7 @@ export default function CourseGradesPanel({
     } finally {
       setLoading(false);
     }
-  }, [courseId, hasFixedSessions, normalizedFixedSessionIds]);
+  }, [courseId]);
 
   useEffect(() => {
     fetchGrades();
@@ -617,7 +607,7 @@ export default function CourseGradesPanel({
         <Table size="small" aria-label="Course grade table">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 130 }}>
                 <TableSortLabel
                   active={sort.field === 'name'}
                   direction={sort.field === 'name' ? sort.direction : 'asc'}
@@ -626,7 +616,7 @@ export default function CourseGradesPanel({
                   Student
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 200 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>
                 <TableSortLabel
                   active={sort.field === 'email'}
                   direction={sort.field === 'email' ? sort.direction : 'asc'}
@@ -635,7 +625,7 @@ export default function CourseGradesPanel({
                   Email
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 120 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 96 }}>
                 <TableSortLabel
                   active={sort.field === 'avgParticipation'}
                   direction={sort.field === 'avgParticipation' ? sort.direction : 'desc'}
@@ -648,23 +638,28 @@ export default function CourseGradesPanel({
                 const markSortKey = `${session._id}_smark`;
                 const participationSortKey = `${session._id}_spart`;
                 return [
-                  <TableCell key={`${session._id}-mark`} sx={{ fontWeight: 700, minWidth: 180 }}>
+                  <TableCell key={`${session._id}-mark`} sx={{ fontWeight: 700, minWidth: 125 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                        {typeof onOpenSession === 'function' ? (
-                          <Button
-                            size="small"
-                            variant="text"
-                            startIcon={<ReviewIcon />}
-                            onClick={() => onOpenSession(session._id)}
-                            sx={{ textTransform: 'none', minWidth: 0, px: 0 }}
-                          >
-                            {session.name} mark
-                          </Button>
-                        ) : (
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {session.name} mark
-                          </Typography>
+                        <TableSortLabel
+                          active={sort.field === markSortKey}
+                          direction={sort.field === markSortKey ? sort.direction : 'desc'}
+                          onClick={() => handleSort(markSortKey)}
+                        >
+                          {session.name} mark
+                        </TableSortLabel>
+                        {typeof onOpenSession === 'function' && (
+                          <Tooltip title="Open session review">
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => onOpenSession(session._id)}
+                                sx={{ p: 0.25 }}
+                              >
+                                <ReviewIcon fontSize="inherit" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         )}
                         {instructorView && (
                           <Tooltip title="Re-calculate this session's grades">
@@ -689,24 +684,16 @@ export default function CourseGradesPanel({
                           sx={{ maxWidth: 140 }}
                         />
                       )}
-                      <TableSortLabel
-                        active={sort.field === markSortKey}
-                        direction={sort.field === markSortKey ? sort.direction : 'desc'}
-                        onClick={() => handleSort(markSortKey)}
-                      >
-                        Sort
-                      </TableSortLabel>
                     </Box>
                   </TableCell>,
-                  <TableCell key={`${session._id}-participation`} sx={{ fontWeight: 700, minWidth: 130 }}>
+                  <TableCell key={`${session._id}-participation`} sx={{ fontWeight: 700, minWidth: 110 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{session.name} participation</Typography>
                       <TableSortLabel
                         active={sort.field === participationSortKey}
                         direction={sort.field === participationSortKey ? sort.direction : 'desc'}
                         onClick={() => handleSort(participationSortKey)}
                       >
-                        Sort
+                        {session.name} part.
                       </TableSortLabel>
                     </Box>
                   </TableCell>,
@@ -720,7 +707,7 @@ export default function CourseGradesPanel({
                 <TableCell>
                   {row.student.lastname}, {row.student.firstname}
                 </TableCell>
-                <TableCell>{row.student.email}</TableCell>
+                <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.student.email}</TableCell>
                 <TableCell>{formatPercent(row.avgParticipation)}%</TableCell>
                 {visibleSessions.map((session) => {
                   const grade = row.gradeBySession?.[session._id];

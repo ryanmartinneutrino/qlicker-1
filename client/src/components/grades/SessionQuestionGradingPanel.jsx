@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Chip,
@@ -12,6 +13,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TableSortLabel,
   TextField,
   Typography,
 } from '@mui/material';
@@ -69,6 +71,16 @@ function formatDisplayName(student) {
   const fullName = `${first} ${last}`.trim();
   if (fullName) return fullName;
   return normalizeValue(student?.email) || 'Unknown Student';
+}
+
+function buildStudentInitials(student) {
+  const first = normalizeValue(student?.firstname);
+  const last = normalizeValue(student?.lastname);
+  if (first || last) {
+    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
+  }
+  const email = normalizeValue(student?.email);
+  return email ? email.charAt(0).toUpperCase() : '?';
 }
 
 function getLatestResponse(responses = []) {
@@ -280,6 +292,7 @@ function RichContent({ html, fallback }) {
 
 export default function SessionQuestionGradingPanel({
   sessionId,
+  session = null,
   questions = [],
   studentResults = [],
 }) {
@@ -298,6 +311,7 @@ export default function SessionQuestionGradingPanel({
   const [bulkApplying, setBulkApplying] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [tableSort, setTableSort] = useState({ field: 'student', direction: 'asc' });
 
   const fetchSessionGrades = useCallback(async () => {
     setLoading(true);
@@ -338,6 +352,8 @@ export default function SessionQuestionGradingPanel({
     return questions.find((question) => String(question?._id) === String(activeQuestionId)) || null;
   }, [activeQuestionId, questions]);
 
+  const isQuizSession = !!(session?.quiz || session?.practiceQuiz);
+
   const questionStatuses = useMemo(() => {
     const gradeList = Object.values(gradesByStudentId);
     return questions.map((question, index) => {
@@ -366,8 +382,16 @@ export default function SessionQuestionGradingPanel({
   const allRows = useMemo(() => {
     if (!activeQuestion) return [];
     const questionId = String(activeQuestion._id);
+    const eligibleStudents = studentResults.filter((student) => {
+      if (isQuizSession) {
+        return (student?.questionResults || []).some((result) => (
+          Array.isArray(result?.responses) && result.responses.length > 0
+        ));
+      }
+      return !!student?.inSession;
+    });
 
-    return studentResults.map((student) => {
+    return eligibleStudents.map((student) => {
       const studentId = String(student?.studentId || '');
       const grade = gradesByStudentId[studentId] || null;
       const mark = (grade?.marks || []).find((entry) => String(entry?.questionId) === questionId) || null;
@@ -380,16 +404,16 @@ export default function SessionQuestionGradingPanel({
 
       return {
         studentId,
+        student,
         displayName,
         email: normalizeValue(student?.email),
         latestResponse,
         responseSummary,
         gradeId: normalizeValue(grade?._id),
-        gradeValue: Number(grade?.value) || 0,
         mark,
       };
     });
-  }, [activeQuestion, gradesByStudentId, studentResults]);
+  }, [activeQuestion, gradesByStudentId, isQuizSession, studentResults]);
 
   useEffect(() => {
     const nextDrafts = {};
@@ -422,6 +446,53 @@ export default function SessionQuestionGradingPanel({
       return true;
     });
   }, [allRows, answerQuery, studentQuery]);
+
+  const sortedRows = useMemo(() => {
+    const nextRows = [...filteredRows];
+    const compareNullableNumber = (a, b) => {
+      const aFinite = Number.isFinite(a);
+      const bFinite = Number.isFinite(b);
+      if (!aFinite && !bFinite) return 0;
+      if (!aFinite) return 1;
+      if (!bFinite) return -1;
+      return a - b;
+    };
+
+    nextRows.sort((a, b) => {
+      let compare = 0;
+      if (tableSort.field === 'response') {
+        compare = normalizeValue(a?.responseSummary?.displayText).localeCompare(
+          normalizeValue(b?.responseSummary?.displayText)
+        );
+      } else if (tableSort.field === 'mark') {
+        compare = compareNullableNumber(Number(a?.mark?.points), Number(b?.mark?.points));
+      } else if (tableSort.field === 'feedback') {
+        compare = normalizeValue(a?.mark?.feedback).localeCompare(normalizeValue(b?.mark?.feedback));
+      } else {
+        compare = normalizeValue(a?.displayName).localeCompare(normalizeValue(b?.displayName));
+        if (compare === 0) {
+          compare = normalizeValue(a?.email).localeCompare(normalizeValue(b?.email));
+        }
+      }
+
+      return tableSort.direction === 'asc' ? compare : -compare;
+    });
+
+    return nextRows;
+  }, [filteredRows, tableSort]);
+
+  const handleTableSort = useCallback((field) => {
+    setTableSort((previousSort) => {
+      if (previousSort.field === field) {
+        return {
+          field,
+          direction: previousSort.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      const defaultDirection = field === 'mark' ? 'desc' : 'asc';
+      return { field, direction: defaultDirection };
+    });
+  }, []);
 
   const applyUpdatedGrade = useCallback((updatedGrade) => {
     if (!updatedGrade?.userId) return;
@@ -478,6 +549,17 @@ export default function SessionQuestionGradingPanel({
       setSavingByStudentId((prev) => ({ ...prev, [row.studentId]: false }));
     }
   }, [activeQuestionId, applyUpdatedGrade, draftByStudentId]);
+
+  const handleCancelRow = useCallback((row) => {
+    if (!row?.studentId) return;
+    setDraftByStudentId((prev) => ({
+      ...prev,
+      [row.studentId]: {
+        points: row.mark ? String(row.mark.points ?? 0) : '',
+        feedback: normalizeValue(row.mark?.feedback),
+      },
+    }));
+  }, []);
 
   const handleBulkApplyPoints = useCallback(async () => {
     if (!activeQuestionId) return;
@@ -607,6 +689,9 @@ export default function SessionQuestionGradingPanel({
   const activeQuestionPoints = getQuestionPoints(activeQuestion);
   const hasSolution = !!normalizeValue(activeQuestion.solution);
   const correctAnswerSummary = formatCorrectAnswerSummary(activeQuestion);
+  const displayedStudentHint = isQuizSession
+    ? `Showing ${allRows.length} student${allRows.length === 1 ? '' : 's'} who have saved at least one quiz response.`
+    : `Showing ${allRows.length} student${allRows.length === 1 ? '' : 's'} who joined this session.`;
 
   return (
     <Box>
@@ -716,9 +801,13 @@ export default function SessionQuestionGradingPanel({
         </Button>
       </Box>
 
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
+        {displayedStudentHint}
+      </Typography>
+
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Bulk update filtered rows ({filteredRows.length})
+          Bulk update filtered rows ({sortedRows.length})
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
@@ -759,33 +848,77 @@ export default function SessionQuestionGradingPanel({
         <Table size="small" aria-label="Question grading table">
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>Student</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 200 }}>Email</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 260 }}>Response</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 210 }}>Mark</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 260 }}>Feedback</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 120 }} align="center">Grade Value</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 130 }} align="center">Status</TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 120 }} align="right">Action</TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 170 }}>
+                <TableSortLabel
+                  active={tableSort.field === 'student'}
+                  direction={tableSort.field === 'student' ? tableSort.direction : 'asc'}
+                  onClick={() => handleTableSort('student')}
+                >
+                  Student
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
+                <TableSortLabel
+                  active={tableSort.field === 'response'}
+                  direction={tableSort.field === 'response' ? tableSort.direction : 'asc'}
+                  onClick={() => handleTableSort('response')}
+                >
+                  Response
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>
+                <TableSortLabel
+                  active={tableSort.field === 'mark'}
+                  direction={tableSort.field === 'mark' ? tableSort.direction : 'desc'}
+                  onClick={() => handleTableSort('mark')}
+                >
+                  Mark
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
+                <TableSortLabel
+                  active={tableSort.field === 'feedback'}
+                  direction={tableSort.field === 'feedback' ? tableSort.direction : 'asc'}
+                  onClick={() => handleTableSort('feedback')}
+                >
+                  Feedback
+                </TableSortLabel>
+              </TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 125 }} align="right">Action</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredRows.map((row) => {
+            {sortedRows.map((row) => {
               const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
               const saving = !!savingByStudentId[row.studentId];
               const rowDisabled = !row.gradeId || !row.mark;
               const rowDirty = isRowDirty(row);
 
               return (
-                <TableRow key={row.studentId} hover>
-                  <TableCell>{row.displayName}</TableCell>
-                  <TableCell>{row.email || '—'}</TableCell>
+                <TableRow
+                  key={row.studentId}
+                  hover
+                  sx={row.mark?.needsGrading ? { bgcolor: 'error.50' } : undefined}
+                >
                   <TableCell>
-                    {row.responseSummary.richHtml ? (
-                      <RichContent html={row.responseSummary.richHtml} />
-                    ) : (
-                      <Typography variant="body2">{row.responseSummary.displayText}</Typography>
-                    )}
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
+                      <Avatar src={row.student?.profileThumbnail || row.student?.profileImage || ''} sx={{ width: 30, height: 30 }}>
+                        {buildStudentInitials(row.student)}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" noWrap>{row.displayName}</Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap>{row.email || '—'}</Typography>
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ maxWidth: 260 }}>
+                      {row.responseSummary.richHtml ? (
+                        <RichContent html={row.responseSummary.richHtml} />
+                      ) : (
+                        <Typography variant="body2">{row.responseSummary.displayText}</Typography>
+                      )}
+                    </Box>
                     {row.latestResponse?.attempt ? (
                       <Typography variant="caption" color="text.secondary">
                         attempt {row.latestResponse.attempt}
@@ -793,7 +926,7 @@ export default function SessionQuestionGradingPanel({
                     ) : null}
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
                       <TextField
                         size="small"
                         type="number"
@@ -803,13 +936,31 @@ export default function SessionQuestionGradingPanel({
                           const value = event.target.value;
                           handleUpdateDraft(row.studentId, (current) => ({ ...current, points: value }));
                         }}
-                        sx={{ width: 100 }}
+                        sx={{ width: 82 }}
                         inputProps={{ min: 0 }}
                       />
                       <Typography variant="caption" color="text.secondary">
                         / {formatPercent(row.mark?.outOf || 0)}
                       </Typography>
                     </Box>
+                    {row.mark?.needsGrading && (
+                      <Chip
+                        size="small"
+                        color="error"
+                        variant="outlined"
+                        label="Needs grading"
+                        sx={{ mt: 0.5 }}
+                      />
+                    )}
+                    {rowDisabled && (
+                      <Chip
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        label="No grade item"
+                        sx={{ mt: 0.5 }}
+                      />
+                    )}
                   </TableCell>
                   <TableCell>
                     <TextField
@@ -825,37 +976,32 @@ export default function SessionQuestionGradingPanel({
                       }}
                     />
                   </TableCell>
-                  <TableCell align="center">{formatPercent(row.gradeValue)}%</TableCell>
-                  <TableCell align="center">
-                    {rowDisabled ? (
-                      <Chip size="small" color="warning" variant="outlined" label="No grade item" />
-                    ) : row.mark?.needsGrading ? (
-                      <Chip size="small" color="error" label="Needs grading" />
-                    ) : (
-                      <Chip
+                  <TableCell align="right">
+                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+                      <Button
                         size="small"
                         variant="outlined"
-                        color={row.mark?.automatic ? 'default' : 'warning'}
-                        label={row.mark?.automatic ? 'Auto' : 'Manual'}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleSaveRow(row)}
-                      disabled={rowDisabled || saving || !rowDirty}
-                    >
-                      Save
-                    </Button>
+                        onClick={() => handleSaveRow(row)}
+                        disabled={rowDisabled || saving || !rowDirty}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleCancelRow(row)}
+                        disabled={rowDisabled || saving || !rowDirty}
+                      >
+                        Cancel
+                      </Button>
+                    </Box>
                   </TableCell>
                 </TableRow>
               );
             })}
-            {filteredRows.length === 0 && (
+            {sortedRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={5}>
                   <Typography variant="body2" color="text.secondary">
                     No students match the current filters.
                   </Typography>

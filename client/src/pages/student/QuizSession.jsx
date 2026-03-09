@@ -594,7 +594,7 @@ export default function QuizSession() {
               </Box>
             )}
 
-            {showCorrectForQuestion && question.correctNumerical != null && (
+            {showCorrectForQuestion && qType === QUESTION_TYPES.NUMERICAL && question.correctNumerical != null && (
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="body2">
                   Correct answer: {question.correctNumerical}
