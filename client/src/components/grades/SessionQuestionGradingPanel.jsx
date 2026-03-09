@@ -870,6 +870,9 @@ export default function SessionQuestionGradingPanel({
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
         {displayedStudentHint}
       </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
+        Feedback math syntax: use \( ... \) for inline math or $$ ... $$ for display math.
+      </Typography>
 
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -1053,15 +1056,18 @@ export default function SessionQuestionGradingPanel({
                     <Box sx={{ minWidth: 170 }}>
                       <StudentRichTextEditor
                         value={draft.feedback}
-                      disabled={rowDisabled || saving}
+                        disabled={rowDisabled || saving}
                       onChange={({ html }) => {
                         const value = html || '';
                         handleUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
-                      }}
+                        }}
                         placeholder="Add feedback"
                         ariaLabel={`Feedback editor for ${row.displayName}`}
+                        showMathHint={false}
                       />
-                      <MathPreview html={draft.feedback} />
+                      {rowDirty && (
+                        <MathPreview html={draft.feedback} debounceMs={0} showLabel={false} />
+                      )}
                     </Box>
                   </TableCell>
                   <TableCell align="right">

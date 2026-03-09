@@ -247,6 +247,21 @@ function isLatestResponseCorrect(question, response) {
   return null;
 }
 
+function isAutoGradeableQuestionType(questionType) {
+  return [
+    QUESTION_TYPES.MULTIPLE_CHOICE,
+    QUESTION_TYPES.TRUE_FALSE,
+    QUESTION_TYPES.MULTI_SELECT,
+    QUESTION_TYPES.NUMERICAL,
+  ].includes(questionType);
+}
+
+function getQuestionPoints(question) {
+  const numeric = Number(question?.sessionOptions?.points);
+  if (!Number.isFinite(numeric) || numeric < 0) return 0;
+  return numeric;
+}
+
 function escapeCsvCell(value) {
   if (value == null) return '';
   const str = String(value);
@@ -421,6 +436,21 @@ export default function SessionReview() {
     const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);
     return (sum / studentResults.length).toFixed(1);
   }, [studentResults]);
+
+  const hasOutstandingManualGrading = useMemo(() => {
+    return questions.some((question) => {
+      const qType = normalizeQuestionType(question);
+      const outOf = getQuestionPoints(question);
+      if (outOf <= 0 || isAutoGradeableQuestionType(qType)) return false;
+      return studentResults.some((student) => {
+        const questionResult = (student?.questionResults || []).find(
+          (result) => String(result?.questionId) === String(question?._id),
+        );
+        const latestResponse = getLatestResponse(questionResult?.responses || []);
+        return !!latestResponse;
+      });
+    });
+  }, [questions, studentResults]);
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -834,7 +864,17 @@ export default function SessionReview() {
         <Tab label="Questions" />
         <Tab label="Response Data" />
         <Tab label="Students" />
-        <Tab label="Grading" />
+        <Tab
+          label={(
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <span>Grading</span>
+              {hasOutstandingManualGrading && (
+                <Chip size="small" color="error" label="Needs grading" />
+              )}
+            </Box>
+          )}
+          sx={hasOutstandingManualGrading ? { color: 'error.main !important', fontWeight: 700 } : undefined}
+        />
       </Tabs>
 
       {/* Questions tab – all questions shown at once with inline stats */}

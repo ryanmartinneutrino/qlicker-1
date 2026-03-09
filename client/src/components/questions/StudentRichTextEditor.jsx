@@ -35,6 +35,7 @@ export default function StudentRichTextEditor({
   placeholder = 'Type your answer…',
   disabled = false,
   ariaLabel = 'Short answer response editor',
+  showMathHint = true,
 }) {
   const lastNormalizedHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`sa-bubble-${Math.random().toString(36).slice(2)}`);
@@ -63,7 +64,7 @@ export default function StudentRichTextEditor({
           'aria-multiline': 'true',
           'aria-label': ariaLabel,
           'aria-disabled': disabled ? 'true' : 'false',
-          'aria-describedby': mathHintId,
+          ...(showMathHint ? { 'aria-describedby': mathHintId } : {}),
         },
       },
       onUpdate({ editor: ed }) {
@@ -165,9 +166,11 @@ export default function StudentRichTextEditor({
         )}
         <EditorContent editor={editor} />
       </Paper>
-      <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-        Use \( ... \) for inline math or $$ ... $$ for display math
-      </Typography>
+      {showMathHint && (
+        <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+          Use \( ... \) for inline math or $$ ... $$ for display math
+        </Typography>
+      )}
     </Box>
   );
 }
@@ -176,7 +179,7 @@ export default function StudentRichTextEditor({
  * Live preview component that renders KaTeX from HTML content.
  * Shows all typed content and renders math when delimiters are present.
  */
-export function MathPreview({ html }) {
+export function MathPreview({ html, debounceMs = 140, showLabel = true }) {
   const ref = useRef(null);
   const prepared = useMemo(() => prepareRichTextInput(html || ''), [html]);
   const [committedPreview, setCommittedPreview] = useState(prepared);
@@ -186,12 +189,16 @@ export function MathPreview({ html }) {
       setCommittedPreview('');
       return undefined;
     }
+    if (!Number.isFinite(debounceMs) || debounceMs <= 0) {
+      setCommittedPreview(prepared);
+      return undefined;
+    }
     // Debounce preview updates to avoid flicker while typing.
     const timer = setTimeout(() => {
       setCommittedPreview(prepared);
-    }, 140);
+    }, debounceMs);
     return () => clearTimeout(timer);
-  }, [prepared]);
+  }, [debounceMs, prepared]);
 
   useEffect(() => {
     if (!ref.current || !committedPreview) return;
@@ -211,9 +218,11 @@ export function MathPreview({ html }) {
         '& img': { maxWidth: '100%' },
       }}
     >
-      <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-        Preview
-      </Typography>
+      {showLabel && (
+        <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
+          Preview
+        </Typography>
+      )}
       <Box
         ref={ref}
         dangerouslySetInnerHTML={{ __html: committedPreview }}
