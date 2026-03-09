@@ -96,6 +96,11 @@ const COMPACT_FIELD_SX = {
 function buildQuestionPayload(form) {
   const content = normalizeStoredHtml(form.content);
   const solution = normalizeStoredHtml(form.solution);
+  const parseOptionalNumber = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const payload = {
     type: form.type,
     content,
@@ -125,8 +130,10 @@ function buildQuestionPayload(form) {
   }
 
   if (form.type === QUESTION_TYPES.NUMERICAL) {
-    payload.correctNumerical = Number(form.correctNumerical) || 0;
-    payload.toleranceNumerical = Number(form.toleranceNumerical) || 0;
+    const parsedCorrect = parseOptionalNumber(form.correctNumerical);
+    const parsedTolerance = parseOptionalNumber(form.toleranceNumerical);
+    if (parsedCorrect !== null) payload.correctNumerical = parsedCorrect;
+    if (parsedTolerance !== null) payload.toleranceNumerical = parsedTolerance;
   }
 
   return payload;
@@ -174,6 +181,8 @@ export default function QuestionEditor({
   inline = false,
   disableTypeSelection = false,
   typeSelectionLockReason = 'Question type is locked for this question.',
+  lockOptionStructure = false,
+  optionStructureLockReason = 'The number of options is locked because this question has response data.',
 }) {
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
@@ -371,8 +380,14 @@ export default function QuestionEditor({
     });
   };
 
-  const addOption = () => setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
-  const removeOption = (idx) => setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  const addOption = () => {
+    if (lockOptionStructure) return;
+    setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
+  };
+  const removeOption = (idx) => {
+    if (lockOptionStructure) return;
+    setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  };
 
   const autoSaveStatus = autosaveState === 'saved' ? 'success' : autosaveState;
 
@@ -501,11 +516,18 @@ export default function QuestionEditor({
                   />
                 </Box>
                 {form.options.length > 2 && (
-                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }} disabled={lockOptionStructure}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 )}
               </Box>
             ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={addOption}>Add Option</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={addOption} disabled={lockOptionStructure}>Add Option</Button>
+            {lockOptionStructure && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {optionStructureLockReason}
+              </Typography>
+            )}
           </Box>
         )}
 
@@ -607,7 +629,7 @@ export default function QuestionEditor({
 
           {form.type === QUESTION_TYPES.NUMERICAL && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-              Correct: {previewPayload.correctNumerical ?? 0} (± {previewPayload.toleranceNumerical ?? 0})
+              Correct: {previewPayload.correctNumerical ?? '—'} (± {previewPayload.toleranceNumerical ?? '—'})
             </Typography>
           )}
 

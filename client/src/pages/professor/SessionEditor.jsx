@@ -5,7 +5,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, CircularProgress,
   Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
-  Menu, Autocomplete,
+  Menu, Autocomplete, InputAdornment,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -24,7 +24,9 @@ import SessionStatusChip from '../../components/common/SessionStatusChip';
 
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
-const QUIZ_WINDOW_VALIDATION_MESSAGE = 'Quiz end must be later than quiz start.';
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_unused, hour) => String(hour).padStart(2, '0'));
+const MINUTE_OPTIONS = ['00', '15', '30', '45', '59'];
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
 const MAX_COURSE_TAB_INDEX = 4;
 
@@ -39,40 +41,52 @@ function toDateTimeLocalString(value) {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 16);
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hour = String(parsed.getHours()).padStart(2, '0');
+  const minute = String(parsed.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function normalizeTimePart(value, max) {
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed)) return null;
+  return String(Math.min(max, Math.max(0, parsed))).padStart(2, '0');
+}
+
+function getDateTimeParts(value) {
+  const [date = '', rawTime = '00:00'] = String(value || '').split('T');
+  const [rawHour = '00', rawMinute = '00'] = rawTime.split(':');
+  return {
+    date,
+    hour: normalizeTimePart(rawHour, 23) || '00',
+    minute: normalizeTimePart(rawMinute, 59) || '00',
+  };
+}
+
+function buildDateTimeFromParts({ date, hour, minute }) {
+  if (!date) return '';
+  const normalizedHour = normalizeTimePart(hour, 23) || '00';
+  const normalizedMinute = normalizeTimePart(minute, 59) || '00';
+  return `${date}T${normalizedHour}:${normalizedMinute}`;
+}
+
+function buildTodayFlooredToHourDate() {
+  const start = new Date();
+  start.setMinutes(0, 0, 0);
+  return start;
+}
+
+function buildCurrentDateTimeLocalString() {
+  const current = new Date();
+  current.setSeconds(0, 0);
+  return toDateTimeLocalString(current);
 }
 
 function buildDefaultQuizWindow() {
-  const start = new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
-  return {
-    quizStart: toDateTimeLocalString(start),
-    quizEnd: toDateTimeLocalString(end),
-  };
-}
-
-function buildTodayQuizWindow() {
-  const start = new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start);
-  end.setHours(23, 59, 0, 0);
-  if (end.getTime() <= start.getTime()) {
-    end.setDate(end.getDate() + 1);
-  }
-  return {
-    quizStart: toDateTimeLocalString(start),
-    quizEnd: toDateTimeLocalString(end),
-  };
-}
-
-function buildTwentyFourHourQuizWindow(startValue = '') {
-  const parsedStart = startValue ? new Date(startValue) : null;
-  const start = parsedStart && !Number.isNaN(parsedStart.getTime())
-    ? parsedStart
-    : new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  const start = buildTodayFlooredToHourDate();
+  const end = new Date(start.getTime() + TWELVE_HOURS_MS);
   return {
     quizStart: toDateTimeLocalString(start),
     quizEnd: toDateTimeLocalString(end),
@@ -167,11 +181,11 @@ export default function SessionEditor() {
       setEditFields({ name: s.name || '', description: s.description || '' });
       setQuiz(!!s.quiz);
       setPracticeQuiz(!!s.practiceQuiz);
-      setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '');
-      setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '');
+      setQuizStart(toDateTimeLocalString(s.quizStart));
+      setQuizEnd(toDateTimeLocalString(s.quizEnd));
       setReviewable(!!s.reviewable);
       setStatus(s.status || 'hidden');
-      setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
+      setSessionDate(toDateTimeLocalString(s.date));
       setJoinCodeEnabled(!!s.joinCodeEnabled);
       setJoinCodeInterval(s.joinCodeInterval || 10);
       setExtensionDrafts((s.quizExtensions || []).map((extension) => ({
@@ -238,16 +252,6 @@ export default function SessionEditor() {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   };
 
-  const validateQuizWindow = (startValue, endValue) => {
-    const startIso = toIsoIfValid(startValue);
-    const endIso = toIsoIfValid(endValue);
-    if (!startIso || !endIso) return null;
-    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
-      return QUIZ_WINDOW_VALIDATION_MESSAGE;
-    }
-    return null;
-  };
-
   const ensureQuizWindowDefaults = useCallback((startValue, endValue) => {
     const defaults = buildDefaultQuizWindow();
     return {
@@ -275,35 +279,103 @@ export default function SessionEditor() {
     }
   };
 
-  const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}) => {
-    const validationMessage = validateQuizWindow(nextStart, nextEnd);
-    if (validationMessage) {
-      setMsg({ severity: 'error', text: validationMessage });
-      return false;
-    }
-    const updates = { ...extraUpdates };
+  const coerceQuizWindowRange = useCallback((nextStart, nextEnd, { warn = false } = {}) => {
     const startIso = toIsoIfValid(nextStart);
     const endIso = toIsoIfValid(nextEnd);
+    if (!startIso || !endIso) {
+      return { startValue: nextStart, endValue: nextEnd, adjusted: false };
+    }
+
+    if (new Date(endIso).getTime() > new Date(startIso).getTime()) {
+      return { startValue: nextStart, endValue: nextEnd, adjusted: false };
+    }
+
+    const adjustedEnd = new Date(new Date(startIso).getTime() + (60 * 60 * 1000));
+    const adjustedEndLocal = toDateTimeLocalString(adjustedEnd);
+    if (warn) {
+      setMsg({
+        severity: 'warning',
+        text: 'Close date was before start date, so it was reset to 1 hour after open date.',
+      });
+    }
+    return { startValue: nextStart, endValue: adjustedEndLocal, adjusted: true };
+  }, []);
+
+  const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}, { warnOnAdjust = true } = {}) => {
+    const {
+      startValue,
+      endValue,
+      adjusted,
+    } = coerceQuizWindowRange(nextStart, nextEnd, { warn: warnOnAdjust });
+
+    if (adjusted) {
+      setQuizStart(startValue);
+      setQuizEnd(endValue);
+    }
+
+    const updates = { ...extraUpdates };
+    const startIso = toIsoIfValid(startValue);
+    const endIso = toIsoIfValid(endValue);
     if (startIso) updates.quizStart = startIso;
     if (endIso) updates.quizEnd = endIso;
     if (Object.keys(updates).length === 0) return true;
     saveSessionPatch(updates);
     return true;
-  }, [saveSessionPatch]);
+  }, [coerceQuizWindowRange, saveSessionPatch]);
 
-  const applyTodayQuizWindow = useCallback(() => {
-    const nextWindow = buildTodayQuizWindow();
-    setQuizStart(nextWindow.quizStart);
-    setQuizEnd(nextWindow.quizEnd);
-    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
-  }, [persistQuizWindow]);
+  const addTwelveHoursToQuizEnd = useCallback(() => {
+    const baseStart = quizStart || buildDefaultQuizWindow().quizStart;
+    const parsedEnd = quizEnd ? new Date(quizEnd) : null;
+    const baseEnd = parsedEnd && !Number.isNaN(parsedEnd.getTime())
+      ? parsedEnd
+      : new Date(baseStart);
+    baseEnd.setTime(baseEnd.getTime() + TWELVE_HOURS_MS);
+    const nextEnd = toDateTimeLocalString(baseEnd);
+    setQuizStart(baseStart);
+    setQuizEnd(nextEnd);
+    persistQuizWindow(baseStart, nextEnd);
+  }, [persistQuizWindow, quizEnd, quizStart]);
 
-  const applyTwentyFourHourQuizWindow = useCallback(() => {
-    const nextWindow = buildTwentyFourHourQuizWindow(quizStart);
-    setQuizStart(nextWindow.quizStart);
-    setQuizEnd(nextWindow.quizEnd);
-    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
-  }, [persistQuizWindow, quizStart]);
+  const applyTodayToQuizField = useCallback((target) => {
+    const nowLocal = buildCurrentDateTimeLocalString();
+    if (target === 'start') {
+      setQuizStart(nowLocal);
+      persistQuizWindow(nowLocal, quizEnd);
+      return;
+    }
+    setQuizEnd(nowLocal);
+    persistQuizWindow(quizStart, nowLocal);
+  }, [persistQuizWindow, quizEnd, quizStart]);
+
+  const updateQuizDateTimePart = useCallback((target, part, rawValue) => {
+    const sourceParts = getDateTimeParts(target === 'start' ? quizStart : quizEnd);
+    const nextParts = { ...sourceParts };
+
+    if (part === 'date') {
+      nextParts.date = String(rawValue || '');
+    } else if (part === 'hour') {
+      const normalized = normalizeTimePart(rawValue, 23);
+      if (!normalized) return;
+      nextParts.hour = normalized;
+    } else if (part === 'minute') {
+      const normalized = normalizeTimePart(rawValue, 59);
+      if (!normalized) return;
+      nextParts.minute = normalized;
+    }
+
+    const nextValue = buildDateTimeFromParts(nextParts);
+    if (target === 'start') {
+      setQuizStart(nextValue);
+    } else {
+      setQuizEnd(nextValue);
+    }
+
+    if (!nextValue) return;
+
+    const startCandidate = target === 'start' ? nextValue : quizStart;
+    const endCandidate = target === 'end' ? nextValue : quizEnd;
+    persistQuizWindow(startCandidate, endCandidate);
+  }, [persistQuizWindow, quizEnd, quizStart]);
 
   const handleStatusChange = (nextStatus) => {
     if (nextStatus === status) return;
@@ -690,6 +762,49 @@ export default function SessionEditor() {
     ),
     [courseStudents, extensionDrafts]
   );
+  const quizStartParts = getDateTimeParts(quizStart);
+  const quizEndParts = getDateTimeParts(quizEnd);
+  const quizStartIso = toIsoIfValid(quizStart);
+  const quizEndIso = toIsoIfValid(quizEnd);
+  const quizWindowStartMs = quizStartIso ? new Date(quizStartIso).getTime() : null;
+  const quizWindowEndMs = quizEndIso ? new Date(quizEndIso).getTime() : null;
+  const nowMs = Date.now();
+  const scheduledWindowOpenNow = Number.isFinite(quizWindowStartMs)
+    && Number.isFinite(quizWindowEndMs)
+    && nowMs >= quizWindowStartMs
+    && nowMs <= quizWindowEndMs;
+  const quizLikeEnabled = quiz || practiceQuiz;
+  const studentsCanAccessQuizNow = quizLikeEnabled && (
+    status === 'running'
+    || (status === 'visible' && scheduledWindowOpenNow)
+  );
+  let quizAccessSeverity = 'info';
+  let quizAccessText = '';
+  if (quizLikeEnabled) {
+    if (studentsCanAccessQuizNow) {
+      quizAccessSeverity = 'success';
+      quizAccessText = status === 'running'
+        ? 'Students can access this quiz now (status is Live).'
+        : 'Students can access this quiz now (scheduled window is currently open).';
+    } else if (status === 'visible') {
+      if (!quizStartIso || !quizEndIso) {
+        quizAccessSeverity = 'warning';
+        quizAccessText = 'This quiz is scheduled, but quiz start/end are missing or invalid.';
+      } else if (quizWindowStartMs && nowMs < quizWindowStartMs) {
+        quizAccessSeverity = 'info';
+        quizAccessText = `This quiz is scheduled and will open at ${new Date(quizWindowStartMs).toLocaleString()}.`;
+      } else {
+        quizAccessSeverity = 'warning';
+        quizAccessText = 'This quiz window has ended; students cannot access it.';
+      }
+    } else if (status === 'hidden') {
+      quizAccessSeverity = 'info';
+      quizAccessText = 'This quiz is in Draft and not accessible to students.';
+    } else if (status === 'done') {
+      quizAccessSeverity = 'warning';
+      quizAccessText = 'This quiz is Ended and not accessible to students.';
+    }
+  }
 
   const openExtensionsDialog = () => {
     setExtensionStudent(null);
@@ -902,6 +1017,8 @@ export default function SessionEditor() {
             initialBaseline={baselineQuestion}
             disableTypeSelection={questionHasResponses}
             typeSelectionLockReason="Question type is locked because this question has response data."
+            lockOptionStructure={questionHasResponses}
+            optionStructureLockReason="Option count is locked because this question has response data."
           />
         </Box>
 
@@ -993,7 +1110,7 @@ export default function SessionEditor() {
               disabled={savingSession}
             >
               <MenuItem value="hidden">Draft</MenuItem>
-              <MenuItem value="visible">Upcoming</MenuItem>
+              <MenuItem value="visible">{quizLikeEnabled ? 'Scheduled' : 'Upcoming'}</MenuItem>
               <MenuItem value="running">Live</MenuItem>
               <MenuItem value="done">Ended</MenuItem>
             </Select>
@@ -1131,70 +1248,135 @@ export default function SessionEditor() {
             </Box>
           )}
 
-          {(quiz || practiceQuiz) && (
+          {quizLikeEnabled && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
-                <TextField
-                  label="Quiz Start"
-                  size="small"
-                  type="datetime-local"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={quizStart}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setQuizStart(val);
-                    const validationMessage = validateQuizWindow(val, quizEnd);
-                    if (validationMessage) {
-                      setMsg({ severity: 'error', text: validationMessage });
-                      return;
-                    }
-                    const iso = toIsoIfValid(val);
-                    if (iso) saveSessionPatch({ quizStart: iso });
-                  }}
-                  disabled={savingSession}
-                />
-                <TextField
-                  label="Quiz End"
-                  size="small"
-                  type="datetime-local"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={quizEnd}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setQuizEnd(val);
-                    const validationMessage = validateQuizWindow(quizStart, val);
-                    if (validationMessage) {
-                      setMsg({ severity: 'error', text: validationMessage });
-                      return;
-                    }
-                    const iso = toIsoIfValid(val);
-                    if (iso) saveSessionPatch({ quizEnd: iso });
-                  }}
-                  inputProps={quizStart ? { min: quizStart } : undefined}
-                  disabled={savingSession}
-                />
+              {quizAccessText && (
+                <Alert severity={quizAccessSeverity}>
+                  {quizAccessText}
+                </Alert>
+              )}
+
+              <Box sx={{ display: 'grid', gap: SETTINGS_STACK_GAP, gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' } }}>
+                <Paper variant="outlined" sx={{ p: 1.25 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Quiz Start
+                  </Typography>
+                  <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) 120px 120px' } }}>
+                    <TextField
+                      label="Date"
+                      size="small"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={quizStartParts.date}
+                      onChange={(e) => updateQuizDateTimePart('start', 'date', e.target.value)}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Button
+                              size="small"
+                              onClick={() => applyTodayToQuizField('start')}
+                              disabled={savingSession}
+                            >
+                              Today
+                            </Button>
+                          </InputAdornment>
+                        ),
+                      }}
+                      disabled={savingSession}
+                    />
+                    <TextField
+                      label="Hour (24h)"
+                      size="small"
+                      type="number"
+                      value={quizStartParts.hour}
+                      onChange={(e) => updateQuizDateTimePart('start', 'hour', e.target.value)}
+                      inputProps={{ min: 0, max: 23, list: 'session-editor-hour-options' }}
+                      disabled={savingSession}
+                    />
+                    <TextField
+                      label="Minute"
+                      size="small"
+                      type="number"
+                      value={quizStartParts.minute}
+                      onChange={(e) => updateQuizDateTimePart('start', 'minute', e.target.value)}
+                      inputProps={{ min: 0, max: 59, list: 'session-editor-minute-options' }}
+                      disabled={savingSession}
+                    />
+                  </Box>
+                </Paper>
+
+                <Paper variant="outlined" sx={{ p: 1.25 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Quiz End
+                  </Typography>
+                  <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'minmax(0, 1fr) 120px 120px' } }}>
+                    <TextField
+                      label="Date"
+                      size="small"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={quizEndParts.date}
+                      onChange={(e) => updateQuizDateTimePart('end', 'date', e.target.value)}
+                      inputProps={quizStartParts.date ? { min: quizStartParts.date } : undefined}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Button
+                              size="small"
+                              onClick={() => applyTodayToQuizField('end')}
+                              disabled={savingSession}
+                            >
+                              Today
+                            </Button>
+                          </InputAdornment>
+                        ),
+                      }}
+                      disabled={savingSession}
+                    />
+                    <TextField
+                      label="Hour (24h)"
+                      size="small"
+                      type="number"
+                      value={quizEndParts.hour}
+                      onChange={(e) => updateQuizDateTimePart('end', 'hour', e.target.value)}
+                      inputProps={{ min: 0, max: 23, list: 'session-editor-hour-options' }}
+                      disabled={savingSession}
+                    />
+                    <TextField
+                      label="Minute"
+                      size="small"
+                      type="number"
+                      value={quizEndParts.minute}
+                      onChange={(e) => updateQuizDateTimePart('end', 'minute', e.target.value)}
+                      inputProps={{ min: 0, max: 59, list: 'session-editor-minute-options' }}
+                      disabled={savingSession}
+                    />
+                  </Box>
+                </Paper>
               </Box>
+
+              <datalist id="session-editor-hour-options">
+                {HOUR_OPTIONS.map((value) => (
+                  <option key={value} value={Number(value)} />
+                ))}
+              </datalist>
+              <datalist id="session-editor-minute-options">
+                {MINUTE_OPTIONS.map((value) => (
+                  <option key={value} value={Number(value)} />
+                ))}
+              </datalist>
+
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Button
                   size="small"
                   variant="text"
-                  onClick={applyTodayQuizWindow}
+                  onClick={addTwelveHoursToQuizEnd}
                   disabled={savingSession}
                 >
-                  Today
-                </Button>
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={applyTwentyFourHourQuizWindow}
-                  disabled={savingSession}
-                >
-                  Set 24h Window
+                  Add 12 hours to close date
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Default quiz windows are 24 hours.
+                  Quick picks use 24-hour time and keep minute options at 00/15/30/45/59.
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>

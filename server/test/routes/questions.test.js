@@ -4,6 +4,7 @@ import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '.
 import Course from '../../src/models/Course.js';
 import Session from '../../src/models/Session.js';
 import Question from '../../src/models/Question.js';
+import Response from '../../src/models/Response.js';
 
 let app;
 
@@ -248,6 +249,117 @@ describe('PATCH /api/v1/questions/:id', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
+  });
+
+  it('blocks changing question type when response data exists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-response-lock@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const student = await createTestUser({ email: 'student-response-lock@example.com', roles: ['student'] });
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const question = qRes.json().question;
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id.toString(),
+      attempt: 1,
+      answer: '0',
+      editable: false,
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: { type: 2 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain('type cannot be changed');
+  });
+
+  it('blocks changing option count when response data exists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-option-lock@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const student = await createTestUser({ email: 'student-option-lock@example.com', roles: ['student'] });
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const question = qRes.json().question;
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id.toString(),
+      attempt: 1,
+      answer: '0',
+      editable: false,
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+          { answer: 'C', correct: false },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toContain('Option count cannot be changed');
+  });
+
+  it('allows editing option content/correctness with response data when option count is unchanged', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-option-edit@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const student = await createTestUser({ email: 'student-option-edit@example.com', roles: ['student'] });
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      options: [
+        { answer: 'Old A', correct: true },
+        { answer: 'Old B', correct: false },
+      ],
+    });
+    const question = qRes.json().question;
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id.toString(),
+      attempt: 1,
+      answer: '0',
+      editable: false,
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        options: [
+          { answer: 'New A', correct: false },
+          { answer: 'New B', correct: true },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.options).toHaveLength(2);
+    expect(res.json().question.options[0].answer).toBe('New A');
+    expect(res.json().question.options[1].answer).toBe('New B');
+    expect(res.json().question.options[0].correct).toBe(false);
+    expect(res.json().question.options[1].correct).toBe(true);
   });
 });
 
