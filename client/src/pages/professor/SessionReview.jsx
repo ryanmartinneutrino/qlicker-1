@@ -12,6 +12,7 @@ import {
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -371,6 +372,7 @@ export default function SessionReview() {
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
+  const [reviewableWarning, setReviewableWarning] = useState('');
   const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
   const [studentSearch, setStudentSearch] = useState('');
 
@@ -398,10 +400,13 @@ export default function SessionReview() {
   const handleToggleReviewable = useCallback(async (checked) => {
     setTogglingReviewable(true);
     try {
-      await apiClient.patch(`/sessions/${sessionId}`, { reviewable: checked });
-      setSession((prev) => (prev ? { ...prev, reviewable: checked } : prev));
-    } catch {
-      // Revert on failure
+      const { data } = await apiClient.patch(`/sessions/${sessionId}`, { reviewable: checked });
+      const updatedSession = data.session || data;
+      const warnings = data.grading?.warnings || [];
+      setSession((prev) => (prev ? { ...prev, ...updatedSession } : prev));
+      setReviewableWarning(warnings.join(' '));
+    } catch (err) {
+      setReviewableWarning(err.response?.data?.message || 'Failed to update reviewable setting.');
     } finally {
       setTogglingReviewable(false);
     }
@@ -814,6 +819,11 @@ export default function SessionReview() {
           Export CSV
         </Button>
       </Box>
+      {reviewableWarning ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {reviewableWarning}
+        </Alert>
+      ) : null}
 
       {/* Tabs */}
       <Tabs
@@ -824,6 +834,7 @@ export default function SessionReview() {
         <Tab label="Questions" />
         <Tab label="Response Data" />
         <Tab label="Students" />
+        <Tab label="Grading" />
       </Tabs>
 
       {/* Questions tab – all questions shown at once with inline stats */}
@@ -1119,6 +1130,15 @@ export default function SessionReview() {
             </TableContainer>
           </>
         )}
+      </TabPanel>
+
+      {/* Grading tab */}
+      <TabPanel value={tab} index={3}>
+        <CourseGradesPanel
+          courseId={courseId}
+          instructorView
+          fixedSessionIds={[sessionId]}
+        />
       </TabPanel>
     </Box>
   );

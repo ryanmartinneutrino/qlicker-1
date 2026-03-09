@@ -5,6 +5,10 @@ import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
+import {
+  recalculateSessionGrades,
+  setSessionGradesVisibility,
+} from '../services/grading.js';
 
 const createSessionSchema = {
   body: {
@@ -18,6 +22,7 @@ const createSessionSchema = {
       quizStart: { type: 'string', format: 'date-time' },
       quizEnd: { type: 'string', format: 'date-time' },
       date: { type: 'string', format: 'date-time' },
+      msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
     },
     additionalProperties: false,
   },
@@ -38,6 +43,7 @@ const updateSessionSchema = {
       date: { type: 'string', format: 'date-time' },
       joinCodeEnabled: { type: 'boolean' },
       joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
+      msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
     },
     additionalProperties: false,
   },
@@ -669,7 +675,16 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const { name, description, quiz, practiceQuiz, quizStart, quizEnd, date } = request.body;
+      const {
+        name,
+        description,
+        quiz,
+        practiceQuiz,
+        quizStart,
+        quizEnd,
+        date,
+        msScoringMethod,
+      } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
       const quizWindowValidationError = getQuizWindowValidationMessage(null, {
@@ -692,6 +707,7 @@ export default async function sessionRoutes(app) {
         quizStart: quizStart ? new Date(quizStart) : undefined,
         quizEnd: quizEnd ? new Date(quizEnd) : undefined,
         date: date ? new Date(date) : undefined,
+        msScoringMethod: msScoringMethod || undefined,
       });
 
       await Course.findByIdAndUpdate(course._id, {
@@ -800,7 +816,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval'];
+      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
@@ -860,9 +876,29 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
+      let grading = null;
+      const makingReviewable = updates.reviewable === true && !session.reviewable;
+      const removingReviewable = updates.reviewable === false && session.reviewable;
+
+      if (makingReviewable) {
+        const gradingResult = await recalculateSessionGrades({
+          sessionId: updated._id,
+          sessionDoc: updated,
+          courseDoc: course,
+          missingOnly: true,
+          visibleToStudents: true,
+        });
+        grading = gradingResult.summary;
+      } else if (removingReviewable) {
+        await setSessionGradesVisibility({
+          sessionId: updated._id,
+          visibleToStudents: false,
+        });
+      }
+
       notifySessionUpdated(app, course, updated?._id || request.params.id);
 
-      return { session: updated.toObject() };
+      return { session: updated.toObject(), grading };
     }
   );
 
@@ -990,9 +1026,26 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
+      let grading = null;
+      if (request.body?.reviewable === true && !session.reviewable) {
+        const gradingResult = await recalculateSessionGrades({
+          sessionId: updated._id,
+          sessionDoc: updated,
+          courseDoc: course,
+          missingOnly: true,
+          visibleToStudents: true,
+        });
+        grading = gradingResult.summary;
+      } else if (request.body?.reviewable === false && session.reviewable) {
+        await setSessionGradesVisibility({
+          sessionId: updated._id,
+          visibleToStudents: false,
+        });
+      }
+
       notifySessionUpdated(app, course, updated?._id || request.params.id);
 
-      return { session: updated.toObject() };
+      return { session: updated.toObject(), grading };
     }
   );
 
@@ -1092,9 +1145,26 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
+      let grading = null;
+      if (request.body.reviewable === true && !session.reviewable) {
+        const gradingResult = await recalculateSessionGrades({
+          sessionId: updated._id,
+          sessionDoc: updated,
+          courseDoc: course,
+          missingOnly: true,
+          visibleToStudents: true,
+        });
+        grading = gradingResult.summary;
+      } else if (request.body.reviewable === false && session.reviewable) {
+        await setSessionGradesVisibility({
+          sessionId: updated._id,
+          visibleToStudents: false,
+        });
+      }
+
       notifySessionUpdated(app, course, updated?._id || request.params.id);
 
-      return { session: updated.toObject() };
+      return { session: updated.toObject(), grading };
     }
   );
 
@@ -1208,6 +1278,7 @@ export default async function sessionRoutes(app) {
         practiceQuiz: session.practiceQuiz,
         quizStart: session.quizStart,
         quizEnd: session.quizEnd,
+        msScoringMethod: session.msScoringMethod,
         date: session.date,
         tags: session.tags,
         reviewable: session.reviewable,
