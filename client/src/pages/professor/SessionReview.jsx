@@ -12,7 +12,7 @@ import {
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
-import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
+import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -1134,10 +1134,10 @@ export default function SessionReview() {
 
       {/* Grading tab */}
       <TabPanel value={tab} index={3}>
-        <CourseGradesPanel
-          courseId={courseId}
-          instructorView
-          fixedSessionIds={[sessionId]}
+        <SessionQuestionGradingPanel
+          sessionId={sessionId}
+          questions={questions}
+          studentResults={studentResults}
         />
       </TabPanel>
     </Box>

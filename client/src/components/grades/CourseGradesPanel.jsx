@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   Chip,
@@ -360,7 +359,6 @@ export default function CourseGradesPanel({
   const [error, setError] = useState('');
   const [sessions, setSessions] = useState([]);
   const [rows, setRows] = useState([]);
-  const [selectedSessionIds, setSelectedSessionIds] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sort, setSort] = useState({ field: 'name', direction: 'asc' });
   const [refreshingSessionIds, setRefreshingSessionIds] = useState({});
@@ -400,16 +398,6 @@ export default function CourseGradesPanel({
       });
       setSessions(nextSessions);
       setRows(nextRows);
-      if (hasFixedSessions) {
-        const fixedSet = new Set(normalizedFixedSessionIds);
-        setSelectedSessionIds(
-          nextSessions
-            .map((session) => String(session._id))
-            .filter((sessionId) => fixedSet.has(sessionId))
-        );
-      } else {
-        setSelectedSessionIds(nextSessions.map((session) => String(session._id)));
-      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load grades.');
     } finally {
@@ -421,11 +409,7 @@ export default function CourseGradesPanel({
     fetchGrades();
   }, [fetchGrades]);
 
-  const visibleSessions = useMemo(() => {
-    if (!selectedSessionIds.length) return [];
-    const selectedSet = new Set(selectedSessionIds.map((id) => String(id)));
-    return sessions.filter((session) => selectedSet.has(String(session._id)));
-  }, [selectedSessionIds, sessions]);
+  const visibleSessions = useMemo(() => sessions, [sessions]);
 
   const sortedRows = useMemo(() => {
     const normalizedSearch = normalizeAnswerValue(searchTerm).toLowerCase();
@@ -591,11 +575,6 @@ export default function CourseGradesPanel({
     return <Alert severity="error">{error}</Alert>;
   }
 
-  const sessionOptions = sessions.map((session) => ({
-    label: session.name,
-    value: session._id,
-  }));
-
   return (
     <Box>
       {globalMessage ? (
@@ -605,33 +584,6 @@ export default function CourseGradesPanel({
       ) : null}
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5, alignItems: 'center' }}>
-        {!hasFixedSessions ? (
-          <>
-            <Autocomplete
-              multiple
-              options={sessionOptions}
-              value={sessionOptions.filter((option) => selectedSessionIds.includes(option.value))}
-              onChange={(_, values) => setSelectedSessionIds(values.map((value) => value.value))}
-              renderInput={(params) => <TextField {...params} label="Sessions" size="small" />}
-              sx={{ minWidth: 260, flex: 1 }}
-            />
-            <Button
-              variant="text"
-              size="small"
-              onClick={() => setSelectedSessionIds(sessions.map((session) => String(session._id)))}
-            >
-              Show all sessions
-            </Button>
-          </>
-        ) : (
-          <TextField
-            size="small"
-            label="Session Scope"
-            value={visibleSessions.map((session) => session.name).join(', ') || 'Selected session'}
-            InputProps={{ readOnly: true }}
-            sx={{ minWidth: 260, flex: 1 }}
-          />
-        )}
         <TextField
           size="small"
           label="Search students"
@@ -699,7 +651,7 @@ export default function CourseGradesPanel({
                   <TableCell key={`${session._id}-mark`} sx={{ fontWeight: 700, minWidth: 180 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                        {typeof onOpenSession === 'function' && !hasFixedSessions ? (
+                        {typeof onOpenSession === 'function' ? (
                           <Button
                             size="small"
                             variant="text"

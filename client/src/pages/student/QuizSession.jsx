@@ -576,9 +576,9 @@ export default function QuizSession() {
                     {lockingQuestionId === qId ? 'Submitting...' : 'Submit Question'}
                   </Button>
                 )}
-                {!locked && questionHasRevealableSolution && (
+                {!locked && (
                   <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                    Solution becomes available after you submit this question.
+                    Solution available after submit.
                   </Typography>
                 )}
 
