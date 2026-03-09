@@ -29,7 +29,7 @@ function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
 }
 
-const MAX_STUDENT_TAB_INDEX = 2;
+const MAX_STUDENT_TAB_INDEX = 3;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -350,6 +350,7 @@ export default function StudentCourseDetail() {
         <Tab label={`Lectures (${interactiveSessions.length})`} />
         <Tab label={`Quizzes (${quizSessions.length})`} />
         <Tab label="Grades" />
+        <Tab label="Settings" />
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -371,11 +372,17 @@ export default function StudentCourseDetail() {
         />
       </TabPanel>
 
-      <Box sx={{ mt: 3 }}>
-        <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
-          Unenroll from Course
-        </Button>
-      </Box>
+      <TabPanel value={tab} index={3}>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>Course Settings</Typography>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+            Manage your enrollment for this course.
+          </Typography>
+          <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
+            Unenroll from Course
+          </Button>
+        </Paper>
+      </TabPanel>
 
       {/* Unenroll Confirmation */}
       <Dialog open={unenrollOpen} onClose={() => setUnenrollOpen(false)}>

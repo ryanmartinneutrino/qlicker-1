@@ -973,7 +973,7 @@ The following issues were identified during testing and have been resolved:
 | 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
 | 6 - Grading | Core grading service/routes complete (auto/manual grading, visibility, conflicts, CSV, course/session grade tables) | ✅ Phase 6 core done |
 | 7 - Frontend | Course/session grading tabs integrated (prof + student), session MS scoring control, grading chips/warnings | ✅ Phase 6 core done |
-| 8 - Testing | All server route/service tests passing (139 tests across 8 suites, including grading routes/services) | ✅ Phase 6 core done |
+| 8 - Testing | Server + client grading tests passing (143 tests total: 141 server across 8 suites + 2 client grading UI tests) | ✅ Phase 6 follow-up done |
 
 ---
 
@@ -1040,6 +1040,20 @@ Core grading is now implemented and wired through backend + frontend:
   - Recalculate controls, conflict resolution dialog (accept auto per conflict or all), and CSV export
   - “Needs grading” chips on professor course session list and in grade table headers
   - Session Editor includes MS scoring method selection + formula tooltip text
+
+- Phase 6 grading/student follow-up fixes (2026-03-09):
+  - Student session review now emphasizes session-level grading only (session total + participation), and each question chip shows mark/out-of (or pending manual grading) instead of only max points.
+  - Grading feedback editing was optimized with debounced editor updates + blur flush to eliminate per-keystroke blocking in large grading tables.
+  - Student course page now includes a dedicated **Settings** tab; unenroll action moved there.
+  - Student grade-table headers now show `Ungraded` (without numeric counts) in student view while retaining numeric ungraded counts for instructors.
+  - Added grading-focused test coverage:
+    - Server: `server/test/services/grading.test.js` now covers legacy point defaults by question type and zero-point exclusion behavior.
+    - Client: `client/src/components/grades/CourseGradesPanel.test.jsx` verifies student-vs-instructor grade-table behavior for search visibility and ungraded labeling.
+
+- Full verification run (2026-03-09):
+  - `cd server && npm test` → 141 passed (8 files/suites).
+  - `cd client && npm test` → 2 passed (1 file).
+  - `cd client && npm run build` → success.
 
 #### Grade Calculation Notes (Legacy-Compatible)
 
@@ -1212,7 +1226,7 @@ A comprehensive code review was conducted covering performance, security, access
 | Fast with thousands of concurrent users | ⚠️ Needs work | WebSocket is implemented but messages are coarse-grained; N+1 re-fetch pattern will not scale. See § Performance. |
 | Docker Compose with load balancing | ✅ Complete | Production Docker Compose with Nginx reverse proxy. |
 | SAML SSO | ✅ Implemented | SAML login/callback/metadata/logout endpoints in place. Needs production confirmation (Phase 7). |
-| Unit tests from onset | ✅ 139 tests | 8 test files covering auth, courses, sessions, questions, models, settings, grading routes, and grading service helpers. E2E (Playwright) not yet in place. |
+| Unit tests from onset | ✅ 143 tests | 9 test files total: 8 server test files (auth, courses, sessions, questions, models, settings, grading routes, grading helpers) plus 1 client grading UI test file. E2E (Playwright) not yet in place. |
 | Image uploads (S3/Azure/local) | ✅ Complete | All three backends verified. |
 | Email (password reset) | ✅ Complete | Nodemailer integration with forgot-password flow. |
 | Reactive UI for interactive sessions | ✅ Functional, ⚠️ performance gap | WebSocket events trigger full re-fetches. Must move to delta updates for production scale. |

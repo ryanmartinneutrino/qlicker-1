@@ -4,6 +4,7 @@ import {
   DEFAULT_MS_SCORING_METHOD,
   MS_SCORING_METHODS,
   getSessionMsScoringMethod,
+  getQuestionPoints,
 } from '../../src/services/grading.js';
 
 describe('grading service helpers', () => {
@@ -79,6 +80,34 @@ describe('grading service helpers', () => {
 
     expect(calculateResponsePoints(question, firstAttempt)).toBe(4);
     expect(calculateResponsePoints(question, secondAttempt)).toBe(2);
+  });
+
+  it('keeps legacy default points behavior by question type', () => {
+    expect(getQuestionPoints({ type: 2, sessionOptions: {} })).toBe(0);
+    expect(getQuestionPoints({ type: 0, sessionOptions: {} })).toBe(1);
+    expect(getQuestionPoints({ type: 2, sessionOptions: { points: 3 } })).toBe(3);
+    expect(getQuestionPoints({ type: 0, sessionOptions: { points: 0 } })).toBe(0);
+  });
+
+  it('does not award points for zero-point questions even with a correct answer', () => {
+    const question = {
+      type: 0,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+      sessionOptions: {
+        points: 0,
+        maxAttempts: 1,
+        attempts: [{ number: 1, closed: false }],
+      },
+    };
+    const response = {
+      attempt: 1,
+      answer: 'A',
+    };
+
+    expect(calculateResponsePoints(question, response)).toBe(0);
   });
 
   it('normalizes session multi-select scoring strategy values', () => {

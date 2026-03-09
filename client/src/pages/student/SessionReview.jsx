@@ -41,7 +41,7 @@ const COMPACT_CHIP_SX = {
   },
 };
 
-const MAX_STUDENT_TAB_INDEX = 1;
+const MAX_STUDENT_TAB_INDEX = 2;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -107,31 +107,10 @@ function getMarkForQuestion(grade, question, fallbackIndex = 0) {
   return grade.marks.find((mark) => keys.has(String(mark?.questionId))) || null;
 }
 
-function toFiniteNumber(value, fallback = 0) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return fallback;
-  return numeric;
-}
-
 function formatNumeric(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '0';
   return String(Math.round(numeric * 10) / 10);
-}
-
-function buildCourseGradeSummary(row) {
-  if (!row || !Array.isArray(row.grades) || row.grades.length === 0) return null;
-  const totals = row.grades.reduce((acc, grade) => {
-    acc.points += toFiniteNumber(grade?.points, 0);
-    acc.outOf += toFiniteNumber(grade?.outOf, 0);
-    return acc;
-  }, { points: 0, outOf: 0 });
-  const value = totals.outOf > 0 ? Math.round((1000 * totals.points) / totals.outOf) / 10 : 0;
-  return {
-    value,
-    points: totals.points,
-    outOf: totals.outOf,
-  };
 }
 
 function isCorrectOption(option) {
@@ -464,7 +443,6 @@ export default function SessionReview() {
   const [questions, setQuestions] = useState([]);
   const [responsesByQuestion, setResponsesByQuestion] = useState({});
   const [sessionGrade, setSessionGrade] = useState(null);
-  const [courseGradeSummary, setCourseGradeSummary] = useState(null);
 
   // View mode: 'one' (single question) or 'all'
   const [viewMode, setViewMode] = useState('one');
@@ -477,10 +455,9 @@ export default function SessionReview() {
 
   const fetchReview = useCallback(async ({ background = false } = {}) => {
     try {
-      const [reviewResult, gradeResult, courseGradeResult] = await Promise.all([
+      const [reviewResult, gradeResult] = await Promise.all([
         apiClient.get(`/sessions/${sessionId}/review`),
         apiClient.get(`/sessions/${sessionId}/grades`).catch(() => null),
-        apiClient.get(`/courses/${courseId}/grades`).catch(() => null),
       ]);
 
       const data = reviewResult?.data || {};
@@ -490,9 +467,6 @@ export default function SessionReview() {
 
       const grade = gradeResult?.data?.grades?.[0] || null;
       setSessionGrade(grade);
-
-      const courseRow = (courseGradeResult?.data?.rows || [])[0] || null;
-      setCourseGradeSummary(buildCourseGradeSummary(courseRow));
       if (!background) {
         setError(null);
       }
@@ -647,16 +621,6 @@ export default function SessionReview() {
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             {sessionGrade
               ? `${formatNumeric(sessionGrade.value)}% (${formatNumeric(sessionGrade.points)} / ${formatNumeric(sessionGrade.outOf)})`
-              : 'Not available'}
-          </Typography>
-        </Paper>
-        <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Course Total
-          </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {courseGradeSummary
-              ? `${formatNumeric(courseGradeSummary.value)}% (${formatNumeric(courseGradeSummary.points)} / ${formatNumeric(courseGradeSummary.outOf)})`
               : 'Not available'}
           </Typography>
         </Paper>

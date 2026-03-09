@@ -1063,9 +1063,10 @@ export default function SessionQuestionGradingPanel({
                       <StudentRichTextEditor
                         value={draft.feedback}
                         disabled={rowDisabled || saving}
-                      onChange={({ html }) => {
-                        const value = html || '';
-                        handleUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
+                        onChangeDebounceMs={180}
+                        onChange={({ html }) => {
+                          const value = html || '';
+                          handleUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
                         }}
                         placeholder="Add feedback"
                         ariaLabel={`Feedback editor for ${row.displayName}`}
