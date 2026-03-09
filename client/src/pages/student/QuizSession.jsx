@@ -17,6 +17,7 @@ import {
   FormGroup,
   Divider,
 } from '@mui/material';
+import { CheckCircle as CorrectIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import StudentRichTextEditor from '../../components/questions/StudentRichTextEditor';
 import {
@@ -97,6 +98,61 @@ function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
 }
 
+function buildWebsocketUrl(token) {
+  const encodedToken = encodeURIComponent(token);
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
+}
+
+function isClosedOrUnavailableQuizMessage(message) {
+  const normalized = String(message || '').toLowerCase();
+  return (
+    normalized.includes('quiz is closed')
+    || normalized.includes('not open yet')
+    || normalized.includes('not available')
+    || normalized.includes('already submitted')
+  );
+}
+
+function parseOptionalNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveNumericalAnswer(question) {
+  const candidates = [
+    question?.correctNumerical,
+    question?.correctAnswer,
+    question?.answerKey,
+    question?.numericalAnswer,
+  ];
+  for (const candidate of candidates) {
+    const parsed = parseOptionalNumber(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function resolveNumericalTolerance(question) {
+  const candidates = [
+    question?.toleranceNumerical,
+    question?.tolerance,
+  ];
+  for (const candidate of candidates) {
+    const parsed = parseOptionalNumber(candidate);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function resolveSolutionContent(question) {
+  return {
+    html: question?.solution || question?.solutionHtml || '',
+    plainText: question?.solution_plainText || question?.solutionPlainText || question?.solutionText || '',
+  };
+}
+
 function hasCorrectOption(options = []) {
   return options.some((option) => !!option?.correct);
 }
@@ -140,7 +196,7 @@ export default function QuizSession() {
 
   const autosaveTimersRef = useRef(new Map());
 
-  const hydrateFromPayload = useCallback((payload) => {
+  const hydrateFromPayload = useCallback((payload, { preserveDrafts = false } = {}) => {
     const nextSession = payload?.session || null;
     const nextQuestions = payload?.questions || [];
     const nextResponses = payload?.responses || {};
@@ -148,30 +204,144 @@ export default function QuizSession() {
     setSession(nextSession);
     setQuestions(nextQuestions);
     setResponsesByQuestion(nextResponses);
-
-    const nextDrafts = {};
-    nextQuestions.forEach((question) => {
-      const qId = String(question._id);
-      nextDrafts[qId] = getDraftForQuestion(question, nextResponses[qId]);
+    setShowSolutionByQuestion((prev) => {
+      const next = {};
+      nextQuestions.forEach((question) => {
+        const qId = String(question._id);
+        if (prev[qId]) next[qId] = true;
+      });
+      return next;
     });
-    setDraftByQuestion(nextDrafts);
+
+    setDraftByQuestion((previousDrafts) => {
+      const nextDrafts = {};
+      nextQuestions.forEach((question) => {
+        const qId = String(question._id);
+        const response = nextResponses[qId];
+        const locked = !!response && response.editable === false;
+        const baselineDraft = getDraftForQuestion(question, response);
+        if (preserveDrafts && previousDrafts[qId] && !locked) {
+          nextDrafts[qId] = previousDrafts[qId];
+          return;
+        }
+        nextDrafts[qId] = baselineDraft;
+      });
+      return nextDrafts;
+    });
   }, []);
 
-  const fetchQuiz = useCallback(async () => {
+  const fetchQuiz = useCallback(async ({ background = false } = {}) => {
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/quiz`);
-      hydrateFromPayload(data);
+      hydrateFromPayload(data, { preserveDrafts: background });
       setError('');
+      return true;
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load quiz');
+      const status = err.response?.status;
+      const message = err.response?.data?.message || 'Failed to load quiz';
+      if (status === 403 && isClosedOrUnavailableQuizMessage(message)) {
+        navigate(courseQuizTabLink, { replace: true });
+        return false;
+      }
+      if (!background) setError(message);
+      return false;
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
-  }, [hydrateFromPayload, sessionId]);
+  }, [courseQuizTabLink, hydrateFromPayload, navigate, sessionId]);
 
   useEffect(() => {
     fetchQuiz();
   }, [fetchQuiz]);
+
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimer = null;
+    let pollingTimer = null;
+    let closed = false;
+
+    const refreshQuiz = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchQuiz({ background: true });
+    };
+
+    const startPolling = () => {
+      if (pollingTimer || closed) return;
+      pollingTimer = setInterval(refreshQuiz, 4000);
+    };
+
+    const stopPolling = () => {
+      if (!pollingTimer) return;
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const latestToken = localStorage.getItem('token');
+      if (!latestToken) return;
+
+      try {
+        ws = new WebSocket(buildWebsocketUrl(latestToken));
+      } catch {
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      ws.onopen = () => {
+        stopPolling();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message?.event !== 'session:updated') return;
+          if (String(message?.data?.sessionId || '') !== String(sessionId)) return;
+          refreshQuiz();
+        } catch {
+          // Ignore malformed websocket payloads.
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+      };
+    };
+
+    const initializeTransport = async () => {
+      try {
+        const { data } = await apiClient.get('/health');
+        const websocketAvailable = data?.websocket === true;
+        if (!websocketAvailable) {
+          startPolling();
+          return;
+        }
+        connect();
+      } catch {
+        startPolling();
+      }
+    };
+
+    initializeTransport();
+
+    const handleVisibilityChange = () => refreshQuiz();
+    window.addEventListener('focus', refreshQuiz);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+      window.removeEventListener('focus', refreshQuiz);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchQuiz, sessionId]);
 
   useEffect(() => () => {
     autosaveTimersRef.current.forEach((timerId) => clearTimeout(timerId));
@@ -180,6 +350,12 @@ export default function QuizSession() {
 
   useEffect(() => {
     setCurrentQuestionIndex((previous) => Math.min(previous, Math.max(questions.length - 1, 0)));
+  }, [questions.length]);
+
+  useEffect(() => {
+    if (questions.length <= 1) {
+      setSingleQuestionMode(false);
+    }
   }, [questions.length]);
 
   const saveDraftNow = useCallback(async (questionId, draft) => {
@@ -356,39 +532,47 @@ export default function QuizSession() {
         <Chip label={`${answeredCount}/${questions.length} answered`} variant="outlined" size="small" />
       </Box>
 
-      <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
-        <FormControlLabel
-          control={(
-            <Switch
-              checked={singleQuestionMode}
-              onChange={(event) => setSingleQuestionMode(event.target.checked)}
-            />
-          )}
-          label="One question at a time"
-        />
+      {practiceQuiz && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Practice mode: submit each question to unlock solutions immediately.
+        </Alert>
+      )}
 
-        {singleQuestionMode && questions.length > 0 && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
-              disabled={currentQuestionIndex <= 0}
-            >
-              Previous
-            </Button>
-            <Chip label={`Question ${currentQuestionIndex + 1}/${questions.length}`} size="small" variant="outlined" />
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => setCurrentQuestionIndex((index) => Math.min(questions.length - 1, index + 1))}
-              disabled={currentQuestionIndex >= questions.length - 1}
-            >
-              Next
-            </Button>
-          </Box>
-        )}
-      </Paper>
+      {questions.length > 1 && (
+        <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
+          <FormControlLabel
+            control={(
+              <Switch
+                checked={singleQuestionMode}
+                onChange={(event) => setSingleQuestionMode(event.target.checked)}
+              />
+            )}
+            label="One question at a time"
+          />
+
+          {singleQuestionMode && questions.length > 0 && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
+                disabled={currentQuestionIndex <= 0}
+              >
+                Previous
+              </Button>
+              <Chip label={`Question ${currentQuestionIndex + 1}/${questions.length}`} size="small" variant="outlined" />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => setCurrentQuestionIndex((index) => Math.min(questions.length - 1, index + 1))}
+                disabled={currentQuestionIndex >= questions.length - 1}
+              >
+                Next
+              </Button>
+            </Box>
+          )}
+        </Paper>
+      )}
 
       {submitError && <Alert severity="error" sx={{ mb: 2 }}>{submitError}</Alert>}
 
@@ -401,9 +585,13 @@ export default function QuizSession() {
         const autosaveState = autosaveStateByQuestion[qId] || 'idle';
         const showSolution = !!showSolutionByQuestion[qId] && locked;
         const showCorrectForQuestion = showSolution && practiceQuiz;
+        const numericalSolution = resolveNumericalAnswer(question);
+        const numericalTolerance = resolveNumericalTolerance(question);
+        const solutionContent = resolveSolutionContent(question);
         const questionHasRevealableSolution = !!(
-          question.solution
-          || question.correctNumerical != null
+          solutionContent.html
+          || solutionContent.plainText
+          || (qType === QUESTION_TYPES.NUMERICAL && numericalSolution != null)
           || hasCorrectOption(question.options)
         );
         const optionAnswers = qType === QUESTION_TYPES.MULTI_SELECT
@@ -441,33 +629,51 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const selected = String(draft.answer || '') === value;
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const selectedIncorrect = showCorrectForQuestion && selected && !isCorrect;
                   return (
                     <Paper
                       key={value}
                       variant="outlined"
                       sx={{
-                        p: 1.25,
+                        p: 1.5,
                         mb: 0.75,
-                        borderColor: isCorrect ? 'success.main' : selected ? 'primary.main' : 'divider',
-                        bgcolor: isCorrect ? 'success.50' : 'transparent',
+                        borderColor: isCorrect
+                          ? 'success.main'
+                          : selectedIncorrect
+                            ? 'error.main'
+                            : selected
+                              ? 'primary.main'
+                              : 'divider',
+                        bgcolor: isCorrect ? 'success.50' : selectedIncorrect ? 'error.50' : 'transparent',
+                        boxShadow: isCorrect ? '0 0 0 1px rgba(46, 125, 50, 0.22) inset' : 'none',
                         opacity: locked ? 0.85 : 1,
                       }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                        <Radio
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '34px 30px minmax(0, 1fr) 20px',
+                          columnGap: 1,
+                          alignItems: 'start',
+                        }}
+                      >
+                        <FormControlLabel
                           value={value}
-                          checked={selected}
-                          disabled={locked}
-                          onChange={() => {
-                            updateDraft(question, (current) => ({
-                              ...current,
-                              answer: value,
-                            }));
-                          }}
+                          control={<Radio disabled={locked} sx={{ p: 0.5 }} onClick={(e) => e.stopPropagation()} />}
+                          label=""
+                          sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                         />
-                        <Chip label={OPTION_LETTERS[index]} size="small" />
-                        <Box sx={{ minWidth: 0, pt: 0.6 }}>
+                        <Chip
+                          label={OPTION_LETTERS[index]}
+                          size="small"
+                          color={isCorrect ? 'success' : 'default'}
+                          sx={{ fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                        />
+                        <Box sx={{ minWidth: 0, pt: 0.25 }}>
                           <RichContent html={optionDisplayHtml(option)} />
+                        </Box>
+                        <Box sx={{ pt: 0.35, justifySelf: 'end' }}>
+                          {isCorrect ? <CorrectIcon fontSize="small" color="success" /> : null}
                         </Box>
                       </Box>
                     </Paper>
@@ -482,37 +688,68 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const checked = optionAnswers.includes(value);
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const checkedIncorrect = showCorrectForQuestion && checked && !isCorrect;
                   return (
                     <Paper
                       key={value}
                       variant="outlined"
                       sx={{
-                        p: 1.25,
+                        p: 1.5,
                         mb: 0.75,
-                        borderColor: isCorrect ? 'success.main' : checked ? 'primary.main' : 'divider',
-                        bgcolor: isCorrect ? 'success.50' : 'transparent',
+                        borderColor: isCorrect
+                          ? 'success.main'
+                          : checkedIncorrect
+                            ? 'error.main'
+                            : checked
+                              ? 'primary.main'
+                              : 'divider',
+                        bgcolor: isCorrect ? 'success.50' : checkedIncorrect ? 'error.50' : 'transparent',
+                        boxShadow: isCorrect ? '0 0 0 1px rgba(46, 125, 50, 0.22) inset' : 'none',
                         opacity: locked ? 0.85 : 1,
                       }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-                        <Checkbox
-                          checked={checked}
-                          disabled={locked}
-                          onChange={() => {
-                            updateDraft(question, (current) => {
-                              const currentValues = Array.isArray(current.answer) ? [...current.answer] : [];
-                              return {
-                                ...current,
-                                answer: currentValues.includes(value)
-                                  ? currentValues.filter((entry) => entry !== value)
-                                  : [...currentValues, value],
-                              };
-                            });
-                          }}
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: '34px 30px minmax(0, 1fr) 20px',
+                          columnGap: 1,
+                          alignItems: 'start',
+                        }}
+                      >
+                        <FormControlLabel
+                          control={(
+                            <Checkbox
+                              checked={checked}
+                              disabled={locked}
+                              sx={{ p: 0.5 }}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={() => {
+                                updateDraft(question, (current) => {
+                                  const currentValues = Array.isArray(current.answer) ? [...current.answer] : [];
+                                  return {
+                                    ...current,
+                                    answer: currentValues.includes(value)
+                                      ? currentValues.filter((entry) => entry !== value)
+                                      : [...currentValues, value],
+                                  };
+                                });
+                              }}
+                            />
+                          )}
+                          label=""
+                          sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                         />
-                        <Chip label={OPTION_LETTERS[index]} size="small" />
-                        <Box sx={{ minWidth: 0, pt: 0.6 }}>
+                        <Chip
+                          label={OPTION_LETTERS[index]}
+                          size="small"
+                          color={isCorrect ? 'success' : 'default'}
+                          sx={{ fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                        />
+                        <Box sx={{ minWidth: 0, pt: 0.25 }}>
                           <RichContent html={optionDisplayHtml(option)} />
+                        </Box>
+                        <Box sx={{ pt: 0.35, justifySelf: 'end' }}>
+                          {isCorrect ? <CorrectIcon fontSize="small" color="success" /> : null}
                         </Box>
                       </Box>
                     </Paper>
@@ -578,7 +815,7 @@ export default function QuizSession() {
                 )}
                 {!locked && questionHasRevealableSolution && (
                   <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                    Solution becomes available after you submit this question.
+                    Solution available after submit.
                   </Typography>
                 )}
 
@@ -594,21 +831,21 @@ export default function QuizSession() {
               </Box>
             )}
 
-            {showCorrectForQuestion && question.correctNumerical != null && (
+            {showCorrectForQuestion && qType === QUESTION_TYPES.NUMERICAL && numericalSolution != null && (
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="body2">
-                  Correct answer: {question.correctNumerical}
-                  {question.toleranceNumerical != null ? ` +/- ${question.toleranceNumerical}` : ''}
+                  Correct answer: {numericalSolution}
+                  {numericalTolerance != null ? ` +/- ${numericalTolerance}` : ''}
                 </Typography>
               </Paper>
             )}
 
-            {showCorrectForQuestion && question.solution && (
+            {showCorrectForQuestion && (solutionContent.html || solutionContent.plainText) && (
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'success.main', fontWeight: 700 }}>
                   Solution
                 </Typography>
-                <RichContent html={question.solution} fallback={question.solution_plainText} />
+                <RichContent html={solutionContent.html} fallback={solutionContent.plainText} />
               </Paper>
             )}
           </Paper>

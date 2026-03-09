@@ -205,6 +205,8 @@ export default function StudentCourseDetail() {
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !isQuizSession(s));
   const quizSessions = sortedSessions.filter(isQuizSession);
+  const liveInteractiveCount = interactiveSessions.filter((session) => session.status === 'running').length;
+  const liveQuizCount = quizSessions.filter((session) => session.status === 'running').length;
   const headerCourseName = String(course.name || '').trim() || 'Course';
   const headerDeptCode = String(course.deptCode || '').trim();
   const headerCourseNumber = String(course.courseNumber || '').trim();
@@ -346,8 +348,8 @@ export default function StudentCourseDetail() {
         variant="scrollable"
         allowScrollButtonsMobile
       >
-        <Tab label={`Lectures (${interactiveSessions.length})`} />
-        <Tab label={`Quizzes (${quizSessions.length})`} />
+        <Tab label={`Lectures (${interactiveSessions.length}${liveInteractiveCount > 0 ? ` • ${liveInteractiveCount} live` : ''})`} />
+        <Tab label={`Quizzes (${quizSessions.length}${liveQuizCount > 0 ? ` • ${liveQuizCount} live` : ''})`} />
       </Tabs>
 
       <TabPanel value={tab} index={0}>

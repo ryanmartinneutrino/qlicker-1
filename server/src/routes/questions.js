@@ -221,6 +221,34 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
+function notifySessionUpdated(app, course, sessionId) {
+  if (typeof app.wsSendToUser !== 'function') return;
+  if (!course || !sessionId) return;
+
+  const memberIds = new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean));
+
+  const payload = {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+  };
+
+  memberIds.forEach((userId) => {
+    app.wsSendToUser(userId, 'session:updated', payload);
+  });
+}
+
+async function notifyQuestionLinkedSession(app, questionLike) {
+  const sessionId = questionLike?.sessionId;
+  const courseId = questionLike?.courseId;
+  if (!sessionId || !courseId) return;
+  const course = await Course.findById(courseId).lean();
+  if (!course) return;
+  notifySessionUpdated(app, course, sessionId);
+}
+
 export default async function questionRoutes(app) {
   const { authenticate, requireRole } = app;
 
@@ -263,6 +291,7 @@ export default async function questionRoutes(app) {
       if (correctNumerical !== undefined) questionData.correctNumerical = correctNumerical;
 
       const question = await Question.create(questionData);
+      await notifyQuestionLinkedSession(app, question.toObject ? question.toObject() : question);
 
       return reply.code(201).send({ question: question.toObject() });
     }
@@ -347,6 +376,7 @@ export default async function questionRoutes(app) {
         { $set: updates },
         { new: true }
       );
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }
@@ -386,6 +416,7 @@ export default async function questionRoutes(app) {
       }
 
       await Question.findByIdAndDelete(request.params.id);
+      await notifyQuestionLinkedSession(app, question.toObject ? question.toObject() : question);
 
       return { success: true };
     }
@@ -457,6 +488,7 @@ export default async function questionRoutes(app) {
         targetCourseId: course._id,
         userId,
       });
+      notifySessionUpdated(app, course, session._id);
 
       return reply.code(201).send({ question: copy.toObject() });
     }
@@ -495,6 +527,7 @@ export default async function questionRoutes(app) {
         { $addToSet: { questions: questionId } },
         { new: true }
       );
+      notifySessionUpdated(app, course, session._id);
 
       return { session: updated.toObject() };
     }
@@ -532,6 +565,7 @@ export default async function questionRoutes(app) {
         { $pull: { questions: request.params.questionId } },
         { new: true }
       );
+      notifySessionUpdated(app, course, session._id);
 
       return { session: updated.toObject() };
     }
@@ -564,6 +598,7 @@ export default async function questionRoutes(app) {
         { $set: { questions: request.body.questions } },
         { new: true }
       );
+      notifySessionUpdated(app, course, session._id);
 
       return { session: updated.toObject() };
     }
@@ -605,6 +640,7 @@ export default async function questionRoutes(app) {
         { $push: { 'sessionOptions.attempts': { number: nextNumber, closed: false } } },
         { new: true }
       );
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }
@@ -650,6 +686,7 @@ export default async function questionRoutes(app) {
       if (!updated) {
         return reply.code(404).send({ error: 'Not Found', message: 'Attempt not found' });
       }
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }
@@ -689,6 +726,7 @@ export default async function questionRoutes(app) {
         { $set: { 'sessionOptions.hidden': request.body.hidden } },
         { new: true }
       );
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }
@@ -728,6 +766,7 @@ export default async function questionRoutes(app) {
         { $set: { 'sessionOptions.stats': request.body.stats } },
         { new: true }
       );
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }
@@ -767,6 +806,7 @@ export default async function questionRoutes(app) {
         { $set: { 'sessionOptions.correct': request.body.correct } },
         { new: true }
       );
+      await notifyQuestionLinkedSession(app, updated.toObject ? updated.toObject() : updated);
 
       return { question: updated.toObject() };
     }

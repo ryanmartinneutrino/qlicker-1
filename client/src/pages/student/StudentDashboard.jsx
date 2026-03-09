@@ -3,15 +3,34 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress,
+  CircularProgress, Paper, List, ListItem, ListItemText, Chip,
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  School as SchoolIcon,
+  Quiz as QuizIcon,
+  Login as JoinIcon,
+} from '@mui/icons-material';
 import apiClient from '../../api/client';
+
+function getSessionSortTime(session) {
+  return new Date(session.quizStart || session.date || session.createdAt || 0).getTime();
+}
+
+function sortLiveSessions(items = []) {
+  return [...items].sort((a, b) => getSessionSortTime(b) - getSessionSortTime(a));
+}
+
+function isQuizSession(session) {
+  return !!(session?.quiz || session?.practiceQuiz);
+}
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [liveSessionsLoading, setLiveSessionsLoading] = useState(false);
+  const [liveSessions, setLiveSessions] = useState([]);
   const [msg, setMsg] = useState(null);
 
   // Enroll dialog
@@ -32,6 +51,42 @@ export default function StudentDashboard() {
   }, []);
 
   useEffect(() => { fetchCourses(); }, [fetchCourses]);
+
+  const fetchLiveSessions = useCallback(async (courseList) => {
+    const activeCourses = (courseList || []).filter((course) => !course.inactive);
+    if (activeCourses.length === 0) {
+      setLiveSessions([]);
+      setLiveSessionsLoading(false);
+      return;
+    }
+
+    setLiveSessionsLoading(true);
+    try {
+      const sessionResults = await Promise.all(
+        activeCourses.map(async (course) => {
+          try {
+            const { data } = await apiClient.get(`/courses/${course._id}/sessions`);
+            const running = (data.sessions || []).filter((session) => session.status === 'running');
+            return running.map((session) => ({
+              ...session,
+              courseId: course._id,
+              courseName: course.name,
+              courseCode: `${course.deptCode || ''} ${course.courseNumber || ''}`.trim(),
+            }));
+          } catch {
+            return [];
+          }
+        })
+      );
+      setLiveSessions(sortLiveSessions(sessionResults.flat()));
+    } finally {
+      setLiveSessionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveSessions(courses);
+  }, [courses, fetchLiveSessions]);
 
   const handleEnroll = async () => {
     if (!enrollCode.trim()) return;
@@ -66,6 +121,68 @@ export default function StudentDashboard() {
           Enroll in Course
         </Button>
       </Box>
+
+      {(liveSessionsLoading || liveSessions.length > 0) && (
+        <Paper
+          variant="outlined"
+          sx={{
+            mb: 3,
+            p: 2,
+            borderColor: liveSessions.length > 0 ? 'success.main' : 'divider',
+            bgcolor: liveSessions.length > 0 ? 'success.50' : 'background.paper',
+          }}
+        >
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Live now
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Active sessions in your current courses.
+          </Typography>
+          {liveSessionsLoading ? (
+            <CircularProgress size={20} />
+          ) : (
+            <List disablePadding>
+              {liveSessions.map((session, index) => {
+                const quizLike = isQuizSession(session);
+                const actionLabel = quizLike ? 'Join Quiz' : 'Join Session';
+                const target = quizLike
+                  ? `/student/course/${session.courseId}/session/${session._id}/quiz`
+                  : `/student/course/${session.courseId}/session/${session._id}/live`;
+
+                return (
+                  <ListItem
+                    key={session._id}
+                    divider={index < liveSessions.length - 1}
+                    disableGutters
+                    secondaryAction={(
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<JoinIcon />}
+                        onClick={() => navigate(target)}
+                      >
+                        {actionLabel}
+                      </Button>
+                    )}
+                  >
+                    <ListItemText
+                      primary={(
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {session.name}
+                          </Typography>
+                          {quizLike && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" />}
+                        </Box>
+                      )}
+                      secondary={`${session.courseCode || session.courseName || 'Course'}${session.courseName ? ` · ${session.courseName}` : ''}`}
+                    />
+                  </ListItem>
+                );
+              })}
+            </List>
+          )}
+        </Paper>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>

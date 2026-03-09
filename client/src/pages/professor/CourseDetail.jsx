@@ -530,6 +530,8 @@ export default function CourseDetail() {
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+  const liveInteractiveCount = interactiveSessions.filter((session) => session.status === 'running').length;
+  const liveQuizCount = quizSessions.filter((session) => session.status === 'running').length;
   const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);
   const headerCourseName = settingsHydratedRef.current ? editFields.name : toText(course.name);
   const headerDeptCode = settingsHydratedRef.current ? editFields.deptCode : toText(course.deptCode);
@@ -698,7 +700,6 @@ export default function CourseDetail() {
             </Typography>
           )}
         </Box>
-        <Chip label={course.inactive ? 'Inactive' : 'Active'} color={course.inactive ? 'default' : 'success'} sx={COMPACT_CHIP_SX} />
       </Box>
 
       {/* Tabs */}
@@ -717,8 +718,8 @@ export default function CourseDetail() {
         variant="scrollable"
         allowScrollButtonsMobile
       >
-        <Tab label={`Interactive Sessions (${interactiveSessions.length})`} />
-        <Tab label={`Quizzes (${quizSessions.length})`} />
+        <Tab label={`Interactive Sessions (${interactiveSessions.length}${liveInteractiveCount > 0 ? ` • ${liveInteractiveCount} live` : ''})`} />
+        <Tab label={`Quizzes (${quizSessions.length}${liveQuizCount > 0 ? ` • ${liveQuizCount} live` : ''})`} />
         <Tab label={`Students (${students.length})`} />
         <Tab label={`Instructors (${instructors.length})`} />
         <Tab label="Settings" />

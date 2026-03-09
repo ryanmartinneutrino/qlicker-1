@@ -96,6 +96,11 @@ const COMPACT_FIELD_SX = {
 function buildQuestionPayload(form) {
   const content = normalizeStoredHtml(form.content);
   const solution = normalizeStoredHtml(form.solution);
+  const parseOptionalNumber = (value) => {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const payload = {
     type: form.type,
     content,
@@ -125,8 +130,10 @@ function buildQuestionPayload(form) {
   }
 
   if (form.type === QUESTION_TYPES.NUMERICAL) {
-    payload.correctNumerical = Number(form.correctNumerical) || 0;
-    payload.toleranceNumerical = Number(form.toleranceNumerical) || 0;
+    const parsedCorrect = parseOptionalNumber(form.correctNumerical);
+    const parsedTolerance = parseOptionalNumber(form.toleranceNumerical);
+    if (parsedCorrect !== null) payload.correctNumerical = parsedCorrect;
+    if (parsedTolerance !== null) payload.toleranceNumerical = parsedTolerance;
   }
 
   return payload;
@@ -607,7 +614,7 @@ export default function QuestionEditor({
 
           {form.type === QUESTION_TYPES.NUMERICAL && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-              Correct: {previewPayload.correctNumerical ?? 0} (± {previewPayload.toleranceNumerical ?? 0})
+              Correct: {previewPayload.correctNumerical ?? '—'} (± {previewPayload.toleranceNumerical ?? '—'})
             </Typography>
           )}
 
