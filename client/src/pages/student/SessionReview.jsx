@@ -267,6 +267,15 @@ function ReviewQuestionCard({
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
+  const markChipLabel = useMemo(() => {
+    if (!mark) {
+      if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
+      return null;
+    }
+    if (mark?.needsGrading) return 'Pending manual grade';
+    return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
+  }, [mark, points]);
+  const markChipColor = mark?.needsGrading ? 'warning' : 'success';
   const shouldLetter = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
   const hasWrittenSolution = Boolean(
     question.solution
@@ -296,15 +305,12 @@ function ReviewQuestionCard({
           Q{index + 1}{total > 1 ? `/${total}` : ''}
         </Typography>
         <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
-        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-        {mark && (
+        {markChipLabel && (
           <Chip
-            label={mark?.needsGrading
-              ? 'Pending manual grade'
-              : `Score ${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`}
+            label={markChipLabel}
             size="small"
-            color={mark?.needsGrading ? 'warning' : 'success'}
-            variant={mark?.needsGrading ? 'outlined' : 'filled'}
+            color={mark ? markChipColor : 'default'}
+            variant={mark ? (mark?.needsGrading ? 'outlined' : 'filled') : 'outlined'}
             sx={COMPACT_CHIP_SX}
           />
         )}

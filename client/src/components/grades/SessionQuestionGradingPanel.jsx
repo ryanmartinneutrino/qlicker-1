@@ -63,6 +63,12 @@ function normalizeComparableText(value) {
   return stripHtml(value).toLowerCase();
 }
 
+function hasMathSyntax(value) {
+  const text = normalizeValue(value);
+  if (!text) return false;
+  return /\\\(|\\\[|\$\$/.test(text);
+}
+
 function formatPercent(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '0';
@@ -1065,8 +1071,8 @@ export default function SessionQuestionGradingPanel({
                         ariaLabel={`Feedback editor for ${row.displayName}`}
                         showMathHint={false}
                       />
-                      {rowDirty && (
-                        <MathPreview html={draft.feedback} debounceMs={0} showLabel={false} />
+                      {rowDirty && hasMathSyntax(draft.feedback) && (
+                        <MathPreview html={draft.feedback} debounceMs={220} showLabel={false} />
                       )}
                     </Box>
                   </TableCell>

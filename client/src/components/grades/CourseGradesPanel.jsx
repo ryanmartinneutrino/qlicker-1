@@ -622,13 +622,15 @@ export default function CourseGradesPanel({
       ) : null}
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5, alignItems: 'center' }}>
-        <TextField
-          size="small"
-          label="Search students"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-          sx={{ minWidth: 220 }}
-        />
+        {instructorView && (
+          <TextField
+            size="small"
+            label="Search students"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            sx={{ minWidth: 220 }}
+          />
+        )}
         {instructorView && (
           <Button
             size="small"
@@ -707,6 +709,13 @@ export default function CourseGradesPanel({
               {visibleSessions.flatMap((session) => {
                 const markSortKey = `${session._id}_smark`;
                 const participationSortKey = `${session._id}_spart`;
+                const ungradedCount = Number(session.marksNeedingGrading || 0);
+                const showUngradedChip = instructorView
+                  ? ungradedCount > 0
+                  : rows.some((row) => {
+                    const grade = row?.gradeBySession?.[session._id];
+                    return Boolean(grade?.needsGrading && grade?.joined);
+                  });
                 return [
                   <TableCell key={`${session._id}-mark`} sx={{ fontWeight: 700, minWidth: 125 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.3 }}>
@@ -745,12 +754,12 @@ export default function CourseGradesPanel({
                           </Tooltip>
                         )}
                       </Box>
-                      {(session.marksNeedingGrading || 0) > 0 && (
+                      {showUngradedChip && (
                         <Chip
                           size="small"
                           color="warning"
                           variant="outlined"
-                          label={`${session.marksNeedingGrading} ungraded`}
+                          label={instructorView ? `${ungradedCount} ungraded` : 'Ungraded'}
                           sx={{ maxWidth: 140 }}
                         />
                       )}
@@ -821,7 +830,8 @@ export default function CourseGradesPanel({
           setRowsPerPage(nextValue);
           setPage(0);
         }}
-        rowsPerPageOptions={[25, 50, 100]}
+        rowsPerPageOptions={instructorView ? [25, 50, 100] : [rowsPerPage]}
+        labelRowsPerPage={instructorView ? 'Rows per page:' : ''}
       />
 
       <Dialog
