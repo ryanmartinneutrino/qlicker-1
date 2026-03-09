@@ -343,12 +343,30 @@ export default async function questionRoutes(app) {
       }
 
       const requestedType = request.body.type;
-      if (requestedType !== undefined && Number(requestedType) !== Number(question.type)) {
-        const hasResponses = await Response.exists({ questionId: String(question._id) });
+      const requestedOptions = request.body.options;
+      const typeChangeRequested = requestedType !== undefined && Number(requestedType) !== Number(question.type);
+      const optionsUpdateRequested = requestedOptions !== undefined;
+      const requiresResponseLockCheck = typeChangeRequested || optionsUpdateRequested;
+      const hasResponses = requiresResponseLockCheck
+        ? await Response.exists({ questionId: String(question._id) })
+        : false;
+
+      if (typeChangeRequested) {
         if (hasResponses) {
           return reply.code(409).send({
             error: 'Conflict',
             message: 'Question type cannot be changed because this question has response data',
+          });
+        }
+      }
+
+      if (optionsUpdateRequested && hasResponses) {
+        const currentOptionCount = Array.isArray(question.options) ? question.options.length : 0;
+        const nextOptionCount = Array.isArray(requestedOptions) ? requestedOptions.length : 0;
+        if (currentOptionCount !== nextOptionCount) {
+          return reply.code(409).send({
+            error: 'Conflict',
+            message: 'Option count cannot be changed because this question has response data',
           });
         }
       }

@@ -5,7 +5,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, CircularProgress,
   Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
-  Menu, Autocomplete,
+  Menu, Autocomplete, InputAdornment,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -24,7 +24,6 @@ import SessionStatusChip from '../../components/common/SessionStatusChip';
 
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
-const QUIZ_WINDOW_VALIDATION_MESSAGE = 'Quiz end must be later than quiz start.';
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_unused, hour) => String(hour).padStart(2, '0'));
 const MINUTE_OPTIONS = ['00', '15', '30', '45', '59'];
 const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
@@ -79,16 +78,13 @@ function buildTodayFlooredToHourDate() {
   return start;
 }
 
-function buildDefaultQuizWindow() {
-  const start = buildTodayFlooredToHourDate();
-  const end = new Date(start.getTime() + TWELVE_HOURS_MS);
-  return {
-    quizStart: toDateTimeLocalString(start),
-    quizEnd: toDateTimeLocalString(end),
-  };
+function buildCurrentDateTimeLocalString() {
+  const current = new Date();
+  current.setSeconds(0, 0);
+  return toDateTimeLocalString(current);
 }
 
-function buildTodayQuizWindow() {
+function buildDefaultQuizWindow() {
   const start = buildTodayFlooredToHourDate();
   const end = new Date(start.getTime() + TWELVE_HOURS_MS);
   return {
@@ -256,16 +252,6 @@ export default function SessionEditor() {
     return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
   };
 
-  const validateQuizWindow = (startValue, endValue) => {
-    const startIso = toIsoIfValid(startValue);
-    const endIso = toIsoIfValid(endValue);
-    if (!startIso || !endIso) return null;
-    if (new Date(endIso).getTime() <= new Date(startIso).getTime()) {
-      return QUIZ_WINDOW_VALIDATION_MESSAGE;
-    }
-    return null;
-  };
-
   const ensureQuizWindowDefaults = useCallback((startValue, endValue) => {
     const defaults = buildDefaultQuizWindow();
     return {
@@ -293,28 +279,49 @@ export default function SessionEditor() {
     }
   };
 
-  const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}) => {
-    const validationMessage = validateQuizWindow(nextStart, nextEnd);
-    if (validationMessage) {
-      setMsg({ severity: 'error', text: validationMessage });
-      return false;
-    }
-    const updates = { ...extraUpdates };
+  const coerceQuizWindowRange = useCallback((nextStart, nextEnd, { warn = false } = {}) => {
     const startIso = toIsoIfValid(nextStart);
     const endIso = toIsoIfValid(nextEnd);
+    if (!startIso || !endIso) {
+      return { startValue: nextStart, endValue: nextEnd, adjusted: false };
+    }
+
+    if (new Date(endIso).getTime() > new Date(startIso).getTime()) {
+      return { startValue: nextStart, endValue: nextEnd, adjusted: false };
+    }
+
+    const adjustedEnd = new Date(new Date(startIso).getTime() + (60 * 60 * 1000));
+    const adjustedEndLocal = toDateTimeLocalString(adjustedEnd);
+    if (warn) {
+      setMsg({
+        severity: 'warning',
+        text: 'Close date was before start date, so it was reset to 1 hour after open date.',
+      });
+    }
+    return { startValue: nextStart, endValue: adjustedEndLocal, adjusted: true };
+  }, []);
+
+  const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}, { warnOnAdjust = true } = {}) => {
+    const {
+      startValue,
+      endValue,
+      adjusted,
+    } = coerceQuizWindowRange(nextStart, nextEnd, { warn: warnOnAdjust });
+
+    if (adjusted) {
+      setQuizStart(startValue);
+      setQuizEnd(endValue);
+    }
+
+    const updates = { ...extraUpdates };
+    const startIso = toIsoIfValid(startValue);
+    const endIso = toIsoIfValid(endValue);
     if (startIso) updates.quizStart = startIso;
     if (endIso) updates.quizEnd = endIso;
     if (Object.keys(updates).length === 0) return true;
     saveSessionPatch(updates);
     return true;
-  }, [saveSessionPatch]);
-
-  const applyTodayQuizWindow = useCallback(() => {
-    const nextWindow = buildTodayQuizWindow();
-    setQuizStart(nextWindow.quizStart);
-    setQuizEnd(nextWindow.quizEnd);
-    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
-  }, [persistQuizWindow]);
+  }, [coerceQuizWindowRange, saveSessionPatch]);
 
   const addTwelveHoursToQuizEnd = useCallback(() => {
     const baseStart = quizStart || buildDefaultQuizWindow().quizStart;
@@ -327,6 +334,17 @@ export default function SessionEditor() {
     setQuizStart(baseStart);
     setQuizEnd(nextEnd);
     persistQuizWindow(baseStart, nextEnd);
+  }, [persistQuizWindow, quizEnd, quizStart]);
+
+  const applyTodayToQuizField = useCallback((target) => {
+    const nowLocal = buildCurrentDateTimeLocalString();
+    if (target === 'start') {
+      setQuizStart(nowLocal);
+      persistQuizWindow(nowLocal, quizEnd);
+      return;
+    }
+    setQuizEnd(nowLocal);
+    persistQuizWindow(quizStart, nowLocal);
   }, [persistQuizWindow, quizEnd, quizStart]);
 
   const updateQuizDateTimePart = useCallback((target, part, rawValue) => {
@@ -356,11 +374,6 @@ export default function SessionEditor() {
 
     const startCandidate = target === 'start' ? nextValue : quizStart;
     const endCandidate = target === 'end' ? nextValue : quizEnd;
-    const validationMessage = validateQuizWindow(startCandidate, endCandidate);
-    if (validationMessage) {
-      setMsg({ severity: 'error', text: validationMessage });
-      return;
-    }
     persistQuizWindow(startCandidate, endCandidate);
   }, [persistQuizWindow, quizEnd, quizStart]);
 
@@ -1004,6 +1017,8 @@ export default function SessionEditor() {
             initialBaseline={baselineQuestion}
             disableTypeSelection={questionHasResponses}
             typeSelectionLockReason="Question type is locked because this question has response data."
+            lockOptionStructure={questionHasResponses}
+            optionStructureLockReason="Option count is locked because this question has response data."
           />
         </Box>
 
@@ -1254,6 +1269,19 @@ export default function SessionEditor() {
                       InputLabelProps={{ shrink: true }}
                       value={quizStartParts.date}
                       onChange={(e) => updateQuizDateTimePart('start', 'date', e.target.value)}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Button
+                              size="small"
+                              onClick={() => applyTodayToQuizField('start')}
+                              disabled={savingSession}
+                            >
+                              Today
+                            </Button>
+                          </InputAdornment>
+                        ),
+                      }}
                       disabled={savingSession}
                     />
                     <TextField
@@ -1290,6 +1318,19 @@ export default function SessionEditor() {
                       value={quizEndParts.date}
                       onChange={(e) => updateQuizDateTimePart('end', 'date', e.target.value)}
                       inputProps={quizStartParts.date ? { min: quizStartParts.date } : undefined}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Button
+                              size="small"
+                              onClick={() => applyTodayToQuizField('end')}
+                              disabled={savingSession}
+                            >
+                              Today
+                            </Button>
+                          </InputAdornment>
+                        ),
+                      }}
                       disabled={savingSession}
                     />
                     <TextField
@@ -1326,14 +1367,6 @@ export default function SessionEditor() {
               </datalist>
 
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={applyTodayQuizWindow}
-                  disabled={savingSession}
-                >
-                  Today
-                </Button>
                 <Button
                   size="small"
                   variant="text"

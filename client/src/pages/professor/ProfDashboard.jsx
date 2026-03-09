@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Chip, InputAdornment, Select, MenuItem, Autocomplete,
-  FormControl, InputLabel, Paper, List, ListItem, ListItemText,
+  FormControl, InputLabel, Paper,
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon, ContentCopy as CopyIcon,
@@ -198,8 +198,8 @@ export default function ProfDashboard() {
           {liveSessionsLoading ? (
             <CircularProgress size={20} />
           ) : (
-            <List disablePadding>
-              {liveSessions.map((session, index) => {
+            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', md: 'repeat(auto-fill, minmax(250px, 1fr))' } }}>
+              {liveSessions.map((session) => {
                 const quizLike = isQuizSession(session);
                 const actionLabel = quizLike ? 'Open Quiz' : 'Join Session';
                 const target = quizLike
@@ -207,36 +207,35 @@ export default function ProfDashboard() {
                   : `/manage/course/${session.courseId}/session/${session._id}/live`;
 
                 return (
-                  <ListItem
+                  <Card
                     key={session._id}
-                    divider={index < liveSessions.length - 1}
-                    disableGutters
-                    secondaryAction={(
-                      <Button
-                        size="small"
-                        variant="contained"
-                        startIcon={<JoinIcon />}
-                        onClick={() => navigate(target)}
-                      >
-                        {actionLabel}
-                      </Button>
-                    )}
+                    variant="outlined"
+                    onClick={() => navigate(target)}
+                    sx={{
+                      cursor: 'pointer',
+                      '&:hover': { boxShadow: 2, borderColor: 'primary.main' },
+                    }}
                   >
-                    <ListItemText
-                      primary={(
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            {session.name}
-                          </Typography>
-                          {quizLike && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-                        </Box>
-                      )}
-                      secondary={`${session.courseCode || session.courseName || 'Course'}${session.courseName ? ` · ${session.courseName}` : ''}`}
-                    />
-                  </ListItem>
+                    <CardContent sx={{ '&:last-child': { pb: 1.5 }, py: 1.5 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap', mb: 0.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 0, flexGrow: 1 }}>
+                          {session.name}
+                        </Typography>
+                        <Chip label="Live" size="small" color="success" sx={COMPACT_CHIP_SX} />
+                        {quizLike && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {`${session.courseCode || session.courseName || 'Course'}${session.courseName ? ` · ${session.courseName}` : ''}`}
+                      </Typography>
+                      <Typography variant="caption" color="primary.main" sx={{ mt: 0.5, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                        <JoinIcon sx={{ fontSize: 14 }} />
+                        {actionLabel}
+                      </Typography>
+                    </CardContent>
+                  </Card>
                 );
               })}
-            </List>
+            </Box>
           )}
         </Paper>
       )}

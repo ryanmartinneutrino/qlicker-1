@@ -181,6 +181,8 @@ export default function QuestionEditor({
   inline = false,
   disableTypeSelection = false,
   typeSelectionLockReason = 'Question type is locked for this question.',
+  lockOptionStructure = false,
+  optionStructureLockReason = 'The number of options is locked because this question has response data.',
 }) {
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
@@ -378,8 +380,14 @@ export default function QuestionEditor({
     });
   };
 
-  const addOption = () => setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
-  const removeOption = (idx) => setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  const addOption = () => {
+    if (lockOptionStructure) return;
+    setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
+  };
+  const removeOption = (idx) => {
+    if (lockOptionStructure) return;
+    setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  };
 
   const autoSaveStatus = autosaveState === 'saved' ? 'success' : autosaveState;
 
@@ -508,11 +516,18 @@ export default function QuestionEditor({
                   />
                 </Box>
                 {form.options.length > 2 && (
-                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }} disabled={lockOptionStructure}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
                 )}
               </Box>
             ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={addOption}>Add Option</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={addOption} disabled={lockOptionStructure}>Add Option</Button>
+            {lockOptionStructure && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {optionStructureLockReason}
+              </Typography>
+            )}
           </Box>
         )}
 

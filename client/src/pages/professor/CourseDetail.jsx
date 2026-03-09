@@ -45,7 +45,8 @@ function parseCourseTab(value) {
 
 function getDefaultQuizWindowIso() {
   const start = new Date();
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  start.setMinutes(0, 0, 0);
+  const end = new Date(start.getTime() + (12 * 60 * 60 * 1000));
   return {
     quizStart: start.toISOString(),
     quizEnd: end.toISOString(),
