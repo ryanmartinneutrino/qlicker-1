@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -16,6 +16,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TableSortLabel,
   TextField,
@@ -370,6 +371,11 @@ export default function CourseGradesPanel({
     student: null,
     sessionName: '',
   });
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [tableScrollWidth, setTableScrollWidth] = useState(0);
+  const topScrollbarRef = useRef(null);
+  const tableContainerRef = useRef(null);
   const fetchGrades = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -437,6 +443,38 @@ export default function CourseGradesPanel({
     return next;
   }, [rows, searchTerm, sort]);
 
+  const paginatedRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    return sortedRows.slice(start, start + rowsPerPage);
+  }, [page, rowsPerPage, sortedRows]);
+
+  const updateScrollWidth = useCallback(() => {
+    const tableElement = tableContainerRef.current;
+    if (!tableElement) return;
+    setTableScrollWidth(tableElement.scrollWidth || 0);
+  }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage((previousPage) => {
+      const maxPage = Math.max(Math.ceil(sortedRows.length / rowsPerPage) - 1, 0);
+      return Math.min(previousPage, maxPage);
+    });
+  }, [rowsPerPage, sortedRows.length]);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(updateScrollWidth);
+    const handleResize = () => updateScrollWidth();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [updateScrollWidth, visibleSessions.length, paginatedRows.length, rowsPerPage]);
+
   const handleSort = useCallback((field) => {
     setSort((previousSort) => {
       if (previousSort.field === field) {
@@ -452,6 +490,16 @@ export default function CourseGradesPanel({
           : 'asc',
       };
     });
+  }, []);
+
+  const handleTopScrollbarScroll = useCallback(() => {
+    if (!topScrollbarRef.current || !tableContainerRef.current) return;
+    tableContainerRef.current.scrollLeft = topScrollbarRef.current.scrollLeft;
+  }, []);
+
+  const handleTableScroll = useCallback(() => {
+    if (!topScrollbarRef.current || !tableContainerRef.current) return;
+    topScrollbarRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
   }, []);
 
   const handleExportCsv = useCallback(() => {
@@ -603,8 +651,30 @@ export default function CourseGradesPanel({
         </Button>
       </Box>
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small" aria-label="Course grade table">
+      <Box
+        ref={topScrollbarRef}
+        onScroll={handleTopScrollbarScroll}
+        sx={{
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          height: 12,
+          mb: 0.75,
+          border: 1,
+          borderColor: 'divider',
+          borderRadius: 1,
+          bgcolor: 'background.paper',
+        }}
+      >
+        <Box sx={{ width: Math.max(tableScrollWidth, 1), height: 1 }} />
+      </Box>
+
+      <TableContainer
+        ref={tableContainerRef}
+        component={Paper}
+        variant="outlined"
+        onScroll={handleTableScroll}
+      >
+        <Table size="small" aria-label="Course grade table" sx={{ '& .MuiTableCell-root': { py: 0.55, px: 0.75 } }}>
           <TableHead>
             <TableRow>
               <TableCell sx={{ fontWeight: 700, minWidth: 130 }}>
@@ -702,7 +772,7 @@ export default function CourseGradesPanel({
             </TableRow>
           </TableHead>
           <TableBody>
-            {sortedRows.map((row) => (
+            {paginatedRows.map((row) => (
               <TableRow key={row.student.studentId} hover>
                 <TableCell>
                   {row.student.lastname}, {row.student.firstname}
@@ -740,6 +810,19 @@ export default function CourseGradesPanel({
           </TableBody>
         </Table>
       </TableContainer>
+      <TablePagination
+        component="div"
+        count={sortedRows.length}
+        page={page}
+        onPageChange={(_, nextPage) => setPage(nextPage)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(event) => {
+          const nextValue = Number(event.target.value) || 25;
+          setRowsPerPage(nextValue);
+          setPage(0);
+        }}
+        rowsPerPageOptions={[25, 50, 100]}
+      />
 
       <Dialog
         open={conflictsDialog.open}
