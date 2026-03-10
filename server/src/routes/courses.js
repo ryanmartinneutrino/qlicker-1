@@ -103,6 +103,7 @@ export default async function courseRoutes(app) {
           filter.instructors = userId;
         } else {
           filter.students = userId;
+          filter.inactive = { $ne: true };
         }
       }
 
@@ -153,6 +154,9 @@ export default async function courseRoutes(app) {
 
       if (!isAdmin && !isInstructor && !isStudent) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not enrolled in this course' });
+      }
+      if (!isAdmin && isStudent && !isInstructor && course.inactive) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Course is inactive for students' });
       }
 
       const obj = course.toObject();
@@ -270,6 +274,9 @@ export default async function courseRoutes(app) {
       const course = await Course.findOne({ enrollmentCode });
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Invalid enrollment code' });
+      }
+      if (course.inactive) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Course is inactive for students' });
       }
 
       if (course.requireVerified) {

@@ -4,11 +4,13 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   Paper,
   Table,
   TableBody,
@@ -323,6 +325,7 @@ export default function SessionQuestionGradingPanel({
   const [activeQuestionId, setActiveQuestionId] = useState('');
   const [studentQuery, setStudentQuery] = useState('');
   const [answerQuery, setAnswerQuery] = useState('');
+  const [showNeedsGradingOnly, setShowNeedsGradingOnly] = useState(false);
   const [draftByStudentId, setDraftByStudentId] = useState({});
   const [savingByStudentId, setSavingByStudentId] = useState({});
   const [bulkPoints, setBulkPoints] = useState('');
@@ -393,11 +396,15 @@ export default function SessionQuestionGradingPanel({
 
       if (!autoGradeable && outOf > 0) {
         eligibleStudents.forEach((student) => {
+          const studentId = String(student?.studentId || '');
+          const grade = gradesByStudentId[studentId] || null;
+          const mark = (grade?.marks || []).find((entry) => String(entry?.questionId) === questionId) || null;
           const questionResult = (student?.questionResults || []).find(
             (result) => String(result?.questionId) === questionId
           );
           const latestResponse = getLatestResponse(questionResult?.responses || []);
           if (!latestResponse) return;
+          if (mark && !mark?.needsGrading) return;
           needsGradingCount += 1;
         });
       }
@@ -408,7 +415,7 @@ export default function SessionQuestionGradingPanel({
         needsGradingCount,
       };
     });
-  }, [isQuizSession, questions, studentResults]);
+  }, [gradesByStudentId, isQuizSession, questions, studentResults]);
 
   const allRows = useMemo(() => {
     if (!activeQuestion) return [];
@@ -434,7 +441,9 @@ export default function SessionQuestionGradingPanel({
       const latestResponse = getLatestResponse(questionResult?.responses || []);
       const responseSummary = buildResponseSummary(activeQuestion, latestResponse);
       const displayName = formatDisplayName(student);
-      const needsManualGrading = questionNeedsManualGrading && !!latestResponse;
+      const markNeedsGrading = !!mark?.needsGrading;
+      const needsManualGrading = questionNeedsManualGrading && !!latestResponse && (!mark || markNeedsGrading);
+      const rowNeedsGrading = markNeedsGrading || needsManualGrading;
 
       return {
         studentId,
@@ -446,6 +455,7 @@ export default function SessionQuestionGradingPanel({
         gradeId: normalizeValue(grade?._id),
         mark,
         needsManualGrading,
+        rowNeedsGrading,
       };
     });
   }, [activeQuestion, gradesByStudentId, isQuizSession, studentResults]);
@@ -478,9 +488,13 @@ export default function SessionQuestionGradingPanel({
         if (!answerHaystack.includes(answerNeedle)) return false;
       }
 
+      if (showNeedsGradingOnly && !row.rowNeedsGrading) {
+        return false;
+      }
+
       return true;
     });
-  }, [allRows, answerQuery, studentQuery]);
+  }, [allRows, answerQuery, showNeedsGradingOnly, studentQuery]);
 
   const sortedRows = useMemo(() => {
     const nextRows = [...filteredRows];
@@ -731,8 +745,42 @@ export default function SessionQuestionGradingPanel({
   ].includes(activeQuestionType);
   const questionOptions = Array.isArray(activeQuestion.options) ? activeQuestion.options : [];
   const displayedStudentHint = isQuizSession
-    ? `Showing ${allRows.length} student${allRows.length === 1 ? '' : 's'} who have saved at least one quiz response.`
-    : `Showing ${allRows.length} student${allRows.length === 1 ? '' : 's'} who joined this session.`;
+    ? `Showing ${sortedRows.length} of ${allRows.length} student${allRows.length === 1 ? '' : 's'} who have saved at least one quiz response.`
+    : `Showing ${sortedRows.length} of ${allRows.length} student${allRows.length === 1 ? '' : 's'} who joined this session.`;
+
+  const renderQuestionRibbon = () => (
+    <Box
+      sx={{
+        display: 'flex',
+        gap: 0.75,
+        flexWrap: 'wrap',
+        mb: 1.5,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
+        p: 1,
+      }}
+    >
+      {questionStatuses.map((entry) => {
+        const isActive = entry.questionId === activeQuestionId;
+        const needsGrading = entry.needsGradingCount > 0;
+        return (
+          <Chip
+            key={entry.questionId}
+            clickable
+            onClick={() => {
+              setActiveQuestionId(entry.questionId);
+              setShowSolution(false);
+            }}
+            label={needsGrading ? `${entry.label} (${entry.needsGradingCount})` : entry.label}
+            color={needsGrading ? 'error' : 'success'}
+            variant={isActive ? 'filled' : 'outlined'}
+            sx={COMPACT_CHIP_SX}
+          />
+        );
+      })}
+    </Box>
+  );
 
   return (
     <Box>
@@ -742,37 +790,7 @@ export default function SessionQuestionGradingPanel({
         </Alert>
       ) : null}
 
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 0.75,
-          flexWrap: 'wrap',
-          mb: 1.5,
-          border: 1,
-          borderColor: 'divider',
-          borderRadius: 1,
-          p: 1,
-        }}
-      >
-        {questionStatuses.map((entry) => {
-          const isActive = entry.questionId === activeQuestionId;
-          const needsGrading = entry.needsGradingCount > 0;
-          return (
-            <Chip
-              key={entry.questionId}
-              clickable
-              onClick={() => {
-                setActiveQuestionId(entry.questionId);
-                setShowSolution(false);
-              }}
-              label={needsGrading ? `${entry.label} (${entry.needsGradingCount})` : entry.label}
-              color={needsGrading ? 'error' : 'success'}
-              variant={isActive ? 'filled' : 'outlined'}
-              sx={COMPACT_CHIP_SX}
-            />
-          );
-        })}
-      </Box>
+      {renderQuestionRibbon()}
 
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
@@ -847,38 +865,7 @@ export default function SessionQuestionGradingPanel({
         )}
       </Paper>
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.25, alignItems: 'center' }}>
-        <TextField
-          size="small"
-          label="Search students"
-          value={studentQuery}
-          onChange={(event) => setStudentQuery(event.target.value)}
-          sx={{ minWidth: 220 }}
-        />
-        <TextField
-          size="small"
-          label="Search answer content"
-          value={answerQuery}
-          onChange={(event) => setAnswerQuery(event.target.value)}
-          sx={{ minWidth: 260, flex: 1 }}
-        />
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={handleRecalculateAll}
-          disabled={recalculating}
-        >
-          Re-calculate all grades
-        </Button>
-      </Box>
-
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
-        {displayedStudentHint}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
-        Feedback math syntax: use \( ... \) for inline math or $$ ... $$ for display math.
-      </Typography>
+      {renderQuestionRibbon()}
 
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
@@ -918,6 +905,50 @@ export default function SessionQuestionGradingPanel({
           </Button>
         </Box>
       </Paper>
+
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.25, alignItems: 'center' }}>
+        <TextField
+          size="small"
+          label="Search students"
+          value={studentQuery}
+          onChange={(event) => setStudentQuery(event.target.value)}
+          sx={{ minWidth: 220 }}
+        />
+        <TextField
+          size="small"
+          label="Search answer content"
+          value={answerQuery}
+          onChange={(event) => setAnswerQuery(event.target.value)}
+          sx={{ minWidth: 260, flex: 1 }}
+        />
+        <Button
+          size="small"
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          onClick={handleRecalculateAll}
+          disabled={recalculating}
+        >
+          Re-calculate all grades
+        </Button>
+        <FormControlLabel
+          control={(
+            <Checkbox
+              size="small"
+              checked={showNeedsGradingOnly}
+              onChange={(event) => setShowNeedsGradingOnly(event.target.checked)}
+            />
+          )}
+          label="Only needs grading"
+          sx={{ ml: { xs: 0, sm: 0.5 } }}
+        />
+      </Box>
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
+        {displayedStudentHint}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
+        Feedback math syntax: use \( ... \) for inline math or $$ ... $$ for display math.
+      </Typography>
 
       <TableContainer component={Paper} variant="outlined">
         <Table
@@ -978,7 +1009,7 @@ export default function SessionQuestionGradingPanel({
               const saving = !!savingByStudentId[row.studentId];
               const rowDisabled = !row.gradeId || !row.mark;
               const rowDirty = isRowDirty(row);
-              const rowNeedsGrading = !!(row.needsManualGrading || row.mark?.needsGrading);
+              const rowNeedsGrading = !!row.rowNeedsGrading;
 
               return (
                 <TableRow

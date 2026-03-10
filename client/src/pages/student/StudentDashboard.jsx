@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
+import { buildCourseTitle } from '../../utils/courseTitle';
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
@@ -97,13 +98,13 @@ export default function StudentDashboard() {
               >
                 <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
-                    {course.deptCode} {course.courseNumber}
+                    {buildCourseTitle(course, 'short')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {course.semester}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {course.name}
+                    {buildCourseTitle(course, 'medium')}
                   </Typography>
                   {course.section && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
