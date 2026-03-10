@@ -5,10 +5,10 @@ import {
   List, ListItem, ListItemText, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
-import { Quiz as QuizIcon } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
@@ -206,13 +206,8 @@ export default function StudentCourseDetail() {
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !isQuizSession(s));
   const quizSessions = sortedSessions.filter(isQuizSession);
-  const headerCourseName = String(course.name || '').trim() || 'Course';
-  const headerDeptCode = String(course.deptCode || '').trim();
-  const headerCourseNumber = String(course.courseNumber || '').trim();
+  const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
-  const headerSemester = String(course.semester || '').trim();
-  const headerCode = `${headerDeptCode} ${headerCourseNumber}`.trim();
-  const headerTitle = `${headerCode ? `${headerCode}: ` : ''}${headerCourseName}${headerSemester ? ` (${headerSemester})` : ''}`;
 
   const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
@@ -249,7 +244,7 @@ export default function StudentCourseDetail() {
                             sx={COMPACT_CHIP_SX}
                           />
                         )}
-                        {isQuizSession(s) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                        {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
                       </Box>
                     </Box>
                   )}

@@ -16,6 +16,7 @@ import {
   formatSemester,
   getYearOptions,
 } from '../../utils/courseSemester';
+import { buildCourseTitle } from '../../utils/courseTitle';
 
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
@@ -100,7 +101,15 @@ export default function ProfDashboard() {
   const filtered = courses.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    const searchable = `${c.name} ${c.deptCode} ${c.courseNumber} ${c.section} ${c.semester}`.toLowerCase();
+    const searchable = [
+      buildCourseTitle(c, 'short'),
+      buildCourseTitle(c, 'medium'),
+      buildCourseTitle(c, 'long'),
+      c.section,
+    ]
+      .map((entry) => String(entry || '').trim())
+      .join(' ')
+      .toLowerCase();
     return searchable.includes(q);
   }).sort((a, b) => {
     const aActive = a.inactive ? 1 : 0;
@@ -160,13 +169,13 @@ export default function ProfDashboard() {
               >
                 <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
-                    {course.deptCode} {course.courseNumber}
+                    {buildCourseTitle(course, 'short')}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {course.semester}
                   </Typography>
                   <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {course.name}
+                    {buildCourseTitle(course, 'medium')}
                   </Typography>
                   {course.section && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>

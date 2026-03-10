@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
@@ -108,6 +108,31 @@ function formatPercent(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '—';
   return `${Math.round(numeric * 10) / 10}%`;
+}
+
+function summarizeUngradedMarks(grades = []) {
+  const questionIds = new Set();
+  const studentIds = new Set();
+  let marks = 0;
+
+  grades.forEach((grade) => {
+    let studentHasUngradedMark = false;
+    (grade?.marks || []).forEach((mark) => {
+      if (!mark?.needsGrading) return;
+      marks += 1;
+      studentHasUngradedMark = true;
+      if (mark?.questionId) questionIds.add(String(mark.questionId));
+    });
+    if (studentHasUngradedMark && grade?.userId) {
+      studentIds.add(String(grade.userId));
+    }
+  });
+
+  return {
+    marks,
+    students: studentIds.size,
+    questions: questionIds.size,
+  };
 }
 
 function formatJoinedAt(value) {
@@ -247,21 +272,6 @@ function isLatestResponseCorrect(question, response) {
   return null;
 }
 
-function isAutoGradeableQuestionType(questionType) {
-  return [
-    QUESTION_TYPES.MULTIPLE_CHOICE,
-    QUESTION_TYPES.TRUE_FALSE,
-    QUESTION_TYPES.MULTI_SELECT,
-    QUESTION_TYPES.NUMERICAL,
-  ].includes(questionType);
-}
-
-function getQuestionPoints(question) {
-  const numeric = Number(question?.sessionOptions?.points);
-  if (!Number.isFinite(numeric) || numeric < 0) return 0;
-  return numeric;
-}
-
 function escapeCsvCell(value) {
   if (value == null) return '';
   const str = String(value);
@@ -379,6 +389,7 @@ function DistributionBars({
 export default function SessionReview() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -388,8 +399,14 @@ export default function SessionReview() {
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
   const [reviewableWarning, setReviewableWarning] = useState('');
+  const [gradingNeedsSummary, setGradingNeedsSummary] = useState({ marks: 0, students: 0, questions: 0 });
   const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
   const [studentSearch, setStudentSearch] = useState('');
+  const requestedReturnTab = Number.parseInt(searchParams.get('returnTab') || '', 10);
+  const resolvedReturnTab = Number.isInteger(requestedReturnTab) && requestedReturnTab >= 0 ? requestedReturnTab : 0;
+  const backToCoursePath = resolvedReturnTab > 0
+    ? `/manage/course/${courseId}?tab=${resolvedReturnTab}`
+    : `/manage/course/${courseId}`;
 
   // ---- Data fetching ----
 
@@ -399,6 +416,15 @@ export default function SessionReview() {
       setSession(data.session);
       setQuestions(data.questions || []);
       setStudentResults(data.studentResults || []);
+
+      try {
+        const gradesRes = await apiClient.get(`/sessions/${sessionId}/grades`);
+        const summary = summarizeUngradedMarks(gradesRes.data?.grades || []);
+        setGradingNeedsSummary(summary);
+      } catch {
+        setGradingNeedsSummary({ marks: 0, students: 0, questions: 0 });
+      }
+
       setError(null);
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to load session results.';
@@ -431,26 +457,23 @@ export default function SessionReview() {
 
   const totalQuestions = questions.length;
   const totalStudents = studentResults.length;
-  const avgParticipation = useMemo(() => {
-    if (!studentResults.length) return 0;
-    const sum = studentResults.reduce((acc, s) => acc + (Number(s.participation) || 0), 0);
-    return (sum / studentResults.length).toFixed(1);
+  const joinedStudents = useMemo(() => {
+    return studentResults.filter((student) => !!student?.inSession).length;
   }, [studentResults]);
 
-  const hasOutstandingManualGrading = useMemo(() => {
-    return questions.some((question) => {
-      const qType = normalizeQuestionType(question);
-      const outOf = getQuestionPoints(question);
-      if (outOf <= 0 || isAutoGradeableQuestionType(qType)) return false;
-      return studentResults.some((student) => {
-        const questionResult = (student?.questionResults || []).find(
-          (result) => String(result?.questionId) === String(question?._id),
-        );
-        const latestResponse = getLatestResponse(questionResult?.responses || []);
-        return !!latestResponse;
-      });
-    });
-  }, [questions, studentResults]);
+  const participatedStudents = useMemo(() => {
+    return studentResults.filter((student) => (
+      !!student?.inSession
+      && (student?.questionResults || []).some((result) => (
+        Array.isArray(result?.responses) && result.responses.length > 0
+      ))
+    )).length;
+  }, [studentResults]);
+
+  const participatedStudentsPercent = totalStudents > 0
+    ? Math.round((1000 * participatedStudents) / totalStudents) / 10
+    : 0;
+  const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -753,7 +776,7 @@ export default function SessionReview() {
         <Button
           variant="outlined"
           startIcon={<BackIcon />}
-          onClick={() => navigate(`/manage/course/${courseId}`)}
+          onClick={() => navigate(backToCoursePath)}
         >
           Back to course
         </Button>
@@ -769,7 +792,7 @@ export default function SessionReview() {
         <Button
           size="small"
           startIcon={<BackIcon />}
-          onClick={() => navigate(`/manage/course/${courseId}`)}
+          onClick={() => navigate(backToCoursePath)}
           sx={{ mb: 2 }}
         >
           Back to course
@@ -788,7 +811,7 @@ export default function SessionReview() {
         <Button
           size="small"
           startIcon={<BackIcon />}
-          onClick={() => navigate(`/manage/course/${courseId}`)}
+          onClick={() => navigate(backToCoursePath)}
           sx={{ mb: 1 }}
         >
           Back to course
@@ -819,8 +842,13 @@ export default function SessionReview() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalStudents}</Typography>
         </Paper>
         <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Avg Participation</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{avgParticipation}%</Typography>
+          <Typography variant="caption" color="text.secondary">Joined Session</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{joinedStudents}/{totalStudents}</Typography>
+        </Paper>
+        <Paper variant="outlined" sx={{ p: 1.5, minWidth: 120, textAlign: 'center' }}>
+          <Typography variant="caption" color="text.secondary">Class Participation</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{participatedStudents}/{totalStudents}</Typography>
+          <Typography variant="caption" color="text.secondary">{participatedStudentsPercent}%</Typography>
         </Paper>
 
         <Box sx={{ flex: 1 }} />
@@ -854,6 +882,11 @@ export default function SessionReview() {
           {reviewableWarning}
         </Alert>
       ) : null}
+      {hasOutstandingManualGrading ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {`There ${gradingNeedsSummary.questions === 1 ? 'is' : 'are'} ${gradingNeedsSummary.questions} ungraded question${gradingNeedsSummary.questions === 1 ? '' : 's'}, affecting ${gradingNeedsSummary.students} student${gradingNeedsSummary.students === 1 ? '' : 's'} (${gradingNeedsSummary.marks} mark${gradingNeedsSummary.marks === 1 ? '' : 's'}).`}
+        </Alert>
+      ) : null}
 
       {/* Tabs */}
       <Tabs
@@ -869,7 +902,7 @@ export default function SessionReview() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
               <span>Grading</span>
               {hasOutstandingManualGrading && (
-                <Chip size="small" color="error" label="Needs grading" />
+                <Chip size="small" color="error" label={`Needs grading (${gradingNeedsSummary.marks})`} />
               )}
             </Box>
           )}

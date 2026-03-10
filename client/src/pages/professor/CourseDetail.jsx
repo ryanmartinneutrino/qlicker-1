@@ -9,11 +9,12 @@ import {
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
-  Quiz as QuizIcon, PlayArrow as LaunchIcon, Login as JoinIcon,
+  PlayArrow as LaunchIcon, Login as JoinIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
@@ -174,8 +175,6 @@ export default function CourseDetail() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [gradingSummaryBySessionId, setGradingSummaryBySessionId] = useState({});
   const [createSessionOpen, setCreateSessionOpen] = useState(false);
-  const [newSessionName, setNewSessionName] = useState('');
-  const [newSessionDesc, setNewSessionDesc] = useState('');
   const [creatingSess, setCreatingSess] = useState(false);
   const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
   const [sessionUpdatesInFlight, setSessionUpdatesInFlight] = useState({});
@@ -186,6 +185,8 @@ export default function CourseDetail() {
   const lastSavedEditFieldsHashRef = useRef('');
   const settingsSaveInFlightRef = useRef(false);
   const queuedSettingsFieldsRef = useRef(null);
+  const newSessionNameInputRef = useRef(null);
+  const newSessionDescInputRef = useRef(null);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -482,23 +483,33 @@ export default function CourseDetail() {
 
   // Session actions
   const handleCreateSession = async () => {
-    if (!newSessionName.trim()) return;
+    const nextSessionName = String(newSessionNameInputRef.current?.value || '').trim();
+    const nextSessionDesc = String(newSessionDescInputRef.current?.value || '').trim();
+    if (!nextSessionName) return;
     setCreatingSess(true);
     try {
-      const body = { name: newSessionName.trim() };
-      if (newSessionDesc.trim()) body.description = newSessionDesc.trim();
+      const body = { name: nextSessionName };
+      if (nextSessionDesc) body.description = nextSessionDesc;
       if (tab === 1) {
         const quizWindow = getDefaultQuizWindowIso();
         body.quiz = true;
         body.quizStart = quizWindow.quizStart;
         body.quizEnd = quizWindow.quizEnd;
       }
-      await apiClient.post(`/courses/${id}/sessions`, body);
+      const { data } = await apiClient.post(`/courses/${id}/sessions`, body);
+      const createdSession = data?.session || data;
       setCreateSessionOpen(false);
-      setNewSessionName('');
-      setNewSessionDesc('');
-      fetchSessions();
-      setMsg({ severity: 'success', text: 'Session created' });
+      if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+      if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+      if (createdSession?._id) {
+        navigate(
+          `/manage/course/${id}/session/${createdSession._id}?returnTab=${tab}`,
+          { state: { returnTab: tab } }
+        );
+      } else {
+        await fetchSessions();
+        setMsg({ severity: 'success', text: 'Session created' });
+      }
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to create session' });
     } finally {
@@ -572,6 +583,15 @@ export default function CourseDetail() {
   const headerCourseNumber = settingsHydratedRef.current ? editFields.courseNumber : toText(course.courseNumber);
   const headerSection = settingsHydratedRef.current ? editFields.section : toText(course.section);
   const headerSemester = settingsHydratedRef.current ? editFields.semester : toText(course.semester);
+  const headerTitle = buildCourseTitle(
+    {
+      name: headerCourseName,
+      deptCode: headerDeptCode,
+      courseNumber: headerCourseNumber,
+      semester: headerSemester,
+    },
+    'long'
+  );
 
   const renderSessionList = (sessionItems, emptyText) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
@@ -603,19 +623,10 @@ export default function CourseDetail() {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         {s.name}
                         <SessionStatusChip status={s.status} />
-                        {(s.quiz || s.practiceQuiz) && <Chip icon={<QuizIcon />} label="Quiz" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                        {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
                         {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
                           <Chip
                             label="Extensions Active"
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                            sx={COMPACT_CHIP_SX}
-                          />
-                        )}
-                        {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 && (
-                          <Chip
-                            label={`Needs grading: ${gradingSummaryBySessionId[s._id].marksNeedingGrading} mark${gradingSummaryBySessionId[s._id].marksNeedingGrading === 1 ? '' : 's'} / ${gradingSummaryBySessionId[s._id].studentsNeedingGrading} student${gradingSummaryBySessionId[s._id].studentsNeedingGrading === 1 ? '' : 's'}`}
                             size="small"
                             color="warning"
                             variant="outlined"
@@ -676,12 +687,18 @@ export default function CourseDetail() {
                   {s.status === 'done' && (
                     <Button
                       size="small"
-                      variant="outlined"
+                      variant={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'contained' : 'outlined'}
+                      color={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'warning' : 'primary'}
                       startIcon={<ReviewIcon />}
-                      onClick={() => navigate(`/manage/course/${id}/session/${s._id}/review`)}
+                      onClick={() => navigate(
+                        `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                        { state: { returnTab: tab } }
+                      )}
                       aria-label={`Review session ${s.name}`}
                     >
-                      Review
+                      {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
+                        ? `Grade (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
+                        : 'Review'}
                     </Button>
                   )}
                   <TextField
@@ -735,7 +752,7 @@ export default function CourseDetail() {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {`${headerDeptCode || ''} ${headerCourseNumber || ''}`.trim()}: {headerCourseName} ({headerSemester})
+            {headerTitle}
           </Typography>
           {headerSection && (
             <Typography variant="caption" color="text.secondary">
@@ -774,7 +791,15 @@ export default function CourseDetail() {
       <TabPanel value={tab} index={0}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Interactive Sessions</Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateSessionOpen(true)}>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+              if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+              setCreateSessionOpen(true);
+            }}
+          >
             Create Session
           </Button>
         </Box>
@@ -785,7 +810,15 @@ export default function CourseDetail() {
       <TabPanel value={tab} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6">Quizzes</Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setCreateSessionOpen(true)}>
+          <Button
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+              if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+              setCreateSessionOpen(true);
+            }}
+          >
             Create Session
           </Button>
         </Box>
@@ -798,7 +831,10 @@ export default function CourseDetail() {
         <CourseGradesPanel
           courseId={id}
           instructorView
-          onOpenSession={(sessionId) => navigate(`/manage/course/${id}/session/${sessionId}/review`)}
+          onOpenSession={(sessionId) => navigate(
+            `/manage/course/${id}/session/${sessionId}/review?returnTab=2`,
+            { state: { returnTab: 2 } }
+          )}
         />
       </TabPanel>
 
@@ -1089,15 +1125,32 @@ export default function CourseDetail() {
       </Dialog>
 
       {/* Create Session Dialog */}
-      <Dialog open={createSessionOpen} onClose={() => setCreateSessionOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={createSessionOpen}
+        onClose={() => {
+          setCreateSessionOpen(false);
+          if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+          if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>Create Session</DialogTitle>
         <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="Session Name" value={newSessionName} onChange={(e) => setNewSessionName(e.target.value)} fullWidth autoFocus />
-          <TextField label="Description (optional)" value={newSessionDesc} onChange={(e) => setNewSessionDesc(e.target.value)} fullWidth multiline rows={2} />
+          <TextField label="Session Name" inputRef={newSessionNameInputRef} fullWidth autoFocus />
+          <TextField label="Description (optional)" inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateSessionOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreateSession} disabled={creatingSess || !newSessionName.trim()}>
+          <Button
+            onClick={() => {
+              setCreateSessionOpen(false);
+              if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+              if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+            }}
+          >
+            Cancel
+          </Button>
+          <Button variant="contained" onClick={handleCreateSession} disabled={creatingSess}>
             {creatingSess ? 'Creating…' : 'Create'}
           </Button>
         </DialogActions>

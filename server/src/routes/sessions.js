@@ -601,8 +601,17 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
+function isStudentBlockedByInactiveCourse(course, user) {
+  if (!course?.inactive) return false;
+  const roles = user.roles || [];
+  if (roles.includes('admin')) return false;
+  if (course.instructors.includes(user.userId)) return false;
+  return course.students.includes(user.userId);
+}
+
 // Helper to check if user is a member of the course (student, instructor, or admin)
 function isCourseMember(course, user) {
+  if (isStudentBlockedByInactiveCourse(course, user)) return false;
   const roles = user.roles || [];
   return roles.includes('admin') ||
     course.instructors.includes(user.userId) ||
@@ -2214,6 +2223,9 @@ export default async function sessionRoutes(app) {
       const course = await Course.findById(session.courseId);
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
       const questionId = session.currentQuestion;
