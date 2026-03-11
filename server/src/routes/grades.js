@@ -6,8 +6,10 @@ import Session from '../models/Session.js';
 import User from '../models/User.js';
 import {
   calculateResponsePoints,
+  ensureSessionMsScoringMethod,
   getSessionMsScoringMethod,
   getSessionUngradedSummary,
+  hasNonEmptyFeedback,
   isQuestionAutoGradeable,
   recalculateSessionGrades,
   recomputeGradeAggregates,
@@ -47,23 +49,37 @@ function formatUserDisplayName(user) {
 
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
-  return roles.includes('admin') || course.instructors.includes(user.userId);
+  return roles.includes('admin') || (course.instructors || []).includes(user.userId);
 }
 
 function isStudentBlockedByInactiveCourse(course, user) {
   if (!course?.inactive) return false;
   const roles = user.roles || [];
   if (roles.includes('admin')) return false;
-  if (course.instructors.includes(user.userId)) return false;
-  return course.students.includes(user.userId);
+  if ((course.instructors || []).includes(user.userId)) return false;
+  return (course.students || []).includes(user.userId);
 }
 
 function isCourseMember(course, user) {
   if (isStudentBlockedByInactiveCourse(course, user)) return false;
   const roles = user.roles || [];
   return roles.includes('admin')
-    || course.instructors.includes(user.userId)
-    || course.students.includes(user.userId);
+    || (course.instructors || []).includes(user.userId)
+    || (course.students || []).includes(user.userId);
+}
+
+function notifySessionUpdated(app, course, sessionId) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course || !sessionId) return;
+  const memberIds = [...new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean))];
+  if (memberIds.length === 0) return;
+  app.wsSendToUsers(memberIds, 'session:updated', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+  });
 }
 
 function parseSessionIds(queryValue) {
@@ -149,12 +165,12 @@ export default async function gradeRoutes(app) {
       schema: recalcSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -268,7 +284,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -286,6 +302,7 @@ export default async function gradeRoutes(app) {
       }
 
       const nextMark = { ...marks[markIndex] };
+      let feedbackStateChanged = false;
 
       if (request.body.points !== undefined) {
         nextMark.points = toFiniteNumber(request.body.points, 0);
@@ -296,7 +313,22 @@ export default async function gradeRoutes(app) {
       }
 
       if (request.body.feedback !== undefined) {
-        nextMark.feedback = request.body.feedback || '';
+        const previousFeedback = nextMark.feedback || '';
+        const nextFeedback = request.body.feedback || '';
+        const feedbackChanged = nextFeedback !== previousFeedback;
+        nextMark.feedback = nextFeedback;
+
+        if (hasNonEmptyFeedback(nextFeedback)) {
+          if (feedbackChanged || !nextMark.feedbackUpdatedAt) {
+            nextMark.feedbackUpdatedAt = new Date();
+            feedbackStateChanged = true;
+          }
+        } else {
+          if (hasNonEmptyFeedback(previousFeedback) || nextMark.feedbackUpdatedAt) {
+            feedbackStateChanged = true;
+          }
+          nextMark.feedbackUpdatedAt = null;
+        }
       }
 
       marks[markIndex] = nextMark;
@@ -321,6 +353,9 @@ export default async function gradeRoutes(app) {
       );
 
       const updated = await Grade.findById(grade._id).lean();
+      if (feedbackStateChanged) {
+        notifySessionUpdated(app, course, grade.sessionId);
+      }
       return { grade: updated };
     }
   );
@@ -342,10 +377,12 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const session = await Session.findById(grade.sessionId).lean();
+      let session = await Session.findById(grade.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
+      const msNormalization = await ensureSessionMsScoringMethod(session);
+      session = msNormalization.session || session;
 
       const questionId = String(request.params.questionId);
       const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark.toObject?.() || mark })) : [];
@@ -429,7 +466,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -463,7 +500,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -520,7 +557,7 @@ export default async function gradeRoutes(app) {
       }
 
       const sessions = await Session.find(sessionQuery)
-        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz')
+        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz questions')
         .lean();
 
       sessions.sort((a, b) => {
@@ -530,6 +567,13 @@ export default async function gradeRoutes(app) {
       });
 
       const sessionIds = sessions.map((session) => String(session._id));
+      const uniqueQuestionIds = [...new Set(
+        sessions.flatMap((session) => (
+          Array.isArray(session?.questions)
+            ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
+            : []
+        ))
+      )];
       const gradeQuery = {
         courseId: String(course._id),
         sessionId: { $in: sessionIds },
@@ -543,7 +587,7 @@ export default async function gradeRoutes(app) {
         gradeQuery.visibleToStudents = true;
       }
 
-      const [grades, students, ungradedSummaryBySessionId] = await Promise.all([
+      const [grades, students, ungradedSummaryBySessionId, questions] = await Promise.all([
         sessionIds.length > 0
           ? Grade.find(gradeQuery).lean()
           : Promise.resolve([]),
@@ -551,7 +595,16 @@ export default async function gradeRoutes(app) {
           ? User.find({ _id: { $in: studentIds } }).select('_id profile emails email').lean()
           : Promise.resolve([]),
         getSessionUngradedSummary(sessionIds),
+        uniqueQuestionIds.length > 0
+          ? Question.find({ _id: { $in: uniqueQuestionIds } }).select('_id type').lean()
+          : Promise.resolve([]),
       ]);
+
+      const autoGradeableQuestionIds = new Set(
+        questions
+          .filter((question) => isQuestionAutoGradeable(question?.type))
+          .map((question) => String(question._id))
+      );
 
       const gradeByStudentAndSession = new Map();
       grades.forEach((grade) => {
@@ -638,6 +691,9 @@ export default async function gradeRoutes(app) {
           quizStart: session.quizStart,
           studentsNeedingGrading: ungraded.studentsNeedingGrading,
           marksNeedingGrading: ungraded.marksNeedingGrading,
+          autoGradeableQuestionIds: (session.questions || [])
+            .map((questionId) => String(questionId))
+            .filter((questionId) => autoGradeableQuestionIds.has(questionId)),
         };
       });
 

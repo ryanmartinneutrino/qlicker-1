@@ -229,6 +229,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | POST | `/api/v1/sessions/:id/copy` | Copy session |
 | GET | `/api/v1/sessions/:id/live` | Get live session data (student/prof) |
 | GET | `/api/v1/sessions/:id/review` | Get session review data |
+| POST | `/api/v1/sessions/:id/review/feedback/dismiss` | Dismiss feedback notification (student) |
 | GET | `/api/v1/sessions/:id/results` | Get session results (prof) |
 | POST | `/api/v1/sessions/:id/respond` | Submit response (live session) |
 | PATCH | `/api/v1/sessions/:id/question-visibility` | Show/hide question |
@@ -315,10 +316,10 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 |------------------|---------------|---------------|-------|
 | `users` | `User` | ✅ Compatible | Core fields align (`_id` string, `emails[]`, `profile.roles`). Password storage now uses `services.password.hash` (argon2id) for new writes. Legacy `services.password.bcrypt` is detected and triggers reset-required flow. `lastLogin` optional. Legacy `services.password.reset.*` path differs from new `services.resetPassword.*`. |
 | `courses` | `Course` | Partial | Main fields align. Legacy `groupCategories.groups` uses `groupNumber/groupName/students`; current model uses `name/members`, so direct shape mismatch exists. |
-| `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz` are additive and optional. |
+| `sessions` | `Session` | Mostly aligned | Core legacy fields align (`status`, `quiz`, `questions`, `currentQuestion`, `joined`, `quizStart`, `quizEnd`, `reviewable`). New fields like `practiceQuiz`/`submittedQuiz`/`msScoringMethod` are additive and optional. `msScoringMethod` is auto-backfilled to the default (`right-minus-wrong`) when an instructor opens the session or grades are recalculated. |
 | `questions` | `Question` | Mostly aligned | Legacy fields align for session/course ownership, options, tags, and session options. New schema fields (`toleranceNumerical`, `correctNumerical`, `solution*`, `imagePath`) are additive. |
 | `responses` | `Response` | ✅ Compatible | Legacy fields `attempt`, `questionId`, `studentUserId`, `answer`, `createdAt`, and `mark` are all in the model. New fields `correct`, `updatedAt`, `editable`, `answerWysiwyg` are optional with defaults. |
-| `grades` | `Grade` | Mostly aligned | Legacy marks and aggregate grade fields align with current schema; newer fields like `feedback` are additive defaults. |
+| `grades` | `Grade` | Mostly aligned | Legacy marks and aggregate grade fields align with current schema; newer fields like `feedback`, `feedbackUpdatedAt` (per mark), and `feedbackSeenAt` (per grade) are additive with null defaults. |
 | `images` | `Image` | ✅ Compatible | Legacy documents (`_id`, `url`, `UID`) load without errors. `key`, `type`, and `size` are now optional with defaults (were previously `required`). |
 | `settings` | `Settings` | ✅ Compatible | Schema now includes both new and legacy field names (`email`/`adminEmail`, `AWS_accessKey`/`AWS_accessKeyId`, etc.). Schema uses `strict: false` to preserve any extra legacy fields (Jitsi, image limits) on save. Virtual getters resolve either field name. |
 | `meteor_accounts_loginServiceConfiguration` | none | Gap | Legacy collection exists (empty in this snapshot) but has no equivalent model yet. |
@@ -372,6 +373,9 @@ The following code changes were made to ensure the app works correctly with a re
 | Response model `mark` field | `server/src/models/Response.js` | Added `mark: { type: Number }` field present in legacy response documents for grading. |
 | Password hashing modernization | `server/src/utils/password.js`, `server/src/models/User.js`, `server/src/routes/auth.js`, `server/src/routes/users.js`, `scripts/seed-db.js` | Switched to argon2id for new password hashes. Added explicit reset-required detection for both legacy bcrypt hashes and accounts without a local password (`code: PASSWORD_RESET_REQUIRED`, reason `legacy_hash` or `no_local_password`). Seed script now creates argon2id hashes. |
 | Seed script behavior alignment | `scripts/seed-db.js`, `scripts/seed-db.sh`, `scripts/seed-db-docker.sh` | `--reset` now always leaves the database empty. Default no-argument execution seeds the 3 example users in both native and Docker wrappers. |
+| MS scoring method backfill | `server/src/services/grading.js`, `server/src/routes/sessions.js`, `server/src/routes/grades.js` | Legacy sessions may lack `msScoringMethod`. The `ensureSessionMsScoringMethod` helper auto-normalizes and persists the default (`right-minus-wrong`) on first access — when an instructor opens the session, grades are recalculated, or mark reset-to-automatic runs. |
+| Feedback field defaults | `server/src/models/Grade.js` | Added `feedbackUpdatedAt` (per mark, default null) and `feedbackSeenAt` (per grade, default null). Legacy grades without these fields are handled gracefully with null fallbacks throughout the grading and feedback code. |
+| Defensive array access | `server/src/routes/sessions.js`, `server/src/routes/grades.js` | All access to `session.joined`, `session.questions`, `course.instructors`, and `course.students` now uses `|| []` fallbacks. Legacy documents loaded via `.lean()` may be missing array fields that have schema defaults but were never stored. |
 
 ### UI Updates from Testing (Pre-Milestone Follow-Up)
 
@@ -1004,7 +1008,7 @@ The following issues were identified during testing and have been resolved:
 | 5 - Responses | Response model + WebSocket + response submission + quiz auto-save + stats | ✅ Phase 5 done (routes in sessions.js) |
 | 6 - Grading | Core grading service/routes complete (auto/manual grading, visibility, conflicts, CSV, course/session grade tables) | ✅ Phase 6 done |
 | 7 - Frontend | All phase 1–6 UI complete: login, admin, courses, sessions, live sessions, quizzes, grading, review | ✅ Phase 6 done |
-| 8 - Testing | Server + client tests passing (143 total: 141 server across 8 suites + 2 client grading UI tests) | ✅ Phase 6 done |
+| 8 - Testing | Server + client tests passing (153 total: 150 server across 8 suites + 3 client grading UI tests) | ✅ Phase 6 done |
 
 ---
 
@@ -1095,8 +1099,8 @@ Core grading is now implemented and wired through backend + frontend:
     - Client: `client/src/components/grades/CourseGradesPanel.test.jsx` verifies student-vs-instructor grade-table behavior for search visibility and ungraded labeling.
 
 - Full verification run (2026-03-09):
-  - `cd server && npm test` → 141 passed (8 files/suites).
-  - `cd client && npm test` → 2 passed (1 file).
+  - `cd server && npm test` → 150 passed (8 files/suites).
+  - `cd client && npm test` → 3 passed (1 file).
   - `cd client && npm run build` → success.
 
 #### Grade Calculation Notes (Legacy-Compatible)
@@ -1126,6 +1130,52 @@ Target state is a private S3 bucket for all image assets. To avoid breaking lega
 3. **Staged DB migration:** backfill image references in batches (users profile fields, images collection URLs, and question HTML/image URL references), with dry-run and rollback support.
 4. **Validation window:** verify old and new records render through the new read path in staging and production shadow checks.
 5. **Bucket cutover:** enable private-bucket policy / Block Public Access after application read-path migration is confirmed.
+
+### Grading UX and Legacy Fallback Improvements (2026-03-11)
+
+- Grading table workflow improvements:
+  - Grade table is hidden by default; session-picker modal for showing/editing grade table and CSV export
+  - Session picker with search, filtered select-all, and ungraded indicator chips
+  - Recalculation shows progress and refreshes the grade table on completion
+  - Manual override conflict details show clickable links and a review modal with question display, student/correct answers, and accept/save actions
+  - Non-auto-gradeable question types (e.g., short-answer) excluded from conflict detection
+  - Grade modal marks auto-gradeable questions as "Auto" and non-auto-gradeable as "Manual only"
+
+- Feedback notification flow:
+  - Per-mark `feedbackUpdatedAt` and per-grade `feedbackSeenAt` timestamps for feedback state tracking
+  - Student session list shows "New feedback" chip when applicable
+  - Student review page shows a feedback notification listing affected questions
+  - `POST /sessions/:id/review/feedback/dismiss` endpoint clears the chip; new later feedback re-triggers it
+  - Feedback updates/dismissals trigger WebSocket refresh events
+
+- Legacy `msScoringMethod` backfill:
+  - `ensureSessionMsScoringMethod()` auto-normalizes and persists the default scoring method
+  - Triggered on: instructor session open (`GET /sessions/:id`), grade recalculation, and mark reset-to-automatic
+  - Handles missing, undefined, or non-canonical (e.g., uppercase) legacy values
+
+- Defensive array access hardening:
+  - All `session.joined`, `session.questions`, `course.instructors`, and `course.students` access uses `|| []` fallbacks
+  - Prevents crashes when legacy documents loaded via `.lean()` are missing array fields
+  - Removed duplicate `parseTimestamp` helper; consolidated to `getTimestampMs` exported from `grading.js`
+
+- Student course session list UX:
+  - Sorting by status buckets (Live → Draft → Upcoming → Ended), then by appropriate date within each bucket
+  - Session rows are primary action surfaces (click → review, live, quiz)
+  - Quiz state chips: Start quiz / Resume quiz / Submit quiz / Quiz submitted
+  - Quiz progress tracking: `quizHasResponsesByCurrentUser`, `quizAllQuestionsAnsweredByCurrentUser`
+
+- Numerical answer tolerance display consistency:
+  - `toleranceNumerical` now preserved in student quiz/live payloads (previously stripped)
+  - Student answering surfaces show tolerance helper text near numerical input
+
+- Per-session `autoGradeableQuestionIds` included in `/courses/:courseId/grades` response for grade modal rendering
+
+- `.lean()` added to additional read-only queries in grades and sessions routes
+
+- Full verification run (2026-03-11):
+  - `cd server && npm test` → 150 passed (8 files/suites).
+  - `cd client && npm test` → 3 passed (1 file).
+  - `cd client && npm run build` → success.
 
 ### Phase 5 Progress
 
@@ -1413,6 +1463,9 @@ All findings from this review are consistent with the existing legacy compatibil
 - ✅ Legacy question types normalized via migration script
 - ✅ Settings model uses `strict: false` to preserve extra legacy fields
 - ✅ Image model has optional fields for legacy compatibility
+- ✅ Session `msScoringMethod` auto-backfilled on access for legacy sessions without the field
+- ✅ Grade `feedbackUpdatedAt`/`feedbackSeenAt` default to null for legacy grades
+- ✅ Defensive `|| []` fallbacks on `session.joined`, `session.questions`, `course.instructors`, `course.students`
 - ⚠️ Group categories shape mismatch (`groupNumber/groupName/students` vs `name/members`) — noted in Phase 7 tasks
 - ⚠️ `meteor_accounts_loginServiceConfiguration` collection has no equivalent model — decide if needed or can be deprecated
 
@@ -1424,6 +1477,6 @@ All findings from this review are consistent with the existing legacy compatibil
 | **Security** | Rate limiting, helmet, ReDoS, passwords, login logging, HTML sanitization | CSRF, localStorage token, SAML validation, token rotation, file magic bytes | Phases 7–8 |
 | **Accessibility** | ARIA on editors, aria-live regions, semantic logo, table headers, skip link, page titles, route focus management | Add automated accessibility regression tests (axe-core) | Phase 7 |
 | **i18n** | — | Install react-i18next, extract strings, locale-aware formatting | Phases 7–8 |
-| **Legacy DB** | All known issues addressed | Group categories shape, loginServiceConfiguration decision, missing indexes | Phase 7 |
+| **Legacy DB** | All known issues addressed; defensive array fallbacks; msScoringMethod backfill | Group categories shape, loginServiceConfiguration decision, missing indexes | Phase 7 |
 | **Documentation** | README ✅, grading docs ✅ | Swagger registration, complete developer guide, complete user manual | Phases 7–8 |
-| **Testing** | 141 server + 2 client unit tests | Playwright E2E, CI pipeline, component tests, legacy DB compat tests | Phase 7–8 |
+| **Testing** | 150 server + 3 client unit tests | Playwright E2E, CI pipeline, component tests, legacy DB compat tests | Phase 7–8 |

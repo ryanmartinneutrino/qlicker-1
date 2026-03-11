@@ -28,6 +28,56 @@ function normalizeAnswerValue(answer) {
   return String(answer).trim();
 }
 
+export function getTimestampMs(value) {
+  if (!value) return Number.NaN;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return Number.NaN;
+  return timestamp;
+}
+
+export function hasNonEmptyFeedback(value) {
+  return normalizeAnswerValue(value).length > 0;
+}
+
+export function summarizeGradeFeedback(grade) {
+  const marks = Array.isArray(grade?.marks) ? grade.marks : [];
+  const feedbackQuestionIds = [];
+  const newFeedbackQuestionIds = [];
+  const feedbackQuestionIdSet = new Set();
+  const newFeedbackQuestionIdSet = new Set();
+
+  const feedbackSeenAtMs = getTimestampMs(grade?.feedbackSeenAt);
+  const hasFeedbackSeenAt = Number.isFinite(feedbackSeenAtMs);
+
+  marks.forEach((mark) => {
+    const questionId = normalizeAnswerValue(mark?.questionId);
+    if (!questionId || !hasNonEmptyFeedback(mark?.feedback)) return;
+
+    if (!feedbackQuestionIdSet.has(questionId)) {
+      feedbackQuestionIdSet.add(questionId);
+      feedbackQuestionIds.push(questionId);
+    }
+
+    const feedbackUpdatedAtMs = getTimestampMs(mark?.feedbackUpdatedAt);
+    const isNewFeedback = !hasFeedbackSeenAt
+      || (Number.isFinite(feedbackUpdatedAtMs) && feedbackUpdatedAtMs > feedbackSeenAtMs);
+
+    if (isNewFeedback && !newFeedbackQuestionIdSet.has(questionId)) {
+      newFeedbackQuestionIdSet.add(questionId);
+      newFeedbackQuestionIds.push(questionId);
+    }
+  });
+
+  return {
+    feedbackSeenAt: grade?.feedbackSeenAt || null,
+    feedbackQuestionIds,
+    feedbackCount: feedbackQuestionIds.length,
+    newFeedbackQuestionIds,
+    newFeedbackCount: newFeedbackQuestionIds.length,
+    hasNewFeedback: newFeedbackQuestionIds.length > 0,
+  };
+}
+
 function parseBooleanLike(value) {
   if (value === true || value === false) return value;
   if (value === 1 || value === '1') return true;
@@ -220,6 +270,50 @@ export function normalizeMsScoringMethod(method) {
 
 export function getSessionMsScoringMethod(session) {
   return normalizeMsScoringMethod(session?.msScoringMethod);
+}
+
+export async function ensureSessionMsScoringMethod(session, { persist = true } = {}) {
+  if (!session) {
+    return {
+      session,
+      msScoringMethod: DEFAULT_MS_SCORING_METHOD,
+      changed: false,
+    };
+  }
+
+  const normalizedMethod = normalizeMsScoringMethod(session?.msScoringMethod);
+  const storedMethod = normalizeAnswerValue(session?.msScoringMethod).toLowerCase();
+  let changed = storedMethod !== normalizedMethod;
+
+  if (!persist && !changed) {
+    return {
+      session,
+      msScoringMethod: normalizedMethod,
+      changed: false,
+    };
+  }
+
+  const sessionId = normalizeAnswerValue(session?._id);
+  let persistedSession = null;
+  if (persist && sessionId) {
+    const updateResult = await Session.updateOne(
+      { _id: sessionId, msScoringMethod: { $ne: normalizedMethod } },
+      { $set: { msScoringMethod: normalizedMethod } },
+    );
+    const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
+    if (modifiedCount > 0) {
+      changed = true;
+      persistedSession = await Session.findById(sessionId).lean();
+    }
+  } else if (!sessionId) {
+    changed = storedMethod !== normalizedMethod;
+  }
+
+  return {
+    session: persistedSession || { ...session, msScoringMethod: normalizedMethod },
+    msScoringMethod: normalizedMethod,
+    changed,
+  };
 }
 
 export function getQuestionPoints(question) {
@@ -508,12 +602,15 @@ export async function recalculateSessionGrades({
   missingOnly = false,
   visibleToStudents = null,
 } = {}) {
-  const session = sessionDoc
+  let session = sessionDoc
     ? (typeof sessionDoc.toObject === 'function' ? sessionDoc.toObject() : { ...sessionDoc })
     : await Session.findById(sessionId).lean();
   if (!session) {
     throw new Error('Session not found');
   }
+
+  const msNormalization = await ensureSessionMsScoringMethod(session);
+  session = msNormalization.session || session;
 
   const course = courseDoc
     ? (typeof courseDoc.toObject === 'function' ? courseDoc.toObject() : { ...courseDoc })
@@ -692,7 +789,7 @@ export async function recalculateSessionGrades({
         markPoints = toFiniteNumber(existingMark?.points, 0);
         markNeedsGrading = !!existingMark?.needsGrading;
 
-        if (Math.abs(markPoints - autoPoints) > 0.0001) {
+        if (autoGradeable && Math.abs(markPoints - autoPoints) > 0.0001) {
           const student = studentById.get(studentId);
           manualMarkConflicts.push({
             gradeId: existingGradeDoc?._id ? String(existingGradeDoc._id) : '',

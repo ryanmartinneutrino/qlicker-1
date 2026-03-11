@@ -1,12 +1,16 @@
 import crypto from 'crypto';
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
+import Grade from '../models/Grade.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
+  ensureSessionMsScoringMethod,
+  getTimestampMs,
   recalculateSessionGrades,
+  summarizeGradeFeedback,
   setSessionGradesVisibility,
 } from '../services/grading.js';
 
@@ -510,7 +514,6 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
       }));
     }
     delete sanitized.correctNumerical;
-    delete sanitized.toleranceNumerical;
     delete sanitized.solution;
     delete sanitized.solution_plainText;
     delete sanitized.solutionText;
@@ -598,15 +601,15 @@ async function loadOrderedQuestions(questionIds = []) {
 // Helper to check if user is instructor of course or admin
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
-  return roles.includes('admin') || course.instructors.includes(user.userId);
+  return roles.includes('admin') || (course.instructors || []).includes(user.userId);
 }
 
 function isStudentBlockedByInactiveCourse(course, user) {
   if (!course?.inactive) return false;
   const roles = user.roles || [];
   if (roles.includes('admin')) return false;
-  if (course.instructors.includes(user.userId)) return false;
-  return course.students.includes(user.userId);
+  if ((course.instructors || []).includes(user.userId)) return false;
+  return (course.students || []).includes(user.userId);
 }
 
 // Helper to check if user is a member of the course (student, instructor, or admin)
@@ -614,8 +617,8 @@ function isCourseMember(course, user) {
   if (isStudentBlockedByInactiveCourse(course, user)) return false;
   const roles = user.roles || [];
   return roles.includes('admin') ||
-    course.instructors.includes(user.userId) ||
-    course.students.includes(user.userId);
+    (course.instructors || []).includes(user.userId) ||
+    (course.students || []).includes(user.userId);
 }
 
 function buildSessionForUser(session, user, { instructorView = false } = {}) {
@@ -628,7 +631,9 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
 
   if (isQuizLikeSession(normalized)) {
     const submittedQuiz = Array.isArray(normalized.submittedQuiz) ? normalized.submittedQuiz : [];
+    const joined = Array.isArray(normalized.joined) ? normalized.joined : [];
     normalized.quizSubmittedByCurrentUser = submittedQuiz.includes(user?.userId);
+    normalized.quizStartedByCurrentUser = joined.includes(user?.userId);
     normalized.quizHasActiveExtensions = runtime.quizHasActiveExtensions;
     normalized.activeExtensionsCount = runtime.activeExtensionsCount;
     normalized.userHasActiveQuizExtension = runtime.userHasActiveQuizExtension;
@@ -643,6 +648,49 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
   }
 
   return normalized;
+}
+
+function getDefaultFeedbackSummary() {
+  return {
+    feedbackSeenAt: null,
+    feedbackQuestionIds: [],
+    feedbackCount: 0,
+    newFeedbackQuestionIds: [],
+    newFeedbackCount: 0,
+    hasNewFeedback: false,
+  };
+}
+
+function summarizeFeedbackFromGrades(grades = []) {
+  if (!Array.isArray(grades) || grades.length === 0) {
+    return getDefaultFeedbackSummary();
+  }
+
+  const combinedMarks = [];
+  let latestFeedbackSeenAtMs = Number.NaN;
+
+  grades.forEach((grade) => {
+    const marks = Array.isArray(grade?.marks) ? grade.marks : [];
+    combinedMarks.push(...marks);
+
+    const feedbackSeenAtMs = getTimestampMs(grade?.feedbackSeenAt);
+    if (!Number.isFinite(feedbackSeenAtMs)) return;
+    if (!Number.isFinite(latestFeedbackSeenAtMs) || feedbackSeenAtMs > latestFeedbackSeenAtMs) {
+      latestFeedbackSeenAtMs = feedbackSeenAtMs;
+    }
+  });
+
+  const summary = summarizeGradeFeedback({
+    marks: combinedMarks,
+    feedbackSeenAt: Number.isFinite(latestFeedbackSeenAtMs)
+      ? new Date(latestFeedbackSeenAtMs)
+      : null,
+  });
+
+  return {
+    ...getDefaultFeedbackSummary(),
+    ...summary,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -783,7 +831,7 @@ export default async function sessionRoutes(app) {
     '/courses/:courseId/sessions',
     { preHandler: authenticate },
     async (request, reply) => {
-      const course = await Course.findById(request.params.courseId);
+      const course = await Course.findById(request.params.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -800,17 +848,129 @@ export default async function sessionRoutes(app) {
       }
 
       const sessions = await Session.find(filter).lean();
-      const hydratedSessions = [];
+      const normalizedSessions = [];
 
       for (const rawSession of sessions) {
         const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession);
         if (changed) {
           notifySessionUpdated(app, course, normalizedSession?._id || rawSession?._id);
         }
-        hydratedSessions.push(buildSessionForUser(normalizedSession, request.user, {
-          instructorView: isInstrOrAdmin,
-        }));
+        normalizedSessions.push(normalizedSession);
       }
+
+      const feedbackBySessionId = {};
+      const quizProgressBySessionId = {};
+      if (!isInstrOrAdmin && normalizedSessions.length > 0) {
+        const sessionIds = normalizedSessions
+          .map((session) => String(session?._id || ''))
+          .filter(Boolean);
+
+        const feedbackGrades = await Grade.find({
+          sessionId: { $in: sessionIds },
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        })
+          .select('sessionId feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+          .lean();
+
+        const feedbackGradesBySessionId = {};
+        feedbackGrades.forEach((grade) => {
+          const sessionId = String(grade?.sessionId || '');
+          if (!sessionId) return;
+          if (!feedbackGradesBySessionId[sessionId]) {
+            feedbackGradesBySessionId[sessionId] = [];
+          }
+          feedbackGradesBySessionId[sessionId].push(grade);
+        });
+
+        Object.entries(feedbackGradesBySessionId).forEach(([sessionId, grades]) => {
+          feedbackBySessionId[sessionId] = summarizeFeedbackFromGrades(grades);
+        });
+
+        const quizSessions = normalizedSessions.filter((session) => isQuizLikeSession(session));
+        const questionToSessionId = new Map();
+        quizSessions.forEach((session) => {
+          const sessionId = String(session?._id || '');
+          const questionIds = Array.isArray(session?.questions)
+            ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
+            : [];
+          questionIds.forEach((questionId) => {
+            if (!questionToSessionId.has(questionId)) {
+              questionToSessionId.set(questionId, sessionId);
+            }
+          });
+          quizProgressBySessionId[sessionId] = {
+            questionCount: questionIds.length,
+            answeredQuestionCount: 0,
+            hasResponses: false,
+            allQuestionsAnswered: false,
+          };
+        });
+
+        const questionIds = [...questionToSessionId.keys()];
+        if (questionIds.length > 0) {
+          const responses = await Response.find({
+            studentUserId: request.user.userId,
+            questionId: { $in: questionIds },
+          })
+            .select('questionId')
+            .lean();
+
+          const answeredBySessionId = {};
+          responses.forEach((response) => {
+            const questionId = String(response?.questionId || '');
+            const sessionId = questionToSessionId.get(questionId);
+            if (!sessionId) return;
+            if (!answeredBySessionId[sessionId]) {
+              answeredBySessionId[sessionId] = new Set();
+            }
+            answeredBySessionId[sessionId].add(questionId);
+          });
+
+          Object.entries(answeredBySessionId).forEach(([sessionId, questionIdSet]) => {
+            const progress = quizProgressBySessionId[sessionId] || {
+              questionCount: 0,
+              answeredQuestionCount: 0,
+              hasResponses: false,
+              allQuestionsAnswered: false,
+            };
+            progress.answeredQuestionCount = questionIdSet.size;
+            progress.hasResponses = questionIdSet.size > 0;
+            progress.allQuestionsAnswered = progress.questionCount > 0
+              && questionIdSet.size >= progress.questionCount;
+            quizProgressBySessionId[sessionId] = progress;
+          });
+        }
+      }
+
+      const hydratedSessions = normalizedSessions.map((session) => {
+        const sessionForUser = buildSessionForUser(session, request.user, {
+          instructorView: isInstrOrAdmin,
+        });
+
+        if (!isInstrOrAdmin) {
+          const sessionId = String(sessionForUser?._id || '');
+          const feedbackSummary = feedbackBySessionId[String(sessionForUser?._id || '')] || getDefaultFeedbackSummary();
+          sessionForUser.feedback = feedbackSummary;
+          sessionForUser.hasNewFeedback = feedbackSummary.hasNewFeedback;
+          sessionForUser.newFeedbackQuestionIds = feedbackSummary.newFeedbackQuestionIds;
+
+          if (isQuizLikeSession(sessionForUser)) {
+            const progress = quizProgressBySessionId[sessionId] || {
+              questionCount: Array.isArray(sessionForUser?.questions) ? sessionForUser.questions.length : 0,
+              answeredQuestionCount: 0,
+              hasResponses: false,
+              allQuestionsAnswered: false,
+            };
+            sessionForUser.quizResponseCountByCurrentUser = progress.answeredQuestionCount;
+            sessionForUser.quizHasResponsesByCurrentUser = progress.hasResponses;
+            sessionForUser.quizAllQuestionsAnsweredByCurrentUser = progress.allQuestionsAnswered;
+          }
+        }
+
+        return sessionForUser;
+      });
 
       return { sessions: hydratedSessions };
     }
@@ -836,7 +996,11 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      if (isInstrOrAdmin) {
+        const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
+        normalizedSession = msNormalization.session || normalizedSession;
+      }
       if (changed) {
         notifySessionUpdated(app, course, normalizedSession?._id || session._id);
       }
@@ -1019,11 +1183,12 @@ export default async function sessionRoutes(app) {
         currentJoinCode: '',
         joinCodeExpiresAt: null,
       };
-      if (session.questions.length > 0 && !session.currentQuestion) {
-        updates.currentQuestion = session.questions[0];
+      const sessionQuestions = session.questions || [];
+      if (sessionQuestions.length > 0 && !session.currentQuestion) {
+        updates.currentQuestion = sessionQuestions[0];
 
         // Set first question hidden by default when session launches
-        await Question.findByIdAndUpdate(session.questions[0], {
+        await Question.findByIdAndUpdate(sessionQuestions[0], {
           $set: { 'sessionOptions.hidden': true },
         });
       }
@@ -1132,7 +1297,7 @@ export default async function sessionRoutes(app) {
       }
 
       const { questionId } = request.body;
-      if (!session.questions.includes(questionId)) {
+      if (!(session.questions || []).includes(questionId)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this session' });
       }
 
@@ -1151,12 +1316,12 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      const qIndex = session.questions.findIndex((id) => String(id) === String(questionId));
+      const qIndex = (session.questions || []).findIndex((id) => String(id) === String(questionId));
       notifyQuestionChanged(app, course, updated?._id || request.params.id, {
         questionId: String(questionId),
         questionIndex: qIndex,
         questionNumber: qIndex >= 0 ? qIndex + 1 : null,
-        questionCount: session.questions.length,
+        questionCount: (session.questions || []).length,
       });
 
       return { session: updated.toObject() };
@@ -1398,12 +1563,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/review',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1412,7 +1577,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
       if (changed) {
         notifySessionUpdated(app, course, normalizedSession?._id || session._id);
       }
@@ -1459,10 +1624,91 @@ export default async function sessionRoutes(app) {
         responsesByQuestion[questionId].push(r);
       }
 
+      let feedbackSummary = getDefaultFeedbackSummary();
+      if (!isInstrOrAdmin) {
+        const grades = await Grade.find({
+          sessionId: String(normalizedSession._id),
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        })
+          .select('feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+          .lean();
+        feedbackSummary = summarizeFeedbackFromGrades(grades);
+      }
+
       return {
         session: normalizedSession,
         questions: normalizedQuestions,
         responses: responsesByQuestion,
+        feedback: feedbackSummary,
+      };
+    }
+  );
+
+  app.post(
+    '/sessions/:id/review/feedback/dismiss',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id).lean();
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can dismiss feedback notifications' });
+      }
+
+      if (!normalizedSession.reviewable) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
+      }
+      if (normalizedSession.status !== 'done') {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
+      }
+
+      const seenAt = new Date();
+      const updateResult = await Grade.updateMany(
+        {
+          sessionId: String(normalizedSession._id),
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        },
+        { $set: { feedbackSeenAt: seenAt } }
+      );
+
+      const grades = await Grade.find({
+        sessionId: String(normalizedSession._id),
+        courseId: String(course._id),
+        userId: request.user.userId,
+        visibleToStudents: true,
+      })
+        .select('feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+        .lean();
+      const feedbackSummary = summarizeFeedbackFromGrades(grades);
+
+      const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
+      if (modifiedCount > 0) {
+        notifySessionUpdated(app, course, normalizedSession._id);
+      }
+
+      return {
+        success: true,
+        feedback: feedbackSummary,
       };
     }
   );
@@ -1924,7 +2170,7 @@ export default async function sessionRoutes(app) {
       const userId = request.user.userId;
 
       // Check if already joined
-      const alreadyInList = session.joined.includes(userId);
+      const alreadyInList = (session.joined || []).includes(userId);
       const existingRecord = (session.joinRecords || []).find((r) => r.userId === userId);
 
       // Already joined students remain joined even if passcode settings change later.
@@ -2006,7 +2252,7 @@ export default async function sessionRoutes(app) {
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       const includeStudentNames = isInstrOrAdmin && parseBooleanQuery(request.query?.includeStudentNames);
       const userId = request.user.userId;
-      let isJoined = session.joined.includes(userId);
+      let isJoined = (session.joined || []).includes(userId);
 
       // Fetch current question
       let currentQuestion = null;
@@ -2178,7 +2424,7 @@ export default async function sessionRoutes(app) {
             status: session.status,
             questions: session.questions,
             currentQuestion: session.currentQuestion,
-            joinedCount: session.joined.length,
+            joinedCount: (session.joined || []).length,
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             reviewable: session.reviewable,
@@ -2226,7 +2472,6 @@ export default async function sessionRoutes(app) {
               }));
             }
             delete studentQ.correctNumerical;
-            delete studentQ.toleranceNumerical;
             delete studentQ.solution;
             delete studentQ.solution_plainText;
             // Legacy compatibility keys from imported data.
@@ -2275,7 +2520,7 @@ export default async function sessionRoutes(app) {
       }
 
       const userId = request.user.userId;
-      if (!session.joined.includes(userId)) {
+      if (!(session.joined || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'You have not joined this session' });
       }
 
@@ -2340,7 +2585,7 @@ export default async function sessionRoutes(app) {
         questionId: String(questionId),
         attempt: currentAttempt.number,
         responseCount,
-        joinedCount: session.joined.length,
+        joinedCount: (session.joined || []).length,
       });
 
       return reply.code(201).send({ response: response.toObject() });

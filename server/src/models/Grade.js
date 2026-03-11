@@ -11,6 +11,7 @@ const MarkSchema = new mongoose.Schema(
     automatic: { type: Boolean, default: true },
     needsGrading: { type: Boolean, default: false },
     feedback: { type: String, default: '' },
+    feedbackUpdatedAt: { type: Date, default: null },
   },
   { _id: false }
 );
@@ -35,6 +36,7 @@ const GradeSchema = new mongoose.Schema(
     numQuestionsTotal: { type: Number, default: 0 },
     visibleToStudents: { type: Boolean, default: false },
     needsGrading: { type: Boolean, default: false },
+    feedbackSeenAt: { type: Date, default: null },
   },
   {
     collection: 'grades',

@@ -553,9 +553,14 @@ export default function SecondDesktop() {
             Numerical Question
           </Typography>
           {showCorrect && currentQ.correctNumerical != null && (
-            <Typography variant="body1" sx={{ mt: 1 }}>
-              Correct: {currentQ.correctNumerical} (± {currentQ.toleranceNumerical ?? 0})
-            </Typography>
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body1">
+                Correct: {currentQ.correctNumerical}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                tolerance: {currentQ.toleranceNumerical ?? 0}
+              </Typography>
+            </Box>
           )}
         </Paper>
       )}

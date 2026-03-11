@@ -12,6 +12,8 @@ import {
   PlayArrow as LaunchIcon, Login as JoinIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
+import { useTheme } from '@mui/material/styles';
+import useMediaQuery from '@mui/material/useMediaQuery';
 import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -29,15 +31,42 @@ function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
 
+function getTimestamp(value) {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getSessionSortBucket(session) {
+  const status = String(session?.status || '');
+  if (status === 'running') return 0;
+  if (status === 'hidden') return 1;
+  if (status === 'visible') return 2;
+  if (status === 'done') return 3;
+  return 4;
+}
+
 function getSessionSortTime(session) {
-  return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
+  const status = String(session?.status || '');
+  const isQuiz = !!(session?.quiz || session?.practiceQuiz);
+
+  if (isQuiz && status === 'visible') {
+    return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
+  }
+  if (isQuiz && status === 'done') {
+    return getTimestamp(session?.quizEnd || session?.date || session?.quizStart || session?.createdAt);
+  }
+  if (isQuiz) {
+    return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
+  }
+
+  return getTimestamp(session?.date || session?.createdAt || session?.quizStart || session?.quizEnd);
 }
 
 function sortSessions(items) {
   return [...items].sort((a, b) => {
-    const aRunning = a.status === 'running' ? 0 : 1;
-    const bRunning = b.status === 'running' ? 0 : 1;
-    if (aRunning !== bRunning) return aRunning - bRunning;
+    const aBucket = getSessionSortBucket(a);
+    const bBucket = getSessionSortBucket(b);
+    if (aBucket !== bBucket) return aBucket - bBucket;
     return getSessionSortTime(b) - getSessionSortTime(a);
   });
 }
@@ -146,6 +175,8 @@ function isEmptyField(value) {
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const compactTabNav = useMediaQuery(theme.breakpoints.down('md'));
   const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -655,6 +686,26 @@ export default function CourseDetail() {
     'long'
   );
 
+  const tabLabels = [
+    `Interactive Sessions (${interactiveSessions.length})`,
+    `Quizzes (${quizSessions.length})`,
+    'Grades',
+    `Students (${students.length})`,
+    `Instructors (${instructors.length})`,
+    'Settings',
+  ];
+
+  const handleTabChange = (nextTab) => {
+    setTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === 0) {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', String(nextTab));
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const renderSessionList = (sessionItems, emptyText) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
     if (sessionItems.length === 0) {
@@ -826,28 +877,28 @@ export default function CourseDetail() {
       </Box>
 
       {/* Tabs */}
-      <Tabs
-        value={tab}
-        onChange={(_, nextTab) => {
-          setTab(nextTab);
-          const nextParams = new URLSearchParams(searchParams);
-          if (nextTab === 0) {
-            nextParams.delete('tab');
-          } else {
-            nextParams.set('tab', String(nextTab));
-          }
-          setSearchParams(nextParams, { replace: true });
-        }}
-        variant="scrollable"
-        allowScrollButtonsMobile
-      >
-        <Tab label={`Interactive Sessions (${interactiveSessions.length})`} />
-        <Tab label={`Quizzes (${quizSessions.length})`} />
-        <Tab label="Grades" />
-        <Tab label={`Students (${students.length})`} />
-        <Tab label={`Instructors (${instructors.length})`} />
-        <Tab label="Settings" />
-      </Tabs>
+      {compactTabNav ? (
+        <TextField
+          select
+          size="small"
+          label="View"
+          value={String(tab)}
+          onChange={(event) => handleTabChange(Number(event.target.value))}
+          sx={{ mb: 1.5, minWidth: 260, maxWidth: 420 }}
+        >
+          {tabLabels.map((label, index) => (
+            <MenuItem key={label} value={String(index)}>{label}</MenuItem>
+          ))}
+        </TextField>
+      ) : (
+        <Tabs
+          value={tab}
+          onChange={(_, nextTab) => handleTabChange(nextTab)}
+          variant="standard"
+        >
+          {tabLabels.map((label) => <Tab key={label} label={label} />)}
+        </Tabs>
+      )}
 
       {/* Interactive Sessions Tab */}
       <TabPanel value={tab} index={0}>
@@ -893,6 +944,8 @@ export default function CourseDetail() {
         <CourseGradesPanel
           courseId={id}
           instructorView
+          availableSessions={sortedSessions}
+          gradingSummaryBySessionId={gradingSummaryBySessionId}
           onOpenSession={(sessionId) => navigate(
             `/manage/course/${id}/session/${sessionId}/review?returnTab=2`,
             { state: { returnTab: 2 } }
