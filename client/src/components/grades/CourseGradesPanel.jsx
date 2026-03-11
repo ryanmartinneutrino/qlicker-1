@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Box,
@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  LinearProgress,
   IconButton,
   List,
   ListItemButton,
@@ -36,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
+import QuestionDisplay from '../questions/QuestionDisplay';
 
 function normalizeAnswerValue(value) {
   if (value === null || value === undefined) return '';
@@ -160,6 +162,232 @@ function buildFilteredSortedRows(rows, searchTerm, sort) {
   });
 
   return nextRows;
+}
+
+const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const QUESTION_TYPES = {
+  MULTIPLE_CHOICE: 0,
+  TRUE_FALSE: 1,
+  SHORT_ANSWER: 2,
+  MULTI_SELECT: 3,
+  NUMERICAL: 4,
+};
+const AUTO_GRADEABLE_QUESTION_TYPES = new Set([
+  QUESTION_TYPES.MULTIPLE_CHOICE,
+  QUESTION_TYPES.TRUE_FALSE,
+  QUESTION_TYPES.MULTI_SELECT,
+  QUESTION_TYPES.NUMERICAL,
+]);
+
+function collectAnswerEntries(answer) {
+  if (answer === undefined || answer === null) return [];
+  if (Array.isArray(answer)) return answer;
+  if (typeof answer === 'string') {
+    const trimmed = answer.trim();
+    if (!trimmed) return [];
+
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed !== answer) return collectAnswerEntries(parsed);
+      } catch {
+        // Fall through.
+      }
+    }
+
+    if (/[|,;]/.test(trimmed) && !/<[^>]*>/.test(trimmed)) {
+      return trimmed.split(/[|,;]/).map((entry) => entry.trim()).filter(Boolean);
+    }
+  }
+  return [answer];
+}
+
+function resolveOptionIndex(answer, options = []) {
+  if (typeof answer === 'number' && Number.isInteger(answer)) {
+    if (answer >= 0 && answer < options.length) return answer;
+    if (answer >= 1 && answer <= options.length) return answer - 1;
+    return -1;
+  }
+
+  const normalizedRaw = normalizeAnswerValue(answer);
+  if (!normalizedRaw) return -1;
+  const normalized = normalizedRaw.toLowerCase();
+
+  if (/^-?\d+$/.test(normalizedRaw)) {
+    const parsed = Number(normalizedRaw);
+    if (parsed >= 0 && parsed < options.length) return parsed;
+    if (parsed >= 1 && parsed <= options.length) return parsed - 1;
+  }
+
+  if (/^[a-z]$/.test(normalized)) {
+    const idx = normalized.charCodeAt(0) - 97;
+    if (idx >= 0 && idx < options.length) return idx;
+  }
+
+  return options.findIndex((option) => {
+    const optionId = normalizeAnswerValue(option?._id).toLowerCase();
+    const optionValue = normalizeAnswerValue(
+      option?.content
+      || option?.plainText
+      || option?.text
+      || option?.label
+      || option?.answer
+      || ''
+    ).toLowerCase();
+    return optionId === normalized || optionValue === normalized;
+  });
+}
+
+function isCorrectOption(option) {
+  const value = option?.correct;
+  if (value === true || value === 1 || value === '1') return true;
+  if (typeof value === 'string') return value.trim().toLowerCase() === 'true';
+  return Boolean(value);
+}
+
+function getLatestResponse(responses = []) {
+  if (!Array.isArray(responses) || responses.length === 0) return null;
+
+  let latestResponse = responses[0];
+  for (let index = 1; index < responses.length; index += 1) {
+    const current = responses[index];
+    const currentAttempt = Number(current?.attempt) || 0;
+    const latestAttempt = Number(latestResponse?.attempt) || 0;
+    if (currentAttempt > latestAttempt) {
+      latestResponse = current;
+      continue;
+    }
+    if (currentAttempt < latestAttempt) continue;
+
+    const currentTime = new Date(current?.updatedAt || current?.createdAt || 0).getTime();
+    const latestTime = new Date(latestResponse?.updatedAt || latestResponse?.createdAt || 0).getTime();
+    if (currentTime >= latestTime) {
+      latestResponse = current;
+    }
+  }
+
+  return latestResponse;
+}
+
+function formatAnswerValue(question, answer) {
+  if (!question) return normalizeAnswerValue(answer) || '—';
+  const type = Number(question?.type);
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(type)) {
+    const labels = collectAnswerEntries(answer)
+      .map((entry) => {
+        const optionIndex = resolveOptionIndex(entry, options);
+        return optionIndex >= 0 && optionIndex < OPTION_LETTERS.length
+          ? OPTION_LETTERS[optionIndex]
+          : normalizeAnswerValue(entry);
+      })
+      .filter(Boolean);
+    return labels.length ? labels.join(', ') : '—';
+  }
+
+  if (type === QUESTION_TYPES.NUMERICAL) {
+    const numeric = Number(answer);
+    return Number.isFinite(numeric) ? String(numeric) : normalizeAnswerValue(answer) || '—';
+  }
+
+  if (typeof answer === 'object' && answer !== null) {
+    try {
+      return JSON.stringify(answer);
+    } catch {
+      return String(answer);
+    }
+  }
+
+  return normalizeAnswerValue(answer) || '—';
+}
+
+function formatCorrectAnswerValue(question) {
+  if (!question) return '—';
+  const type = Number(question?.type);
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(type)) {
+    const correctLabels = options
+      .map((option, index) => (isCorrectOption(option) ? OPTION_LETTERS[index] : null))
+      .filter(Boolean);
+    return correctLabels.length ? correctLabels.join(', ') : '—';
+  }
+
+  if (type === QUESTION_TYPES.NUMERICAL) {
+    const expected = Number(question?.correctNumerical);
+    const toleranceRaw = Number(question?.toleranceNumerical ?? 0);
+    if (!Number.isFinite(expected)) return '—';
+    const tolerance = Number.isFinite(toleranceRaw) ? Math.abs(toleranceRaw) : 0;
+    return `${expected} (± ${tolerance})`;
+  }
+
+  return normalizeAnswerValue(question?.solution) || 'Manual grading';
+}
+
+function buildConflictQuestionLabel(conflict) {
+  const sessionName = normalizeAnswerValue(conflict?.sessionName) || 'Session';
+  const questionNumber = Number(conflict?.questionNumber);
+  if (Number.isInteger(questionNumber) && questionNumber > 0) {
+    return `${sessionName}/Q${questionNumber}`;
+  }
+  return `${sessionName}/${normalizeAnswerValue(conflict?.questionId) || 'Question'}`;
+}
+
+function isAutoGradeableConflict(conflict, question = null) {
+  const questionType = Number(question?.type ?? conflict?.questionType);
+  return AUTO_GRADEABLE_QUESTION_TYPES.has(questionType);
+}
+
+function isSameConflict(left, right) {
+  return String(left?.gradeId || '') === String(right?.gradeId || '')
+    && String(left?.questionId || '') === String(right?.questionId || '')
+    && String(left?.studentId || '') === String(right?.studentId || '')
+    && String(left?.sessionId || '') === String(right?.sessionId || '');
+}
+
+function mergeUniqueConflicts(existingConflicts = [], incomingConflicts = []) {
+  const merged = [...existingConflicts];
+  incomingConflicts.forEach((incoming) => {
+    const alreadyPresent = merged.some((existing) => isSameConflict(existing, incoming));
+    if (!alreadyPresent) {
+      merged.push(incoming);
+    }
+  });
+  return merged;
+}
+
+function StudentSearchField({
+  value,
+  onSearchChange,
+  disabled = false,
+}) {
+  const [draft, setDraft] = useState(() => value || '');
+
+  useEffect(() => {
+    setDraft(value || '');
+  }, [value]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      onSearchChange(draft);
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [draft, onSearchChange]);
+
+  return (
+    <TextField
+      size="small"
+      label="Search students"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      sx={{ minWidth: 240 }}
+      disabled={disabled}
+    />
+  );
 }
 
 function GradeDetailDialog({
@@ -421,6 +649,113 @@ function GradeDetailDialog({
   );
 }
 
+function ConflictMarkDialog({
+  open,
+  onClose,
+  loading,
+  error,
+  conflict,
+  question,
+  student,
+  latestResponse,
+  manualPoints,
+  onManualPointsChange,
+  saving,
+  canAcceptAuto,
+  onAcceptAuto,
+  onSaveManual,
+}) {
+  if (!open) return null;
+
+  const questionLabel = buildConflictQuestionLabel(conflict);
+  const studentName = normalizeAnswerValue(student?.lastname) || normalizeAnswerValue(student?.firstname)
+    ? `${normalizeAnswerValue(student?.lastname)}, ${normalizeAnswerValue(student?.firstname)}`.replace(/^,\s*/, '')
+    : normalizeAnswerValue(conflict?.studentName) || normalizeAnswerValue(conflict?.studentId) || 'Student';
+  const studentEmail = normalizeAnswerValue(student?.email);
+  const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
+  const correctAnswer = formatCorrectAnswerValue(question);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{questionLabel}</DialogTitle>
+      <DialogContent dividers>
+        {error ? <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert> : null}
+        {loading ? (
+          <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          <>
+            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+              <Typography variant="body2">
+                <strong>Student:</strong> {studentName}{studentEmail ? ` (${studentEmail})` : ''}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Current manual:</strong> {formatPercent(conflict?.existingPoints)} / {formatPercent(conflict?.outOf || question?.sessionOptions?.points || 0)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Recalculated auto:</strong> {formatPercent(conflict?.calculatedPoints)}
+              </Typography>
+            </Paper>
+
+            {question ? (
+              <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Question</Typography>
+                <QuestionDisplay question={question} />
+              </Paper>
+            ) : (
+              <Alert severity="warning" sx={{ mb: 1.5 }}>
+                Question content could not be loaded for this conflict.
+              </Alert>
+            )}
+
+            <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                <strong>Student answer:</strong> {studentAnswer}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Correct answer:</strong> {correctAnswer}
+              </Typography>
+            </Paper>
+
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                type="number"
+                label="Manual points"
+                value={manualPoints}
+                onChange={(event) => onManualPointsChange(event.target.value)}
+                sx={{ width: 150 }}
+                disabled={saving}
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={onSaveManual}
+                disabled={saving}
+              >
+                Save Manual Grade
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AutoFixHighIcon />}
+                onClick={onAcceptAuto}
+                disabled={saving || !canAcceptAuto}
+              >
+                Accept Auto Grade
+              </Button>
+            </Box>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>Close</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function CourseGradesPanel({
   courseId,
   instructorView = false,
@@ -437,10 +772,15 @@ export default function CourseGradesPanel({
   const [rows, setRows] = useState([]);
   const [tableVisible, setTableVisible] = useState(() => !instructorView);
   const [selectedSessionIds, setSelectedSessionIds] = useState([]);
-  const [studentSearchInput, setStudentSearchInput] = useState('');
-  const deferredStudentSearch = useDeferredValue(studentSearchInput);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [sort, setSort] = useState({ field: 'name', direction: 'asc' });
   const [refreshingSessionIds, setRefreshingSessionIds] = useState({});
+  const [recalculateAllProgress, setRecalculateAllProgress] = useState({
+    active: false,
+    total: 0,
+    completed: 0,
+    currentSessionName: '',
+  });
   const [globalMessage, setGlobalMessage] = useState('');
   const [globalMessageType, setGlobalMessageType] = useState('info');
   const [sessionPicker, setSessionPicker] = useState({ open: false, mode: 'show' });
@@ -448,6 +788,17 @@ export default function CourseGradesPanel({
   const [sessionPickerSelectedIds, setSessionPickerSelectedIds] = useState([]);
   const [sessionPickerSubmitting, setSessionPickerSubmitting] = useState(false);
   const [conflictsDialog, setConflictsDialog] = useState({ open: false, conflicts: [] });
+  const [conflictDetailState, setConflictDetailState] = useState({
+    open: false,
+    loading: false,
+    saving: false,
+    error: '',
+    conflict: null,
+    question: null,
+    student: null,
+    latestResponse: null,
+    manualPoints: '',
+  });
   const [gradeDialogState, setGradeDialogState] = useState({
     open: false,
     grade: null,
@@ -459,6 +810,7 @@ export default function CourseGradesPanel({
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
   const topScrollbarRef = useRef(null);
   const tableContainerRef = useRef(null);
+  const conflictSessionResultsCacheRef = useRef(new Map());
 
   const hasProvidedSessionOptions = Array.isArray(availableSessions) && availableSessions.length > 0;
 
@@ -570,8 +922,8 @@ export default function CourseGradesPanel({
   const visibleSessions = useMemo(() => sessions, [sessions]);
 
   const sortedRows = useMemo(() => (
-    buildFilteredSortedRows(rows, deferredStudentSearch, sort)
-  ), [deferredStudentSearch, rows, sort]);
+    buildFilteredSortedRows(rows, studentSearchQuery, sort)
+  ), [rows, sort, studentSearchQuery]);
 
   const paginatedRows = useMemo(() => {
     if (rowsPerPage === -1) return sortedRows;
@@ -587,7 +939,7 @@ export default function CourseGradesPanel({
 
   useEffect(() => {
     setPage(0);
-  }, [studentSearchInput]);
+  }, [studentSearchQuery]);
 
   useEffect(() => {
     if (rowsPerPage === -1) {
@@ -745,8 +1097,7 @@ export default function CourseGradesPanel({
         openSessionPicker('export');
         return;
       }
-      const exportRows = buildFilteredSortedRows(rows, studentSearchInput, sort);
-      exportCsvWithData(visibleSessions, exportRows);
+      exportCsvWithData(visibleSessions, sortedRows);
       return;
     }
 
@@ -755,27 +1106,151 @@ export default function CourseGradesPanel({
     exportCsvWithData,
     instructorView,
     openSessionPicker,
-    rows,
     sortedRows,
-    sort,
-    studentSearchInput,
     tableVisible,
     visibleSessions,
   ]);
 
-  const handleRecalculateSession = useCallback(async (sessionId) => {
-    if (!instructorView) return;
+  const loadConflictSessionResults = useCallback(async (sessionId) => {
+    const normalizedSessionId = normalizeAnswerValue(sessionId);
+    if (!normalizedSessionId) return null;
+
+    const cached = conflictSessionResultsCacheRef.current.get(normalizedSessionId);
+    if (cached) return cached;
+
+    const { data } = await apiClient.get(`/sessions/${normalizedSessionId}/results`);
+    const questions = Array.isArray(data?.questions) ? data.questions : [];
+    const questionById = new Map();
+    const questionNumberById = new Map();
+    questions.forEach((question, index) => {
+      const questionId = normalizeAnswerValue(question?._id);
+      if (!questionId) return;
+      questionById.set(questionId, question);
+      questionNumberById.set(questionId, index + 1);
+    });
+
+    const studentResultById = new Map();
+    const studentResults = Array.isArray(data?.studentResults) ? data.studentResults : [];
+    studentResults.forEach((entry) => {
+      const studentId = normalizeAnswerValue(entry?.studentId);
+      if (!studentId) return;
+      studentResultById.set(studentId, entry);
+    });
+
+    const normalizedPayload = {
+      questionById,
+      questionNumberById,
+      studentResultById,
+    };
+    conflictSessionResultsCacheRef.current.set(normalizedSessionId, normalizedPayload);
+    return normalizedPayload;
+  }, []);
+
+  const enrichConflictsWithSessionData = useCallback(async (conflicts = []) => {
+    if (!Array.isArray(conflicts) || conflicts.length === 0) return [];
+
+    const uniqueSessionIds = [...new Set(
+      conflicts
+        .map((entry) => normalizeAnswerValue(entry?.sessionId))
+        .filter(Boolean)
+    )];
+
+    const sessionResultsById = {};
+    await Promise.all(uniqueSessionIds.map(async (sessionId) => {
+      try {
+        sessionResultsById[sessionId] = await loadConflictSessionResults(sessionId);
+      } catch {
+        sessionResultsById[sessionId] = null;
+      }
+    }));
+
+    return conflicts.map((conflict) => {
+      const sessionId = normalizeAnswerValue(conflict?.sessionId);
+      const questionId = normalizeAnswerValue(conflict?.questionId);
+      const sessionResults = sessionResultsById[sessionId];
+      const questionNumber = sessionResults?.questionNumberById?.get(questionId);
+      if (!questionNumber) return conflict;
+      return {
+        ...conflict,
+        questionNumber,
+      };
+    });
+  }, [loadConflictSessionResults]);
+
+  const recalculateOneSession = useCallback(async (session) => {
+    const sessionId = normalizeAnswerValue(session?._id);
+    if (!sessionId) {
+      return {
+        summary: {},
+        warnings: [],
+        conflicts: [],
+      };
+    }
+
     setRefreshingSessionIds((prev) => ({ ...prev, [sessionId]: true }));
     try {
       const { data } = await apiClient.post(`/sessions/${sessionId}/grades/recalculate`, {
         missingOnly: false,
       });
-      const summary = data.summary || {};
-      if (Array.isArray(summary.manualMarkConflicts) && summary.manualMarkConflicts.length > 0) {
-        setConflictsDialog({ open: true, conflicts: summary.manualMarkConflicts });
+      const summary = data?.summary || {};
+      const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+      const conflicts = (Array.isArray(summary.manualMarkConflicts) ? summary.manualMarkConflicts : [])
+        .map((conflict) => ({
+          ...conflict,
+          sessionId,
+          sessionName: normalizeAnswerValue(session?.name) || normalizeAnswerValue(conflict?.sessionName) || 'Session',
+        }));
+      return {
+        summary,
+        warnings,
+        conflicts,
+      };
+    } finally {
+      setRefreshingSessionIds((prev) => ({ ...prev, [sessionId]: false }));
+    }
+  }, []);
+
+  const removeConflictFromDialogs = useCallback((targetConflict) => {
+    setConflictsDialog((prev) => {
+      const nextConflicts = prev.conflicts.filter((entry) => !isSameConflict(entry, targetConflict));
+      return {
+        ...prev,
+        conflicts: nextConflicts,
+      };
+    });
+    setConflictDetailState((prev) => {
+      if (!prev.open || !isSameConflict(prev.conflict, targetConflict)) return prev;
+      return {
+        open: false,
+        loading: false,
+        saving: false,
+        error: '',
+        conflict: null,
+        question: null,
+        student: null,
+        latestResponse: null,
+        manualPoints: '',
+      };
+    });
+  }, []);
+
+  const handleRecalculateSession = useCallback(async (sessionId) => {
+    if (!instructorView || recalculateAllProgress.active) return;
+
+    const session = visibleSessions.find((entry) => String(entry._id) === String(sessionId));
+    if (!session) return;
+
+    try {
+      const outcome = await recalculateOneSession(session);
+      const enrichedConflicts = await enrichConflictsWithSessionData(outcome.conflicts);
+      if (enrichedConflicts.length > 0) {
+        setConflictsDialog((prev) => ({
+          open: true,
+          conflicts: mergeUniqueConflicts(prev.conflicts, enrichedConflicts),
+        }));
       }
-      if (summary.warnings?.length) {
-        setGlobalMessage(summary.warnings.join(' '));
+      if (outcome.warnings.length > 0) {
+        setGlobalMessage(outcome.warnings.join(' '));
         setGlobalMessageType('warning');
       } else {
         setGlobalMessage('Grades recalculated.');
@@ -785,37 +1260,339 @@ export default function CourseGradesPanel({
     } catch (err) {
       setGlobalMessage(err.response?.data?.message || 'Failed to recalculate grades.');
       setGlobalMessageType('error');
-    } finally {
-      setRefreshingSessionIds((prev) => ({ ...prev, [sessionId]: false }));
     }
-  }, [fetchGrades, instructorView, selectedSessionIds]);
+  }, [
+    enrichConflictsWithSessionData,
+    fetchGrades,
+    instructorView,
+    recalculateAllProgress.active,
+    recalculateOneSession,
+    selectedSessionIds,
+    visibleSessions,
+  ]);
 
   const handleRecalculateAll = useCallback(async () => {
-    if (!instructorView || !visibleSessions.length) return;
-    for (const session of visibleSessions) {
-      // eslint-disable-next-line no-await-in-loop
-      await handleRecalculateSession(session._id);
+    if (!instructorView || recalculateAllProgress.active || !visibleSessions.length) return;
+
+    const collectedConflicts = [];
+    const warningMessages = [];
+    const errorMessages = [];
+
+    setRecalculateAllProgress({
+      active: true,
+      total: visibleSessions.length,
+      completed: 0,
+      currentSessionName: '',
+    });
+
+    try {
+      for (let index = 0; index < visibleSessions.length; index += 1) {
+        const session = visibleSessions[index];
+        setRecalculateAllProgress((prev) => ({
+          ...prev,
+          completed: index,
+          currentSessionName: normalizeAnswerValue(session?.name) || 'Session',
+        }));
+
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const outcome = await recalculateOneSession(session);
+          outcome.conflicts.forEach((conflict) => collectedConflicts.push(conflict));
+          outcome.warnings.forEach((warning) => {
+            warningMessages.push(`${normalizeAnswerValue(session?.name) || 'Session'}: ${warning}`);
+          });
+        } catch (err) {
+          errorMessages.push(`${normalizeAnswerValue(session?.name) || 'Session'}: ${err.response?.data?.message || 'Failed to recalculate grades.'}`);
+        }
+
+        setRecalculateAllProgress((prev) => ({
+          ...prev,
+          completed: index + 1,
+        }));
+      }
+
+      if (collectedConflicts.length > 0) {
+        const enrichedConflicts = await enrichConflictsWithSessionData(collectedConflicts);
+        setConflictsDialog((prev) => ({
+          open: true,
+          conflicts: mergeUniqueConflicts(prev.conflicts, enrichedConflicts),
+        }));
+      }
+
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+
+      if (errorMessages.length > 0) {
+        setGlobalMessage(errorMessages.join(' '));
+        setGlobalMessageType('error');
+      } else if (warningMessages.length > 0) {
+        setGlobalMessage(warningMessages.join(' '));
+        setGlobalMessageType('warning');
+      } else {
+        setGlobalMessage('Finished recalculating grades for selected sessions.');
+        setGlobalMessageType('success');
+      }
+    } catch (err) {
+      setGlobalMessage(err.response?.data?.message || 'Failed to recalculate some grades.');
+      setGlobalMessageType('error');
+    } finally {
+      setRecalculateAllProgress({
+        active: false,
+        total: 0,
+        completed: 0,
+        currentSessionName: '',
+      });
     }
-  }, [handleRecalculateSession, instructorView, visibleSessions]);
+  }, [
+    enrichConflictsWithSessionData,
+    fetchGrades,
+    instructorView,
+    recalculateAllProgress.active,
+    recalculateOneSession,
+    selectedSessionIds,
+    visibleSessions,
+  ]);
 
   const handleAcceptConflict = useCallback(async (conflict) => {
     if (!conflict?.gradeId || !conflict?.questionId) return;
     await apiClient.post(`/grades/${conflict.gradeId}/marks/${conflict.questionId}/set-automatic`);
   }, []);
 
-  const handleAcceptAllConflicts = useCallback(async () => {
+  const handleAcceptConflictFromList = useCallback(async (conflict) => {
+    if (!isAutoGradeableConflict(conflict)) {
+      setGlobalMessage('This question type cannot be auto-graded.');
+      setGlobalMessageType('warning');
+      return;
+    }
+
     try {
-      for (const conflict of conflictsDialog.conflicts) {
-        // eslint-disable-next-line no-await-in-loop
-        await handleAcceptConflict(conflict);
-      }
-      setConflictsDialog({ open: false, conflicts: [] });
-      setGlobalMessage('Applied recalculated automatic marks for selected manual overrides.');
+      await handleAcceptConflict(conflict);
+      removeConflictFromDialogs(conflict);
+      setGlobalMessage('Applied recalculated automatic mark.');
       setGlobalMessageType('success');
       await fetchGrades(selectedSessionIds, { applyToState: true });
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to apply some recalculated marks.');
+      setGlobalMessage(err.response?.data?.message || 'Failed to apply automatic mark.');
       setGlobalMessageType('error');
+    }
+  }, [fetchGrades, handleAcceptConflict, removeConflictFromDialogs, selectedSessionIds]);
+
+  const handleOpenConflictDetail = useCallback(async (conflict) => {
+    if (!conflict) return;
+
+    const baseManualPoints = Number.isFinite(Number(conflict?.existingPoints))
+      ? String(conflict.existingPoints)
+      : '0';
+
+    setConflictDetailState({
+      open: true,
+      loading: true,
+      saving: false,
+      error: '',
+      conflict,
+      question: null,
+      student: null,
+      latestResponse: null,
+      manualPoints: baseManualPoints,
+    });
+
+    try {
+      const sessionId = normalizeAnswerValue(conflict?.sessionId);
+      const questionId = normalizeAnswerValue(conflict?.questionId);
+      const studentId = normalizeAnswerValue(conflict?.studentId);
+      if (!sessionId || !questionId || !studentId) {
+        setConflictDetailState((prev) => ({
+          ...prev,
+          loading: false,
+          error: 'Conflict detail is missing session, question, or student identifiers.',
+        }));
+        return;
+      }
+
+      const sessionResults = await loadConflictSessionResults(sessionId);
+      const question = sessionResults?.questionById?.get(questionId) || null;
+      const questionNumber = sessionResults?.questionNumberById?.get(questionId);
+      const studentResult = sessionResults?.studentResultById?.get(studentId) || null;
+      const questionResult = (studentResult?.questionResults || [])
+        .find((entry) => String(entry?.questionId) === questionId);
+      const latestResponse = getLatestResponse(questionResult?.responses || []);
+      const student = studentResult
+        ? {
+          studentId,
+          firstname: studentResult.firstname,
+          lastname: studentResult.lastname,
+          email: studentResult.email,
+        }
+        : null;
+
+      setConflictDetailState((prev) => ({
+        ...prev,
+        loading: false,
+        error: '',
+        question,
+        student,
+        latestResponse,
+        conflict: questionNumber
+          ? { ...prev.conflict, questionNumber }
+          : prev.conflict,
+      }));
+    } catch (err) {
+      setConflictDetailState((prev) => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.message || 'Failed to load conflict details.',
+      }));
+    }
+  }, [loadConflictSessionResults]);
+
+  const handleCloseConflictDetail = useCallback(() => {
+    if (conflictDetailState.saving) return;
+    setConflictDetailState({
+      open: false,
+      loading: false,
+      saving: false,
+      error: '',
+      conflict: null,
+      question: null,
+      student: null,
+      latestResponse: null,
+      manualPoints: '',
+    });
+  }, [conflictDetailState.saving]);
+
+  const handleConflictManualPointsChange = useCallback((value) => {
+    setConflictDetailState((prev) => ({
+      ...prev,
+      manualPoints: value,
+      error: '',
+    }));
+  }, []);
+
+  const handleAcceptConflictFromDetail = useCallback(async () => {
+    const conflict = conflictDetailState.conflict;
+    if (!conflict) return;
+    if (!isAutoGradeableConflict(conflict, conflictDetailState.question)) {
+      setConflictDetailState((prev) => ({
+        ...prev,
+        error: 'This question type cannot be auto-graded.',
+      }));
+      return;
+    }
+
+    setConflictDetailState((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      await handleAcceptConflict(conflict);
+      removeConflictFromDialogs(conflict);
+      setGlobalMessage('Applied recalculated automatic mark.');
+      setGlobalMessageType('success');
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+    } catch (err) {
+      setConflictDetailState((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.response?.data?.message || 'Failed to apply automatic mark.',
+      }));
+    }
+  }, [
+    conflictDetailState.conflict,
+    conflictDetailState.question,
+    fetchGrades,
+    handleAcceptConflict,
+    removeConflictFromDialogs,
+    selectedSessionIds,
+  ]);
+
+  const handleSaveManualConflictGrade = useCallback(async () => {
+    const conflict = conflictDetailState.conflict;
+    if (!conflict?.gradeId || !conflict?.questionId) return;
+
+    const points = Number(conflictDetailState.manualPoints);
+    if (!Number.isFinite(points) || points < 0) {
+      setConflictDetailState((prev) => ({
+        ...prev,
+        error: 'Manual points must be a valid number greater than or equal to zero.',
+      }));
+      return;
+    }
+
+    setConflictDetailState((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      await apiClient.patch(`/grades/${conflict.gradeId}/marks/${conflict.questionId}`, { points });
+      removeConflictFromDialogs(conflict);
+      setGlobalMessage('Manual grade saved.');
+      setGlobalMessageType('success');
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+    } catch (err) {
+      setConflictDetailState((prev) => ({
+        ...prev,
+        saving: false,
+        error: err.response?.data?.message || 'Failed to save manual grade.',
+      }));
+    }
+  }, [
+    conflictDetailState.conflict,
+    conflictDetailState.manualPoints,
+    fetchGrades,
+    removeConflictFromDialogs,
+    selectedSessionIds,
+  ]);
+
+  const handleAcceptAllConflicts = useCallback(async () => {
+    const autoConflicts = conflictsDialog.conflicts.filter((conflict) => isAutoGradeableConflict(conflict));
+    if (!autoConflicts.length) {
+      setGlobalMessage('No auto-gradeable conflicts to apply.');
+      setGlobalMessageType('warning');
+      return;
+    }
+
+    const acceptedConflicts = [];
+    const errors = [];
+
+    for (const conflict of autoConflicts) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await handleAcceptConflict(conflict);
+        acceptedConflicts.push(conflict);
+      } catch (err) {
+        errors.push(err.response?.data?.message || 'Failed to apply some recalculated marks.');
+      }
+    }
+
+    if (acceptedConflicts.length > 0) {
+      setConflictsDialog((prev) => ({
+        ...prev,
+        conflicts: prev.conflicts.filter((entry) => !acceptedConflicts.some((accepted) => isSameConflict(entry, accepted))),
+      }));
+      setConflictDetailState((prev) => {
+        if (!prev.open || !acceptedConflicts.some((accepted) => isSameConflict(prev.conflict, accepted))) {
+          return prev;
+        }
+        return {
+          open: false,
+          loading: false,
+          saving: false,
+          error: '',
+          conflict: null,
+          question: null,
+          student: null,
+          latestResponse: null,
+          manualPoints: '',
+        };
+      });
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+    }
+
+    if (errors.length > 0) {
+      setGlobalMessage(errors.join(' '));
+      setGlobalMessageType('error');
+    } else {
+      const skippedCount = conflictsDialog.conflicts.length - autoConflicts.length;
+      if (skippedCount > 0) {
+        setGlobalMessage(`Applied automatic marks where supported. ${skippedCount} conflict(s) require manual handling.`);
+        setGlobalMessageType('warning');
+      } else {
+        setGlobalMessage('Applied recalculated automatic marks for selected manual overrides.');
+        setGlobalMessageType('success');
+      }
     }
   }, [conflictsDialog.conflicts, fetchGrades, handleAcceptConflict, selectedSessionIds]);
 
@@ -847,7 +1624,7 @@ export default function CourseGradesPanel({
   }
 
   const canOpenSessionPicker = !loadingSessionOptions && allSessionPickerIds.length > 0;
-  const canExportCurrentTable = tableVisible && visibleSessions.length > 0 && rows.length > 0;
+  const canExportCurrentTable = tableVisible && visibleSessions.length > 0 && sortedRows.length > 0;
 
   return (
     <Box>
@@ -965,12 +1742,10 @@ export default function CourseGradesPanel({
         <>
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5, alignItems: 'center' }}>
             {instructorView && (
-              <TextField
-                size="small"
-                label="Search students"
-                value={studentSearchInput}
-                onChange={(event) => setStudentSearchInput(event.target.value)}
-                sx={{ minWidth: 240 }}
+              <StudentSearchField
+                value={studentSearchQuery}
+                onSearchChange={setStudentSearchQuery}
+                disabled={loading}
               />
             )}
             {instructorView && (
@@ -979,7 +1754,7 @@ export default function CourseGradesPanel({
                 variant="outlined"
                 startIcon={<RefreshIcon />}
                 onClick={handleRecalculateAll}
-                disabled={!visibleSessions.length}
+                disabled={!visibleSessions.length || recalculateAllProgress.active}
               >
                 Re-calculate all
               </Button>
@@ -1003,6 +1778,21 @@ export default function CourseGradesPanel({
               />
             )}
           </Box>
+
+          {recalculateAllProgress.active && (
+            <Paper variant="outlined" sx={{ p: 1.25, mb: 1.25 }}>
+              <Typography variant="body2" sx={{ mb: 0.5 }}>
+                Recalculating grades {recalculateAllProgress.completed}/{recalculateAllProgress.total}
+                {recalculateAllProgress.currentSessionName ? `: ${recalculateAllProgress.currentSessionName}` : ''}
+              </Typography>
+              <LinearProgress
+                variant="determinate"
+                value={recalculateAllProgress.total > 0
+                  ? (100 * recalculateAllProgress.completed) / recalculateAllProgress.total
+                  : 0}
+              />
+            </Paper>
+          )}
 
           {loading ? (
             <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
@@ -1127,7 +1917,7 @@ export default function CourseGradesPanel({
                                       <IconButton
                                         size="small"
                                         onClick={() => handleRecalculateSession(session._id)}
-                                        disabled={!!refreshingSessionIds[session._id]}
+                                        disabled={recalculateAllProgress.active || !!refreshingSessionIds[session._id]}
                                       >
                                         <RefreshIcon fontSize="inherit" />
                                       </IconButton>
@@ -1234,23 +2024,24 @@ export default function CourseGradesPanel({
                   {conflictsDialog.conflicts.map((conflict) => (
                     <TableRow key={`${conflict.gradeId}-${conflict.questionId}-${conflict.studentId}`}>
                       <TableCell>{conflict.studentName || conflict.studentId}</TableCell>
-                      <TableCell>{conflict.questionId}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => handleOpenConflictDetail(conflict)}
+                          sx={{ px: 0, textTransform: 'none' }}
+                        >
+                          {buildConflictQuestionLabel(conflict)}
+                        </Button>
+                      </TableCell>
                       <TableCell>{formatPercent(conflict.existingPoints)}</TableCell>
                       <TableCell>{formatPercent(conflict.calculatedPoints)}</TableCell>
                       <TableCell>
                         <Button
                           size="small"
                           variant="outlined"
-                          onClick={async () => {
-                            await handleAcceptConflict(conflict);
-                            setConflictsDialog((prev) => ({
-                              ...prev,
-                              conflicts: prev.conflicts.filter((entry) => (
-                                !(entry.gradeId === conflict.gradeId && entry.questionId === conflict.questionId && entry.studentId === conflict.studentId)
-                              )),
-                            }));
-                            await fetchGrades(selectedSessionIds, { applyToState: true });
-                          }}
+                          onClick={() => handleAcceptConflictFromList(conflict)}
+                          disabled={!isAutoGradeableConflict(conflict)}
                         >
                           Accept Auto
                         </Button>
@@ -1278,6 +2069,23 @@ export default function CourseGradesPanel({
         sessionName={gradeDialogState.sessionName}
         instructorView={instructorView}
         onGradeUpdated={handleGradeDialogUpdated}
+      />
+
+      <ConflictMarkDialog
+        open={conflictDetailState.open}
+        onClose={handleCloseConflictDetail}
+        loading={conflictDetailState.loading}
+        error={conflictDetailState.error}
+        conflict={conflictDetailState.conflict}
+        question={conflictDetailState.question}
+        student={conflictDetailState.student}
+        latestResponse={conflictDetailState.latestResponse}
+        manualPoints={conflictDetailState.manualPoints}
+        onManualPointsChange={handleConflictManualPointsChange}
+        saving={conflictDetailState.saving}
+        canAcceptAuto={isAutoGradeableConflict(conflictDetailState.conflict, conflictDetailState.question)}
+        onAcceptAuto={handleAcceptConflictFromDetail}
+        onSaveManual={handleSaveManualConflictGrade}
       />
     </Box>
   );
