@@ -881,7 +881,7 @@ export default function CourseDetail() {
         <TextField
           select
           size="small"
-          label="Section"
+          label="View"
           value={String(tab)}
           onChange={(event) => handleTabChange(Number(event.target.value))}
           sx={{ mb: 1.5, minWidth: 260, maxWidth: 420 }}

@@ -513,7 +513,6 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
       }));
     }
     delete sanitized.correctNumerical;
-    delete sanitized.toleranceNumerical;
     delete sanitized.solution;
     delete sanitized.solution_plainText;
     delete sanitized.solutionText;
@@ -866,6 +865,7 @@ export default async function sessionRoutes(app) {
       }
 
       const feedbackBySessionId = {};
+      const quizProgressBySessionId = {};
       if (!isInstrOrAdmin && normalizedSessions.length > 0) {
         const sessionIds = normalizedSessions
           .map((session) => String(session?._id || ''))
@@ -893,6 +893,61 @@ export default async function sessionRoutes(app) {
         Object.entries(feedbackGradesBySessionId).forEach(([sessionId, grades]) => {
           feedbackBySessionId[sessionId] = summarizeFeedbackFromGrades(grades);
         });
+
+        const quizSessions = normalizedSessions.filter((session) => isQuizLikeSession(session));
+        const questionToSessionId = new Map();
+        quizSessions.forEach((session) => {
+          const sessionId = String(session?._id || '');
+          const questionIds = Array.isArray(session?.questions)
+            ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
+            : [];
+          questionIds.forEach((questionId) => {
+            if (!questionToSessionId.has(questionId)) {
+              questionToSessionId.set(questionId, sessionId);
+            }
+          });
+          quizProgressBySessionId[sessionId] = {
+            questionCount: questionIds.length,
+            answeredQuestionCount: 0,
+            hasResponses: false,
+            allQuestionsAnswered: false,
+          };
+        });
+
+        const questionIds = [...questionToSessionId.keys()];
+        if (questionIds.length > 0) {
+          const responses = await Response.find({
+            studentUserId: request.user.userId,
+            questionId: { $in: questionIds },
+          })
+            .select('questionId')
+            .lean();
+
+          const answeredBySessionId = {};
+          responses.forEach((response) => {
+            const questionId = String(response?.questionId || '');
+            const sessionId = questionToSessionId.get(questionId);
+            if (!sessionId) return;
+            if (!answeredBySessionId[sessionId]) {
+              answeredBySessionId[sessionId] = new Set();
+            }
+            answeredBySessionId[sessionId].add(questionId);
+          });
+
+          Object.entries(answeredBySessionId).forEach(([sessionId, questionIdSet]) => {
+            const progress = quizProgressBySessionId[sessionId] || {
+              questionCount: 0,
+              answeredQuestionCount: 0,
+              hasResponses: false,
+              allQuestionsAnswered: false,
+            };
+            progress.answeredQuestionCount = questionIdSet.size;
+            progress.hasResponses = questionIdSet.size > 0;
+            progress.allQuestionsAnswered = progress.questionCount > 0
+              && questionIdSet.size >= progress.questionCount;
+            quizProgressBySessionId[sessionId] = progress;
+          });
+        }
       }
 
       const hydratedSessions = normalizedSessions.map((session) => {
@@ -901,10 +956,23 @@ export default async function sessionRoutes(app) {
         });
 
         if (!isInstrOrAdmin) {
+          const sessionId = String(sessionForUser?._id || '');
           const feedbackSummary = feedbackBySessionId[String(sessionForUser?._id || '')] || getDefaultFeedbackSummary();
           sessionForUser.feedback = feedbackSummary;
           sessionForUser.hasNewFeedback = feedbackSummary.hasNewFeedback;
           sessionForUser.newFeedbackQuestionIds = feedbackSummary.newFeedbackQuestionIds;
+
+          if (isQuizLikeSession(sessionForUser)) {
+            const progress = quizProgressBySessionId[sessionId] || {
+              questionCount: Array.isArray(sessionForUser?.questions) ? sessionForUser.questions.length : 0,
+              answeredQuestionCount: 0,
+              hasResponses: false,
+              allQuestionsAnswered: false,
+            };
+            sessionForUser.quizResponseCountByCurrentUser = progress.answeredQuestionCount;
+            sessionForUser.quizHasResponsesByCurrentUser = progress.hasResponses;
+            sessionForUser.quizAllQuestionsAnsweredByCurrentUser = progress.allQuestionsAnswered;
+          }
         }
 
         return sessionForUser;
@@ -2409,7 +2477,6 @@ export default async function sessionRoutes(app) {
               }));
             }
             delete studentQ.correctNumerical;
-            delete studentQ.toleranceNumerical;
             delete studentQ.solution;
             delete studentQ.solution_plainText;
             // Legacy compatibility keys from imported data.

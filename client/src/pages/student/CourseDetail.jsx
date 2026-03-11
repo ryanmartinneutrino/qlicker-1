@@ -118,12 +118,22 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
   }
 
   if (isQuiz && session.status === 'running') {
-    const quizActionLabel = session.quizStartedByCurrentUser ? 'Resume / submit quiz' : 'Start quiz';
+    const hasResponses = !!session.quizHasResponsesByCurrentUser;
+    const allQuestionsAnswered = !!session.quizAllQuestionsAnsweredByCurrentUser;
+    let quizActionLabel = 'Start quiz';
+    let chipColor = 'primary';
+    if (allQuestionsAnswered) {
+      quizActionLabel = 'Submit quiz';
+      chipColor = 'error';
+    } else if (hasResponses) {
+      quizActionLabel = 'Resume quiz';
+      chipColor = 'error';
+    }
     return {
       clickable: true,
       path: `/student/course/${courseId}/session/${session._id}/quiz`,
       label: quizActionLabel,
-      chipColor: 'primary',
+      chipColor,
       chipVariant: 'filled',
     };
   }
@@ -327,7 +337,6 @@ export default function StudentCourseDetail() {
                 >
                   <ListItemButton
                     onClick={clickable ? () => navigate(action.path) : undefined}
-                    disabled={!clickable}
                     sx={{
                       alignItems: 'flex-start',
                       flexWrap: 'wrap',
@@ -351,12 +360,12 @@ export default function StudentCourseDetail() {
                                 sx={COMPACT_CHIP_SX}
                               />
                             )}
-                            {s.status === 'done' && (
+                            {s.status === 'done' && !s.reviewable && (
                               <Chip
-                                label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}
+                                label="Not Reviewable"
                                 size="small"
                                 variant="outlined"
-                                color={s.reviewable ? 'success' : 'default'}
+                                color="default"
                                 sx={COMPACT_CHIP_SX}
                               />
                             )}
