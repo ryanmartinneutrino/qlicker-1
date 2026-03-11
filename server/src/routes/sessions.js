@@ -1903,7 +1903,7 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -1912,7 +1912,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not live' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1994,7 +1994,7 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2591,12 +2591,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
