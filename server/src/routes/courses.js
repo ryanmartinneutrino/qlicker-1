@@ -15,7 +15,9 @@ async function generateUniqueEnrollmentCode() {
     const existing = await Course.findOne({ enrollmentCode: code });
     if (!existing) return code;
   }
-  throw new Error('Failed to generate a unique enrollment code');
+  const err = new Error('Failed to generate a unique enrollment code');
+  err.statusCode = 500;
+  throw err;
 }
 
 const createCourseSchema = {

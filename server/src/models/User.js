@@ -117,6 +117,9 @@ const UserSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance (matching legacy database indexes)
+UserSchema.index({ 'emails.address': 1 });
+
 // Virtual: convenient email getter
 UserSchema.virtual('email').get(function () {
   return this.emails?.[0]?.address;

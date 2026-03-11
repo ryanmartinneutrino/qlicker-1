@@ -42,6 +42,12 @@ const GradeSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance (matching legacy database indexes)
+GradeSchema.index({ userId: 1 });
+GradeSchema.index({ sessionId: 1 });
+GradeSchema.index({ courseId: 1 });
+GradeSchema.index({ userId: 1, sessionId: 1 });
+
 const Grade = mongoose.model('Grade', GradeSchema);
 
 export default Grade;

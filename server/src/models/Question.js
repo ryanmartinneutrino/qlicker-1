@@ -72,6 +72,11 @@ const QuestionSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance (matching legacy database indexes)
+QuestionSchema.index({ sessionId: 1 });
+QuestionSchema.index({ courseId: 1 });
+QuestionSchema.index({ owner: 1 });
+
 const Question = mongoose.model('Question', QuestionSchema);
 
 export default Question;

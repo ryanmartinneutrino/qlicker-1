@@ -17,6 +17,9 @@ const ImageSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance (matching legacy database indexes)
+ImageSchema.index({ UID: 1 });
+
 const Image = mongoose.model('Image', ImageSchema);
 
 export default Image;
