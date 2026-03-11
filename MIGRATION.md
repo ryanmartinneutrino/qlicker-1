@@ -437,7 +437,7 @@ After this script has been applied in all environments, remove temporary client 
 ### Remaining Follow-Up Items
 
 - Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path (affects users with pending reset tokens from the old app).
-- Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.
+- ~~Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.~~ ✅ **Done** — Added indexes to User (`emails.address`), Question (`sessionId`, `courseId`, `owner`), Session (`courseId`), Grade (`userId`, `sessionId`, `courseId`, compound `userId+sessionId`), and Image (`UID`). Response already had compound indexes.
 - Confirm whether `meteor_accounts_loginServiceConfiguration` should remain unsupported, be migrated, or be explicitly deprecated.
 - Legacy `groupCategories.groups` shape mismatch (`groupNumber/groupName/students` vs `name/members`) needs migration logic or schema alignment before group features are implemented.
 
@@ -1031,7 +1031,7 @@ Phase 6 is complete (grading fully functional). A comprehensive code review (202
 6. **Swagger API documentation:** Register `@fastify/swagger` in `app.js` (dependency already installed but not wired up).
 7. **Course page WebSocket push:** Replace 15-second polling on course pages with WebSocket push events for session status changes.
 8. **E2E tests:** Set up Playwright and implement flow tests for login, course management, session creation, live session, quiz, and grading.
-9. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance.
+9. ~~**Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance.~~ ✅ Done — Added to User, Question, Session, Grade, Image models.
 10. **Storage hardening:** Move from public object URLs to private-bucket image delivery (staged DB migration + bucket policy cutover).
 11. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings.
 12. **Copy sessions between courses** (Agent 3 remaining task).

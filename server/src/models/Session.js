@@ -65,6 +65,9 @@ const SessionSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance (matching legacy database indexes)
+SessionSchema.index({ courseId: 1 });
+
 const Session = mongoose.model('Session', SessionSchema);
 
 export default Session;
