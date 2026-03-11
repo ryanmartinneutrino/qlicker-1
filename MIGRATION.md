@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 5 Complete — Interactive Sessions + Quizzes Functional
+## Status: Phase 6 Complete — Grading Functional
 
 ---
 
@@ -51,7 +51,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **File Upload** | AWS SDK v3, @azure/storage-blob | S3, Azure, local storage |
 | **UI Framework** | Material UI (MUI) | Material Design components |
 | **Typography** | Helvetica Neue, Helvetica, Arial | Global UI font stack (client theme) |
-| **Charts** | Recharts | Data visualization |
+| **Charts** | MUI + custom components | Data visualization (HistogramBars, LinearProgress bars) |
 | **Math** | KaTeX | Equation rendering |
 | **Rich Text** | TipTap | WYSIWYG editor |
 | **Testing** | Vitest + Playwright | Unit + E2E tests |
@@ -66,6 +66,7 @@ qlicker-1/
 │   │   ├── app.js               # Fastify app factory
 │   │   ├── server.js            # Entry point
 │   │   ├── config/              # Environment config
+│   │   │   └── index.js
 │   │   ├── models/              # Mongoose models
 │   │   │   ├── User.js
 │   │   │   ├── Course.js
@@ -79,71 +80,87 @@ qlicker-1/
 │   │   │   ├── auth.js
 │   │   │   ├── users.js
 │   │   │   ├── courses.js
-│   │   │   ├── sessions.js
+│   │   │   ├── sessions.js      # Also handles responses (no separate responses.js)
 │   │   │   ├── questions.js
-│   │   │   ├── responses.js
 │   │   │   ├── grades.js
 │   │   │   ├── images.js
 │   │   │   └── settings.js
 │   │   ├── plugins/             # Fastify plugins
-│   │   │   ├── auth.js          # JWT + session auth
-│   │   │   ├── websocket.js     # WebSocket manager
+│   │   │   ├── db.js            # MongoDB/Mongoose connection
+│   │   │   ├── websocket.js     # WebSocket manager (wsBroadcast, wsSendToUser)
 │   │   │   ├── saml.js          # SAML SSO
-│   │   │   ├── mailer.js        # Email
-│   │   │   └── upload.js        # File upload
+│   │   │   └── upload.js        # File upload (S3, Azure, local)
 │   │   ├── services/            # Business logic
-│   │   │   ├── grading.js
-│   │   │   ├── sessions.js
-│   │   │   └── courses.js
+│   │   │   ├── grading.js       # Grade calculation engine
+│   │   │   ├── email.js         # Nodemailer email sending
+│   │   │   └── questionCopy.js  # Question copy/clone logic
 │   │   ├── middleware/           # Auth guards, validators
-│   │   └── websocket/           # WS event handlers
-│   │       ├── session-live.js
-│   │       └── course-updates.js
-│   ├── test/
+│   │   │   └── auth.js          # JWT verification + role guards
+│   │   ├── utils/               # Shared utilities
+│   │   │   ├── email.js         # Case-insensitive email regex
+│   │   │   ├── meteorId.js      # Meteor-compatible _id generation
+│   │   │   ├── password.js      # Argon2id hashing
+│   │   │   └── regex.js         # ReDoS-safe regex escaping
+│   │   └── websocket/           # WS event handlers (planned, currently empty)
+│   ├── scripts/
+│   │   └── migrate-question-types.js  # One-time legacy type cleanup
+│   ├── test/                    # Vitest test suites (141 tests, 8 files)
 │   ├── package.json
 │   └── Dockerfile
 ├── client/                      # React frontend
 │   ├── src/
 │   │   ├── main.jsx             # Entry point
 │   │   ├── App.jsx              # Root with router
-│   │   ├── theme/               # MUI theme, colors, fonts
-│   │   ├── api/                 # API client + WebSocket hooks
-│   │   │   ├── client.js        # Axios/fetch wrapper
-│   │   │   ├── ws.js            # WebSocket client
-│   │   │   └── hooks/           # React Query hooks
+│   │   ├── theme/               # MUI theme (Helvetica font stack)
+│   │   │   └── index.js
+│   │   ├── api/                 # API client
+│   │   │   └── client.js        # Axios wrapper with JWT interceptor
 │   │   ├── contexts/            # React contexts
-│   │   │   ├── AuthContext.jsx
-│   │   │   └── WSContext.jsx
+│   │   │   └── AuthContext.jsx   # JWT storage, auto-refresh, cross-tab sync
 │   │   ├── components/          # Shared components
-│   │   │   ├── layout/
-│   │   │   ├── forms/
-│   │   │   ├── questions/
-│   │   │   ├── sessions/
-│   │   │   ├── grades/
-│   │   │   └── common/
+│   │   │   ├── common/          # AutoSaveStatus, ConnectionStatus, HistogramBars,
+│   │   │   │                    # RequireAuth, RequireRole, SessionStatusChip
+│   │   │   ├── grades/          # CourseGradesPanel, SessionQuestionGradingPanel
+│   │   │   ├── layout/          # AppLayout
+│   │   │   └── questions/       # QuestionDisplay, QuestionEditor, RichTextEditor,
+│   │   │                        # StudentRichTextEditor, ResizableImage, constants,
+│   │   │                        # richTextUtils
 │   │   ├── pages/               # Route pages
-│   │   │   ├── Login.jsx
 │   │   │   ├── Home.jsx
+│   │   │   ├── Login.jsx
 │   │   │   ├── Profile.jsx
-│   │   │   ├── admin/
-│   │   │   ├── professor/
-│   │   │   └── student/
-│   │   └── utils/
-│   ├── test/
+│   │   │   ├── ResetPassword.jsx
+│   │   │   ├── SSOCallback.jsx
+│   │   │   ├── VerifyEmail.jsx
+│   │   │   ├── admin/           # AdminDashboard
+│   │   │   ├── professor/       # ProfDashboard, CourseDetail, SessionEditor,
+│   │   │   │                    # LiveSession, SecondDesktop, SessionReview
+│   │   │   └── student/         # StudentDashboard, CourseDetail, LiveSession,
+│   │   │                        # QuizSession, SessionReview
+│   │   └── utils/               # courseSemester, courseTitle, date, histogram
 │   ├── package.json
 │   ├── vite.config.js
 │   └── Dockerfile
 ├── scripts/                     # Setup and management
 │   ├── setup-native.sh
 │   ├── setup-docker.sh
-│   ├── qlicker.sh
-│   ├── seed-db.sh
-│   └── seed-db-docker.sh
+│   ├── qlicker.sh               # start/stop/restart/status
+│   ├── seed-db.js               # Node.js seed/reset script
+│   ├── seed-db.sh               # Native seed wrapper
+│   ├── seed-db-docker.sh        # Docker seed wrapper
+│   ├── changeuserpwd.js         # Password change utility
+│   └── changeuserpwd.sh         # Password change wrapper
+├── docs/                        # Documentation
+│   ├── developer/
+│   │   └── grading.md
+│   └── user-manual/
+│       └── grading.md
 ├── docker-compose.yml
+├── docker-compose.prod.yml      # Production with Nginx load balancer
 ├── .env.example
 ├── MIGRATION.md                 # This file
 ├── REQUIREMENTS_FOR_MIGRATION_FASTIFY.md
-└── agents/                      # Agent task files
+└── agents/                      # Agent task files (8 agent docs)
 ```
 
 ### API Design
@@ -181,12 +198,12 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | POST | `/api/v1/courses/enroll` | Enroll by code |
 | DELETE | `/api/v1/courses/:id/students/:studentId` | Remove student |
 | POST | `/api/v1/courses/:id/students` | Add student |
-| POST | `/api/v1/courses/:id/tas` | Add TA |
-| DELETE | `/api/v1/courses/:id/tas/:taId` | Remove TA |
+| POST | `/api/v1/courses/:id/instructors` | Add instructor/TA |
+| DELETE | `/api/v1/courses/:id/instructors/:instructorId` | Remove instructor/TA |
 | POST | `/api/v1/courses/:id/regenerate-code` | New enrollment code |
 | PATCH | `/api/v1/courses/:id/active` | Toggle active |
-| POST | `/api/v1/courses/:id/copy-sessions` | Copy all sessions |
-| **Course Groups** | | |
+| POST | `/api/v1/courses/:id/copy-sessions` | Copy all sessions *(not yet implemented — Phase 7)* |
+| **Course Groups** | | *(Not yet implemented — Phase 7)* |
 | GET | `/api/v1/courses/:id/groups` | List group categories |
 | POST | `/api/v1/courses/:id/groups` | Create category |
 | DELETE | `/api/v1/courses/:id/groups/:catId` | Delete category |
@@ -195,6 +212,7 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | PATCH | `/api/v1/courses/:id/groups/:catId/groups/:gId` | Update group |
 | **Sessions** | | |
 | POST | `/api/v1/courses/:courseId/sessions` | Create session |
+| GET | `/api/v1/courses/:courseId/sessions` | List course sessions |
 | GET | `/api/v1/sessions/:id` | Get session |
 | PATCH | `/api/v1/sessions/:id` | Update session |
 | DELETE | `/api/v1/sessions/:id` | Delete session |
@@ -209,6 +227,15 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | PATCH | `/api/v1/sessions/:id/reviewable` | Toggle reviewable |
 | PATCH | `/api/v1/sessions/:id/extensions` | Set quiz extensions |
 | POST | `/api/v1/sessions/:id/copy` | Copy session |
+| GET | `/api/v1/sessions/:id/live` | Get live session data (student/prof) |
+| GET | `/api/v1/sessions/:id/review` | Get session review data |
+| GET | `/api/v1/sessions/:id/results` | Get session results (prof) |
+| POST | `/api/v1/sessions/:id/respond` | Submit response (live session) |
+| PATCH | `/api/v1/sessions/:id/question-visibility` | Show/hide question |
+| POST | `/api/v1/sessions/:id/new-attempt` | Start new attempt |
+| PATCH | `/api/v1/sessions/:id/toggle-responses` | Open/close responses |
+| POST | `/api/v1/sessions/:id/refresh-join-code` | Refresh join code |
+| PATCH | `/api/v1/sessions/:id/join-code-settings` | Configure join code |
 | **Questions** | | |
 | POST | `/api/v1/questions` | Create question |
 | GET | `/api/v1/questions/:id` | Get question |
@@ -225,17 +252,16 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | PATCH | `/api/v1/questions/:id/stats` | Show/hide stats |
 | PATCH | `/api/v1/questions/:id/correct` | Show/hide correct |
 | **Responses** | | |
-| POST | `/api/v1/responses` | Submit response |
-| PATCH | `/api/v1/responses/:id` | Update response |
-| GET | `/api/v1/questions/:id/responses` | Get responses for question |
-| GET | `/api/v1/sessions/:id/responses` | Get session responses |
+| | *(Response endpoints are implemented within the sessions route module — see `/sessions/:id/respond`, `/quiz-response`, `/quiz-question-submit`, `/submit` above)* | |
 | **Grades** | | |
+| POST | `/api/v1/sessions/:id/grades/recalculate` | Recalculate session grades |
 | GET | `/api/v1/sessions/:id/grades` | Get session grades |
-| GET | `/api/v1/courses/:id/grades` | Get course grades |
-| POST | `/api/v1/sessions/:id/grades/calculate` | Calculate grades |
-| PATCH | `/api/v1/grades/:id` | Update grade |
-| PATCH | `/api/v1/grades/:id/marks/:questionId` | Update mark |
-| PATCH | `/api/v1/sessions/:id/grades/visibility` | Show/hide grades |
+| PATCH | `/api/v1/sessions/:id/grades/visibility` | Show/hide grades to students |
+| PATCH | `/api/v1/grades/:gradeId/marks/:questionId` | Update mark for a question |
+| POST | `/api/v1/grades/:gradeId/marks/:questionId/set-automatic` | Restore auto mark |
+| PATCH | `/api/v1/grades/:gradeId/value` | Update grade value |
+| POST | `/api/v1/grades/:gradeId/value/set-automatic` | Restore auto grade value |
+| GET | `/api/v1/courses/:courseId/grades` | Get course grades |
 | **Images** | | |
 | POST | `/api/v1/images/upload-url` | Get signed upload URL |
 | POST | `/api/v1/images` | Register image |
@@ -250,15 +276,17 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 
 ### WebSocket Events
 
-| Event | Direction | Description |
-|-------|-----------|-------------|
-| `session:join` | Client → Server | Student joins live session |
-| `session:question-changed` | Server → Client | Prof changes current question |
-| `session:response-added` | Server → Client | New response (for stats) |
-| `session:status-changed` | Server → Client | Session started/ended |
-| `session:question-updated` | Server → Client | Question visibility/stats/correct toggled |
-| `course:session-updated` | Server → Client | Session status change on course page |
-| `course:students-updated` | Server → Client | Student list updated |
+> **Note:** The current implementation uses a single generic `session:updated` event. The granular events listed below are the **planned target** for production scalability (see [Code Review Findings § Performance](#performance)). Currently, all connected clients receive `session:updated` and re-fetch the full `/sessions/:id/live` endpoint.
+
+| Event | Direction | Status | Description |
+|-------|-----------|--------|-------------|
+| `session:updated` | Server → Client | ✅ Implemented | Generic notification; clients re-fetch live data |
+| `session:question-changed` | Server → Client | ⬜ Planned | Prof changes current question (delta payload) |
+| `session:response-added` | Server → Client | ⬜ Planned | New response count (delta payload) |
+| `session:status-changed` | Server → Client | ⬜ Planned | Session started/ended (delta payload) |
+| `session:visibility-changed` | Server → Client | ⬜ Planned | Question visibility/stats/correct toggled (delta payload) |
+| `course:session-updated` | Server → Client | ⬜ Planned | Session status change on course page |
+| `course:students-updated` | Server → Client | ⬜ Planned | Student list updated |
 
 ---
 
@@ -637,15 +665,16 @@ See [agents/AGENT_5_RESPONSES.md](agents/AGENT_5_RESPONSES.md)
 
 **Summary of tasks:**
 - [x] Response Mongoose model
-- [ ] Response submission routes
-- [ ] Response update (quiz editable responses)
+- [x] Response submission routes (implemented within `sessions.js`: POST respond, PATCH quiz-response, POST quiz-question-submit, POST submit)
+- [x] Response update (quiz editable responses — auto-save via PATCH quiz-response)
 - [x] WebSocket infrastructure (@fastify/websocket)
-- [x] WebSocket authentication
-- [ ] Live session events (question changed, response added, status changed)
-- [ ] Course page events (session status, student list)
-- [ ] Response statistics calculation
-- [ ] Quiz auto-save mechanism
-- [ ] Rate limiting and security for WebSocket
+- [x] WebSocket authentication (JWT via query parameter)
+- [x] Live session events (generic `session:updated` broadcast — see Performance section for planned granular events)
+- [ ] Course page WebSocket events (currently uses 15-second polling)
+- [x] Response statistics calculation (`buildResponseStats()` in sessions.js)
+- [x] Quiz auto-save mechanism (PATCH /sessions/:id/quiz-response)
+- [ ] Granular delta WebSocket messages (replace generic `session:updated` for scalability)
+- [ ] WebSocket rate limiting
 
 ### Agent 6: Grading System
 See [agents/AGENT_6_GRADING.md](agents/AGENT_6_GRADING.md)
@@ -667,27 +696,28 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 
 **Summary of tasks:**
 - [x] React app scaffold (Vite + React 18)
-- [x] MUI theme (colors, fonts matching existing app)
+- [x] MUI theme (Helvetica font stack matching existing app)
 - [x] App layout (navbar, sidebar, routing)
-- [x] Auth context (JWT storage, auto-refresh)
-- [x] API client (fetch/axios wrapper)
-- [ ] WebSocket context
+- [x] Auth context (JWT storage, auto-refresh, cross-tab sync)
+- [x] API client (Axios wrapper with JWT interceptor)
+- [ ] WebSocket context (currently inline in LiveSession pages; should extract to shared context)
 - [x] Login/Register page
-- [x] Admin panel (settings, users, images, SSO)
+- [x] Admin panel (settings, users, images, SSO, token expiry)
 - [x] Profile page
 - [x] Professor dashboard and course pages
 - [x] Student dashboard and course pages
-- [x] Session editor page
-- [ ] Run session page (professor)
-- [ ] Present session page (student)
-- [ ] Quiz page (student)
-- [x] Grading pages and components
-- [x] Session review pages
-- [x] Question components (display, edit, all types)
-- [ ] Answer distribution charts
+- [x] Session editor page (TipTap rich text, KaTeX math, resizable images, autosave)
+- [x] Run session page (professor) — LiveSession with toggle controls, join code management
+- [x] Present session page (student) — LiveSession with answer submission
+- [x] Quiz page (student) — QuizSession with autosave, submit, practice mode
+- [x] Grading pages and components (CourseGradesPanel, SessionQuestionGradingPanel)
+- [x] Session review pages (professor + student, per-attempt, CSV export)
+- [x] Question components (display, edit, all 5 types: SA, MC, TF, MS, NU)
+- [x] Answer distribution display — MUI LinearProgress bars for MC/MS/TF, custom HistogramBars for NU
+- [x] SecondDesktop projector view (popup window, auto-close on session end)
 - [ ] Group management UI
 - [ ] Video chat (Jitsi) integration
-- [x] Shared components (tables, forms, modals, lists)
+- [x] Shared components (tables, forms, modals, lists, AutoSaveStatus)
 - [x] Connection status indicator (health check banner)
 - [x] Session list on professor and student course pages
 
@@ -707,10 +737,11 @@ See [agents/AGENT_8_TESTING.md](agents/AGENT_8_TESTING.md)
 - [ ] Quiz flow E2E test
 - [ ] Grading flow E2E test
 - [ ] Legacy DB compatibility tests
-- [x] API unit tests per route module
-- [ ] Component tests for critical UI
-- [ ] Documentation (README, developer guide, user guide)
-- [ ] Security audit
+- [x] API unit tests per route module (141 server tests across 8 suites: auth, courses, sessions, questions, grades, models, settings, grading service)
+- [x] Client grading UI test (2 tests in CourseGradesPanel.test.jsx)
+- [ ] Component tests for critical UI (beyond grading panel)
+- [ ] Documentation (README updated ✅, developer guide partial, user guide partial)
+- [ ] Security audit (rate limiting ✅, helmet ✅, ReDoS ✅; CSRF, token storage, SAML logout remain)
 
 ---
 
@@ -813,7 +844,7 @@ The existing MongoDB database uses Meteor's conventions:
 ### Styling Guidelines
 
 - **Primary color**: Match existing Qlicker blue (#2196F3 family)
-- **Font**: Clean sans-serif (Roboto via MUI)
+- **Font**: Helvetica Neue, Helvetica, Arial sans-serif stack (configured in `client/src/theme/index.js`)
 - **Design system**: Material Design via MUI
 - **Consistent spacing**: 8px grid system (MUI default)
 - **Responsive**: Mobile-friendly, especially for student quiz views
@@ -842,7 +873,7 @@ The existing MongoDB database uses Meteor's conventions:
 - MIGRATION.md: This file — plan, status, progress
 - Agent files: Detailed task lists with acceptance criteria
 - Code comments: JSDoc for API routes and services
-- API documentation: Auto-generated from Fastify schemas (using @fastify/swagger)
+- API documentation: `@fastify/swagger` is installed as a dependency but **not yet registered** in `app.js`. Needs to be wired up (Phase 7/8).
 
 ---
 
@@ -857,7 +888,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 3. Course management | ✅ Complete | Phase 3 |
 | 4. Session editor | ✅ Complete | Phase 4 |
 | 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
-| 7. Grading | 🟨 In progress (core grading complete) | Phase 6 |
+| 7. Grading | ✅ Complete (auto/manual grading, visibility, CSV, review) | Phase 6 |
 | 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
 
@@ -969,11 +1000,11 @@ The following issues were identified during testing and have been resolved:
 | 1 - Foundation | Port configuration cleanup, Docker improvements | ✅ Phase 3 done |
 | 2 - Auth | SSO auto-verify, lastLogin tracking, verify-email endpoint, admin self-role protection | ✅ Phase 4 done |
 | 3 - Courses | Course CRUD + enrollment verification + user population + student self-unenroll | ✅ Phase 4 done |
-| 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 4 backend done |
-| 5 - Responses | Response model + WebSocket infrastructure complete | ✅ Phase 2 done |
-| 6 - Grading | Core grading service/routes complete (auto/manual grading, visibility, conflicts, CSV, course/session grade tables) | ✅ Phase 6 core done |
-| 7 - Frontend | Course/session grading tabs integrated (prof + student), session MS scoring control, grading chips/warnings | ✅ Phase 6 core done |
-| 8 - Testing | Server + client grading tests passing (143 tests total: 141 server across 8 suites + 2 client grading UI tests) | ✅ Phase 6 follow-up done |
+| 4 - Sessions | Session & Question CRUD routes with full lifecycle | ✅ Phase 5 done |
+| 5 - Responses | Response model + WebSocket + response submission + quiz auto-save + stats | ✅ Phase 5 done (routes in sessions.js) |
+| 6 - Grading | Core grading service/routes complete (auto/manual grading, visibility, conflicts, CSV, course/session grade tables) | ✅ Phase 6 done |
+| 7 - Frontend | All phase 1–6 UI complete: login, admin, courses, sessions, live sessions, quizzes, grading, review | ✅ Phase 6 done |
+| 8 - Testing | Server + client tests passing (143 total: 141 server across 8 suites + 2 client grading UI tests) | ✅ Phase 6 done |
 
 ---
 
@@ -986,24 +1017,37 @@ The following issues were identified during testing and have been resolved:
 5. Complete the next pending task, update the agent file, and update this file's status tables
 6. Submit a PR with your changes
 
-### Current Next Steps (Phase 5 → Phase 6)
+### Current Next Steps (Phase 7: Groups, Video, SSO, Polish)
 
-Phase 5 is complete (interactive sessions + quizzes). A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging), HTML sanitization, and core accessibility hardening have been applied. The following should happen next:
+Phase 6 is complete (grading fully functional). A comprehensive code review (2026-03-07) identified performance, security, accessibility, and i18n items — see [Code Review Findings](#code-review-findings-2026-03-07) for full details. Low-hanging security fixes (rate limiting, helmet, ReDoS, password policy, login logging), HTML sanitization, and core accessibility hardening have been applied.
 
-1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112: Helvetica font, student/prof course UI parity, image upload fixes, SSO login UX)
+**Phase 7 priorities (in order):**
+
+1. **WebSocket delta messages (CRITICAL for production):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance. This is the single biggest scalability blocker.
+2. **Group management:** Implement group category CRUD, group management (add/remove students), and legacy `groupCategories` shape migration (`groupNumber/groupName/students` → `name/members`).
+3. **Video chat integration:** Jitsi room management for course groups.
+4. **SSO SAML production confirmation:** Verify SAML login/callback/metadata/logout work end-to-end in a production-like environment. Fix SAML logout signature validation (currently manually parses XML without crypto verification).
+5. **Security hardening:** CSRF protection (`@fastify/csrf-protection`), move JWT access token from localStorage to memory-only, refresh token rotation, file upload content validation (magic bytes).
+6. **Swagger API documentation:** Register `@fastify/swagger` in `app.js` (dependency already installed but not wired up).
+7. **Course page WebSocket push:** Replace 15-second polling on course pages with WebSocket push events for session status changes.
+8. **E2E tests:** Set up Playwright and implement flow tests for login, course management, session creation, live session, quiz, and grading.
+9. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance.
+10. **Storage hardening:** Move from public object URLs to private-bucket image delivery (staged DB migration + bucket policy cutover).
+11. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings.
+12. **Copy sessions between courses** (Agent 3 remaining task).
+13. **Client bundle optimization:** Main JS chunk is 1.6 MB (482 KB gzipped). Apply code-splitting with dynamic imports for heavy pages (SessionEditor, LiveSession, etc.).
+
+**Completed items from previous next steps:**
+
+1. ~~**Additional UI reviews:** Review and finalize remaining UI updates before proceeding with Phase 5~~ ✅ Done (PRs 108–112)
 2. ~~**Phase 5 Start:** Response submission routes, WebSocket live session events (Agent 5)~~ ✅ Done (PR 119)
 3. ~~**Phase 5 Start:** Response statistics calculation, quiz auto-save (Agent 5)~~ ✅ Done (PR 119)
 4. ~~**Phase 5 Start:** Run session page (professor), Present session page (student), Quiz page (Agent 7)~~ ✅ Done (PR 119)
-5. ~~**Phase 5 Finish:** Quiz lifecycle + student quiz runtime + extension-aware access/review logic + interactive session follow-up TODOs~~ ✅ Done (this PR)
-6. ~~**Phase 6 Prep:** Grade calculation service (Agent 6)~~ ✅ Done (grading service + routes + UI integration + tests)
-7. **Ongoing:** E2E tests for course management and session creation flows (Agent 8)
-8. ~~**Image uploads:** Verify that both thumbnail and full-size versions are saved when uploading profile pictures~~ ✅ Done (PR 112: all three backends verified — local, S3, Azure)
-9. **Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance
-10. **Storage hardening (planned):** move from public object URLs to private-bucket image delivery after staged DB migration and bucket policy cutover
-11. **WebSocket delta messages (performance):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance
-12. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage — see Code Review § Security~~ ✅ Done (accessibility branch, 2026-03-07)
-13. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions for dynamic updates — see Code Review § Accessibility~~ ✅ Done (accessibility branch, 2026-03-07)
-14. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings — see Code Review § Internationalization
+5. ~~**Phase 5 Finish:** Quiz lifecycle + student quiz runtime + extension-aware access/review logic~~ ✅ Done
+6. ~~**Phase 6:** Grade calculation service + routes + UI integration + tests~~ ✅ Done (PR 128)
+7. ~~**Image uploads:** Verify all three backends (local, S3, Azure)~~ ✅ Done (PR 112)
+8. ~~**HTML sanitization:** Add `dompurify` for `dangerouslySetInnerHTML` usage~~ ✅ Done
+9. ~~**Accessibility hardening:** ARIA roles on rich text editors, `aria-live` regions~~ ✅ Done
 
 ### Phase 6 Progress (2026-03-09)
 
@@ -1219,14 +1263,14 @@ A comprehensive code review was conducted covering performance, security, access
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Same functionality as MeteorJS | 🔄 In progress | Phases 1–5 complete (including quizzes). Grading and groups remain. |
+| Same functionality as MeteorJS | 🔄 In progress | Phases 1–6 complete (including grading). Groups and video remain (Phase 7). |
 | Same database compatibility | ✅ Verified | Legacy DB restores work. Case-insensitive emails, argon2id migration, legacy field compat all applied. |
-| Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, Recharts, TipTap, KaTeX. All actively maintained. |
-| API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. Swagger docs available. |
+| Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, custom chart components, TipTap, KaTeX. All actively maintained. |
+| API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. `@fastify/swagger` installed but not yet registered in app.js. |
 | Fast with thousands of concurrent users | ⚠️ Needs work | WebSocket is implemented but messages are coarse-grained; N+1 re-fetch pattern will not scale. See § Performance. |
 | Docker Compose with load balancing | ✅ Complete | Production Docker Compose with Nginx reverse proxy. |
 | SAML SSO | ✅ Implemented | SAML login/callback/metadata/logout endpoints in place. Needs production confirmation (Phase 7). |
-| Unit tests from onset | ✅ 143 tests | 9 test files total: 8 server test files (auth, courses, sessions, questions, models, settings, grading routes, grading helpers) plus 1 client grading UI test file. E2E (Playwright) not yet in place. |
+| Unit tests from onset | ✅ 143 tests | 9 test files total: 8 server suites (auth, courses, sessions, questions, models, settings, grades routes, grading service) + 1 client grading UI test file. E2E (Playwright) not yet in place. |
 | Image uploads (S3/Azure/local) | ✅ Complete | All three backends verified. |
 | Email (password reset) | ✅ Complete | Nodemailer integration with forgot-password flow. |
 | Reactive UI for interactive sessions | ✅ Functional, ⚠️ performance gap | WebSocket events trigger full re-fetches. Must move to delta updates for production scale. |
@@ -1253,7 +1297,7 @@ Every WebSocket `session:updated` notification causes **every connected client**
 
 **Root cause:** WebSocket messages are generic (`{ type: 'session:updated', sessionId }`) with no delta payload. Clients have no way to know *what* changed, so they re-fetch everything.
 
-#### Fix Required (Phase 6 or dedicated performance PR)
+#### Fix Required (Phase 7 — Top Priority)
 
 Replace generic `session:updated` messages with **granular delta events**:
 
@@ -1375,8 +1419,10 @@ All findings from this review are consistent with the existing legacy compatibil
 
 | Category | Fixed Now | Remaining Items | Target |
 |---|---|---|---|
-| **Performance** | — | Delta WebSocket messages, query deduplication, WS push for course pages | Phase 6 / dedicated PR |
-| **Security** | Rate limiting, helmet, ReDoS, passwords, login logging, HTML sanitization | CSRF, localStorage token, SAML validation, token rotation | Phases 6–8 |
-| **Accessibility** | ARIA on editors, aria-live regions, semantic logo, table headers, skip link, page titles, route focus management | Add automated accessibility regression tests | Phase 6–7 |
+| **Performance** | — | Delta WebSocket messages, query deduplication, WS push for course pages, client bundle code-splitting | Phase 7 (WS delta is top priority) |
+| **Security** | Rate limiting, helmet, ReDoS, passwords, login logging, HTML sanitization | CSRF, localStorage token, SAML validation, token rotation, file magic bytes | Phases 7–8 |
+| **Accessibility** | ARIA on editors, aria-live regions, semantic logo, table headers, skip link, page titles, route focus management | Add automated accessibility regression tests (axe-core) | Phase 7 |
 | **i18n** | — | Install react-i18next, extract strings, locale-aware formatting | Phases 7–8 |
-| **Legacy DB** | All known issues addressed | Group categories shape, loginServiceConfiguration decision | Phase 7 |
+| **Legacy DB** | All known issues addressed | Group categories shape, loginServiceConfiguration decision, missing indexes | Phase 7 |
+| **Documentation** | README ✅, grading docs ✅ | Swagger registration, complete developer guide, complete user manual | Phases 7–8 |
+| **Testing** | 141 server + 2 client unit tests | Playwright E2E, CI pipeline, component tests, legacy DB compat tests | Phase 7–8 |
