@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import CourseGradesPanel from './CourseGradesPanel';
 import apiClient from '../../api/client';
 
@@ -62,9 +62,24 @@ describe('CourseGradesPanel', () => {
     expect(screen.queryByText(/5 ungraded/i)).not.toBeInTheDocument();
   });
 
-  it('keeps instructor search and numeric ungraded counts', async () => {
-    render(<CourseGradesPanel courseId="course-1" instructorView />);
+  it('starts hidden for instructors and shows selected-session grades after modal confirmation', async () => {
+    render(
+      <CourseGradesPanel
+        courseId="course-1"
+        instructorView
+        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 5 }]}
+      />
+    );
 
+    expect(screen.queryByText(/week 1 mark/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/search students/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show grades table/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show grades table/i }));
+    expect(await screen.findByText(/select sessions for grade table/i)).toBeInTheDocument();
+    expect(screen.getByText(/needs grading \(5\)/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show table/i }));
     await screen.findByText(/week 1 mark/i);
     expect(screen.getByLabelText(/search students/i)).toBeInTheDocument();
     expect(screen.getByText(/5 ungraded/i)).toBeInTheDocument();

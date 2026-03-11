@@ -461,18 +461,6 @@ export default function SessionReview() {
     return studentResults.filter((student) => !!student?.inSession).length;
   }, [studentResults]);
 
-  const participatedStudents = useMemo(() => {
-    return studentResults.filter((student) => (
-      !!student?.inSession
-      && (student?.questionResults || []).some((result) => (
-        Array.isArray(result?.responses) && result.responses.length > 0
-      ))
-    )).length;
-  }, [studentResults]);
-
-  const participatedStudentsPercent = totalStudents > 0
-    ? Math.round((1000 * participatedStudents) / totalStudents) / 10
-    : 0;
   const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
 
   // ---- Stats data for ALL questions / attempts ----
@@ -838,17 +826,8 @@ export default function SessionReview() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalQuestions}</Typography>
         </Paper>
         <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Students</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalStudents}</Typography>
-        </Paper>
-        <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">Joined Session</Typography>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{joinedStudents}/{totalStudents}</Typography>
-        </Paper>
-        <Paper variant="outlined" sx={{ p: 1.5, minWidth: 120, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Class Participation</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{participatedStudents}/{totalStudents}</Typography>
-          <Typography variant="caption" color="text.secondary">{participatedStudentsPercent}%</Typography>
         </Paper>
 
         <Box sx={{ flex: 1 }} />
@@ -894,7 +873,7 @@ export default function SessionReview() {
         onChange={(_, newTab) => setTab(newTab)}
         aria-label="Session review tabs"
       >
-        <Tab label="Questions" />
+        <Tab label="Results" />
         <Tab label="Response Data" />
         <Tab label="Students" />
         <Tab

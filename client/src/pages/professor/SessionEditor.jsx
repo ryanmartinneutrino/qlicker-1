@@ -1138,29 +1138,30 @@ export default function SessionEditor() {
             </Box>
           )}
 
+          <FormControl size="small" sx={{ maxWidth: 360 }}>
+            <InputLabel id="ms-scoring-method-label">MS Scoring</InputLabel>
+            <Select
+              labelId="ms-scoring-method-label"
+              label="MS Scoring"
+              value={msScoringMethod}
+              onChange={(e) => {
+                const nextMethod = e.target.value;
+                setMsScoringMethod(nextMethod);
+                saveSessionPatch({ msScoringMethod: nextMethod });
+              }}
+              disabled={savingSession}
+            >
+              <MenuItem value="right-minus-wrong">Right minus wrong (default)</MenuItem>
+              <MenuItem value="all-or-nothing">All or nothing</MenuItem>
+              <MenuItem value="correctness-ratio">Correctness ratio</MenuItem>
+            </Select>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+              Applies to all session types. For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.
+            </Typography>
+          </FormControl>
+
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
-              <FormControl size="small" sx={{ maxWidth: 360 }}>
-                <InputLabel id="ms-scoring-method-label">MS Scoring</InputLabel>
-                <Select
-                  labelId="ms-scoring-method-label"
-                  label="MS Scoring"
-                  value={msScoringMethod}
-                  onChange={(e) => {
-                    const nextMethod = e.target.value;
-                    setMsScoringMethod(nextMethod);
-                    saveSessionPatch({ msScoringMethod: nextMethod });
-                  }}
-                  disabled={savingSession}
-                >
-                  <MenuItem value="right-minus-wrong">Right minus wrong (default)</MenuItem>
-                  <MenuItem value="all-or-nothing">All or nothing</MenuItem>
-                  <MenuItem value="correctness-ratio">Correctness ratio</MenuItem>
-                </Select>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                  For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.
-                </Typography>
-              </FormControl>
               <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
                 <TextField
                   label="Quiz Start"

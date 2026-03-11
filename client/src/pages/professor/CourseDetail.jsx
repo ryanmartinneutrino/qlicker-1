@@ -893,6 +893,8 @@ export default function CourseDetail() {
         <CourseGradesPanel
           courseId={id}
           instructorView
+          availableSessions={sortedSessions}
+          gradingSummaryBySessionId={gradingSummaryBySessionId}
           onOpenSession={(sessionId) => navigate(
             `/manage/course/${id}/session/${sessionId}/review?returnTab=2`,
             { state: { returnTab: 2 } }
