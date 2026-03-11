@@ -339,6 +339,13 @@ function isAutoGradeableConflict(conflict, question = null) {
   return AUTO_GRADEABLE_QUESTION_TYPES.has(questionType);
 }
 
+function isMarkAutoGradeable(mark, autoGradeableQuestionIdSet = null) {
+  if (!(autoGradeableQuestionIdSet instanceof Set)) return true;
+  const questionId = normalizeAnswerValue(mark?.questionId);
+  if (!questionId) return false;
+  return autoGradeableQuestionIdSet.has(questionId);
+}
+
 function isSameConflict(left, right) {
   return String(left?.gradeId || '') === String(right?.gradeId || '')
     && String(left?.questionId || '') === String(right?.questionId || '')
@@ -396,6 +403,7 @@ function GradeDetailDialog({
   grade,
   student,
   sessionName,
+  autoGradeableQuestionIdSet = null,
   instructorView,
   onGradeUpdated,
 }) {
@@ -574,6 +582,7 @@ function GradeDetailDialog({
             <TableBody>
               {(workingGrade.marks || []).map((mark, index) => {
                 const editing = editingMarkIndex === index;
+                const markCanAutoGrade = isMarkAutoGradeable(mark, autoGradeableQuestionIdSet);
                 return (
                   <Fragment key={`${mark.questionId}-${index}`}>
                     <TableRow>
@@ -583,6 +592,8 @@ function GradeDetailDialog({
                       <TableCell>
                         {mark.needsGrading ? (
                           <Chip size="small" color="error" label="Needs grading" />
+                        ) : !markCanAutoGrade ? (
+                          <Chip size="small" variant="outlined" label="Manual only" />
                         ) : (
                           <Chip size="small" variant="outlined" color={mark.automatic ? 'default' : 'warning'} label={mark.automatic ? 'Auto' : 'Manual'} />
                         )}
@@ -618,7 +629,7 @@ function GradeDetailDialog({
                             </Box>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                               <Button size="small" variant="outlined" onClick={handleSaveMark} disabled={saving}>Save Mark</Button>
-                              {!mark.automatic && (
+                              {!mark.automatic && markCanAutoGrade && (
                                 <Button
                                   size="small"
                                   variant="text"
@@ -1611,6 +1622,20 @@ export default function CourseGradesPanel({
     await fetchGrades(selectedSessionIds, { applyToState: true });
   }, [fetchGrades, selectedSessionIds]);
 
+  const gradeDialogSessionId = normalizeAnswerValue(gradeDialogState.grade?.sessionId);
+  const gradeDialogAutoGradeableQuestionIdSet = useMemo(() => {
+    if (!gradeDialogSessionId) return null;
+    const matchingSession = visibleSessions.find((session) => String(session._id) === gradeDialogSessionId);
+    if (!matchingSession || !Array.isArray(matchingSession.autoGradeableQuestionIds)) {
+      return null;
+    }
+    return new Set(
+      matchingSession.autoGradeableQuestionIds
+        .map((questionId) => String(questionId))
+        .filter(Boolean)
+    );
+  }, [gradeDialogSessionId, visibleSessions]);
+
   if (loading && !instructorView) {
     return (
       <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
@@ -2067,6 +2092,7 @@ export default function CourseGradesPanel({
         grade={gradeDialogState.grade}
         student={gradeDialogState.student}
         sessionName={gradeDialogState.sessionName}
+        autoGradeableQuestionIdSet={gradeDialogAutoGradeableQuestionIdSet}
         instructorView={instructorView}
         onGradeUpdated={handleGradeDialogUpdated}
       />

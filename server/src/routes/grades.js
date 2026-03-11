@@ -523,7 +523,7 @@ export default async function gradeRoutes(app) {
       }
 
       const sessions = await Session.find(sessionQuery)
-        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz')
+        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz questions')
         .lean();
 
       sessions.sort((a, b) => {
@@ -533,6 +533,13 @@ export default async function gradeRoutes(app) {
       });
 
       const sessionIds = sessions.map((session) => String(session._id));
+      const uniqueQuestionIds = [...new Set(
+        sessions.flatMap((session) => (
+          Array.isArray(session?.questions)
+            ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
+            : []
+        ))
+      )];
       const gradeQuery = {
         courseId: String(course._id),
         sessionId: { $in: sessionIds },
@@ -546,7 +553,7 @@ export default async function gradeRoutes(app) {
         gradeQuery.visibleToStudents = true;
       }
 
-      const [grades, students, ungradedSummaryBySessionId] = await Promise.all([
+      const [grades, students, ungradedSummaryBySessionId, questions] = await Promise.all([
         sessionIds.length > 0
           ? Grade.find(gradeQuery).lean()
           : Promise.resolve([]),
@@ -554,7 +561,16 @@ export default async function gradeRoutes(app) {
           ? User.find({ _id: { $in: studentIds } }).select('_id profile emails email').lean()
           : Promise.resolve([]),
         getSessionUngradedSummary(sessionIds),
+        uniqueQuestionIds.length > 0
+          ? Question.find({ _id: { $in: uniqueQuestionIds } }).select('_id type').lean()
+          : Promise.resolve([]),
       ]);
+
+      const autoGradeableQuestionIds = new Set(
+        questions
+          .filter((question) => isQuestionAutoGradeable(question?.type))
+          .map((question) => String(question._id))
+      );
 
       const gradeByStudentAndSession = new Map();
       grades.forEach((grade) => {
@@ -641,6 +657,9 @@ export default async function gradeRoutes(app) {
           quizStart: session.quizStart,
           studentsNeedingGrading: ungraded.studentsNeedingGrading,
           marksNeedingGrading: ungraded.marksNeedingGrading,
+          autoGradeableQuestionIds: (session.questions || [])
+            .map((questionId) => String(questionId))
+            .filter((questionId) => autoGradeableQuestionIds.has(questionId)),
         };
       });
 
