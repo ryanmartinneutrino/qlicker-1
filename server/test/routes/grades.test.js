@@ -155,6 +155,123 @@ async function createSaQuestion({ creatorId, sessionId, courseId, points = 1 }) 
 }
 
 describe('Grading routes', () => {
+  it('backfills a missing session msScoringMethod to the default during grade recalculation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'ms-backfill',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'MS backfill session' });
+    await Session.findByIdAndUpdate(session._id, {
+      $set: { status: 'done' },
+      $unset: { msScoringMethod: '' },
+    });
+
+    const recalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+
+    expect(recalc.statusCode).toBe(200);
+
+    const persistedSession = await Session.findById(session._id).lean();
+    expect(persistedSession.msScoringMethod).toBe('right-minus-wrong');
+  });
+
+  it('tracks feedbackUpdatedAt on marks when instructor feedback changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'feedback-updated-at',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Feedback timestamp session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    const grade = await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      marks: [
+        {
+          questionId: question._id,
+          points: 0,
+          outOf: 1,
+          automatic: false,
+          needsGrading: false,
+          feedback: '',
+          feedbackUpdatedAt: null,
+        },
+      ],
+      visibleToStudents: true,
+    });
+
+    const firstFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>First feedback</p>' },
+      }
+    );
+    expect(firstFeedback.statusCode).toBe(200);
+    const firstMark = firstFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(firstMark.feedbackUpdatedAt).toBeDefined();
+    const firstUpdatedAt = new Date(firstMark.feedbackUpdatedAt).getTime();
+    expect(Number.isFinite(firstUpdatedAt)).toBe(true);
+
+    const pointsOnly = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { points: 0.5 },
+      }
+    );
+    expect(pointsOnly.statusCode).toBe(200);
+    const pointsOnlyMark = pointsOnly.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(pointsOnlyMark.feedbackUpdatedAt).toBe(firstMark.feedbackUpdatedAt);
+
+    const updatedFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>Updated feedback</p>' },
+      }
+    );
+    expect(updatedFeedback.statusCode).toBe(200);
+    const updatedMark = updatedFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    const updatedAt = new Date(updatedMark.feedbackUpdatedAt).getTime();
+    expect(Number.isFinite(updatedAt)).toBe(true);
+    expect(updatedAt).toBeGreaterThanOrEqual(firstUpdatedAt);
+
+    const clearedFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '' },
+      }
+    );
+    expect(clearedFeedback.statusCode).toBe(200);
+    const clearedMark = clearedFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(clearedMark.feedbackUpdatedAt).toBeNull();
+  });
+
   it('recalculates grades, preserves manual overrides, and exposes grading conflicts/warnings', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
@@ -233,6 +350,21 @@ describe('Grading routes', () => {
     expect(setManualMark.statusCode).toBe(200);
     expect(setManualMark.json().grade.marks.find((mark) => mark.questionId === mcQuestion._id).automatic).toBe(false);
 
+    const setManualSaMark = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${studentGrade._id}/marks/${saQuestion._id}`,
+      {
+        token: profToken,
+        payload: {
+          points: 0.5,
+          feedback: '<p>Manual SA grade</p>',
+        },
+      }
+    );
+    expect(setManualSaMark.statusCode).toBe(200);
+    expect(setManualSaMark.json().grade.marks.find((mark) => mark.questionId === saQuestion._id).automatic).toBe(false);
+
     const recalcAgain = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
       token: profToken,
       payload: { missingOnly: false },
@@ -242,6 +374,7 @@ describe('Grading routes', () => {
     const recalcSummary = recalcAgain.json().summary;
     expect(recalcSummary.manualMarkConflicts).toHaveLength(1);
     expect(recalcSummary.manualMarkConflicts[0].questionId).toBe(mcQuestion._id);
+    expect(recalcSummary.manualMarkConflicts.some((conflict) => conflict.questionId === saQuestion._id)).toBe(false);
     expect(recalcSummary.ungradableQuestionIds).toContain(saQuestion._id);
     expect(recalcSummary.warnings.join(' ')).toContain('cannot be auto-graded');
     expect(recalcSummary.warnings.join(' ')).toContain('manual mark overrides differ');
@@ -275,7 +408,7 @@ describe('Grading routes', () => {
     });
     expect(restoreAutomaticGradeValue.statusCode).toBe(200);
     expect(restoreAutomaticGradeValue.json().grade.automatic).toBe(true);
-    expect(restoreAutomaticGradeValue.json().grade.value).toBe(50);
+    expect(restoreAutomaticGradeValue.json().grade.value).toBe(75);
   });
 
   it('enforces student visibility restrictions for course/session grades and blocks student recalculation', async (ctx) => {
@@ -371,6 +504,7 @@ describe('Grading routes', () => {
     expect(courseGradesPayload.instructorView).toBe(false);
     expect(courseGradesPayload.sessions).toHaveLength(1);
     expect(courseGradesPayload.sessions[0]._id).toBe(reviewableSession._id);
+    expect(courseGradesPayload.sessions[0].autoGradeableQuestionIds).toContain(reviewableQuestion._id);
     expect(courseGradesPayload.rows).toHaveLength(1);
     expect(courseGradesPayload.rows[0].student.studentId).toBe(students[0]._id);
 

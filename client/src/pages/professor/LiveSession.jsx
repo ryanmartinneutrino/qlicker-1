@@ -1021,8 +1021,12 @@ export default function LiveSession() {
                     <Paper variant="outlined" sx={{ p: 1.5, mt: 1 }}>
                       <Typography variant="body2" color="text.secondary">
                         Correct: <strong>{currentQ.correctNumerical}</strong>
-                        {currentQ.toleranceNumerical != null && ` ± ${currentQ.toleranceNumerical}`}
                       </Typography>
+                      {currentQ.toleranceNumerical != null && (
+                        <Typography variant="body2" color="text.secondary">
+                          tolerance: {currentQ.toleranceNumerical}
+                        </Typography>
+                      )}
                     </Paper>
                   )}
 

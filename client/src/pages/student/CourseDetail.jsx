@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
-  List, ListItem, ListItemText, Divider,
+  List, ListItem, ListItemButton, ListItemText, Divider,
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,15 +12,42 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
+function getTimestamp(value) {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getSessionSortBucket(session) {
+  const status = String(session?.status || '');
+  if (status === 'running') return 0;
+  if (status === 'hidden') return 1;
+  if (status === 'visible') return 2;
+  if (status === 'done') return 3;
+  return 4;
+}
+
 function getSessionSortTime(session) {
-  return new Date(session.date || session.quizStart || session.createdAt || 0).getTime();
+  const status = String(session?.status || '');
+  const isQuiz = !!(session?.quiz || session?.practiceQuiz);
+
+  if (isQuiz && status === 'visible') {
+    return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
+  }
+  if (isQuiz && status === 'done') {
+    return getTimestamp(session?.quizEnd || session?.date || session?.quizStart || session?.createdAt);
+  }
+  if (isQuiz) {
+    return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
+  }
+
+  return getTimestamp(session?.date || session?.createdAt || session?.quizStart || session?.quizEnd);
 }
 
 function sortSessions(items) {
   return [...items].sort((a, b) => {
-    const aRunning = a.status === 'running' ? 0 : 1;
-    const bRunning = b.status === 'running' ? 0 : 1;
-    if (aRunning !== bRunning) return aRunning - bRunning;
+    const aBucket = getSessionSortBucket(a);
+    const bBucket = getSessionSortBucket(b);
+    if (aBucket !== bBucket) return aBucket - bBucket;
     return getSessionSortTime(b) - getSessionSortTime(a);
   });
 }
@@ -54,6 +81,80 @@ function buildWebsocketUrl(token) {
 function TabPanel({ children, value, index }) {
   if (value !== index) return null;
   return <Box sx={{ pt: 2 }}>{children}</Box>;
+}
+
+function getStudentSessionAction(session, courseId, listTabIndex) {
+  const isQuiz = isQuizSession(session);
+  const submittedQuiz = isQuiz && session.quizSubmittedByCurrentUser && !session.practiceQuiz;
+
+  if (session.status === 'done' && session.reviewable) {
+    return {
+      clickable: true,
+      path: `/student/course/${courseId}/session/${session._id}/review?returnTab=${listTabIndex}`,
+      label: 'Review',
+      chipColor: 'success',
+      chipVariant: 'outlined',
+    };
+  }
+
+  if (submittedQuiz) {
+    return {
+      clickable: false,
+      path: '',
+      label: 'Quiz submitted',
+      chipColor: 'success',
+      chipVariant: 'outlined',
+    };
+  }
+
+  if (session.status === 'running' && !isQuiz) {
+    return {
+      clickable: true,
+      path: `/student/course/${courseId}/session/${session._id}/live`,
+      label: 'Join live',
+      chipColor: 'primary',
+      chipVariant: 'filled',
+    };
+  }
+
+  if (isQuiz && session.status === 'running') {
+    const hasResponses = !!session.quizHasResponsesByCurrentUser;
+    const allQuestionsAnswered = !!session.quizAllQuestionsAnsweredByCurrentUser;
+    let quizActionLabel = 'Start quiz';
+    let chipColor = 'primary';
+    if (allQuestionsAnswered) {
+      quizActionLabel = 'Submit quiz';
+      chipColor = 'error';
+    } else if (hasResponses) {
+      quizActionLabel = 'Resume quiz';
+      chipColor = 'error';
+    }
+    return {
+      clickable: true,
+      path: `/student/course/${courseId}/session/${session._id}/quiz`,
+      label: quizActionLabel,
+      chipColor,
+      chipVariant: 'filled',
+    };
+  }
+
+  if (isQuiz && session.status === 'visible') {
+    return {
+      clickable: false,
+      path: '',
+      label: 'Upcoming quiz',
+      chipColor: 'default',
+      chipVariant: 'outlined',
+    };
+  }
+
+  return {
+    clickable: false,
+    path: '',
+    label: '',
+    chipColor: 'default',
+    chipVariant: 'outlined',
+  };
 }
 
 export default function StudentCourseDetail() {
@@ -222,96 +323,78 @@ export default function StudentCourseDetail() {
     return (
       <Paper variant="outlined">
         <List disablePadding>
-          {sessionItems.map((s, i) => (
-            <Box key={s._id}>
-              {i > 0 && <Divider />}
-              <ListItem
-                sx={{
-                  alignItems: 'flex-start',
-                  flexWrap: { xs: 'wrap', sm: 'nowrap' },
-                  gap: 1,
-                }}
-              >
-                <ListItemText
-                  primary={(
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
-                      <Typography variant="subtitle2" sx={{ lineHeight: 1.3 }}>
-                        {s.name}
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
-                        <SessionStatusChip status={s.status} />
-                        {s.status === 'done' && (
-                          <Chip
-                            label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}
-                            size="small"
-                            variant="outlined"
-                            color={s.reviewable ? 'success' : 'default'}
-                            sx={COMPACT_CHIP_SX}
-                          />
-                        )}
-                        {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-                      </Box>
-                    </Box>
-                  )}
-                  secondary={(
-                    <>
-                      {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
-                      {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
-                    </>
-                  )}
-                />
-                <Box
+          {sessionItems.map((s, i) => {
+            const action = getStudentSessionAction(s, id, listTabIndex);
+            const clickable = action.clickable && !!action.path;
+            return (
+              <Box key={s._id}>
+                {i > 0 && <Divider />}
+                <ListItem
+                  disablePadding
                   sx={{
-                    display: 'flex',
-                    gap: 1,
-                    flexWrap: 'wrap',
-                    width: { xs: '100%', sm: 'auto' },
-                    justifyContent: { xs: 'flex-start', sm: 'flex-end' },
+                    alignItems: 'stretch',
                   }}
                 >
-                  {isQuizSession(s) && s.quizSubmittedByCurrentUser && !s.practiceQuiz && (
-                    <Button size="small" variant="outlined" disabled>
-                      Submitted
-                    </Button>
-                  )}
-                  {s.status === 'running' && !isQuizSession(s) && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/live`)}
-                      aria-label={`Join live session ${s.name}`}
-                    >
-                      Join
-                    </Button>
-                  )}
-                  {isQuizSession(s) && s.status === 'running' && !(s.quizSubmittedByCurrentUser && !s.practiceQuiz) && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/quiz`)}
-                    >
-                      Start Quiz
-                    </Button>
-                  )}
-                  {isQuizSession(s) && s.status === 'visible' && (
-                    <Button size="small" variant="outlined" disabled>Upcoming</Button>
-                  )}
-                  {s.status === 'done' && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      disabled={!s.reviewable}
-                      onClick={() => navigate(`/student/course/${id}/session/${s._id}/review?returnTab=${listTabIndex}`)}
-                    >
-                      Review
-                    </Button>
-                  )}
-                </Box>
-              </ListItem>
-            </Box>
-          ))}
+                  <ListItemButton
+                    onClick={clickable ? () => navigate(action.path) : undefined}
+                    disabled={!clickable}
+                    sx={{
+                      alignItems: 'flex-start',
+                      flexWrap: 'wrap',
+                      gap: 1,
+                    }}
+                  >
+                    <ListItemText
+                      primary={(
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
+                          <Typography variant="subtitle2" sx={{ lineHeight: 1.3 }}>
+                            {s.name}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
+                            <SessionStatusChip status={s.status} />
+                            {s.hasNewFeedback && (
+                              <Chip
+                                label="New feedback"
+                                size="small"
+                                color="warning"
+                                variant="filled"
+                                sx={COMPACT_CHIP_SX}
+                              />
+                            )}
+                            {s.status === 'done' && !s.reviewable && (
+                              <Chip
+                                label="Not Reviewable"
+                                size="small"
+                                variant="outlined"
+                                color="default"
+                                sx={COMPACT_CHIP_SX}
+                              />
+                            )}
+                            {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                            {action.label && (
+                              <Chip
+                                label={action.label}
+                                size="small"
+                                color={action.chipColor}
+                                variant={action.chipVariant}
+                                sx={COMPACT_CHIP_SX}
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      )}
+                      secondary={(
+                        <>
+                          {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                          {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
+                        </>
+                      )}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              </Box>
+            );
+          })}
         </List>
       </Paper>
     );

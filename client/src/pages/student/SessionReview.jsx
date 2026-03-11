@@ -113,6 +113,17 @@ function formatNumeric(value) {
   return String(Math.round(numeric * 10) / 10);
 }
 
+function buildDefaultFeedbackSummary() {
+  return {
+    feedbackSeenAt: null,
+    feedbackQuestionIds: [],
+    feedbackCount: 0,
+    newFeedbackQuestionIds: [],
+    newFeedbackCount: 0,
+    hasNewFeedback: false,
+  };
+}
+
 function isCorrectOption(option) {
   const value = option?.correct;
   if (value === true || value === 1 || value === '1') return true;
@@ -378,9 +389,14 @@ function ReviewQuestionCard({
 
       {/* Numerical correct answer */}
       {normalizedType === QUESTION_TYPES.NUMERICAL && solutionVisible && (
-        <Typography variant="body2" color="text.secondary" sx={{ pl: 2, mt: 1 }}>
-          Correct: {question.correctNumerical ?? '—'} (± {question.toleranceNumerical ?? 0})
-        </Typography>
+        <Box sx={{ pl: 2, mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Correct: {question.correctNumerical ?? '—'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            tolerance: {question.toleranceNumerical ?? 0}
+          </Typography>
+        </Box>
       )}
 
       {/* Show / Hide Solution button */}
@@ -443,6 +459,9 @@ export default function SessionReview() {
   const [questions, setQuestions] = useState([]);
   const [responsesByQuestion, setResponsesByQuestion] = useState({});
   const [sessionGrade, setSessionGrade] = useState(null);
+  const [feedbackSummary, setFeedbackSummary] = useState(buildDefaultFeedbackSummary());
+  const [dismissingFeedback, setDismissingFeedback] = useState(false);
+  const [feedbackActionError, setFeedbackActionError] = useState('');
 
   // View mode: 'one' (single question) or 'all'
   const [viewMode, setViewMode] = useState('one');
@@ -464,9 +483,11 @@ export default function SessionReview() {
       setSession(data.session);
       setQuestions(data.questions || []);
       setResponsesByQuestion(data.responses || {});
+      setFeedbackSummary(data.feedback || buildDefaultFeedbackSummary());
 
       const grade = gradeResult?.data?.grades?.[0] || null;
       setSessionGrade(grade);
+      setFeedbackActionError('');
       if (!background) {
         setError(null);
       }
@@ -557,6 +578,54 @@ export default function SessionReview() {
     });
   };
 
+  const questionNumberById = useMemo(() => {
+    const entries = new Map();
+    questions.forEach((question, idx) => {
+      responseKeysForQuestion(question, idx).forEach((key) => {
+        const normalizedKey = String(key || '');
+        if (!normalizedKey || entries.has(normalizedKey)) return;
+        entries.set(normalizedKey, idx + 1);
+      });
+    });
+    return entries;
+  }, [questions]);
+
+  const feedbackQuestionNumbers = useMemo(() => {
+    const questionIds = feedbackSummary?.newFeedbackQuestionIds || [];
+    const numbers = questionIds
+      .map((questionId) => questionNumberById.get(String(questionId)))
+      .filter((value) => Number.isInteger(value));
+    return [...new Set(numbers)].sort((a, b) => a - b);
+  }, [feedbackSummary, questionNumberById]);
+
+  const feedbackQuestionLabel = useMemo(() => {
+    if (feedbackQuestionNumbers.length > 0) {
+      return feedbackQuestionNumbers.map((number) => `Q${number}`).join(', ');
+    }
+    const fallbackIds = feedbackSummary?.newFeedbackQuestionIds || [];
+    return fallbackIds.join(', ');
+  }, [feedbackQuestionNumbers, feedbackSummary]);
+
+  const handleDismissFeedback = async () => {
+    setDismissingFeedback(true);
+    setFeedbackActionError('');
+    try {
+      const { data } = await apiClient.post(`/sessions/${sessionId}/review/feedback/dismiss`);
+      const nextSummary = data?.feedback || buildDefaultFeedbackSummary();
+      setFeedbackSummary(nextSummary);
+      setSessionGrade((prev) => (prev
+        ? {
+          ...prev,
+          feedbackSeenAt: nextSummary.feedbackSeenAt || new Date().toISOString(),
+        }
+        : prev));
+    } catch {
+      setFeedbackActionError('Failed to dismiss feedback notification.');
+    } finally {
+      setDismissingFeedback(false);
+    }
+  };
+
   /* ---------------------------------------------------------------- */
   /*  Render                                                          */
   /* ---------------------------------------------------------------- */
@@ -612,6 +681,32 @@ export default function SessionReview() {
           </Typography>
         )}
       </Box>
+
+      {feedbackSummary?.hasNewFeedback && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={(
+            <Button
+              color="inherit"
+              size="small"
+              onClick={handleDismissFeedback}
+              disabled={dismissingFeedback}
+            >
+              {dismissingFeedback ? 'Dismissing...' : 'Dismiss'}
+            </Button>
+          )}
+        >
+          New feedback received.
+          {feedbackQuestionLabel ? ` Questions: ${feedbackQuestionLabel}.` : ''}
+        </Alert>
+      )}
+
+      {feedbackActionError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {feedbackActionError}
+        </Alert>
+      )}
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>

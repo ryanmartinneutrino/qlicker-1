@@ -8,6 +8,7 @@ import {
 import {
   Download as DownloadIcon,
   ArrowBack as BackIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
@@ -407,6 +408,12 @@ export default function SessionReview() {
   const backToCoursePath = resolvedReturnTab > 0
     ? `/manage/course/${courseId}?tab=${resolvedReturnTab}`
     : `/manage/course/${courseId}`;
+  const editSessionParams = new URLSearchParams();
+  if (resolvedReturnTab > 0) {
+    editSessionParams.set('returnTab', String(resolvedReturnTab));
+  }
+  editSessionParams.set('returnTo', 'review');
+  const editSessionPath = `/manage/course/${courseId}/session/${sessionId}?${editSessionParams.toString()}`;
 
   // ---- Data fetching ----
 
@@ -461,19 +468,16 @@ export default function SessionReview() {
     return studentResults.filter((student) => !!student?.inSession).length;
   }, [studentResults]);
 
-  const participatedStudents = useMemo(() => {
-    return studentResults.filter((student) => (
-      !!student?.inSession
-      && (student?.questionResults || []).some((result) => (
-        Array.isArray(result?.responses) && result.responses.length > 0
-      ))
-    )).length;
-  }, [studentResults]);
-
-  const participatedStudentsPercent = totalStudents > 0
-    ? Math.round((1000 * participatedStudents) / totalStudents) / 10
-    : 0;
   const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
+
+  const handleUngradedSummaryChange = useCallback((summary) => {
+    if (!summary || typeof summary !== 'object') return;
+    setGradingNeedsSummary({
+      marks: Number(summary.marks) || 0,
+      students: Number(summary.students) || 0,
+      questions: Number(summary.questions) || 0,
+    });
+  }, []);
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -808,14 +812,23 @@ export default function SessionReview() {
     <Box sx={{ p: 2.5, maxWidth: 1000 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
-        <Button
-          size="small"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-          sx={{ mb: 1 }}
-        >
-          Back to course
-        </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+          <Button
+            size="small"
+            startIcon={<BackIcon />}
+            onClick={() => navigate(backToCoursePath)}
+          >
+            Back to course
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => navigate(editSessionPath, { state: { returnTab: resolvedReturnTab, returnTo: 'review' } })}
+          >
+            Edit session
+          </Button>
+        </Box>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           {session?.name || 'Session Review'}
         </Typography>
@@ -838,17 +851,8 @@ export default function SessionReview() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalQuestions}</Typography>
         </Paper>
         <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Students</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalStudents}</Typography>
-        </Paper>
-        <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
           <Typography variant="caption" color="text.secondary">Joined Session</Typography>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{joinedStudents}/{totalStudents}</Typography>
-        </Paper>
-        <Paper variant="outlined" sx={{ p: 1.5, minWidth: 120, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Class Participation</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{participatedStudents}/{totalStudents}</Typography>
-          <Typography variant="caption" color="text.secondary">{participatedStudentsPercent}%</Typography>
         </Paper>
 
         <Box sx={{ flex: 1 }} />
@@ -894,7 +898,7 @@ export default function SessionReview() {
         onChange={(_, newTab) => setTab(newTab)}
         aria-label="Session review tabs"
       >
-        <Tab label="Questions" />
+        <Tab label="Results" />
         <Tab label="Response Data" />
         <Tab label="Students" />
         <Tab
@@ -1008,9 +1012,14 @@ export default function SessionReview() {
 
                   {/* Numerical correct answer */}
                   {qT === QUESTION_TYPES.NUMERICAL && q.correctNumerical != null && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      Correct: {q.correctNumerical} (± {q.toleranceNumerical ?? 0})
-                    </Typography>
+                    <Box sx={{ mb: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Correct: {q.correctNumerical}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        tolerance: {q.toleranceNumerical ?? 0}
+                      </Typography>
+                    </Box>
                   )}
                 </Paper>
               );
@@ -1212,6 +1221,7 @@ export default function SessionReview() {
           session={session}
           questions={questions}
           studentResults={studentResults}
+          onUngradedSummaryChange={handleUngradedSummaryChange}
         />
       </TabPanel>
     </Box>
