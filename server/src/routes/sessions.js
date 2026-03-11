@@ -645,22 +645,73 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
   return normalized;
 }
 
-function notifySessionUpdated(app, course, sessionId) {
-  if (typeof app.wsSendToUser !== 'function') return;
-  if (!course || !sessionId) return;
+// ---------------------------------------------------------------------------
+// WebSocket notification helpers
+// ---------------------------------------------------------------------------
 
-  const memberIds = new Set([
+function sendToCourseMembers(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const memberIds = [...new Set([
     ...(course.instructors || []),
     ...(course.students || []),
-  ].map((userId) => String(userId)).filter(Boolean));
+  ].map((userId) => String(userId)).filter(Boolean))];
+  app.wsSendToUsers(memberIds, event, payload);
+}
 
-  const payload = {
+function sendToInstructors(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const instructorIds = (course.instructors || []).map((userId) => String(userId)).filter(Boolean);
+  app.wsSendToUsers(instructorIds, event, payload);
+}
+
+/** Generic session:updated — used for non-live-critical mutations (CRUD, join, quiz auto-close, etc.) */
+function notifySessionUpdated(app, course, sessionId) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:updated', {
     courseId: String(course._id),
     sessionId: String(sessionId),
-  };
+  });
+}
 
-  memberIds.forEach((userId) => {
-    app.wsSendToUser(userId, 'session:updated', payload);
+/** Delta: new response submitted — sent only to instructors (students don't need real-time response notifications). */
+function notifyResponseAdded(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToInstructors(app, course, 'session:response-added', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: professor navigated to a different question. */
+function notifyQuestionChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:question-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: question visibility/stats/correct toggled. */
+function notifyVisibilityChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:visibility-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: session started or ended. */
+function notifyStatusChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:status-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
   });
 }
 
@@ -945,12 +996,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/start',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -983,7 +1034,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'running' });
 
       return { session: updated.toObject() };
     }
@@ -999,7 +1050,7 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1052,7 +1103,7 @@ export default async function sessionRoutes(app) {
         });
       }
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'done' });
 
       return { session: updated.toObject(), grading };
     }
@@ -1066,12 +1117,12 @@ export default async function sessionRoutes(app) {
       schema: setCurrentQuestionSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1100,13 +1151,17 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      const qIndex = session.questions.findIndex((id) => String(id) === String(questionId));
+      notifyQuestionChanged(app, course, updated?._id || request.params.id, {
+        questionId: String(questionId),
+        questionIndex: qIndex,
+        questionNumber: qIndex >= 0 ? qIndex + 1 : null,
+        questionCount: session.questions.length,
+      });
 
       return { session: updated.toObject() };
     }
   );
-
-  // PATCH /sessions/:id/reviewable - Toggle reviewable
   app.patch(
     '/sessions/:id/reviewable',
     {
@@ -1848,7 +1903,7 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -1857,7 +1912,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not live' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1939,7 +1994,7 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2037,20 +2092,17 @@ export default async function sessionRoutes(app) {
             };
           }
         } else if (isJoined && !questionHidden) {
-          // Student gets their own response
-          studentResponse = await Response.findOne({
-            questionId,
-            studentUserId: userId,
-            attempt: currentAttempt.number,
-          }).lean();
-
-          // Provide stats if showStats is enabled
           if (showStats) {
+            // Single query: get all responses (includes student's own)
             const responses = await Response.find({
               questionId,
               attempt: currentAttempt.number,
             }).lean();
             responseStats = buildResponseStats(currentQuestion, responses);
+            // Extract student's response from the batch — avoids a second query
+            studentResponse = responses.find(
+              (r) => String(getResponseStudentId(r)) === String(userId)
+            ) || null;
             if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
               responseStats = {
                 ...responseStats,
@@ -2060,6 +2112,13 @@ export default async function sessionRoutes(app) {
                 })),
               };
             }
+          } else {
+            // Only need student's own response
+            studentResponse = await Response.findOne({
+              questionId,
+              studentUserId: userId,
+              attempt: currentAttempt.number,
+            }).lean();
           }
         }
       }
@@ -2099,11 +2158,11 @@ export default async function sessionRoutes(app) {
             joinedAt: latestJoinByStudentId.get(studentId) || null,
           };
         }).sort((a, b) => {
-          const lastCmp = normalizeAnswerValue(a.lastname).localeCompare(normalizeAnswerValue(b.lastname));
+          const lastCmp = a.lastname.localeCompare(b.lastname);
           if (lastCmp !== 0) return lastCmp;
-          const firstCmp = normalizeAnswerValue(a.firstname).localeCompare(normalizeAnswerValue(b.firstname));
+          const firstCmp = a.firstname.localeCompare(b.firstname);
           if (firstCmp !== 0) return firstCmp;
-          return normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
+          return a.email.localeCompare(b.email);
         });
       }
 
@@ -2206,7 +2265,7 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2220,7 +2279,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'You have not joined this session' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2233,7 +2292,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
       }
 
-      const question = await Question.findById(questionId);
+      const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
@@ -2270,8 +2329,19 @@ export default async function sessionRoutes(app) {
         answerWysiwyg: request.body.answerWysiwyg || '',
       });
 
-      // Notify prof of new response
-      notifySessionUpdated(app, course, session._id);
+      // Count responses for current question/attempt (fast indexed query)
+      const responseCount = await Response.countDocuments({
+        questionId,
+        attempt: currentAttempt.number,
+      });
+
+      // Notify instructors of new response (delta event — students don't need this)
+      notifyResponseAdded(app, course, session._id, {
+        questionId: String(questionId),
+        attempt: currentAttempt.number,
+        responseCount,
+        joinedCount: session.joined.length,
+      });
 
       return reply.code(201).send({ response: response.toObject() });
     }
@@ -2295,12 +2365,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2325,7 +2395,12 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyVisibilityChanged(app, course, session._id, {
+        questionId: String(questionId),
+        hidden: updatedQuestion?.sessionOptions?.hidden,
+        stats: updatedQuestion?.sessionOptions?.stats,
+        correct: updatedQuestion?.sessionOptions?.correct,
+      });
 
       return { question: updatedQuestion?.toObject() };
     }
@@ -2336,12 +2411,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/new-attempt',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2395,12 +2470,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2414,7 +2489,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
       }
 
-      const question = await Question.findById(questionId);
+      const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
@@ -2455,12 +2530,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/refresh-join-code',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2516,12 +2591,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }

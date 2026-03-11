@@ -171,9 +171,30 @@ export default function LiveSession() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message?.event !== 'session:updated') return;
-          if (String(message?.data?.sessionId || '') !== String(sessionId)) return;
-          fetchLive();
+          const evt = message?.event;
+          const d = message?.data;
+          if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
+
+          switch (evt) {
+            // session:response-added is only sent to instructors; students
+            // will not receive it, but handle gracefully in case.
+            case 'session:response-added':
+              break;
+            case 'session:question-changed':
+              fetchLive();
+              break;
+            case 'session:visibility-changed':
+              fetchLive();
+              break;
+            case 'session:status-changed':
+              fetchLive();
+              break;
+            case 'session:updated':
+              fetchLive();
+              break;
+            default:
+              break;
+          }
         } catch {
           // Ignore malformed payloads
         }
@@ -289,14 +310,15 @@ export default function LiveSession() {
     try {
       const payload = { answer };
       if (answerWysiwyg) payload.answerWysiwyg = answerWysiwyg;
-      await apiClient.post(`/sessions/${sessionId}/respond`, payload);
-      await fetchLive();
+      const { data } = await apiClient.post(`/sessions/${sessionId}/respond`, payload);
+      // Update local state with the submitted response — avoids a full re-fetch of /live
+      setLiveData((prev) => prev ? { ...prev, studentResponse: data.response || prev.studentResponse } : prev);
     } catch (err) {
       setSubmitError(err.response?.data?.message || 'Failed to submit response');
     } finally {
       setSubmitting(false);
     }
-  }, [answer, answerWysiwyg, sessionId, fetchLive]);
+  }, [answer, answerWysiwyg, sessionId]);
 
   // --------------------------------------------------
   // Derived values

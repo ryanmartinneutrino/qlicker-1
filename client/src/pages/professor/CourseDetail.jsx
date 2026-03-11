@@ -19,6 +19,12 @@ import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
+function buildWebsocketUrl(token) {
+  const encodedToken = encodeURIComponent(token);
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
+}
+
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
@@ -273,6 +279,62 @@ export default function CourseDetail() {
     }, 15000);
     return () => clearInterval(pollingRef.current);
   }, [fetchCourse]);
+
+  // WebSocket push for session status changes (replaces session-list polling)
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimer = null;
+    let closed = false;
+
+    const connect = () => {
+      if (closed) return;
+      const latestToken = localStorage.getItem('token');
+      if (!latestToken) return;
+      try {
+        ws = new WebSocket(buildWebsocketUrl(latestToken));
+      } catch {
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const evt = message?.event;
+          const d = message?.data;
+          if (String(d?.courseId || '') !== String(id)) return;
+          if (evt === 'session:updated' || evt === 'session:status-changed'
+            || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
+            fetchSessions();
+          }
+        } catch {
+          // Ignore malformed payloads
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        reconnectTimer = setTimeout(connect, 2500);
+      };
+    };
+
+    const init = async () => {
+      try {
+        const { data } = await apiClient.get('/health');
+        if (data?.websocket === true) { connect(); }
+      } catch { /* WebSocket not available — polling still active */ }
+    };
+
+    init();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+    };
+  }, [fetchSessions, id]);
 
   useEffect(() => {
     const urlTab = parseCourseTab(searchParams.get('tab'));

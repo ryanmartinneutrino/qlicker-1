@@ -142,9 +142,14 @@ export default function StudentCourseDetail() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message?.event !== 'session:updated') return;
-          if (String(message?.data?.courseId || '') !== String(id)) return;
-          fetchSessions();
+          const evt = message?.event;
+          const d = message?.data;
+          if (String(d?.courseId || '') !== String(id)) return;
+          // React to granular delta events and generic fallback
+          if (evt === 'session:updated' || evt === 'session:status-changed'
+            || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
+            fetchSessions();
+          }
         } catch {
           // Ignore malformed websocket payloads.
         }
