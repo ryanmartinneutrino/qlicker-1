@@ -109,9 +109,14 @@ export default function SessionEditor() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const returnTab = parseCourseTab(searchParams.get('returnTab') ?? location.state?.returnTab);
+  const returnToReview = (searchParams.get('returnTo') || location.state?.returnTo) === 'review';
+  const sessionReviewLink = returnTab === 0
+    ? `/manage/course/${courseId}/session/${sessionId}/review`
+    : `/manage/course/${courseId}/session/${sessionId}/review?returnTab=${returnTab}`;
   const courseBackLink = returnTab === 0
     ? `/manage/course/${courseId}`
     : `/manage/course/${courseId}?tab=${returnTab}`;
+  const backLink = returnToReview ? sessionReviewLink : courseBackLink;
 
   const [session, setSession] = useState(null);
   const [questions, setQuestions] = useState([]);
@@ -352,9 +357,17 @@ export default function SessionEditor() {
       const newId = data.session?._id || data._id;
       setMsg({ severity: 'success', text: 'Session copied' });
       if (newId) {
+        const nextParams = new URLSearchParams();
+        if (returnTab > 0) {
+          nextParams.set('returnTab', String(returnTab));
+        }
+        if (returnToReview) {
+          nextParams.set('returnTo', 'review');
+        }
+        const query = nextParams.toString();
         navigate(
-          `/manage/course/${courseId}/session/${newId}?returnTab=${returnTab}`,
-          { state: { returnTab } }
+          `/manage/course/${courseId}/session/${newId}${query ? `?${query}` : ''}`,
+          { state: { returnTab, returnTo: returnToReview ? 'review' : undefined } }
         );
       }
     } catch {
@@ -924,7 +937,7 @@ export default function SessionEditor() {
     <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.25, pb: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: PAGE_SECTION_GAP }}>
-        <IconButton onClick={() => navigate(courseBackLink)}><BackIcon /></IconButton>
+        <IconButton onClick={() => navigate(backLink)}><BackIcon /></IconButton>
         <Typography variant="h5" sx={{ flexGrow: 1, lineHeight: 1.15 }}>{session.name}</Typography>
         <SessionStatusChip status={status} />
         {!session.quiz && status !== 'running' && status !== 'done' && (

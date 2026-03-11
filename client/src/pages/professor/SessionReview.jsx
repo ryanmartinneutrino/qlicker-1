@@ -8,6 +8,7 @@ import {
 import {
   Download as DownloadIcon,
   ArrowBack as BackIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
@@ -407,6 +408,12 @@ export default function SessionReview() {
   const backToCoursePath = resolvedReturnTab > 0
     ? `/manage/course/${courseId}?tab=${resolvedReturnTab}`
     : `/manage/course/${courseId}`;
+  const editSessionParams = new URLSearchParams();
+  if (resolvedReturnTab > 0) {
+    editSessionParams.set('returnTab', String(resolvedReturnTab));
+  }
+  editSessionParams.set('returnTo', 'review');
+  const editSessionPath = `/manage/course/${courseId}/session/${sessionId}?${editSessionParams.toString()}`;
 
   // ---- Data fetching ----
 
@@ -462,6 +469,15 @@ export default function SessionReview() {
   }, [studentResults]);
 
   const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
+
+  const handleUngradedSummaryChange = useCallback((summary) => {
+    if (!summary || typeof summary !== 'object') return;
+    setGradingNeedsSummary({
+      marks: Number(summary.marks) || 0,
+      students: Number(summary.students) || 0,
+      questions: Number(summary.questions) || 0,
+    });
+  }, []);
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -796,14 +812,23 @@ export default function SessionReview() {
     <Box sx={{ p: 2.5, maxWidth: 1000 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
-        <Button
-          size="small"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-          sx={{ mb: 1 }}
-        >
-          Back to course
-        </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+          <Button
+            size="small"
+            startIcon={<BackIcon />}
+            onClick={() => navigate(backToCoursePath)}
+          >
+            Back to course
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={() => navigate(editSessionPath, { state: { returnTab: resolvedReturnTab, returnTo: 'review' } })}
+          >
+            Edit session
+          </Button>
+        </Box>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           {session?.name || 'Session Review'}
         </Typography>
@@ -1191,6 +1216,7 @@ export default function SessionReview() {
           session={session}
           questions={questions}
           studentResults={studentResults}
+          onUngradedSummaryChange={handleUngradedSummaryChange}
         />
       </TabPanel>
     </Box>

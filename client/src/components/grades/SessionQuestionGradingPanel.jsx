@@ -292,6 +292,31 @@ function formatCorrectAnswerSummary(question) {
   return '—';
 }
 
+function summarizeUngradedFromGrades(gradesByStudentId = {}) {
+  const questionIds = new Set();
+  const studentIds = new Set();
+  let marks = 0;
+
+  Object.values(gradesByStudentId || {}).forEach((grade) => {
+    let studentHasUngradedMark = false;
+    (grade?.marks || []).forEach((mark) => {
+      if (!mark?.needsGrading) return;
+      marks += 1;
+      studentHasUngradedMark = true;
+      if (mark?.questionId) questionIds.add(String(mark.questionId));
+    });
+    if (studentHasUngradedMark && grade?.userId) {
+      studentIds.add(String(grade.userId));
+    }
+  });
+
+  return {
+    marks,
+    students: studentIds.size,
+    questions: questionIds.size,
+  };
+}
+
 function RichContent({ html, fallback }) {
   const ref = useRef(null);
   const prepared = prepareRichTextInput(html || '', fallback || '');
@@ -316,6 +341,7 @@ export default function SessionQuestionGradingPanel({
   session = null,
   questions = [],
   studentResults = [],
+  onUngradedSummaryChange = null,
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -356,6 +382,16 @@ export default function SessionQuestionGradingPanel({
   useEffect(() => {
     fetchSessionGrades();
   }, [fetchSessionGrades]);
+
+  const ungradedSummary = useMemo(
+    () => summarizeUngradedFromGrades(gradesByStudentId),
+    [gradesByStudentId]
+  );
+
+  useEffect(() => {
+    if (typeof onUngradedSummaryChange !== 'function') return;
+    onUngradedSummaryChange(ungradedSummary);
+  }, [onUngradedSummaryChange, ungradedSummary]);
 
   useEffect(() => {
     const firstQuestionId = String(questions?.[0]?._id || '');
