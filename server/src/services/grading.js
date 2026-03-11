@@ -739,7 +739,7 @@ export async function recalculateSessionGrades({
         markPoints = toFiniteNumber(existingMark?.points, 0);
         markNeedsGrading = !!existingMark?.needsGrading;
 
-        if (Math.abs(markPoints - autoPoints) > 0.0001) {
+        if (autoGradeable && Math.abs(markPoints - autoPoints) > 0.0001) {
           const student = studentById.get(studentId);
           manualMarkConflicts.push({
             gradeId: existingGradeDoc?._id ? String(existingGradeDoc._id) : '',

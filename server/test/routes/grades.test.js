@@ -258,6 +258,21 @@ describe('Grading routes', () => {
     expect(setManualMark.statusCode).toBe(200);
     expect(setManualMark.json().grade.marks.find((mark) => mark.questionId === mcQuestion._id).automatic).toBe(false);
 
+    const setManualSaMark = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${studentGrade._id}/marks/${saQuestion._id}`,
+      {
+        token: profToken,
+        payload: {
+          points: 0.5,
+          feedback: '<p>Manual SA grade</p>',
+        },
+      }
+    );
+    expect(setManualSaMark.statusCode).toBe(200);
+    expect(setManualSaMark.json().grade.marks.find((mark) => mark.questionId === saQuestion._id).automatic).toBe(false);
+
     const recalcAgain = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
       token: profToken,
       payload: { missingOnly: false },
@@ -267,6 +282,7 @@ describe('Grading routes', () => {
     const recalcSummary = recalcAgain.json().summary;
     expect(recalcSummary.manualMarkConflicts).toHaveLength(1);
     expect(recalcSummary.manualMarkConflicts[0].questionId).toBe(mcQuestion._id);
+    expect(recalcSummary.manualMarkConflicts.some((conflict) => conflict.questionId === saQuestion._id)).toBe(false);
     expect(recalcSummary.ungradableQuestionIds).toContain(saQuestion._id);
     expect(recalcSummary.warnings.join(' ')).toContain('cannot be auto-graded');
     expect(recalcSummary.warnings.join(' ')).toContain('manual mark overrides differ');
@@ -300,7 +316,7 @@ describe('Grading routes', () => {
     });
     expect(restoreAutomaticGradeValue.statusCode).toBe(200);
     expect(restoreAutomaticGradeValue.json().grade.automatic).toBe(true);
-    expect(restoreAutomaticGradeValue.json().grade.value).toBe(50);
+    expect(restoreAutomaticGradeValue.json().grade.value).toBe(75);
   });
 
   it('enforces student visibility restrictions for course/session grades and blocks student recalculation', async (ctx) => {
