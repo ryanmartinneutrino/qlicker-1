@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
+import Grade from '../models/Grade.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
@@ -8,6 +9,7 @@ import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
   recalculateSessionGrades,
+  summarizeGradeFeedback,
   setSessionGradesVisibility,
 } from '../services/grading.js';
 
@@ -646,6 +648,56 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
   return normalized;
 }
 
+function getDefaultFeedbackSummary() {
+  return {
+    feedbackSeenAt: null,
+    feedbackQuestionIds: [],
+    feedbackCount: 0,
+    newFeedbackQuestionIds: [],
+    newFeedbackCount: 0,
+    hasNewFeedback: false,
+  };
+}
+
+function parseTimestamp(value) {
+  if (!value) return Number.NaN;
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return Number.NaN;
+  return timestamp;
+}
+
+function summarizeFeedbackFromGrades(grades = []) {
+  if (!Array.isArray(grades) || grades.length === 0) {
+    return getDefaultFeedbackSummary();
+  }
+
+  const combinedMarks = [];
+  let latestFeedbackSeenAtMs = Number.NaN;
+
+  grades.forEach((grade) => {
+    const marks = Array.isArray(grade?.marks) ? grade.marks : [];
+    combinedMarks.push(...marks);
+
+    const feedbackSeenAtMs = parseTimestamp(grade?.feedbackSeenAt);
+    if (!Number.isFinite(feedbackSeenAtMs)) return;
+    if (!Number.isFinite(latestFeedbackSeenAtMs) || feedbackSeenAtMs > latestFeedbackSeenAtMs) {
+      latestFeedbackSeenAtMs = feedbackSeenAtMs;
+    }
+  });
+
+  const summary = summarizeGradeFeedback({
+    marks: combinedMarks,
+    feedbackSeenAt: Number.isFinite(latestFeedbackSeenAtMs)
+      ? new Date(latestFeedbackSeenAtMs)
+      : null,
+  });
+
+  return {
+    ...getDefaultFeedbackSummary(),
+    ...summary,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // WebSocket notification helpers
 // ---------------------------------------------------------------------------
@@ -801,17 +853,60 @@ export default async function sessionRoutes(app) {
       }
 
       const sessions = await Session.find(filter).lean();
-      const hydratedSessions = [];
+      const normalizedSessions = [];
 
       for (const rawSession of sessions) {
         const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession);
         if (changed) {
           notifySessionUpdated(app, course, normalizedSession?._id || rawSession?._id);
         }
-        hydratedSessions.push(buildSessionForUser(normalizedSession, request.user, {
-          instructorView: isInstrOrAdmin,
-        }));
+        normalizedSessions.push(normalizedSession);
       }
+
+      const feedbackBySessionId = {};
+      if (!isInstrOrAdmin && normalizedSessions.length > 0) {
+        const sessionIds = normalizedSessions
+          .map((session) => String(session?._id || ''))
+          .filter(Boolean);
+
+        const feedbackGrades = await Grade.find({
+          sessionId: { $in: sessionIds },
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        })
+          .select('sessionId feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+          .lean();
+
+        const feedbackGradesBySessionId = {};
+        feedbackGrades.forEach((grade) => {
+          const sessionId = String(grade?.sessionId || '');
+          if (!sessionId) return;
+          if (!feedbackGradesBySessionId[sessionId]) {
+            feedbackGradesBySessionId[sessionId] = [];
+          }
+          feedbackGradesBySessionId[sessionId].push(grade);
+        });
+
+        Object.entries(feedbackGradesBySessionId).forEach(([sessionId, grades]) => {
+          feedbackBySessionId[sessionId] = summarizeFeedbackFromGrades(grades);
+        });
+      }
+
+      const hydratedSessions = normalizedSessions.map((session) => {
+        const sessionForUser = buildSessionForUser(session, request.user, {
+          instructorView: isInstrOrAdmin,
+        });
+
+        if (!isInstrOrAdmin) {
+          const feedbackSummary = feedbackBySessionId[String(sessionForUser?._id || '')] || getDefaultFeedbackSummary();
+          sessionForUser.feedback = feedbackSummary;
+          sessionForUser.hasNewFeedback = feedbackSummary.hasNewFeedback;
+          sessionForUser.newFeedbackQuestionIds = feedbackSummary.newFeedbackQuestionIds;
+        }
+
+        return sessionForUser;
+      });
 
       return { sessions: hydratedSessions };
     }
@@ -1464,10 +1559,91 @@ export default async function sessionRoutes(app) {
         responsesByQuestion[questionId].push(r);
       }
 
+      let feedbackSummary = getDefaultFeedbackSummary();
+      if (!isInstrOrAdmin) {
+        const grades = await Grade.find({
+          sessionId: String(normalizedSession._id),
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        })
+          .select('feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+          .lean();
+        feedbackSummary = summarizeFeedbackFromGrades(grades);
+      }
+
       return {
         session: normalizedSession,
         questions: normalizedQuestions,
         responses: responsesByQuestion,
+        feedback: feedbackSummary,
+      };
+    }
+  );
+
+  app.post(
+    '/sessions/:id/review/feedback/dismiss',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const sessionDoc = await Session.findById(request.params.id);
+      if (!sessionDoc) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(sessionDoc.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      if (changed) {
+        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+      }
+
+      if (isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Only students can dismiss feedback notifications' });
+      }
+
+      if (!normalizedSession.reviewable) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
+      }
+      if (normalizedSession.status !== 'done') {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
+      }
+
+      const seenAt = new Date();
+      const updateResult = await Grade.updateMany(
+        {
+          sessionId: String(normalizedSession._id),
+          courseId: String(course._id),
+          userId: request.user.userId,
+          visibleToStudents: true,
+        },
+        { $set: { feedbackSeenAt: seenAt } }
+      );
+
+      const grades = await Grade.find({
+        sessionId: String(normalizedSession._id),
+        courseId: String(course._id),
+        userId: request.user.userId,
+        visibleToStudents: true,
+      })
+        .select('feedbackSeenAt marks.questionId marks.feedback marks.feedbackUpdatedAt')
+        .lean();
+      const feedbackSummary = summarizeFeedbackFromGrades(grades);
+
+      const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
+      if (modifiedCount > 0) {
+        notifySessionUpdated(app, course, normalizedSession._id);
+      }
+
+      return {
+        success: true,
+        feedback: feedbackSummary,
       };
     }
   );

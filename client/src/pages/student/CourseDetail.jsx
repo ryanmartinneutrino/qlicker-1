@@ -240,6 +240,15 @@ export default function StudentCourseDetail() {
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
                         <SessionStatusChip status={s.status} />
+                        {s.hasNewFeedback && (
+                          <Chip
+                            label="New feedback"
+                            size="small"
+                            color="warning"
+                            variant="filled"
+                            sx={COMPACT_CHIP_SX}
+                          />
+                        )}
                         {s.status === 'done' && (
                           <Chip
                             label={s.reviewable ? 'Reviewable' : 'Not Reviewable'}

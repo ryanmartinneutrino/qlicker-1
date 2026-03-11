@@ -279,10 +279,10 @@ function formatCorrectAnswerSummary(question) {
   }
 
   if (qType === QUESTION_TYPES.NUMERICAL && question.correctNumerical != null) {
-    const toleranceText = question.toleranceNumerical != null
-      ? ` (+/- ${question.toleranceNumerical})`
-      : '';
-    return `${question.correctNumerical}${toleranceText}`;
+    if (question.toleranceNumerical != null) {
+      return `${question.correctNumerical} | tolerance: ${question.toleranceNumerical}`;
+    }
+    return `${question.correctNumerical}`;
   }
 
   if (qType === QUESTION_TYPES.SHORT_ANSWER) {

@@ -549,19 +549,26 @@ export default function QuizSession() {
             )}
 
             {qType === QUESTION_TYPES.NUMERICAL && (
-              <TextField
-                value={draft.answer ?? ''}
-                onChange={(event) => {
-                  updateDraft(question, (current) => ({
-                    ...current,
-                    answer: event.target.value,
-                  }));
-                }}
-                disabled={locked}
-                type="number"
-                fullWidth
-                placeholder="Enter a number"
-              />
+              <Box>
+                <TextField
+                  value={draft.answer ?? ''}
+                  onChange={(event) => {
+                    updateDraft(question, (current) => ({
+                      ...current,
+                      answer: event.target.value,
+                    }));
+                  }}
+                  disabled={locked}
+                  type="number"
+                  fullWidth
+                  placeholder="Enter a number"
+                />
+                {question.toleranceNumerical != null && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+                    tolerance: {question.toleranceNumerical}
+                  </Typography>
+                )}
+              </Box>
             )}
 
             {practiceQuiz && (
@@ -598,8 +605,12 @@ export default function QuizSession() {
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="body2">
                   Correct answer: {question.correctNumerical}
-                  {question.toleranceNumerical != null ? ` +/- ${question.toleranceNumerical}` : ''}
                 </Typography>
+                {question.toleranceNumerical != null && (
+                  <Typography variant="body2" color="text.secondary">
+                    tolerance: {question.toleranceNumerical}
+                  </Typography>
+                )}
               </Paper>
             )}
 

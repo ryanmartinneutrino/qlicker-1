@@ -9,6 +9,7 @@ import {
   ensureSessionMsScoringMethod,
   getSessionMsScoringMethod,
   getSessionUngradedSummary,
+  hasNonEmptyFeedback,
   isQuestionAutoGradeable,
   recalculateSessionGrades,
   recomputeGradeAggregates,
@@ -65,6 +66,20 @@ function isCourseMember(course, user) {
   return roles.includes('admin')
     || course.instructors.includes(user.userId)
     || course.students.includes(user.userId);
+}
+
+function notifySessionUpdated(app, course, sessionId) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course || !sessionId) return;
+  const memberIds = [...new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean))];
+  if (memberIds.length === 0) return;
+  app.wsSendToUsers(memberIds, 'session:updated', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+  });
 }
 
 function parseSessionIds(queryValue) {
@@ -287,6 +302,7 @@ export default async function gradeRoutes(app) {
       }
 
       const nextMark = { ...marks[markIndex] };
+      let feedbackStateChanged = false;
 
       if (request.body.points !== undefined) {
         nextMark.points = toFiniteNumber(request.body.points, 0);
@@ -297,7 +313,22 @@ export default async function gradeRoutes(app) {
       }
 
       if (request.body.feedback !== undefined) {
-        nextMark.feedback = request.body.feedback || '';
+        const previousFeedback = nextMark.feedback || '';
+        const nextFeedback = request.body.feedback || '';
+        const feedbackChanged = nextFeedback !== previousFeedback;
+        nextMark.feedback = nextFeedback;
+
+        if (hasNonEmptyFeedback(nextFeedback)) {
+          if (feedbackChanged || !nextMark.feedbackUpdatedAt) {
+            nextMark.feedbackUpdatedAt = new Date();
+            feedbackStateChanged = true;
+          }
+        } else {
+          if (hasNonEmptyFeedback(previousFeedback) || nextMark.feedbackUpdatedAt) {
+            feedbackStateChanged = true;
+          }
+          nextMark.feedbackUpdatedAt = null;
+        }
       }
 
       marks[markIndex] = nextMark;
@@ -322,6 +353,9 @@ export default async function gradeRoutes(app) {
       );
 
       const updated = await Grade.findById(grade._id).lean();
+      if (feedbackStateChanged) {
+        notifySessionUpdated(app, course, grade.sessionId);
+      }
       return { grade: updated };
     }
   );

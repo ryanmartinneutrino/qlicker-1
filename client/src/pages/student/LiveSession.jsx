@@ -874,17 +874,24 @@ export default function LiveSession() {
 
         {/* Numerical: Number input */}
         {qType === QUESTION_TYPES.NUMERICAL && (
-          <TextField
-            value={displayAnswer ?? ''}
-            onChange={(e) => {
-              if (!isLocked) setAnswer(e.target.value);
-            }}
-            placeholder="Enter a number…"
-            type="number"
-            fullWidth
-            disabled={isLocked}
-            inputProps={{ 'aria-label': 'Numerical response' }}
-          />
+          <Box>
+            <TextField
+              value={displayAnswer ?? ''}
+              onChange={(e) => {
+                if (!isLocked) setAnswer(e.target.value);
+              }}
+              placeholder="Enter a number…"
+              type="number"
+              fullWidth
+              disabled={isLocked}
+              inputProps={{ 'aria-label': 'Numerical response' }}
+            />
+            {currentQ.toleranceNumerical != null && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+                tolerance: {currentQ.toleranceNumerical}
+              </Typography>
+            )}
+          </Box>
         )}
       </Paper>
 
@@ -987,8 +994,12 @@ export default function LiveSession() {
         <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'success.main' }}>
           <Typography variant="body2" color="text.secondary">
             Correct answer: <strong>{currentQ.correctNumerical}</strong>
-            {currentQ.toleranceNumerical != null && ` ± ${currentQ.toleranceNumerical}`}
           </Typography>
+          {currentQ.toleranceNumerical != null && (
+            <Typography variant="body2" color="text.secondary">
+              tolerance: {currentQ.toleranceNumerical}
+            </Typography>
+          )}
         </Paper>
       )}
 

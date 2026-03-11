@@ -539,7 +539,7 @@ export default function QuestionEditor({
               onChange={e => setForm({ ...form, correctNumerical: e.target.value })}
             />
             <TextField
-              label="Tolerance (+/-)"
+              label="Tolerance"
               type="number"
               fullWidth
               value={form.toleranceNumerical}
@@ -606,9 +606,14 @@ export default function QuestionEditor({
             )}
 
           {form.type === QUESTION_TYPES.NUMERICAL && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
-              Correct: {previewPayload.correctNumerical ?? 0} (± {previewPayload.toleranceNumerical ?? 0})
-            </Typography>
+            <Box sx={{ mt: 0.75 }}>
+              <Typography variant="body2" color="text.secondary">
+                Correct: {previewPayload.correctNumerical ?? 0}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                tolerance: {previewPayload.toleranceNumerical ?? 0}
+              </Typography>
+            </Box>
           )}
 
           {previewPayload.solution ? (

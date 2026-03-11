@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
+import Grade from '../../src/models/Grade.js';
 import Question from '../../src/models/Question.js';
 import Response from '../../src/models/Response.js';
 import Session from '../../src/models/Session.js';
@@ -198,6 +199,68 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     const body = res.json();
     expect(body.sessions.length).toBe(1);
     expect(body.sessions[0].name).toBe('Visible Session');
+  });
+
+  it('student session list includes hasNewFeedback when visible grades have unseen feedback', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionWithFeedbackRes = await createSessionInCourse(profToken, course._id, { name: 'Session A' });
+    const sessionWithFeedback = sessionWithFeedbackRes.json().session;
+    const sessionWithoutFeedbackRes = await createSessionInCourse(profToken, course._id, { name: 'Session B' });
+    const sessionWithoutFeedback = sessionWithoutFeedbackRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${sessionWithFeedback._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${sessionWithoutFeedback._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+
+    const now = new Date();
+    await Grade.create({
+      userId: student._id,
+      courseId: course._id,
+      sessionId: sessionWithFeedback._id,
+      name: sessionWithFeedback.name,
+      visibleToStudents: true,
+      marks: [
+        {
+          questionId: 'q-feedback-1',
+          feedback: '<p>New feedback</p>',
+          feedbackUpdatedAt: now,
+        },
+      ],
+    });
+    await Grade.create({
+      userId: student._id,
+      courseId: course._id,
+      sessionId: sessionWithoutFeedback._id,
+      name: sessionWithoutFeedback.name,
+      visibleToStudents: true,
+      marks: [
+        {
+          questionId: 'q-feedback-2',
+          feedback: '',
+          feedbackUpdatedAt: null,
+        },
+      ],
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(res.statusCode).toBe(200);
+
+    const listedWithFeedback = res.json().sessions.find((row) => row._id === sessionWithFeedback._id);
+    const listedWithoutFeedback = res.json().sessions.find((row) => row._id === sessionWithoutFeedback._id);
+    expect(listedWithFeedback).toBeDefined();
+    expect(listedWithFeedback.hasNewFeedback).toBe(true);
+    expect(listedWithFeedback.newFeedbackQuestionIds).toEqual(['q-feedback-1']);
+    expect(listedWithoutFeedback).toBeDefined();
+    expect(listedWithoutFeedback.hasNewFeedback).toBe(false);
   });
 
   it('non-member gets 403', async (ctx) => {
@@ -1718,6 +1781,35 @@ describe('GET /api/v1/sessions/:id/review', () => {
     expect(body.responses).toBeDefined();
   });
 
+  it('student review payload includes feedback summary for new feedback', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const { session, question } = await createReviewableSession(profToken, course._id);
+
+    await Grade.create({
+      userId: student._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      visibleToStudents: true,
+      marks: [
+        {
+          questionId: question._id,
+          feedback: '<p>Please revisit this step.</p>',
+          feedbackUpdatedAt: new Date(),
+        },
+      ],
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
+      token: studentToken,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().feedback).toBeDefined();
+    expect(res.json().feedback.hasNewFeedback).toBe(true);
+    expect(res.json().feedback.newFeedbackQuestionIds).toContain(question._id);
+  });
+
   it('normalizes review question solution/correct fields for legacy-shaped records', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { prof, profToken, course, studentToken } = await setupCourseWithStudent();
@@ -1860,5 +1952,91 @@ describe('GET /api/v1/sessions/:id/review', () => {
     });
 
     expect(res.statusCode).toBe(404);
+  });
+});
+
+// ---------- POST /api/v1/sessions/:id/review/feedback/dismiss ----------
+describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
+  it('dismisses feedback notifications and allows new feedback to re-trigger the session chip', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Feedback Session' });
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain your answer.</p>',
+        plainText: 'Explain your answer.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+
+    const grade = await Grade.create({
+      userId: student._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      visibleToStudents: true,
+      marks: [
+        {
+          questionId: question._id,
+          feedback: '<p>Initial feedback</p>',
+          feedbackUpdatedAt: new Date(),
+        },
+      ],
+    });
+
+    const beforeDismiss = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(beforeDismiss.statusCode).toBe(200);
+    const beforeSession = beforeDismiss.json().sessions.find((row) => row._id === session._id);
+    expect(beforeSession.hasNewFeedback).toBe(true);
+
+    const dismissRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/review/feedback/dismiss`, {
+      token: studentToken,
+    });
+    expect(dismissRes.statusCode).toBe(200);
+    expect(dismissRes.json().feedback.hasNewFeedback).toBe(false);
+
+    const afterDismiss = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(afterDismiss.statusCode).toBe(200);
+    const afterDismissSession = afterDismiss.json().sessions.find((row) => row._id === session._id);
+    expect(afterDismissSession.hasNewFeedback).toBe(false);
+
+    const updateFeedbackRes = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>Updated feedback</p>' },
+      }
+    );
+    expect(updateFeedbackRes.statusCode).toBe(200);
+
+    const afterUpdate = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+    expect(afterUpdate.statusCode).toBe(200);
+    const afterUpdateSession = afterUpdate.json().sessions.find((row) => row._id === session._id);
+    expect(afterUpdateSession.hasNewFeedback).toBe(true);
   });
 });

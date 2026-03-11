@@ -119,9 +119,14 @@ export default function QuestionDisplay({ question }) {
       )}
 
       {normalizedType === QUESTION_TYPES.NUMERICAL && (
-        <Typography variant="body2" color="text.secondary" sx={{ pl: 2 }}>
-          Correct: {question.correctNumerical ?? '—'} (± {question.toleranceNumerical ?? 0})
-        </Typography>
+        <Box sx={{ pl: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Correct: {question.correctNumerical ?? '—'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            tolerance: {question.toleranceNumerical ?? 0}
+          </Typography>
+        </Box>
       )}
 
       {(question.solution || question.solution_plainText) && (

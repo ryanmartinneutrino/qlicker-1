@@ -319,7 +319,7 @@ function formatCorrectAnswerValue(question) {
     const toleranceRaw = Number(question?.toleranceNumerical ?? 0);
     if (!Number.isFinite(expected)) return '—';
     const tolerance = Number.isFinite(toleranceRaw) ? Math.abs(toleranceRaw) : 0;
-    return `${expected} (± ${tolerance})`;
+    return `${expected} | tolerance: ${tolerance}`;
   }
 
   return normalizeAnswerValue(question?.solution) || 'Manual grading';

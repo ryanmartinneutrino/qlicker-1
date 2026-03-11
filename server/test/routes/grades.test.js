@@ -180,6 +180,98 @@ describe('Grading routes', () => {
     expect(persistedSession.msScoringMethod).toBe('right-minus-wrong');
   });
 
+  it('tracks feedbackUpdatedAt on marks when instructor feedback changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'feedback-updated-at',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Feedback timestamp session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    const grade = await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      marks: [
+        {
+          questionId: question._id,
+          points: 0,
+          outOf: 1,
+          automatic: false,
+          needsGrading: false,
+          feedback: '',
+          feedbackUpdatedAt: null,
+        },
+      ],
+      visibleToStudents: true,
+    });
+
+    const firstFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>First feedback</p>' },
+      }
+    );
+    expect(firstFeedback.statusCode).toBe(200);
+    const firstMark = firstFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(firstMark.feedbackUpdatedAt).toBeDefined();
+    const firstUpdatedAt = new Date(firstMark.feedbackUpdatedAt).getTime();
+    expect(Number.isFinite(firstUpdatedAt)).toBe(true);
+
+    const pointsOnly = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { points: 0.5 },
+      }
+    );
+    expect(pointsOnly.statusCode).toBe(200);
+    const pointsOnlyMark = pointsOnly.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(pointsOnlyMark.feedbackUpdatedAt).toBe(firstMark.feedbackUpdatedAt);
+
+    const updatedFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>Updated feedback</p>' },
+      }
+    );
+    expect(updatedFeedback.statusCode).toBe(200);
+    const updatedMark = updatedFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    const updatedAt = new Date(updatedMark.feedbackUpdatedAt).getTime();
+    expect(Number.isFinite(updatedAt)).toBe(true);
+    expect(updatedAt).toBeGreaterThanOrEqual(firstUpdatedAt);
+
+    const clearedFeedback = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '' },
+      }
+    );
+    expect(clearedFeedback.statusCode).toBe(200);
+    const clearedMark = clearedFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
+    expect(clearedMark.feedbackUpdatedAt).toBeNull();
+  });
+
   it('recalculates grades, preserves manual overrides, and exposes grading conflicts/warnings', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 

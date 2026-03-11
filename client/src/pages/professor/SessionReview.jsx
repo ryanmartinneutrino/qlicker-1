@@ -1012,9 +1012,14 @@ export default function SessionReview() {
 
                   {/* Numerical correct answer */}
                   {qT === QUESTION_TYPES.NUMERICAL && q.correctNumerical != null && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      Correct: {q.correctNumerical} (± {q.toleranceNumerical ?? 0})
-                    </Typography>
+                    <Box sx={{ mb: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Correct: {q.correctNumerical}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        tolerance: {q.toleranceNumerical ?? 0}
+                      </Typography>
+                    </Box>
                   )}
                 </Paper>
               );
