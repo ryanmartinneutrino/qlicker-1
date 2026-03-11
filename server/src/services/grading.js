@@ -222,6 +222,50 @@ export function getSessionMsScoringMethod(session) {
   return normalizeMsScoringMethod(session?.msScoringMethod);
 }
 
+export async function ensureSessionMsScoringMethod(session, { persist = true } = {}) {
+  if (!session) {
+    return {
+      session,
+      msScoringMethod: DEFAULT_MS_SCORING_METHOD,
+      changed: false,
+    };
+  }
+
+  const normalizedMethod = normalizeMsScoringMethod(session?.msScoringMethod);
+  const storedMethod = normalizeAnswerValue(session?.msScoringMethod).toLowerCase();
+  let changed = storedMethod !== normalizedMethod;
+
+  if (!persist && !changed) {
+    return {
+      session,
+      msScoringMethod: normalizedMethod,
+      changed: false,
+    };
+  }
+
+  const sessionId = normalizeAnswerValue(session?._id);
+  let persistedSession = null;
+  if (persist && sessionId) {
+    const updateResult = await Session.updateOne(
+      { _id: sessionId, msScoringMethod: { $ne: normalizedMethod } },
+      { $set: { msScoringMethod: normalizedMethod } },
+    );
+    const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
+    if (modifiedCount > 0) {
+      changed = true;
+      persistedSession = await Session.findById(sessionId).lean();
+    }
+  } else if (!sessionId) {
+    changed = storedMethod !== normalizedMethod;
+  }
+
+  return {
+    session: persistedSession || { ...session, msScoringMethod: normalizedMethod },
+    msScoringMethod: normalizedMethod,
+    changed,
+  };
+}
+
 export function getQuestionPoints(question) {
   // Meteor behavior for backward compatibility:
   // SA defaults to 0 unless explicitly configured, others default to 1.
@@ -508,12 +552,15 @@ export async function recalculateSessionGrades({
   missingOnly = false,
   visibleToStudents = null,
 } = {}) {
-  const session = sessionDoc
+  let session = sessionDoc
     ? (typeof sessionDoc.toObject === 'function' ? sessionDoc.toObject() : { ...sessionDoc })
     : await Session.findById(sessionId).lean();
   if (!session) {
     throw new Error('Session not found');
   }
+
+  const msNormalization = await ensureSessionMsScoringMethod(session);
+  session = msNormalization.session || session;
 
   const course = courseDoc
     ? (typeof courseDoc.toObject === 'function' ? courseDoc.toObject() : { ...courseDoc })

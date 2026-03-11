@@ -4,6 +4,7 @@ import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '.
 import Course from '../../src/models/Course.js';
 import Question from '../../src/models/Question.js';
 import Response from '../../src/models/Response.js';
+import Session from '../../src/models/Session.js';
 
 let app;
 
@@ -370,6 +371,31 @@ describe('GET /api/v1/sessions/:id', () => {
     const body = res.json();
     expect(body.session).toBeDefined();
     expect(body.session.name).toBe('Test Session');
+  });
+
+  it('backfills a missing msScoringMethod to default when instructor opens the session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-ms@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await Session.updateOne(
+      { _id: session._id },
+      { $unset: { msScoringMethod: '' } }
+    );
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.msScoringMethod).toBe('right-minus-wrong');
+
+    const persisted = await Session.findById(session._id).lean();
+    expect(persisted.msScoringMethod).toBe('right-minus-wrong');
   });
 
   it('student cannot see hidden session', async (ctx) => {

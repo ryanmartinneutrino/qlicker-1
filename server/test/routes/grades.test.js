@@ -155,6 +155,31 @@ async function createSaQuestion({ creatorId, sessionId, courseId, points = 1 }) 
 }
 
 describe('Grading routes', () => {
+  it('backfills a missing session msScoringMethod to the default during grade recalculation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'ms-backfill',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'MS backfill session' });
+    await Session.findByIdAndUpdate(session._id, {
+      $set: { status: 'done' },
+      $unset: { msScoringMethod: '' },
+    });
+
+    const recalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+
+    expect(recalc.statusCode).toBe(200);
+
+    const persistedSession = await Session.findById(session._id).lean();
+    expect(persistedSession.msScoringMethod).toBe('right-minus-wrong');
+  });
+
   it('recalculates grades, preserves manual overrides, and exposes grading conflicts/warnings', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 

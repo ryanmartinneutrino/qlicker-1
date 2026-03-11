@@ -1,11 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   calculateResponsePoints,
   DEFAULT_MS_SCORING_METHOD,
+  ensureSessionMsScoringMethod,
   MS_SCORING_METHODS,
   getSessionMsScoringMethod,
   getQuestionPoints,
 } from '../../src/services/grading.js';
+import Session from '../../src/models/Session.js';
 
 describe('grading service helpers', () => {
   it('uses Meteor-compatible right-minus-wrong scoring by default for multi-select', () => {
@@ -115,5 +117,88 @@ describe('grading service helpers', () => {
       .toBe(MS_SCORING_METHODS.ALL_OR_NOTHING);
     expect(getSessionMsScoringMethod({ msScoringMethod: 'unknown-mode' }))
       .toBe(DEFAULT_MS_SCORING_METHOD);
+  });
+
+  it('backfills missing session scoring mode to the default when persistence is enabled', async () => {
+    const updateSpy = vi.spyOn(Session, 'updateOne')
+      .mockResolvedValue({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
+    const findByIdSpy = vi.spyOn(Session, 'findById')
+      .mockReturnValue({
+        lean: vi.fn().mockResolvedValue({
+          _id: 'legacy-session',
+          msScoringMethod: DEFAULT_MS_SCORING_METHOD,
+        }),
+      });
+
+    const result = await ensureSessionMsScoringMethod({
+      _id: 'legacy-session',
+      msScoringMethod: undefined,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.msScoringMethod).toBe(DEFAULT_MS_SCORING_METHOD);
+    expect(result.session.msScoringMethod).toBe(DEFAULT_MS_SCORING_METHOD);
+    expect(updateSpy).toHaveBeenCalledWith(
+      { _id: 'legacy-session', msScoringMethod: { $ne: DEFAULT_MS_SCORING_METHOD } },
+      { $set: { msScoringMethod: DEFAULT_MS_SCORING_METHOD } }
+    );
+    expect(findByIdSpy).toHaveBeenCalledWith('legacy-session');
+
+    updateSpy.mockRestore();
+    findByIdSpy.mockRestore();
+  });
+
+  it('does not persist when session scoring mode is already valid', async () => {
+    const updateSpy = vi.spyOn(Session, 'updateOne')
+      .mockResolvedValue({ acknowledged: true, matchedCount: 0, modifiedCount: 0 });
+    const findByIdSpy = vi.spyOn(Session, 'findById')
+      .mockReturnValue({
+        lean: vi.fn().mockResolvedValue(null),
+      });
+
+    const result = await ensureSessionMsScoringMethod({
+      _id: 'valid-session',
+      msScoringMethod: MS_SCORING_METHODS.CORRECTNESS_RATIO,
+    });
+
+    expect(result.changed).toBe(false);
+    expect(result.msScoringMethod).toBe(MS_SCORING_METHODS.CORRECTNESS_RATIO);
+    expect(updateSpy).toHaveBeenCalledWith(
+      { _id: 'valid-session', msScoringMethod: { $ne: MS_SCORING_METHODS.CORRECTNESS_RATIO } },
+      { $set: { msScoringMethod: MS_SCORING_METHODS.CORRECTNESS_RATIO } }
+    );
+    expect(findByIdSpy).not.toHaveBeenCalled();
+
+    updateSpy.mockRestore();
+    findByIdSpy.mockRestore();
+  });
+
+  it('normalizes legacy uppercase values and persists canonical lowercase values', async () => {
+    const updateSpy = vi.spyOn(Session, 'updateOne')
+      .mockResolvedValue({ acknowledged: true, matchedCount: 1, modifiedCount: 1 });
+    const findByIdSpy = vi.spyOn(Session, 'findById')
+      .mockReturnValue({
+        lean: vi.fn().mockResolvedValue({
+          _id: 'legacy-uppercase',
+          msScoringMethod: MS_SCORING_METHODS.ALL_OR_NOTHING,
+        }),
+      });
+
+    const result = await ensureSessionMsScoringMethod({
+      _id: 'legacy-uppercase',
+      msScoringMethod: 'ALL-OR-NOTHING',
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.msScoringMethod).toBe(MS_SCORING_METHODS.ALL_OR_NOTHING);
+    expect(result.session.msScoringMethod).toBe(MS_SCORING_METHODS.ALL_OR_NOTHING);
+    expect(updateSpy).toHaveBeenCalledWith(
+      { _id: 'legacy-uppercase', msScoringMethod: { $ne: MS_SCORING_METHODS.ALL_OR_NOTHING } },
+      { $set: { msScoringMethod: MS_SCORING_METHODS.ALL_OR_NOTHING } }
+    );
+    expect(findByIdSpy).toHaveBeenCalledWith('legacy-uppercase');
+
+    updateSpy.mockRestore();
+    findByIdSpy.mockRestore();
   });
 });

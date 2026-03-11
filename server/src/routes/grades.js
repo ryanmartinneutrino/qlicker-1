@@ -6,6 +6,7 @@ import Session from '../models/Session.js';
 import User from '../models/User.js';
 import {
   calculateResponsePoints,
+  ensureSessionMsScoringMethod,
   getSessionMsScoringMethod,
   getSessionUngradedSummary,
   isQuestionAutoGradeable,
@@ -342,10 +343,12 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const session = await Session.findById(grade.sessionId).lean();
+      let session = await Session.findById(grade.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
+      const msNormalization = await ensureSessionMsScoringMethod(session);
+      session = msNormalization.session || session;
 
       const questionId = String(request.params.questionId);
       const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark.toObject?.() || mark })) : [];

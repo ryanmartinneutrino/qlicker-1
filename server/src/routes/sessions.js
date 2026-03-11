@@ -6,6 +6,7 @@ import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
+  ensureSessionMsScoringMethod,
   recalculateSessionGrades,
   setSessionGradesVisibility,
 } from '../services/grading.js';
@@ -836,7 +837,11 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      if (isInstrOrAdmin) {
+        const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
+        normalizedSession = msNormalization.session || normalizedSession;
+      }
       if (changed) {
         notifySessionUpdated(app, course, normalizedSession?._id || session._id);
       }
