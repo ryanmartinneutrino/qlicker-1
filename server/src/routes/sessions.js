@@ -645,22 +645,77 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
   return normalized;
 }
 
-function notifySessionUpdated(app, course, sessionId) {
-  if (typeof app.wsSendToUser !== 'function') return;
-  if (!course || !sessionId) return;
+// ---------------------------------------------------------------------------
+// WebSocket notification helpers
+// ---------------------------------------------------------------------------
 
+function sendToCourseMembers(app, course, event, payload) {
+  if (typeof app.wsSendToUser !== 'function') return;
+  if (!course) return;
   const memberIds = new Set([
     ...(course.instructors || []),
     ...(course.students || []),
   ].map((userId) => String(userId)).filter(Boolean));
+  memberIds.forEach((userId) => {
+    app.wsSendToUser(userId, event, payload);
+  });
+}
 
-  const payload = {
+function sendToInstructors(app, course, event, payload) {
+  if (typeof app.wsSendToUser !== 'function') return;
+  if (!course) return;
+  const instructorIds = (course.instructors || []).map((userId) => String(userId)).filter(Boolean);
+  instructorIds.forEach((userId) => {
+    app.wsSendToUser(userId, event, payload);
+  });
+}
+
+/** Generic session:updated — used for non-live-critical mutations (CRUD, join, quiz auto-close, etc.) */
+function notifySessionUpdated(app, course, sessionId) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:updated', {
     courseId: String(course._id),
     sessionId: String(sessionId),
-  };
+  });
+}
 
-  memberIds.forEach((userId) => {
-    app.wsSendToUser(userId, 'session:updated', payload);
+/** Delta: new response submitted — sent only to instructors (students don't need real-time response notifications). */
+function notifyResponseAdded(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToInstructors(app, course, 'session:response-added', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: professor navigated to a different question. */
+function notifyQuestionChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:question-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: question visibility/stats/correct toggled. */
+function notifyVisibilityChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:visibility-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+/** Delta: session started or ended. */
+function notifyStatusChanged(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToCourseMembers(app, course, 'session:status-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
   });
 }
 
@@ -983,7 +1038,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'running' });
 
       return { session: updated.toObject() };
     }
@@ -1052,7 +1107,7 @@ export default async function sessionRoutes(app) {
         });
       }
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'done' });
 
       return { session: updated.toObject(), grading };
     }
@@ -1100,13 +1155,17 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      const qIndex = session.questions.findIndex((id) => String(id) === String(questionId));
+      notifyQuestionChanged(app, course, updated?._id || request.params.id, {
+        questionId: String(questionId),
+        questionIndex: qIndex,
+        questionNumber: qIndex >= 0 ? qIndex + 1 : null,
+        questionCount: session.questions.length,
+      });
 
       return { session: updated.toObject() };
     }
   );
-
-  // PATCH /sessions/:id/reviewable - Toggle reviewable
   app.patch(
     '/sessions/:id/reviewable',
     {
@@ -2037,20 +2096,17 @@ export default async function sessionRoutes(app) {
             };
           }
         } else if (isJoined && !questionHidden) {
-          // Student gets their own response
-          studentResponse = await Response.findOne({
-            questionId,
-            studentUserId: userId,
-            attempt: currentAttempt.number,
-          }).lean();
-
-          // Provide stats if showStats is enabled
           if (showStats) {
+            // Single query: get all responses (includes student's own)
             const responses = await Response.find({
               questionId,
               attempt: currentAttempt.number,
             }).lean();
             responseStats = buildResponseStats(currentQuestion, responses);
+            // Extract student's response from the batch — avoids a second query
+            studentResponse = responses.find(
+              (r) => String(getResponseStudentId(r)) === String(userId)
+            ) || null;
             if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
               responseStats = {
                 ...responseStats,
@@ -2060,6 +2116,13 @@ export default async function sessionRoutes(app) {
                 })),
               };
             }
+          } else {
+            // Only need student's own response
+            studentResponse = await Response.findOne({
+              questionId,
+              studentUserId: userId,
+              attempt: currentAttempt.number,
+            }).lean();
           }
         }
       }
@@ -2270,8 +2333,19 @@ export default async function sessionRoutes(app) {
         answerWysiwyg: request.body.answerWysiwyg || '',
       });
 
-      // Notify prof of new response
-      notifySessionUpdated(app, course, session._id);
+      // Count responses for current question/attempt (fast indexed query)
+      const responseCount = await Response.countDocuments({
+        questionId,
+        attempt: currentAttempt.number,
+      });
+
+      // Notify instructors of new response (delta event — students don't need this)
+      notifyResponseAdded(app, course, session._id, {
+        questionId: String(questionId),
+        attempt: currentAttempt.number,
+        responseCount,
+        joinedCount: session.joined.length,
+      });
 
       return reply.code(201).send({ response: response.toObject() });
     }
@@ -2325,7 +2399,12 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyVisibilityChanged(app, course, session._id, {
+        questionId: String(questionId),
+        hidden: updatedQuestion?.sessionOptions?.hidden,
+        stats: updatedQuestion?.sessionOptions?.stats,
+        correct: updatedQuestion?.sessionOptions?.correct,
+      });
 
       return { question: updatedQuestion?.toObject() };
     }

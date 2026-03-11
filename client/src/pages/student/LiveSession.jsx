@@ -171,9 +171,30 @@ export default function LiveSession() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message?.event !== 'session:updated') return;
-          if (String(message?.data?.sessionId || '') !== String(sessionId)) return;
-          fetchLive();
+          const evt = message?.event;
+          const d = message?.data;
+          if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
+
+          switch (evt) {
+            // session:response-added is only sent to instructors; students
+            // will not receive it, but handle gracefully in case.
+            case 'session:response-added':
+              break;
+            case 'session:question-changed':
+              fetchLive();
+              break;
+            case 'session:visibility-changed':
+              fetchLive();
+              break;
+            case 'session:status-changed':
+              fetchLive();
+              break;
+            case 'session:updated':
+              fetchLive();
+              break;
+            default:
+              break;
+          }
         } catch {
           // Ignore malformed payloads
         }

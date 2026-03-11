@@ -155,6 +155,17 @@ export default function SecondDesktop() {
     }
   }, [sessionId]);
 
+  // Throttled re-fetch: batches rapid response-added events into at most one
+  // re-fetch per 2-second window, dramatically reducing DB load during live sessions.
+  const fetchThrottleRef = useRef(null);
+  const scheduleFetchLive = useCallback(() => {
+    if (fetchThrottleRef.current) return;
+    fetchThrottleRef.current = setTimeout(() => {
+      fetchThrottleRef.current = null;
+      fetchLive();
+    }, 2000);
+  }, [fetchLive]);
+
   // ---- WebSocket + polling ----
 
   useEffect(() => {
@@ -196,9 +207,41 @@ export default function SecondDesktop() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message?.event !== 'session:updated') return;
-          if (String(message?.data?.sessionId || '') !== String(sessionId)) return;
-          fetchLive();
+          const evt = message?.event;
+          const d = message?.data;
+          if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
+
+          switch (evt) {
+            case 'session:response-added':
+              setLiveData((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  responseCount: d.responseCount ?? prev.responseCount,
+                  session: {
+                    ...prev.session,
+                    joinedCount: d.joinedCount ?? prev.session?.joinedCount,
+                  },
+                };
+              });
+              scheduleFetchLive();
+              break;
+            case 'session:question-changed':
+              fetchLive();
+              break;
+            case 'session:visibility-changed':
+              fetchLive();
+              break;
+            case 'session:status-changed':
+              if (d.status === 'done') { setSessionEnded(true); }
+              fetchLive();
+              break;
+            case 'session:updated':
+              fetchLive();
+              break;
+            default:
+              break;
+          }
         } catch {
           // Ignore malformed payloads
         }
@@ -228,6 +271,8 @@ export default function SecondDesktop() {
     return () => {
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
+      fetchThrottleRef.current = null;
       stopPolling();
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close();
@@ -235,7 +280,7 @@ export default function SecondDesktop() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchLive, sessionId]);
+  }, [fetchLive, scheduleFetchLive, sessionId]);
 
   // ---- Derived state ----
 
