@@ -46,7 +46,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **ODM** | Mongoose | MongoDB object modeling |
 | **Real-time** | @fastify/websocket | WebSocket for live session updates |
 | **Auth** | @fastify/jwt + @fastify/cookie | JWT-based authentication |
-| **SSO** | @node-saml/passport-saml | SAML-based SSO |
+| **SSO** | @node-saml/node-saml | SAML-based SSO |
 | **Email** | Nodemailer | Password reset, verification emails |
 | **File Upload** | AWS SDK v3, @azure/storage-blob | S3, Azure, local storage |
 | **UI Framework** | Material UI (MUI) | Material Design components |
@@ -54,7 +54,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **Charts** | MUI + custom components | Data visualization (HistogramBars, LinearProgress bars) |
 | **Math** | KaTeX | Equation rendering |
 | **Rich Text** | TipTap | WYSIWYG editor |
-| **Testing** | Vitest + Playwright | Unit + E2E tests |
+| **Testing** | Vitest | Unit tests (Playwright planned for E2E) |
 | **Containerization** | Docker + Docker Compose | Deployment |
 
 ### Directory Structure
