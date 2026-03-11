@@ -337,6 +337,7 @@ export default function StudentCourseDetail() {
                 >
                   <ListItemButton
                     onClick={clickable ? () => navigate(action.path) : undefined}
+                    disabled={!clickable}
                     sx={{
                       alignItems: 'flex-start',
                       flexWrap: 'wrap',
