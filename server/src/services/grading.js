@@ -28,7 +28,7 @@ function normalizeAnswerValue(answer) {
   return String(answer).trim();
 }
 
-function getTimestampMs(value) {
+export function getTimestampMs(value) {
   if (!value) return Number.NaN;
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return Number.NaN;

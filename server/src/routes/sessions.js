@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
+  getTimestampMs,
   recalculateSessionGrades,
   summarizeGradeFeedback,
   setSessionGradesVisibility,
@@ -600,15 +601,15 @@ async function loadOrderedQuestions(questionIds = []) {
 // Helper to check if user is instructor of course or admin
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
-  return roles.includes('admin') || course.instructors.includes(user.userId);
+  return roles.includes('admin') || (course.instructors || []).includes(user.userId);
 }
 
 function isStudentBlockedByInactiveCourse(course, user) {
   if (!course?.inactive) return false;
   const roles = user.roles || [];
   if (roles.includes('admin')) return false;
-  if (course.instructors.includes(user.userId)) return false;
-  return course.students.includes(user.userId);
+  if ((course.instructors || []).includes(user.userId)) return false;
+  return (course.students || []).includes(user.userId);
 }
 
 // Helper to check if user is a member of the course (student, instructor, or admin)
@@ -616,8 +617,8 @@ function isCourseMember(course, user) {
   if (isStudentBlockedByInactiveCourse(course, user)) return false;
   const roles = user.roles || [];
   return roles.includes('admin') ||
-    course.instructors.includes(user.userId) ||
-    course.students.includes(user.userId);
+    (course.instructors || []).includes(user.userId) ||
+    (course.students || []).includes(user.userId);
 }
 
 function buildSessionForUser(session, user, { instructorView = false } = {}) {
@@ -660,13 +661,6 @@ function getDefaultFeedbackSummary() {
   };
 }
 
-function parseTimestamp(value) {
-  if (!value) return Number.NaN;
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return Number.NaN;
-  return timestamp;
-}
-
 function summarizeFeedbackFromGrades(grades = []) {
   if (!Array.isArray(grades) || grades.length === 0) {
     return getDefaultFeedbackSummary();
@@ -679,7 +673,7 @@ function summarizeFeedbackFromGrades(grades = []) {
     const marks = Array.isArray(grade?.marks) ? grade.marks : [];
     combinedMarks.push(...marks);
 
-    const feedbackSeenAtMs = parseTimestamp(grade?.feedbackSeenAt);
+    const feedbackSeenAtMs = getTimestampMs(grade?.feedbackSeenAt);
     if (!Number.isFinite(feedbackSeenAtMs)) return;
     if (!Number.isFinite(latestFeedbackSeenAtMs) || feedbackSeenAtMs > latestFeedbackSeenAtMs) {
       latestFeedbackSeenAtMs = feedbackSeenAtMs;
@@ -1189,11 +1183,12 @@ export default async function sessionRoutes(app) {
         currentJoinCode: '',
         joinCodeExpiresAt: null,
       };
-      if (session.questions.length > 0 && !session.currentQuestion) {
-        updates.currentQuestion = session.questions[0];
+      const sessionQuestions = session.questions || [];
+      if (sessionQuestions.length > 0 && !session.currentQuestion) {
+        updates.currentQuestion = sessionQuestions[0];
 
         // Set first question hidden by default when session launches
-        await Question.findByIdAndUpdate(session.questions[0], {
+        await Question.findByIdAndUpdate(sessionQuestions[0], {
           $set: { 'sessionOptions.hidden': true },
         });
       }
@@ -1302,7 +1297,7 @@ export default async function sessionRoutes(app) {
       }
 
       const { questionId } = request.body;
-      if (!session.questions.includes(questionId)) {
+      if (!(session.questions || []).includes(questionId)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this session' });
       }
 
@@ -1321,12 +1316,12 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      const qIndex = session.questions.findIndex((id) => String(id) === String(questionId));
+      const qIndex = (session.questions || []).findIndex((id) => String(id) === String(questionId));
       notifyQuestionChanged(app, course, updated?._id || request.params.id, {
         questionId: String(questionId),
         questionIndex: qIndex,
         questionNumber: qIndex >= 0 ? qIndex + 1 : null,
-        questionCount: session.questions.length,
+        questionCount: (session.questions || []).length,
       });
 
       return { session: updated.toObject() };
@@ -2175,7 +2170,7 @@ export default async function sessionRoutes(app) {
       const userId = request.user.userId;
 
       // Check if already joined
-      const alreadyInList = session.joined.includes(userId);
+      const alreadyInList = (session.joined || []).includes(userId);
       const existingRecord = (session.joinRecords || []).find((r) => r.userId === userId);
 
       // Already joined students remain joined even if passcode settings change later.
@@ -2257,7 +2252,7 @@ export default async function sessionRoutes(app) {
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       const includeStudentNames = isInstrOrAdmin && parseBooleanQuery(request.query?.includeStudentNames);
       const userId = request.user.userId;
-      let isJoined = session.joined.includes(userId);
+      let isJoined = (session.joined || []).includes(userId);
 
       // Fetch current question
       let currentQuestion = null;
@@ -2429,7 +2424,7 @@ export default async function sessionRoutes(app) {
             status: session.status,
             questions: session.questions,
             currentQuestion: session.currentQuestion,
-            joinedCount: session.joined.length,
+            joinedCount: (session.joined || []).length,
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             reviewable: session.reviewable,
@@ -2525,7 +2520,7 @@ export default async function sessionRoutes(app) {
       }
 
       const userId = request.user.userId;
-      if (!session.joined.includes(userId)) {
+      if (!(session.joined || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'You have not joined this session' });
       }
 
@@ -2590,7 +2585,7 @@ export default async function sessionRoutes(app) {
         questionId: String(questionId),
         attempt: currentAttempt.number,
         responseCount,
-        joinedCount: session.joined.length,
+        joinedCount: (session.joined || []).length,
       });
 
       return reply.code(201).send({ response: response.toObject() });
