@@ -650,24 +650,20 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
 // ---------------------------------------------------------------------------
 
 function sendToCourseMembers(app, course, event, payload) {
-  if (typeof app.wsSendToUser !== 'function') return;
+  if (typeof app.wsSendToUsers !== 'function') return;
   if (!course) return;
-  const memberIds = new Set([
+  const memberIds = [...new Set([
     ...(course.instructors || []),
     ...(course.students || []),
-  ].map((userId) => String(userId)).filter(Boolean));
-  memberIds.forEach((userId) => {
-    app.wsSendToUser(userId, event, payload);
-  });
+  ].map((userId) => String(userId)).filter(Boolean))];
+  app.wsSendToUsers(memberIds, event, payload);
 }
 
 function sendToInstructors(app, course, event, payload) {
-  if (typeof app.wsSendToUser !== 'function') return;
+  if (typeof app.wsSendToUsers !== 'function') return;
   if (!course) return;
   const instructorIds = (course.instructors || []).map((userId) => String(userId)).filter(Boolean);
-  instructorIds.forEach((userId) => {
-    app.wsSendToUser(userId, event, payload);
-  });
+  app.wsSendToUsers(instructorIds, event, payload);
 }
 
 /** Generic session:updated — used for non-live-critical mutations (CRUD, join, quiz auto-close, etc.) */
@@ -1000,12 +996,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/start',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1054,7 +1050,7 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1121,12 +1117,12 @@ export default async function sessionRoutes(app) {
       schema: setCurrentQuestionSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2162,11 +2158,11 @@ export default async function sessionRoutes(app) {
             joinedAt: latestJoinByStudentId.get(studentId) || null,
           };
         }).sort((a, b) => {
-          const lastCmp = normalizeAnswerValue(a.lastname).localeCompare(normalizeAnswerValue(b.lastname));
+          const lastCmp = a.lastname.localeCompare(b.lastname);
           if (lastCmp !== 0) return lastCmp;
-          const firstCmp = normalizeAnswerValue(a.firstname).localeCompare(normalizeAnswerValue(b.firstname));
+          const firstCmp = a.firstname.localeCompare(b.firstname);
           if (firstCmp !== 0) return firstCmp;
-          return normalizeAnswerValue(a.email).localeCompare(normalizeAnswerValue(b.email));
+          return a.email.localeCompare(b.email);
         });
       }
 
@@ -2269,7 +2265,7 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2283,7 +2279,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'You have not joined this session' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2296,7 +2292,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
       }
 
-      const question = await Question.findById(questionId);
+      const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
@@ -2369,12 +2365,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2415,12 +2411,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/new-attempt',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2474,12 +2470,12 @@ export default async function sessionRoutes(app) {
       },
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -2493,7 +2489,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
       }
 
-      const question = await Question.findById(questionId);
+      const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
@@ -2534,12 +2530,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/refresh-join-code',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }

@@ -310,14 +310,15 @@ export default function LiveSession() {
     try {
       const payload = { answer };
       if (answerWysiwyg) payload.answerWysiwyg = answerWysiwyg;
-      await apiClient.post(`/sessions/${sessionId}/respond`, payload);
-      await fetchLive();
+      const { data } = await apiClient.post(`/sessions/${sessionId}/respond`, payload);
+      // Update local state with the submitted response — avoids a full re-fetch of /live
+      setLiveData((prev) => prev ? { ...prev, studentResponse: data.response || prev.studentResponse } : prev);
     } catch (err) {
       setSubmitError(err.response?.data?.message || 'Failed to submit response');
     } finally {
       setSubmitting(false);
     }
-  }, [answer, answerWysiwyg, sessionId, fetchLive]);
+  }, [answer, answerWysiwyg, sessionId]);
 
   // --------------------------------------------------
   // Derived values

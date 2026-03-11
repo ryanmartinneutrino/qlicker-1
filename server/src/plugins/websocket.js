@@ -29,9 +29,29 @@ async function websocketPlugin(fastify) {
     }
   }
 
+  /**
+   * Send the same event to multiple users, serializing the JSON payload only once.
+   * This is significantly more efficient than calling wsSendToUser() in a loop
+   * when broadcasting to large courses (200+ members).
+   */
+  function wsSendToUsers(userIds, event, data) {
+    if (!userIds || userIds.length === 0) return;
+    const message = JSON.stringify({ event, data });
+    for (const userId of userIds) {
+      const connections = wsClients.get(userId);
+      if (!connections) continue;
+      for (const ws of connections) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+        }
+      }
+    }
+  }
+
   fastify.decorate('wsClients', wsClients);
   fastify.decorate('wsBroadcast', wsBroadcast);
   fastify.decorate('wsSendToUser', wsSendToUser);
+  fastify.decorate('wsSendToUsers', wsSendToUsers);
 
   fastify.register(async function wsRoutes(app) {
     // Token is passed via query parameter because the browser WebSocket API
