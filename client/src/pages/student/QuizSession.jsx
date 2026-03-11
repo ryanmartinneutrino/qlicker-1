@@ -256,6 +256,33 @@ export default function QuizSession() {
     }
   }, [courseQuizTabLink, flushAutosaves, navigate, sessionId]);
 
+  const handleFinishPracticeQuiz = useCallback(async () => {
+    setSubmittingQuiz(true);
+    setSubmitError('');
+    try {
+      await flushAutosaves();
+      for (const question of questions) {
+        const questionId = String(question._id);
+        const response = responsesByQuestion[questionId];
+        const locked = !!response && response.editable === false;
+        if (locked) continue;
+
+        const draft = draftByQuestion[questionId] || getDraftForQuestion(question, response);
+        if (!hasAnswerForDraft(question, draft)) continue;
+
+        // eslint-disable-next-line no-await-in-loop
+        await saveDraftNow(questionId, draft);
+        // eslint-disable-next-line no-await-in-loop
+        await apiClient.post(`/sessions/${sessionId}/quiz-question-submit`, { questionId });
+      }
+      navigate(courseQuizTabLink);
+    } catch (err) {
+      setSubmitError(err.response?.data?.message || 'Failed to submit quiz');
+    } finally {
+      setSubmittingQuiz(false);
+    }
+  }, [courseQuizTabLink, draftByQuestion, flushAutosaves, navigate, questions, responsesByQuestion, saveDraftNow, sessionId]);
+
   const handleSubmitPracticeQuestion = useCallback(async (questionId) => {
     const question = questions.find((entry) => String(entry._id) === String(questionId));
     if (!question) return;
@@ -294,6 +321,10 @@ export default function QuizSession() {
       return hasAnswerForDraft(question, draft);
     });
   }, [draftByQuestion, practiceQuiz, questions, responsesByQuestion, submittingQuiz]);
+  const allQuestionsAnswered = useMemo(() => (
+    questions.length > 0 && answeredCount === questions.length
+  ), [answeredCount, questions.length]);
+  const showSubmitButton = allQuestionsAnswered && !submittingQuiz;
 
   const questionsToRender = useMemo(() => {
     if (!singleQuestionMode) return questions;
@@ -348,6 +379,12 @@ export default function QuizSession() {
 
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 860, mx: 'auto' }}>
+      <Box sx={{ mb: 1.25 }}>
+        <Button size="small" variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
+          Back to course
+        </Button>
+      </Box>
+
       <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>
           {session.name || 'Quiz'}
@@ -626,24 +663,25 @@ export default function QuizSession() {
         );
       })}
 
-      {!practiceQuiz && (
-        <>
-          <Divider sx={{ my: 2 }} />
-          <Button
-            variant="contained"
-            size="large"
-            fullWidth
-            onClick={handleSubmitQuiz}
-            disabled={!canSubmitQuiz}
-          >
-            {submittingQuiz ? 'Submitting...' : 'Submit Quiz'}
-          </Button>
-          {!canSubmitQuiz && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
-              Answer every question before submitting.
-            </Typography>
-          )}
-        </>
+      <Divider sx={{ my: 2 }} />
+      {showSubmitButton ? (
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          onClick={practiceQuiz ? handleFinishPracticeQuiz : handleSubmitQuiz}
+          disabled={practiceQuiz ? submittingQuiz : !canSubmitQuiz}
+        >
+          {submittingQuiz
+            ? 'Submitting...'
+            : practiceQuiz
+              ? 'Submit Practice Quiz'
+              : 'Submit Quiz'}
+        </Button>
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
+          Answer every question to unlock submit.
+        </Typography>
       )}
     </Box>
   );

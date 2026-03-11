@@ -631,7 +631,9 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
 
   if (isQuizLikeSession(normalized)) {
     const submittedQuiz = Array.isArray(normalized.submittedQuiz) ? normalized.submittedQuiz : [];
+    const joined = Array.isArray(normalized.joined) ? normalized.joined : [];
     normalized.quizSubmittedByCurrentUser = submittedQuiz.includes(user?.userId);
+    normalized.quizStartedByCurrentUser = joined.includes(user?.userId);
     normalized.quizHasActiveExtensions = runtime.quizHasActiveExtensions;
     normalized.activeExtensionsCount = runtime.activeExtensionsCount;
     normalized.userHasActiveQuizExtension = runtime.userHasActiveQuizExtension;
@@ -836,7 +838,7 @@ export default async function sessionRoutes(app) {
     '/courses/:courseId/sessions',
     { preHandler: authenticate },
     async (request, reply) => {
-      const course = await Course.findById(request.params.courseId);
+      const course = await Course.findById(request.params.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1498,12 +1500,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/review',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1512,7 +1514,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
       if (changed) {
         notifySessionUpdated(app, course, normalizedSession?._id || session._id);
       }
@@ -1585,12 +1587,12 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/review/feedback/dismiss',
     { preHandler: authenticate },
     async (request, reply) => {
-      const sessionDoc = await Session.findById(request.params.id);
+      const sessionDoc = await Session.findById(request.params.id).lean();
       if (!sessionDoc) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(sessionDoc.courseId);
+      const course = await Course.findById(sessionDoc.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1599,7 +1601,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
         notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
       }

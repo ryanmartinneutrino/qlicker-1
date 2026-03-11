@@ -128,8 +128,29 @@ function normalizeGradeRows(rows = []) {
 }
 
 function getSessionSortTime(session) {
-  const timestamp = new Date(session?.date || session?.quizStart || session?.createdAt || 0).getTime();
+  const status = normalizeAnswerValue(session?.status);
+  const isQuiz = !!(session?.quiz || session?.practiceQuiz);
+  let candidate = session?.date || session?.createdAt || session?.quizStart || session?.quizEnd;
+
+  if (isQuiz && status === 'visible') {
+    candidate = session?.quizStart || session?.date || session?.createdAt || session?.quizEnd;
+  } else if (isQuiz && status === 'done') {
+    candidate = session?.quizEnd || session?.date || session?.quizStart || session?.createdAt;
+  } else if (isQuiz) {
+    candidate = session?.quizStart || session?.date || session?.createdAt || session?.quizEnd;
+  }
+
+  const timestamp = new Date(candidate || 0).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getSessionSortBucket(session) {
+  const status = normalizeAnswerValue(session?.status);
+  if (status === 'running') return 0;
+  if (status === 'hidden') return 1;
+  if (status === 'visible') return 2;
+  if (status === 'done') return 3;
+  return 4;
 }
 
 function buildFilteredSortedRows(rows, searchTerm, sort) {
@@ -919,7 +940,12 @@ export default function CourseGradesPanel({
       })
       .filter(Boolean);
 
-    return normalized.sort((a, b) => getSessionSortTime(b) - getSessionSortTime(a));
+    return normalized.sort((a, b) => {
+      const aBucket = getSessionSortBucket(a);
+      const bBucket = getSessionSortBucket(b);
+      if (aBucket !== bBucket) return aBucket - bBucket;
+      return getSessionSortTime(b) - getSessionSortTime(a);
+    });
   }, [availableSessions, fallbackSessionOptions, gradingSummaryBySessionId, hasProvidedSessionOptions]);
 
   const filteredSessionSelectionOptions = useMemo(() => {
@@ -1034,6 +1060,9 @@ export default function CourseGradesPanel({
   const allSessionPickerIds = useMemo(() => (
     sessionSelectionOptions.map((session) => session._id)
   ), [sessionSelectionOptions]);
+  const filteredSessionPickerIds = useMemo(() => (
+    filteredSessionSelectionOptions.map((session) => String(session._id))
+  ), [filteredSessionSelectionOptions]);
 
   const validSessionPickerSelection = useMemo(() => {
     if (!allSessionPickerIds.length) return [];
@@ -1041,18 +1070,18 @@ export default function CourseGradesPanel({
     return [...new Set(sessionPickerSelectedIds.filter((id) => validIdSet.has(id)))];
   }, [allSessionPickerIds, sessionPickerSelectedIds]);
 
-  const allSessionsSelected = allSessionPickerIds.length > 0
-    && validSessionPickerSelection.length === allSessionPickerIds.length;
-  const someSessionsSelected = validSessionPickerSelection.length > 0 && !allSessionsSelected;
+  const selectedFilteredCount = filteredSessionPickerIds
+    .filter((sessionId) => validSessionPickerSelection.includes(sessionId))
+    .length;
+  const allSessionsSelected = filteredSessionPickerIds.length > 0
+    && selectedFilteredCount === filteredSessionPickerIds.length;
+  const someSessionsSelected = selectedFilteredCount > 0 && !allSessionsSelected;
 
   const openSessionPicker = useCallback((mode) => {
-    const defaultSelectedIds = selectedSessionIds.length > 0
-      ? selectedSessionIds
-      : allSessionPickerIds;
-    setSessionPickerSelectedIds(defaultSelectedIds);
+    setSessionPickerSelectedIds([]);
     setSessionPickerSearch('');
     setSessionPicker({ open: true, mode });
-  }, [allSessionPickerIds, selectedSessionIds]);
+  }, []);
 
   const closeSessionPicker = useCallback(() => {
     if (sessionPickerSubmitting) return;
@@ -1070,11 +1099,15 @@ export default function CourseGradesPanel({
 
   const toggleSelectAllSessions = useCallback((checked) => {
     if (checked) {
-      setSessionPickerSelectedIds(allSessionPickerIds);
+      setSessionPickerSelectedIds((previousIds) => (
+        [...new Set([...previousIds, ...filteredSessionPickerIds])]
+      ));
       return;
     }
-    setSessionPickerSelectedIds([]);
-  }, [allSessionPickerIds]);
+    setSessionPickerSelectedIds((previousIds) => (
+      previousIds.filter((sessionId) => !filteredSessionPickerIds.includes(sessionId))
+    ));
+  }, [filteredSessionPickerIds]);
 
   const handleConfirmSessionPicker = useCallback(async () => {
     const selectedIds = [...new Set(validSessionPickerSelection)];
@@ -1667,7 +1700,7 @@ export default function CourseGradesPanel({
             onClick={() => openSessionPicker('show')}
             disabled={!canOpenSessionPicker}
           >
-            Show Grades Table
+            {tableVisible ? 'Edit Grade Table' : 'Show Grade Table'}
           </Button>
           <Button
             size="small"
@@ -1720,7 +1753,7 @@ export default function CourseGradesPanel({
                 onChange={(event) => toggleSelectAllSessions(event.target.checked)}
               />
             )}
-            label={`Select all (${allSessionPickerIds.length})`}
+            label={`Select all (${filteredSessionPickerIds.length})`}
             sx={{ mb: 1 }}
           />
           {filteredSessionSelectionOptions.length === 0 ? (

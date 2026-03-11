@@ -165,12 +165,12 @@ export default async function gradeRoutes(app) {
       schema: recalcSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -284,7 +284,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -466,7 +466,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -500,7 +500,7 @@ export default async function gradeRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
 
-      const course = await Course.findById(grade.courseId);
+      const course = await Course.findById(grade.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
