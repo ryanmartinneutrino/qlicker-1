@@ -668,7 +668,7 @@ function SSOTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || t('admin.failedLoadSettings');
+        const message = err.response?.data?.message || 'Failed to save SSO settings.';
         setSaveError(`${message} Your last change was not recorded.`);
       } finally {
         setSaving(false);
