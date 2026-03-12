@@ -11,6 +11,7 @@ import HistogramBars from '../../components/common/HistogramBars';
 import {
   QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
 } from '../../components/questions/constants';
+import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 
 // ---------------------------------------------------------------------------
@@ -88,6 +89,7 @@ function RichContent({ html, fallback }) {
 export default function LiveSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -385,7 +387,7 @@ export default function LiveSession() {
   if (loading) {
     return (
       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress aria-label="Loading live session" />
+        <CircularProgress aria-label={t('student.liveSession.loadingLiveSession')} />
       </Box>
     );
   }
@@ -399,7 +401,7 @@ export default function LiveSession() {
       <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error || 'Session not found'}</Alert>
         <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
-          Back to course
+          {t('student.liveSession.backToCourse')}
         </Button>
       </Box>
     );
@@ -416,7 +418,7 @@ export default function LiveSession() {
           Session has ended.
         </Alert>
         <Button variant="contained" onClick={() => navigate(`/student/course/${courseId}`)}>
-          Back to course
+          {t('student.liveSession.backToCourse')}
         </Button>
       </Box>
     );
@@ -433,10 +435,10 @@ export default function LiveSession() {
         <Box sx={{ p: 3, maxWidth: 400, mx: 'auto', textAlign: 'center' }}>
           <Paper variant="outlined" sx={{ p: 4 }}>
             <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-              Join Session
+              {t('student.liveSession.joinSession')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Enter the 6-digit code shown by your instructor
+              {t('student.liveSession.enterPasscode')}
             </Typography>
 
             {joinError && (
@@ -479,7 +481,7 @@ export default function LiveSession() {
               sx={{ py: 1.5, fontSize: '1.1rem' }}
               aria-label="Join session"
             >
-              {joining ? <CircularProgress size={24} color="inherit" /> : 'Join'}
+              {joining ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.joinSessionAction')}
             </Button>
           </Paper>
         </Box>
@@ -494,7 +496,7 @@ export default function LiveSession() {
             {session.name || 'Live Session'}
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
-            Waiting for the instructor to open passcode entry…
+            {t('student.liveSession.waitingForPasscode')}
           </Typography>
         </Paper>
       </Box>
@@ -512,14 +514,14 @@ export default function LiveSession() {
           <>
             <Alert severity="error" sx={{ mb: 2 }}>{joinError}</Alert>
             <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
-              Back to course
+              {t('student.liveSession.backToCourse')}
             </Button>
           </>
         ) : (
           <>
-            <CircularProgress sx={{ mb: 2 }} aria-label="Joining session" />
+            <CircularProgress sx={{ mb: 2 }} aria-label={t('student.liveSession.joiningSession')} />
             <Typography variant="body1" color="text.secondary">
-              Joining session…
+              {t('student.liveSession.joiningSessionEllipsis')}
             </Typography>
           </>
         )}
@@ -563,7 +565,7 @@ export default function LiveSession() {
           </Box>
 
           <Typography variant="body1" color="text.secondary">
-            Waiting for question…
+            {t('student.liveSession.waitingForQuestion')}
           </Typography>
         </Paper>
       </Box>
@@ -622,7 +624,7 @@ export default function LiveSession() {
       {/* ============================================================ */}
       {/* Question content                                             */}
       {/* ============================================================ */}
-      <Paper variant="outlined" sx={{ p: 2.5, mb: 2 }} aria-label="Current question">
+      <Paper variant="outlined" sx={{ p: 2.5, mb: 2 }} aria-label={t('student.liveSession.currentQuestion')}>
         {/* Question header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
           <Chip
@@ -632,7 +634,7 @@ export default function LiveSession() {
             sx={COMPACT_CHIP_SX}
           />
           {responseClosed && (
-            <Chip label="Responses closed" size="small" color="warning" sx={COMPACT_CHIP_SX} />
+            <Chip label={t('student.liveSession.responsesClosed')} size="small" color="warning" sx={COMPACT_CHIP_SX} />
           )}
         </Box>
 
@@ -864,7 +866,7 @@ export default function LiveSession() {
                     setAnswerWysiwyg(html);
                     setAnswer(plainText);
                   }}
-                  placeholder="Type your answer…"
+                  placeholder={t('student.liveSession.typeAnswer')}
                   disabled={isLocked}
                 />
               </>
@@ -880,7 +882,7 @@ export default function LiveSession() {
               onChange={(e) => {
                 if (!isLocked) setAnswer(e.target.value);
               }}
-              placeholder="Enter a number…"
+              placeholder={t('student.liveSession.enterNumber')}
               type="number"
               fullWidth
               disabled={isLocked}
@@ -888,7 +890,7 @@ export default function LiveSession() {
             />
             {currentQ.toleranceNumerical != null && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                tolerance: {currentQ.toleranceNumerical}
+                {t('student.liveSession.tolerance', { value: currentQ.toleranceNumerical })}
               </Typography>
             )}
           </Box>
@@ -924,9 +926,9 @@ export default function LiveSession() {
                 || (Array.isArray(answer) && answer.length === 0)
               }
               sx={{ py: 1.5, fontSize: '1.05rem' }}
-              aria-label="Submit response"
+              aria-label={t('student.liveSession.submitResponse')}
             >
-              {submitting ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
+              {submitting ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.submitResponse')}
             </Button>
           )}
         </Box>
@@ -942,9 +944,9 @@ export default function LiveSession() {
       {/* Stats phase                                                  */}
       {/* ============================================================ */}
       {showStats && responseStats?.type === 'numerical' && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Numerical statistics">
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label={t('student.liveSession.numericalStatistics')}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Response Statistics
+            {t('student.liveSession.responseStatistics')}
           </Typography>
           {(() => {
             const values = (responseStats.values || []).map(Number).filter((v) => !isNaN(v));
@@ -969,9 +971,9 @@ export default function LiveSession() {
       )}
 
       {showStats && responseStats?.type === 'shortAnswer' && (
-        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label="Short answer responses">
+        <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label={t('student.liveSession.shortAnswerResponses')}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Responses
+            {t('student.liveSession.responses')}
           </Typography>
           <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
             {(responseStats.answers || []).map((r, i) => (
@@ -993,11 +995,11 @@ export default function LiveSession() {
       {showCorrect && qType === QUESTION_TYPES.NUMERICAL && currentQ.correctNumerical != null && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'success.main' }}>
           <Typography variant="body2" color="text.secondary">
-            Correct answer: <strong>{currentQ.correctNumerical}</strong>
+            {t('student.quiz.correctAnswer', { value: currentQ.correctNumerical })}
           </Typography>
           {currentQ.toleranceNumerical != null && (
             <Typography variant="body2" color="text.secondary">
-              tolerance: {currentQ.toleranceNumerical}
+              {t('student.liveSession.tolerance', { value: currentQ.toleranceNumerical })}
             </Typography>
           )}
         </Paper>
@@ -1006,7 +1008,7 @@ export default function LiveSession() {
       {showCorrect && (liveSolutionHtml || liveSolutionPlainText) && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'success.main' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5, color: 'success.main' }}>
-            Solution
+            {t('common.solution')}
           </Typography>
           <RichContent html={liveSolutionHtml} fallback={liveSolutionPlainText} />
         </Paper>

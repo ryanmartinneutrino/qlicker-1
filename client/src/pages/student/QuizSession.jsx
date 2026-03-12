@@ -25,6 +25,7 @@ import {
   TYPE_COLORS,
   normalizeQuestionType,
 } from '../../components/questions/constants';
+import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -122,6 +123,7 @@ function RichContent({ html, fallback }) {
 export default function QuizSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const courseQuizTabLink = `/student/course/${courseId}?tab=1`;
 
   const [loading, setLoading] = useState(true);
@@ -335,7 +337,7 @@ export default function QuizSession() {
   if (loading) {
     return (
       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress aria-label="Loading quiz" />
+        <CircularProgress aria-label={t('student.quiz.loadingQuiz')} />
       </Box>
     );
   }
@@ -345,7 +347,7 @@ export default function QuizSession() {
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error || 'Quiz not found'}</Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          Back to course
+          {t('student.quiz.backToCourse')}
         </Button>
       </Box>
     );
@@ -358,7 +360,7 @@ export default function QuizSession() {
           This quiz is closed.
         </Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          Back to course
+          {t('student.quiz.backToCourse')}
         </Button>
       </Box>
     );
@@ -371,7 +373,7 @@ export default function QuizSession() {
           You have already submitted this quiz.
         </Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          Back to course
+          {t('student.quiz.backToCourse')}
         </Button>
       </Box>
     );
@@ -381,7 +383,7 @@ export default function QuizSession() {
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 860, mx: 'auto' }}>
       <Box sx={{ mb: 1.25 }}>
         <Button size="small" variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          Back to course
+          {t('student.quiz.backToCourse')}
         </Button>
       </Box>
 
@@ -401,7 +403,7 @@ export default function QuizSession() {
               onChange={(event) => setSingleQuestionMode(event.target.checked)}
             />
           )}
-          label="One question at a time"
+          label={t('student.quiz.oneAtATime')}
         />
 
         {singleQuestionMode && questions.length > 0 && (
@@ -414,7 +416,7 @@ export default function QuizSession() {
             >
               Previous
             </Button>
-            <Chip label={`Question ${currentQuestionIndex + 1}/${questions.length}`} size="small" variant="outlined" />
+            <Chip label={`${t('student.quiz.questionNumber', { number: currentQuestionIndex + 1 })}/${questions.length}`} size="small" variant="outlined" />
             <Button
               size="small"
               variant="outlined"
@@ -451,13 +453,13 @@ export default function QuizSession() {
           <Paper key={qId} variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                Question {questions.findIndex((entry) => String(entry._id) === qId) + 1}
+                {t('student.quiz.questionNumber', { number: questions.findIndex((entry) => String(entry._id) === qId) + 1 })}
               </Typography>
               <Chip label={TYPE_LABELS[qType] || 'Question'} color={TYPE_COLORS[qType] || 'default'} size="small" />
-              {locked && <Chip label="Submitted" color="success" size="small" variant="outlined" />}
-              {!locked && autosaveState === 'saving' && <Chip label="Saving..." size="small" variant="outlined" />}
-              {!locked && autosaveState === 'saved' && <Chip label="Saved" size="small" variant="outlined" />}
-              {!locked && autosaveState === 'error' && <Chip label="Save failed" color="error" size="small" variant="outlined" />}
+              {locked && <Chip label={t('student.quiz.submitted')} color="success" size="small" variant="outlined" />}
+              {!locked && autosaveState === 'saving' && <Chip label={t('student.quiz.saving')} size="small" variant="outlined" />}
+              {!locked && autosaveState === 'saved' && <Chip label={t('student.quiz.saved')} size="small" variant="outlined" />}
+              {!locked && autosaveState === 'error' && <Chip label={t('student.quiz.saveFailed')} color="error" size="small" variant="outlined" />}
             </Box>
 
             <Box sx={{ mb: 2 }}>
@@ -578,7 +580,7 @@ export default function QuizSession() {
                         answer: plainText,
                       }));
                     }}
-                    placeholder="Type your answer..."
+                    placeholder={t('student.quiz.typeAnswer')}
                     disabled={locked}
                   />
                 )}
@@ -598,11 +600,11 @@ export default function QuizSession() {
                   disabled={locked}
                   type="number"
                   fullWidth
-                  placeholder="Enter a number"
+                  placeholder={t('student.quiz.enterNumber')}
                 />
                 {question.toleranceNumerical != null && (
                   <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                    tolerance: {question.toleranceNumerical}
+                    {t('student.quiz.tolerance', { value: question.toleranceNumerical })}
                   </Typography>
                 )}
               </Box>
@@ -622,7 +624,7 @@ export default function QuizSession() {
                 )}
                 {!locked && (
                   <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                    Solution available after submit.
+                    {t('student.quiz.solutionAfterSubmit')}
                   </Typography>
                 )}
 
@@ -632,7 +634,7 @@ export default function QuizSession() {
                     variant="outlined"
                     onClick={() => setShowSolutionByQuestion((prev) => ({ ...prev, [qId]: !prev[qId] }))}
                   >
-                    {showSolution ? 'Hide Solution' : 'Show Solution'}
+                    {showSolution ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
                   </Button>
                 )}
               </Box>
@@ -641,11 +643,11 @@ export default function QuizSession() {
             {showCorrectForQuestion && qType === QUESTION_TYPES.NUMERICAL && question.correctNumerical != null && (
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="body2">
-                  Correct answer: {question.correctNumerical}
+                  {t('student.quiz.correctAnswer', { value: question.correctNumerical })}
                 </Typography>
                 {question.toleranceNumerical != null && (
                   <Typography variant="body2" color="text.secondary">
-                    tolerance: {question.toleranceNumerical}
+                    {t('student.quiz.tolerance', { value: question.toleranceNumerical })}
                   </Typography>
                 )}
               </Paper>
@@ -654,7 +656,7 @@ export default function QuizSession() {
             {showCorrectForQuestion && question.solution && (
               <Paper variant="outlined" sx={{ p: 1.25, mt: 1.5, borderColor: 'success.main' }}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'success.main', fontWeight: 700 }}>
-                  Solution
+                  {t('common.solution')}
                 </Typography>
                 <RichContent html={question.solution} fallback={question.solution_plainText} />
               </Paper>
@@ -680,7 +682,7 @@ export default function QuizSession() {
         </Button>
       ) : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>
-          Answer every question to unlock submit.
+          {t('student.quiz.answerAllToSubmit')}
         </Typography>
       )}
     </Box>
