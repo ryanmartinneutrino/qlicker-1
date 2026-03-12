@@ -11,9 +11,12 @@ function normalizeGroupCategories(categories) {
   return categories.map((cat) => ({
     categoryNumber: cat.categoryNumber,
     categoryName: cat.categoryName,
+    catVideoChatOptions: cat.catVideoChatOptions || undefined,
     groups: (cat.groups || []).map((g) => ({
       name: g.name ?? g.groupName ?? `Group ${g.groupNumber ?? 0}`,
       members: g.members ?? g.students ?? [],
+      joinedVideoChat: g.joinedVideoChat ?? [],
+      helpVideoChat: g.helpVideoChat ?? false,
     })),
   }));
 }

@@ -54,6 +54,22 @@ export default async function settingsRoutes(app) {
       SSO_institutionName: settings.SSO_institutionName || '',
       restrictDomain: settings.restrictDomain || false,
       requireVerified: settings.requireVerified || false,
+      Jitsi_Enabled: settings.Jitsi_Enabled || false,
+    };
+  });
+
+  // GET /jitsi-domain (authenticated) — returns Jitsi server info for video chat
+  app.get('/jitsi-domain', { preHandler: app.authenticate }, async (request, reply) => {
+    let settings = await Settings.findOne();
+    if (!settings) {
+      settings = await Settings.create({ _id: 'settings' });
+    }
+    if (!settings.Jitsi_Enabled) {
+      return reply.code(403).send({ error: 'Forbidden', message: 'Jitsi is not enabled' });
+    }
+    return {
+      domain: settings.Jitsi_Domain || '',
+      etherpad: settings.Jitsi_EtherpadDomain || '',
     };
   });
 }
