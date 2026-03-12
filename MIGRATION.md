@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and their role in the migration. Cross-check [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) regularly to ensure alignment.
 
-## Status: Phase 6 Complete — Grading Functional
+## Status: Phase 7 In Progress — Video Chat (Jitsi) Implemented
 
 ---
 
@@ -214,6 +214,22 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | DELETE | `/api/v1/courses/:id/groups/:catId/groups/:gId/students/:studentId` | Remove student from group |
 | GET | `/api/v1/courses/:id/groups/csv` | Download group data as CSV |
 | POST | `/api/v1/courses/:id/groups/csv` | Upload CSV to create/update category |
+| **Video Chat (Jitsi)** | | *Implemented* |
+| POST | `/api/v1/courses/:id/video/toggle` | Toggle course-wide video chat |
+| PATCH | `/api/v1/courses/:id/video/api-options` | Update course video API options |
+| POST | `/api/v1/courses/:id/video/join` | Join course-wide video chat |
+| POST | `/api/v1/courses/:id/video/leave` | Leave course-wide video chat |
+| POST | `/api/v1/courses/:id/video/clear` | Clear course-wide participants |
+| GET | `/api/v1/courses/:id/video/connection-info` | Get course-wide Jitsi connection info |
+| POST | `/api/v1/courses/:id/video/category/:catNum/toggle` | Toggle category video chat |
+| PATCH | `/api/v1/courses/:id/video/category/:catNum/api-options` | Update category video API options |
+| POST | `/api/v1/courses/:id/video/category/:catNum/clear` | Clear all rooms in category |
+| POST | `/api/v1/courses/:id/video/category/:catNum/group/:groupIdx/join` | Join group video chat |
+| POST | `/api/v1/courses/:id/video/category/:catNum/group/:groupIdx/leave` | Leave group video chat |
+| POST | `/api/v1/courses/:id/video/category/:catNum/group/:groupIdx/toggle-help` | Toggle help button (students) |
+| POST | `/api/v1/courses/:id/video/category/:catNum/group/:groupIdx/clear` | Clear group room (instructors) |
+| GET | `/api/v1/courses/:id/video/category/:catNum/group/:groupIdx/connection-info` | Get group Jitsi connection info |
+| GET | `/api/v1/settings/jitsi-domain` | Get Jitsi domain config (authenticated) |
 | **Sessions** | | |
 | POST | `/api/v1/courses/:courseId/sessions` | Create session |
 | GET | `/api/v1/courses/:courseId/sessions` | List course sessions |
@@ -571,15 +587,18 @@ The milestones are defined in [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMEN
 
 **Goal:** Group management, video chat (Jitsi), confirmed SSO, comprehensive testing, documentation.
 
-| Agent | Tasks |
-|-------|-------|
-| 3 | Group categories, group management, video chat integration |
-| 2 | SSO SAML confirmed working, Microsoft AD exploration |
-| 7 | Group management UI, video chat UI (Jitsi) |
-| 8 | Full regression tests, security audit, documentation |
-| 1 | Load balancing Docker config, production readiness |
+**Status:**
+- ✅ Group management (categories, groups, membership, CSV import/export) — Complete
+- ✅ Video chat (Jitsi) integration — Complete
+  - Admin panel: Jitsi enable/disable, domain configuration, per-course enabling
+  - Professor: Video tab in course detail with enable/disable toggles, API options (mute audio/video, tile view), participant tracking, clear participants
+  - Student: Video tab with join buttons for course-wide and group chats, help button
+  - JitsiWindow popup: Loads JitsiMeetExternalAPI dynamically, join/leave tracking, beforeunload cleanup, tile view management, instructor moderator clear room
+  - Server: 13 video API endpoints, connection info generation, WebSocket notifications
+  - Tests: 18 video route tests
+- 🔄 SSO SAML — Implemented, needs production confirmation
 
-**Testable by human:** Prof creates groups → assigns students → video chat works → SSO login confirmed → all previous features still work.
+**Testable by human:** Prof creates groups → assigns students → enables video chat → students join video → SSO login confirmed → all previous features still work.
 
 ### Phase 8 — Polish & Production (Milestone 9: Production Ready)
 
@@ -649,7 +668,7 @@ See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
 - [x] Group management (add/remove students, rename)
 - [x] Group CSV download/upload
 - [x] Legacy `groupCategories` shape normalization (groupNumber/groupName/students → name/members)
-- [ ] Video chat integration (Jitsi room management)
+- [x] Video chat integration (Jitsi room management)
 - [ ] Copy sessions between courses
 
 ### Agent 4: Sessions & Questions
@@ -727,7 +746,7 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 - [x] SecondDesktop projector view (popup window, auto-close on session end)
 - [x] Group management UI
 - [x] Group filter in grading/review interface
-- [ ] Video chat (Jitsi) integration
+- [x] Video chat (Jitsi) integration
 - [x] Shared components (tables, forms, modals, lists, AutoSaveStatus)
 - [x] Connection status indicator (health check banner)
 - [x] Session list on professor and student course pages
@@ -902,7 +921,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 4. Session editor | ✅ Complete | Phase 4 |
 | 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
 | 7. Grading | ✅ Complete (auto/manual grading, visibility, CSV, review) | Phase 6 |
-| 8. Groups, video, SSO confirmed | 🔄 Groups complete; video & SSO remaining | Phase 7 |
+| 8. Groups, video, SSO confirmed | 🔄 Groups & video complete; SSO production confirmation remaining | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
 
 ### Phase 2 Bug Fixes (from Comments.md)
@@ -1038,7 +1057,7 @@ Phase 6 is complete (grading fully functional). A comprehensive code review (202
 
 1. ~~**WebSocket delta messages (CRITICAL for production):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance. This is the single biggest scalability blocker.~~ ✅ Done — Implemented `session:response-added`, `session:question-changed`, `session:visibility-changed`, `session:status-changed` events with delta payloads. Added `wsSendToUsers()` for single-serialize broadcast. Professor LiveSession uses throttled 2s re-fetch for responses. Student LiveSession ignores response-added (sent only to instructors). Estimated 98%+ reduction in DB queries during live sessions.
 2. ~~**Group management:** Implement group category CRUD, group management (add/remove students), and legacy `groupCategories` shape migration (`groupNumber/groupName/students` → `name/members`).~~ ✅ Done — Full group API (10 endpoints), GroupManagementPanel UI, CSV import/export, legacy normalization, group filter in grading interface. 17 backend tests.
-3. **Video chat integration:** Jitsi room management for course groups.
+3. ~~**Video chat integration:** Jitsi room management for course groups.~~ ✅ Done — Full Jitsi integration: admin panel (enable/disable, domain config, per-course enabling), professor video tab (enable/disable per course/category, API options, participant tracking, clear rooms), student video tab (join course/group chats, help button), JitsiWindow popup (dynamic API loading, join/leave tracking, tile view management). 13 server endpoints, 18 tests.
 4. **SSO SAML production confirmation:** Verify SAML login/callback/metadata/logout work end-to-end in a production-like environment. Fix SAML logout signature validation (currently manually parses XML without crypto verification).
 5. **Security hardening:** CSRF protection (`@fastify/csrf-protection`), move JWT access token from localStorage to memory-only, refresh token rotation, file upload content validation (magic bytes).
 6. **Swagger API documentation:** Register `@fastify/swagger` in `app.js` (dependency already installed but not wired up).
@@ -1322,7 +1341,7 @@ A comprehensive code review was conducted covering performance, security, access
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Same functionality as MeteorJS | 🔄 In progress | Phases 1–6 complete (including grading). Groups complete; video and SSO confirmation remain (Phase 7). |
+| Same functionality as MeteorJS | 🔄 In progress | Phases 1–6 complete (including grading). Groups & video complete; SSO confirmation remains (Phase 7). |
 | Same database compatibility | ✅ Verified | Legacy DB restores work. Case-insensitive emails, argon2id migration, legacy field compat all applied. |
 | Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, custom chart components, TipTap, KaTeX. All actively maintained. |
 | API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. `@fastify/swagger` installed but not yet registered in app.js. |
