@@ -146,7 +146,8 @@
       "settings": "Settings",
       "users": "Users",
       "storage": "Storage",
-      "sso": "SSO Configuration"
+      "sso": "SSO Configuration",
+      "video": "Video"
     },
     "settings": {
       "restrictDomain": "Restrict email domain",
@@ -213,7 +214,21 @@
     "failedLoadSettings": "Failed to load settings",
     "failedSaveSettings": "Failed to save settings.",
     "failedSaveStorageSettings": "Failed to save storage settings.",
-    "failedSaveSSOSettings": "Failed to save SSO settings."
+    "failedSaveSSOSettings": "Failed to save SSO settings.",
+    "video": {
+      "enableJitsi": "Enable Jitsi Video Chat",
+      "jitsiDomain": "Jitsi Domain",
+      "jitsiDomainPlaceholder": "e.g. meet.jit.si",
+      "etherpadDomain": "Etherpad Domain",
+      "etherpadDomainPlaceholder": "e.g. etherpad.wikimedia.org",
+      "enabledCourses": "Courses with video enabled",
+      "enabledCoursesHelp": "Select courses for which video chat is available",
+      "noCourses": "No courses found",
+      "failedLoadCourses": "Failed to load courses",
+      "jitsiNotEnabled": "Jitsi video chat is disabled. Enable the checkbox above to configure.",
+      "jitsiSettings": "Jitsi Video Settings"
+    },
+    "failedSaveVideoSettings": "Failed to save video settings"
   },
   "professor": {
     "dashboard": {
@@ -338,7 +353,8 @@
       "failedLaunchSession": "Failed to launch session",
       "courseNotFound": "Course not found",
       "questionCount": "{{count}} question",
-      "questionCount_other": "{{count}} questions"
+      "questionCount_other": "{{count}} questions",
+      "video": "Video"
     },
     "sessionEditor": {
       "sessionSettings": "Session Settings",
@@ -612,7 +628,8 @@
       "noQuizzes": "No quizzes available.",
       "failedUnenroll": "Failed to unenroll",
       "questionCount": "{{count}} question",
-      "questionCount_other": "{{count}} questions"
+      "questionCount_other": "{{count}} questions",
+      "video": "Video"
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -950,7 +967,8 @@
     "presentationView": "Presentation View",
     "studentDashboard": "Student Dashboard",
     "course": "Course",
-    "quiz": "Quiz"
+    "quiz": "Quiz",
+    "videoChat": "Video Chat"
   },
   "semesters": {
     "fall": "Fall",
@@ -1027,5 +1045,39 @@
     "noStatsAvailable": "No statistics available",
     "removeFromCourse": "Remove from course",
     "confirmRemove": "Confirm Remove"
+  },
+  "video": {
+    "title": "Video Chat",
+    "enableDisable": "Enable/Disable Chat Rooms",
+    "courseWideVideoChat": "Course-wide video chat",
+    "enabled": "Enabled",
+    "muteVideo": "Mute video on entry",
+    "muteAudio": "Mute audio on entry",
+    "tileView": "Tile view",
+    "clearParticipants": "Clear participants",
+    "joinChatRooms": "Join Chat Rooms",
+    "joinCourseChat": "Join class-wide chat ({{count}})",
+    "joinGroupChat": "Join {{name}} ({{count}})",
+    "noVideoChatsEnabled": "No video chats enabled",
+    "createGroupsFirst": "Create groups in the Groups tab first!",
+    "groupCount": "{{count}} groups",
+    "enableConfirm": "Enable video chat access for whole class?",
+    "disableConfirm": "Disable video chat access for whole class?",
+    "enableCategoryConfirm": "Enable video chat for this group category?",
+    "disableCategoryConfirm": "Disable video chat for this group category?",
+    "chatEnabled": "Video chat enabled",
+    "chatDisabled": "Video chat disabled",
+    "updated": "Updated",
+    "roomCountersCleared": "Room counters cleared",
+    "errorNoVideoOptions": "No video options configured",
+    "callingInstructor": "Calling instructor…",
+    "callInstructor": "Call instructor for help",
+    "clearRoom": "Clear room of participants",
+    "directLink": "Chat room direct link:",
+    "helpToggled": "Help button toggled",
+    "roomCleared": "Room cleared of participants",
+    "noConnectionInfo": "No connection info",
+    "videoNotEnabled": "Video chat is not enabled for this course",
+    "jitsiNotAvailable": "Jitsi video is not available. Contact your administrator."
   }
 }

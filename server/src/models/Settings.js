@@ -55,6 +55,12 @@ const SettingsSchema = new mongoose.Schema(
     // Token expiry (minutes). Default 120 = 2 hours. Adjustable in admin panel.
     tokenExpiryMinutes: { type: Number, default: 120 },
 
+    // Jitsi video chat settings
+    Jitsi_Enabled: { type: Boolean, default: false },
+    Jitsi_Domain: { type: String, default: '' },
+    Jitsi_EtherpadDomain: { type: String, default: '' },
+    Jitsi_EnabledCourses: { type: [String], default: [] },
+
     // i18n / locale settings
     locale: { type: String, default: 'en' },
     dateFormat: { type: String, default: 'DD-MMM-YYYY' },

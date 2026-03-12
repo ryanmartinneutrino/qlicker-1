@@ -173,7 +173,24 @@ export default async function courseRoutes(app) {
       // Students only see course info, not other students' details
       if (!isAdmin && !isInstructor) {
         delete obj.students;
-        delete obj.groupCategories;
+        // For students: provide limited video-relevant group data
+        if (obj.groupCategories) {
+          obj.groupCategories = obj.groupCategories.map((cat) => ({
+            categoryNumber: cat.categoryNumber,
+            categoryName: cat.categoryName,
+            catVideoChatOptions: cat.catVideoChatOptions ? {
+              urlId: cat.catVideoChatOptions.urlId,
+              apiOptions: cat.catVideoChatOptions.apiOptions,
+            } : undefined,
+            groups: (cat.groups || []).map((g, idx) => ({
+              name: g.name,
+              members: (g.members || []).includes(userId) ? [userId] : [],
+              joinedVideoChat: g.joinedVideoChat || [],
+              helpVideoChat: g.helpVideoChat || false,
+            })),
+          }));
+        }
+        obj.currentUserId = userId;
       } else if (obj.students && obj.students.length > 0) {
         // Populate student data for instructors and admins
         const studentUsers = await User.find({ _id: { $in: obj.students } })

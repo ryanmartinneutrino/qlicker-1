@@ -146,7 +146,8 @@
       "settings": "Paramètres",
       "users": "Utilisateurs",
       "storage": "Stockage",
-      "sso": "Configuration SSO"
+      "sso": "Configuration SSO",
+      "video": "Vidéo"
     },
     "settings": {
       "restrictDomain": "Restreindre le domaine de courriel",
@@ -213,7 +214,21 @@
     "failedLoadSettings": "Échec du chargement des paramètres",
     "failedSaveSettings": "Échec de la sauvegarde des paramètres.",
     "failedSaveStorageSettings": "Échec de la sauvegarde des paramètres de stockage.",
-    "failedSaveSSOSettings": "Échec de la sauvegarde des paramètres SSO."
+    "failedSaveSSOSettings": "Échec de la sauvegarde des paramètres SSO.",
+    "video": {
+      "enableJitsi": "Activer le chat vidéo Jitsi",
+      "jitsiDomain": "Domaine Jitsi",
+      "jitsiDomainPlaceholder": "ex. meet.jit.si",
+      "etherpadDomain": "Domaine Etherpad",
+      "etherpadDomainPlaceholder": "ex. etherpad.wikimedia.org",
+      "enabledCourses": "Cours avec vidéo activé",
+      "enabledCoursesHelp": "Sélectionnez les cours pour lesquels le chat vidéo est disponible",
+      "noCourses": "Aucun cours trouvé",
+      "failedLoadCourses": "Échec du chargement des cours",
+      "jitsiNotEnabled": "Le chat vidéo Jitsi est désactivé. Cochez la case ci-dessus pour configurer.",
+      "jitsiSettings": "Paramètres vidéo Jitsi"
+    },
+    "failedSaveVideoSettings": "Échec de l'enregistrement des paramètres vidéo"
   },
   "professor": {
     "dashboard": {
@@ -338,7 +353,8 @@
       "failedLaunchSession": "Échec du lancement de la session",
       "courseNotFound": "Cours introuvable",
       "questionCount": "{{count}} question",
-      "questionCount_other": "{{count}} questions"
+      "questionCount_other": "{{count}} questions",
+      "video": "Vidéo"
     },
     "sessionEditor": {
       "sessionSettings": "Paramètres de la séance",
@@ -612,7 +628,8 @@
       "noQuizzes": "Aucun questionnaire disponible.",
       "failedUnenroll": "Échec de la désinscription",
       "questionCount": "{{count}} question",
-      "questionCount_other": "{{count}} questions"
+      "questionCount_other": "{{count}} questions",
+      "video": "Vidéo"
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -950,7 +967,8 @@
     "presentationView": "Vue de présentation",
     "studentDashboard": "Tableau de bord étudiant",
     "course": "Cours",
-    "quiz": "Quiz"
+    "quiz": "Quiz",
+    "videoChat": "Chat vidéo"
   },
   "semesters": {
     "fall": "Automne",
@@ -1027,5 +1045,39 @@
     "noStatsAvailable": "Aucune statistique disponible",
     "removeFromCourse": "Retirer du cours",
     "confirmRemove": "Confirmer le retrait"
+  },
+  "video": {
+    "title": "Chat vidéo",
+    "enableDisable": "Activer/Désactiver les salles de chat",
+    "courseWideVideoChat": "Chat vidéo pour tout le cours",
+    "enabled": "Activé",
+    "muteVideo": "Couper la vidéo à l'entrée",
+    "muteAudio": "Couper le son à l'entrée",
+    "tileView": "Vue en grille",
+    "clearParticipants": "Effacer les participants",
+    "joinChatRooms": "Rejoindre les salles de chat",
+    "joinCourseChat": "Rejoindre le chat du cours ({{count}})",
+    "joinGroupChat": "Rejoindre {{name}} ({{count}})",
+    "noVideoChatsEnabled": "Aucun chat vidéo activé",
+    "createGroupsFirst": "Créez d'abord des groupes dans l'onglet Groupes !",
+    "groupCount": "{{count}} groupes",
+    "enableConfirm": "Activer le chat vidéo pour tout le cours ?",
+    "disableConfirm": "Désactiver le chat vidéo pour tout le cours ?",
+    "enableCategoryConfirm": "Activer le chat vidéo pour cette catégorie de groupes ?",
+    "disableCategoryConfirm": "Désactiver le chat vidéo pour cette catégorie de groupes ?",
+    "chatEnabled": "Chat vidéo activé",
+    "chatDisabled": "Chat vidéo désactivé",
+    "updated": "Mis à jour",
+    "roomCountersCleared": "Compteurs de salle effacés",
+    "errorNoVideoOptions": "Aucune option vidéo configurée",
+    "callingInstructor": "Appel de l'instructeur…",
+    "callInstructor": "Appeler l'instructeur pour de l'aide",
+    "clearRoom": "Effacer la salle de participants",
+    "directLink": "Lien direct de la salle :",
+    "helpToggled": "Bouton d'aide basculé",
+    "roomCleared": "Salle vidée de participants",
+    "noConnectionInfo": "Aucune info de connexion",
+    "videoNotEnabled": "Le chat vidéo n'est pas activé pour ce cours",
+    "jitsiNotAvailable": "La vidéo Jitsi n'est pas disponible. Contactez votre administrateur."
   }
 }

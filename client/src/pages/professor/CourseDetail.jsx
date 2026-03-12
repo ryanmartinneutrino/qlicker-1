@@ -23,6 +23,7 @@ import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
+import VideoChatPanel from '../../components/video/VideoChatPanel';
 import { useTranslation } from 'react-i18next';
 
 function buildWebsocketUrl(token) {
@@ -75,8 +76,8 @@ function sortSessions(items) {
   });
 }
 
-// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Settings
-const MAX_COURSE_TAB_INDEX = 6;
+// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Video, 7=Settings
+const MAX_COURSE_TAB_INDEX = 7;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -224,6 +225,28 @@ export default function CourseDetail() {
   const [creatingSess, setCreatingSess] = useState(false);
   const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
   const [sessionUpdatesInFlight, setSessionUpdatesInFlight] = useState({});
+
+  // Video chat — check if Jitsi is enabled for this course
+  const [videoEnabled, setVideoEnabled] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings/public').then(({ data }) => {
+      if (mounted && data.Jitsi_Enabled) {
+        // Check if this course has Jitsi enabled in admin settings
+        apiClient.get('/settings').then(({ data: adminData }) => {
+          if (!mounted) return;
+          const enabledCourses = adminData.Jitsi_EnabledCourses || [];
+          setVideoEnabled(enabledCourses.includes(id));
+        }).catch(() => {
+          // Non-admin professors might not have access to full settings;
+          // if Jitsi is globally enabled, show the tab anyway
+          if (mounted) setVideoEnabled(true);
+        });
+      }
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, [id]);
 
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
@@ -702,8 +725,13 @@ export default function CourseDetail() {
     `${t('professor.course.students')} (${students.length})`,
     `${t('professor.course.instructors')} (${instructors.length})`,
     t('professor.course.groups'),
+    ...(videoEnabled ? [t('professor.course.video')] : []),
     t('professor.course.settings'),
   ];
+
+  // When video tab is hidden, settings tab shifts from index 7 to index 6
+  const videoTabIndex = videoEnabled ? 6 : -1;
+  const settingsTabIndex = videoEnabled ? 7 : 6;
 
   const handleTabChange = (nextTab) => {
     setTab(nextTab);
@@ -904,7 +932,10 @@ export default function CourseDetail() {
         <Tabs
           value={tab}
           onChange={(_, nextTab) => handleTabChange(nextTab)}
-          variant="standard"
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
+          sx={{ '& .MuiTabs-flexContainer': { flexWrap: 'wrap' } }}
         >
           {tabLabels.map((label) => <Tab key={label} label={label} />)}
         </Tabs>
@@ -1051,8 +1082,21 @@ export default function CourseDetail() {
         <GroupManagementPanel courseId={id} students={students} />
       </TabPanel>
 
+      {/* Video Tab (conditional) */}
+      {videoEnabled && (
+        <TabPanel value={tab} index={videoTabIndex}>
+          <Typography variant="h6" sx={{ mb: 1.5 }}>{t('video.title')}</Typography>
+          <VideoChatPanel
+            courseId={id}
+            course={course}
+            isInstructor
+            onCourseRefresh={fetchCourse}
+          />
+        </TabPanel>
+      )}
+
       {/* Settings Tab */}
-      <TabPanel value={tab} index={6}>
+      <TabPanel value={tab} index={settingsTabIndex}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
           {hasMissingCourseProperties && (

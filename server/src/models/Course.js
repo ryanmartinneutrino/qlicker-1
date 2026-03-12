@@ -1,10 +1,31 @@
 import mongoose from 'mongoose';
 import { generateMeteorId } from '../utils/meteorId.js';
 
+const VideoChatApiOptionsSchema = new mongoose.Schema(
+  {
+    startAudioMuted: { type: Boolean, default: true },
+    startVideoMuted: { type: Boolean, default: true },
+    startTileView: { type: Boolean, default: true },
+    subjectTitle: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const VideoChatOptionsSchema = new mongoose.Schema(
+  {
+    urlId: { type: String, default: '' },
+    joined: { type: [String], default: [] },
+    apiOptions: { type: VideoChatApiOptionsSchema, default: () => ({}) },
+  },
+  { _id: false }
+);
+
 const GroupSchema = new mongoose.Schema(
   {
     members: { type: [String], default: [] },
     name: { type: String },
+    joinedVideoChat: { type: [String], default: [] },
+    helpVideoChat: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -14,13 +35,7 @@ const GroupCategorySchema = new mongoose.Schema(
     categoryNumber: { type: Number },
     categoryName: { type: String },
     groups: { type: [GroupSchema], default: [] },
-  },
-  { _id: false }
-);
-
-const VideoChatOptionsSchema = new mongoose.Schema(
-  {
-    urlId: { type: String, default: '' },
+    catVideoChatOptions: { type: VideoChatOptionsSchema, default: undefined },
   },
   { _id: false }
 );
@@ -43,7 +58,7 @@ const CourseSchema = new mongoose.Schema(
     requireVerified: { type: Boolean, default: false },
     allowStudentQuestions: { type: Boolean, default: false },
     groupCategories: { type: [GroupCategorySchema], default: [] },
-    videoChatOptions: { type: VideoChatOptionsSchema, default: () => ({}) },
+    videoChatOptions: { type: VideoChatOptionsSchema, default: undefined },
   },
   {
     collection: 'courses',
