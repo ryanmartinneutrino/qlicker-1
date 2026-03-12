@@ -20,6 +20,7 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
+import { useTranslation } from 'react-i18next';
 
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
@@ -177,6 +178,7 @@ export default function CourseDetail() {
   const navigate = useNavigate();
   const theme = useTheme();
   const compactTabNav = useMediaQuery(theme.breakpoints.down('md'));
+  const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -388,9 +390,9 @@ export default function CourseDetail() {
       setAddStudentOpen(false);
       setStudentEmail('');
       fetchCourse();
-      setMsg({ severity: 'success', text: 'Student added' });
+      setMsg({ severity: 'success', text: t('professor.course.studentAdded') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to add student' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedAddStudent') });
     } finally {
       setAddingStudent(false);
     }
@@ -401,9 +403,9 @@ export default function CourseDetail() {
       await apiClient.delete(`/courses/${id}/students/${studentId}`);
       setRemoveStudentTarget(null);
       fetchCourse();
-      setMsg({ severity: 'success', text: 'Student removed' });
+      setMsg({ severity: 'success', text: t('professor.course.studentRemoved') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to remove student' });
+      setMsg({ severity: 'error', text: t('professor.course.failedRemoveStudent') });
     }
   };
 
@@ -416,9 +418,9 @@ export default function CourseDetail() {
       setAddInstructorOpen(false);
       setInstructorUserId('');
       fetchCourse();
-      setMsg({ severity: 'success', text: 'Instructor added' });
+      setMsg({ severity: 'success', text: t('professor.course.instructorAdded') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to add instructor' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedAddInstructor') });
     } finally {
       setAddingInstructor(false);
     }
@@ -427,16 +429,16 @@ export default function CourseDetail() {
   const handleRemoveInstructor = async (instructorId) => {
     const instructors = course?.instructors || [];
     if (instructors.length <= 1) {
-      setMsg({ severity: 'warning', text: 'Cannot remove the last instructor' });
+      setMsg({ severity: 'warning', text: t('professor.course.cannotRemoveLastInstructor') });
       return;
     }
     try {
       await apiClient.delete(`/courses/${id}/instructors/${instructorId}`);
       setRemoveInstructorTarget(null);
       fetchCourse();
-      setMsg({ severity: 'success', text: 'Instructor removed' });
+      setMsg({ severity: 'success', text: t('professor.course.instructorRemoved') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to remove instructor' });
+      setMsg({ severity: 'error', text: t('professor.course.failedRemoveInstructor') });
     }
   };
 
@@ -687,12 +689,12 @@ export default function CourseDetail() {
   );
 
   const tabLabels = [
-    `Interactive Sessions (${interactiveSessions.length})`,
-    `Quizzes (${quizSessions.length})`,
-    'Grades',
-    `Students (${students.length})`,
-    `Instructors (${instructors.length})`,
-    'Settings',
+    `${t('professor.course.interactiveSessions')} (${interactiveSessions.length})`,
+    `${t('professor.course.quizzes')} (${quizSessions.length})`,
+    t('professor.course.grades'),
+    `${t('professor.course.students')} (${students.length})`,
+    `${t('professor.course.instructors')} (${instructors.length})`,
+    t('professor.course.settings'),
   ];
 
   const handleTabChange = (nextTab) => {
@@ -736,10 +738,10 @@ export default function CourseDetail() {
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                         {s.name}
                         <SessionStatusChip status={s.status} />
-                        {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                        {s.practiceQuiz && <Chip label={t('professor.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
                         {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
                           <Chip
-                            label="Extensions Active"
+                            label={t('professor.course.extensionsActive')}
                             size="small"
                             color="warning"
                             variant="outlined"
@@ -782,7 +784,7 @@ export default function CourseDetail() {
                       disabled={!!sessionUpdatesInFlight[s._id]}
                       aria-label={`Launch session ${s.name}`}
                     >
-                      Launch
+                      {t('professor.course.launch')}
                     </Button>
                   )}
                   {!s.quiz && s.status === 'running' && (
@@ -794,7 +796,7 @@ export default function CourseDetail() {
                       onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
                       aria-label={`Join live session ${s.name}`}
                     >
-                      Join Session
+                      {t('professor.course.joinSession')}
                     </Button>
                   )}
                   {s.status === 'done' && (
@@ -810,23 +812,23 @@ export default function CourseDetail() {
                       aria-label={`Review session ${s.name}`}
                     >
                       {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
-                        ? `Grade (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
-                        : 'Review'}
+                        ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
+                        : t('professor.course.review')}
                     </Button>
                   )}
                   <TextField
                     select
                     size="small"
-                    label="Status"
+                    label={t('common.status')}
                     value={s.status || 'hidden'}
                     onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
                     disabled={!!sessionUpdatesInFlight[s._id]}
                     sx={{ minWidth: 122 }}
                   >
-                    <MenuItem value="hidden">Draft</MenuItem>
-                    <MenuItem value="visible">Upcoming</MenuItem>
-                    <MenuItem value="running">Live</MenuItem>
-                    <MenuItem value="done">Ended</MenuItem>
+                    <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
+                    <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
+                    <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
+                    <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
                   </TextField>
                   <FormControlLabel
                     sx={{ m: 0 }}
@@ -838,14 +840,14 @@ export default function CourseDetail() {
                         disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
                       />
                     )}
-                    label={<Typography variant="caption">Reviewable</Typography>}
+                    label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
                   />
-                  <Tooltip title="Copy session">
+                  <Tooltip title={t('professor.course.copySession')}>
                     <IconButton size="small" onClick={() => handleCopySession(s._id)} disabled={!!sessionUpdatesInFlight[s._id]}>
                       <CopyIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Delete session">
+                  <Tooltip title={t('professor.course.deleteSession')}>
                     <IconButton size="small" color="error" onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -869,11 +871,11 @@ export default function CourseDetail() {
           </Typography>
           {headerSection && (
             <Typography variant="caption" color="text.secondary">
-              Section {headerSection}
+             {t('professor.course.sectionHeader', { section: headerSection })}
             </Typography>
           )}
         </Box>
-        <Chip label={course.inactive ? 'Inactive' : 'Active'} color={course.inactive ? 'default' : 'success'} sx={COMPACT_CHIP_SX} />
+        <Chip label={course.inactive ? t('professor.course.courseInactive') : t('professor.course.courseActive')} color={course.inactive ? 'default' : 'success'} sx={COMPACT_CHIP_SX} />
       </Box>
 
       {/* Tabs */}
@@ -903,7 +905,7 @@ export default function CourseDetail() {
       {/* Interactive Sessions Tab */}
       <TabPanel value={tab} index={0}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Interactive Sessions</Typography>
+          <Typography variant="h6">{t('professor.course.interactiveSessions')}</Typography>
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
@@ -913,16 +915,16 @@ export default function CourseDetail() {
               setCreateSessionOpen(true);
             }}
           >
-            Create Session
+            {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(interactiveSessions, 'No interactive sessions yet.')}
+        {renderSessionList(interactiveSessions, t('professor.course.noInteractiveSessions'))}
       </TabPanel>
 
       {/* Quizzes Tab */}
       <TabPanel value={tab} index={1}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Quizzes</Typography>
+          <Typography variant="h6">{t('professor.course.quizzes')}</Typography>
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
@@ -932,15 +934,15 @@ export default function CourseDetail() {
               setCreateSessionOpen(true);
             }}
           >
-            Create Session
+            {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(quizSessions, 'No quizzes yet.')}
+        {renderSessionList(quizSessions, t('professor.course.noQuizzes'))}
       </TabPanel>
 
       {/* Grades Tab */}
       <TabPanel value={tab} index={2}>
-        <Typography variant="h6" sx={{ mb: 1.5 }}>Grades</Typography>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>{t('professor.course.grades')}</Typography>
         <CourseGradesPanel
           courseId={id}
           instructorView
@@ -956,13 +958,13 @@ export default function CourseDetail() {
       {/* Students Tab */}
       <TabPanel value={tab} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Students</Typography>
+          <Typography variant="h6">{t('professor.course.students')}</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
-            Add Student
+            {t('professor.course.addStudent')}
           </Button>
         </Box>
         {students.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">No students enrolled yet.</Typography>
+          <Typography variant="body2" color="text.secondary">{t('professor.course.noStudents')}</Typography>
         ) : (
           <Paper variant="outlined">
             <List disablePadding>
@@ -1001,13 +1003,13 @@ export default function CourseDetail() {
       {/* Instructors Tab */}
       <TabPanel value={tab} index={4}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Instructors</Typography>
+          <Typography variant="h6">{t('professor.course.instructors')}</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
-            Add Instructor
+            {t('professor.course.addInstructor')}
           </Button>
         </Box>
         {instructors.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">No instructors assigned.</Typography>
+          <Typography variant="body2" color="text.secondary">{t('professor.course.noInstructors')}</Typography>
         ) : (
           <Paper variant="outlined">
             <List disablePadding>
@@ -1031,7 +1033,7 @@ export default function CourseDetail() {
                       secondary={inst.emails?.[0]?.address || inst.email || ''}
                     />
                     <ListItemSecondaryAction>
-                      <Tooltip title={instructors.length <= 1 ? 'Cannot remove the last instructor' : 'Remove instructor'}>
+                      <Tooltip title={instructors.length <= 1 ? t('professor.course.cannotRemoveLastInstructor') : t('professor.course.removeInstructorAction')}>
                         <span>
                           <IconButton
                             edge="end"
@@ -1059,12 +1061,12 @@ export default function CourseDetail() {
           <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
           {hasMissingCourseProperties && (
             <Alert severity="warning">
-              All course property fields are required. Autosave resumes once all fields are filled.
+              {t('professor.course.allFieldsRequired')}
             </Alert>
           )}
           <FormControlLabel
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
-            label={course.inactive ? 'Course is inactive' : 'Course is active'}
+            label={course.inactive ? t('professor.course.courseInactive') : t('professor.course.courseActive')}
           />
           <FormControlLabel
             control={
@@ -1073,7 +1075,7 @@ export default function CourseDetail() {
                 onChange={handleToggleRequireVerified}
               />
             }
-            label="Require verified email to enroll"
+            label={t('professor.course.requireVerifiedEnroll')}
           />
           <FormControlLabel
             control={
@@ -1082,76 +1084,76 @@ export default function CourseDetail() {
                 onChange={handleToggleAllowStudentQuestions}
               />
             }
-            label="Allow students to submit questions"
+            label={t('professor.course.allowStudentQuestions')}
           />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2">Enrollment Code: <strong>{course.enrollmentCode}</strong></Typography>
+            <Typography variant="body2">{t('professor.course.enrollmentCode', { code: course.enrollmentCode })}</Typography>
             <Button size="small" startIcon={<CopyIcon />} onClick={copyCode}>
-              Copy
+              {t('professor.course.copy')}
             </Button>
             <Button size="small" startIcon={<RefreshIcon />} onClick={handleRegenerateCode}>
-              Regenerate
+              {t('professor.course.regenerate')}
             </Button>
           </Box>
           <Divider sx={{ my: 1 }} />
-          <Typography variant="h6">Course Properties</Typography>
+          <Typography variant="h6">{t('professor.course.courseProperties')}</Typography>
           <TextField
-            label="Course Name"
+            label={t('professor.course.courseName')}
             value={editFields.name}
             onChange={(e) => setEditFields((s) => ({ ...s, name: e.target.value }))}
             error={isEmptyField(editFields.name)}
-            helperText={isEmptyField(editFields.name) ? 'Course name is required.' : undefined}
+            helperText={isEmptyField(editFields.name) ? t('professor.course.courseNameRequired') : undefined}
             fullWidth
           />
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
-              label="Dept Code"
+              label={t('professor.course.deptCode')}
               value={editFields.deptCode}
               onChange={(e) => setEditFields((s) => ({ ...s, deptCode: e.target.value }))}
               error={isEmptyField(editFields.deptCode)}
-              helperText={isEmptyField(editFields.deptCode) ? 'Dept code is required.' : undefined}
+              helperText={isEmptyField(editFields.deptCode) ? t('professor.course.deptCodeRequired') : undefined}
               sx={{ flex: 1 }}
             />
             <TextField
-              label="Course Number"
+              label={t('professor.course.courseNumber')}
               value={editFields.courseNumber}
               onChange={(e) => setEditFields((s) => ({ ...s, courseNumber: e.target.value }))}
               error={isEmptyField(editFields.courseNumber)}
-              helperText={isEmptyField(editFields.courseNumber) ? 'Course number is required.' : undefined}
+              helperText={isEmptyField(editFields.courseNumber) ? t('professor.course.courseNumberRequired') : undefined}
               sx={{ flex: 1 }}
             />
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
-              label="Section"
+              label={t('professor.course.sectionLabel')}
               value={editFields.section}
               onChange={(e) => setEditFields((s) => ({ ...s, section: e.target.value }))}
               error={isEmptyField(editFields.section)}
-              helperText={isEmptyField(editFields.section) ? 'Section is required.' : undefined}
+              helperText={isEmptyField(editFields.section) ? t('professor.course.sectionRequired') : undefined}
               sx={{ flex: 1 }}
             />
             <TextField
-              label="Semester"
+              label={t('professor.course.semester')}
               value={editFields.semester}
               onChange={(e) => setEditFields((s) => ({ ...s, semester: e.target.value }))}
               error={isEmptyField(editFields.semester)}
-              helperText={isEmptyField(editFields.semester) ? 'Semester is required.' : 'Stored exactly as entered (legacy-compatible)'}
+              helperText={isEmptyField(editFields.semester) ? t('professor.course.semesterRequired') : t('professor.course.semesterLegacyHelp')}
               sx={{ flex: 1 }}
             />
           </Box>
           <Divider sx={{ my: 1 }} />
           <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteOpen(true)}>
-            Delete Course
+            {t('professor.course.deleteCourse')}
           </Button>
         </Box>
       </TabPanel>
 
       {/* Add Student Dialog */}
       <Dialog open={addStudentOpen} onClose={() => setAddStudentOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Add Student</DialogTitle>
+        <DialogTitle>{t('professor.course.addStudentTitle')}</DialogTitle>
         <DialogContent sx={{ pt: '8px !important' }}>
           <TextField
-            label="Student Email"
+            label={t('professor.course.studentEmail')}
             type="email"
             value={studentEmail}
             onChange={(e) => setStudentEmail(e.target.value)}
@@ -1160,19 +1162,19 @@ export default function CourseDetail() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddStudentOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddStudentOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleAddStudent} disabled={addingStudent || !studentEmail.trim()}>
-            {addingStudent ? 'Adding…' : 'Add'}
+            {addingStudent ? t('professor.course.adding') : t('common.add')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Add Instructor Dialog */}
       <Dialog open={addInstructorOpen} onClose={() => setAddInstructorOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Add Instructor</DialogTitle>
+        <DialogTitle>{t('professor.course.addInstructorTitle')}</DialogTitle>
         <DialogContent sx={{ pt: '8px !important' }}>
           <TextField
-            label="User ID"
+            label={t('professor.course.userId')}
             value={instructorUserId}
             onChange={(e) => setInstructorUserId(e.target.value)}
             fullWidth
@@ -1180,35 +1182,35 @@ export default function CourseDetail() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddInstructorOpen(false)}>Cancel</Button>
+          <Button onClick={() => setAddInstructorOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleAddInstructor} disabled={addingInstructor || !instructorUserId.trim()}>
-            {addingInstructor ? 'Adding…' : 'Add'}
+            {addingInstructor ? t('professor.course.adding') : t('common.add')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <DialogTitle>Delete Course</DialogTitle>
+        <DialogTitle>{t('professor.course.deleteCourse')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete <strong>{course.name}</strong>? This action cannot be undone.
+          {t('professor.course.deleteCourseConfirm', { name: course.name })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDeleteOpen(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={handleDelete} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete'}
+            {deleting ? t('professor.course.deleting') : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Confirm Remove Student */}
       <Dialog open={!!removeStudentTarget} onClose={() => setRemoveStudentTarget(null)}>
-        <DialogTitle>Remove Student</DialogTitle>
+        <DialogTitle>{t('professor.course.removeStudent')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to remove <strong>{removeStudentTarget?.profile?.firstname} {removeStudentTarget?.profile?.lastname}</strong> from this course?
+          {t('professor.course.removeStudentConfirm', { name: `${removeStudentTarget?.profile?.firstname || ''} ${removeStudentTarget?.profile?.lastname || ''}`.trim() })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRemoveStudentTarget(null)}>Cancel</Button>
+          <Button onClick={() => setRemoveStudentTarget(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => handleRemoveStudent(removeStudentTarget?._id)}>
             Remove
           </Button>
@@ -1217,12 +1219,12 @@ export default function CourseDetail() {
 
       {/* Confirm Remove Instructor */}
       <Dialog open={!!removeInstructorTarget} onClose={() => setRemoveInstructorTarget(null)}>
-        <DialogTitle>Remove Instructor</DialogTitle>
+        <DialogTitle>{t('professor.course.removeInstructor')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to remove <strong>{removeInstructorTarget?.profile?.firstname} {removeInstructorTarget?.profile?.lastname}</strong> from this course?
+          {t('professor.course.removeInstructorConfirm', { name: `${removeInstructorTarget?.profile?.firstname || ''} ${removeInstructorTarget?.profile?.lastname || ''}`.trim() })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRemoveInstructorTarget(null)}>Cancel</Button>
+          <Button onClick={() => setRemoveInstructorTarget(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => handleRemoveInstructor(removeInstructorTarget?._id)}>
             Remove
           </Button>
@@ -1235,7 +1237,7 @@ export default function CourseDetail() {
           <img src={imageViewUrl} alt="Profile" style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setImageViewUrl(null)}>Close</Button>
+          <Button onClick={() => setImageViewUrl(null)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -1250,10 +1252,10 @@ export default function CourseDetail() {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Create Session</DialogTitle>
+        <DialogTitle>{t('professor.course.createSession')}</DialogTitle>
         <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="Session Name" inputRef={newSessionNameInputRef} fullWidth autoFocus />
-          <TextField label="Description (optional)" inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
+          <TextField label={t('professor.course.sessionName')} inputRef={newSessionNameInputRef} fullWidth autoFocus />
+          <TextField label={t('professor.course.description')} inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
         </DialogContent>
         <DialogActions>
           <Button
@@ -1263,24 +1265,24 @@ export default function CourseDetail() {
               if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
             }}
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="contained" onClick={handleCreateSession} disabled={creatingSess}>
-            {creatingSess ? 'Creating…' : 'Create'}
+            {creatingSess ? 'Creating…' : t('common.create')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete Session Confirmation */}
       <Dialog open={!!deleteSessionTarget} onClose={() => setDeleteSessionTarget(null)}>
-        <DialogTitle>Delete Session</DialogTitle>
+        <DialogTitle>{t('professor.course.deleteSession')}</DialogTitle>
         <DialogContent>
           Are you sure you want to delete <strong>{deleteSessionTarget?.name}</strong>? This action cannot be undone.
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteSessionTarget(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteSessionTarget(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => handleDeleteSession(deleteSessionTarget?._id)}>
-            Delete
+            {t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
