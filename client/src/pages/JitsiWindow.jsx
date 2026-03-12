@@ -148,7 +148,7 @@ export default function JitsiWindow() {
               if (!enabled) api.executeCommand('toggleTileView');
               api.removeListener('tileViewChanged', listener);
             };
-            api.addEventListener('tileViewChanged', listener);
+            api.addListener('tileViewChanged', listener);
             api.executeCommand('toggleTileView');
           });
         } else if (apiOptions.startTileView === false) {
@@ -157,7 +157,7 @@ export default function JitsiWindow() {
               if (enabled) api.executeCommand('toggleTileView');
               api.removeListener('tileViewChanged', listener);
             };
-            api.addEventListener('tileViewChanged', listener);
+            api.addListener('tileViewChanged', listener);
             api.executeCommand('toggleTileView');
           });
         }
