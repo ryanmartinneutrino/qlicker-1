@@ -18,6 +18,7 @@ import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../compon
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
+import { useTranslation } from 'react-i18next';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -115,8 +116,9 @@ function RichContent({ html }) {
 
 /** Short-answer responses list (rendered rich text). */
 function ShortAnswerList({ responses, showStudentNames = false }) {
+  const { t } = useTranslation();
   if (!responses || !responses.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
+    return <Typography variant="body2" color="text.secondary">{t('professor.liveSession.noResponsesYet')}</Typography>;
   }
   return (
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
@@ -140,8 +142,9 @@ function ShortAnswerList({ responses, showStudentNames = false }) {
 
 /** Numerical statistics display with histogram. */
 function NumericalStats({ stats, allResponses }) {
+  const { t } = useTranslation();
   if (!stats) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
+    return <Typography variant="body2" color="text.secondary">{t('professor.liveSession.noResponsesYet')}</Typography>;
   }
 
   // Build histogram bins from raw values
@@ -183,6 +186,7 @@ export default function LiveSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width:768px)');
+  const { t } = useTranslation();
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -586,7 +590,7 @@ export default function LiveSession() {
   if (loading) {
     return (
       <Box sx={{ p: 4, display: 'flex', justifyContent: 'center' }}>
-        <CircularProgress aria-label="Loading live session" />
+        <CircularProgress aria-label={t('professor.liveSession.loadingLiveSession')} />
       </Box>
     );
   }
@@ -596,7 +600,7 @@ export default function LiveSession() {
       <Box sx={{ p: 4 }}>
         <Alert severity="error">{error || 'Session not found'}</Alert>
         <Button sx={{ mt: 2 }} onClick={() => navigate(`/manage/course/${courseId}`)}>
-          Back to Course
+          {t('professor.liveSession.backToCourse')}
         </Button>
       </Box>
     );
@@ -634,27 +638,27 @@ export default function LiveSession() {
             {session.name || 'Live Session'}
           </Typography>
 
-          <Tooltip title="Open presentation view in new window">
+          <Tooltip title={t('professor.liveSession.openPresentationView')}>
             <Button
               size="small"
               variant="outlined"
               startIcon={<OpenInNewIcon />}
               onClick={handleOpenPresent}
-              aria-label="Open second desktop presentation view"
+              aria-label={t('professor.liveSession.openSecondDesktop')}
             >
               {isMobile ? 'Present' : 'Second Desktop'}
             </Button>
           </Tooltip>
 
-          <Tooltip title="Session settings">
+          <Tooltip title={t('professor.liveSession.sessionSettings')}>
             <Button
               size="small"
               variant="outlined"
               startIcon={<SettingsIcon />}
               onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
-              aria-label="Session settings"
+              aria-label={t('professor.liveSession.sessionSettings')}
             >
-              Settings
+              {t('professor.liveSession.settings')}
             </Button>
           </Tooltip>
 
@@ -664,9 +668,9 @@ export default function LiveSession() {
             color="error"
             startIcon={<StopIcon />}
             onClick={() => setEndDialogOpen(true)}
-            aria-label="End session"
+            aria-label={t('professor.liveSession.endSessionAction')}
           >
-            End Session
+            {t('professor.liveSession.endSession')}
           </Button>
         </Box>
 
@@ -692,7 +696,7 @@ export default function LiveSession() {
             aria-label={`Show students panel with ${joinedCount} joined`}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
-            Students ({joinedCount})
+            {t('professor.liveSession.studentsInSession', { count: joinedCount })}
           </Button>
         </Box>
 
@@ -742,7 +746,7 @@ export default function LiveSession() {
                     size="small"
                   />
                 }
-                label={<Typography variant="body2">Require Passcode</Typography>}
+                label={<Typography variant="body2">{t('professor.liveSession.requirePasscode')}</Typography>}
               />
 
               {session.joinCodeEnabled && (
@@ -756,11 +760,11 @@ export default function LiveSession() {
                         size="small"
                       />
                     }
-                    label={<Typography variant="body2">Join Period</Typography>}
+                    label={<Typography variant="body2">{t('professor.liveSession.joinPeriod')}</Typography>}
                   />
                   <TextField
                     size="small"
-                    label="Refresh (sec)"
+                    label={t('professor.liveSession.refreshSec')}
                     type="number"
                     value={joinCodeIntervalInput}
                     onChange={(e) => setJoinCodeIntervalInput(e.target.value)}
@@ -780,12 +784,12 @@ export default function LiveSession() {
                         sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
                         aria-label={`Current join code: ${session.currentJoinCode}`}
                       />
-                      <Tooltip title="Refresh join code now">
+                      <Tooltip title={t('professor.liveSession.refreshJoinCodeNow')}>
                         <IconButton
                           size="small"
                           onClick={handleRefreshJoinCode}
                           disabled={actionLoading}
-                          aria-label="Refresh join code"
+                          aria-label={t('professor.liveSession.refreshJoinCode')}
                         >
                           <RefreshIcon />
                         </IconButton>
@@ -820,7 +824,7 @@ export default function LiveSession() {
                     size="small"
                   />
                 }
-                label={<Typography variant="body2">Show Stats</Typography>}
+                label={<Typography variant="body2">{t('professor.liveSession.showStats')}</Typography>}
               />
 
               <FormControlLabel
@@ -832,7 +836,7 @@ export default function LiveSession() {
                     size="small"
                   />
                 }
-                label={<Typography variant="body2">Show Correct</Typography>}
+                label={<Typography variant="body2">{t('professor.liveSession.showCorrect')}</Typography>}
               />
 
               <FormControlLabel
@@ -844,7 +848,7 @@ export default function LiveSession() {
                     size="small"
                   />
                 }
-                label={<Typography variant="body2">Responses Open</Typography>}
+                label={<Typography variant="body2">{t('professor.liveSession.responsesOpen')}</Typography>}
               />
             </Box>
 
@@ -859,7 +863,7 @@ export default function LiveSession() {
                 gap: 1,
               }}
             >
-              <Tooltip title="Previous question">
+              <Tooltip title={t('professor.liveSession.previousQuestion')}>
                 <span>
                   <Button
                     size="small"
@@ -867,9 +871,9 @@ export default function LiveSession() {
                     startIcon={<PrevIcon />}
                     onClick={handlePrev}
                     disabled={!hasPrev || actionLoading}
-                    aria-label="Previous question"
+                    aria-label={t('professor.liveSession.previousQuestion')}
                   >
-                    Prev
+                    {t('professor.liveSession.prev')}
                   </Button>
                 </span>
               </Tooltip>
@@ -882,14 +886,14 @@ export default function LiveSession() {
                     startIcon={<AttemptIcon />}
                     onClick={handleNewAttempt}
                     disabled={!currentQ || actionLoading}
-                    aria-label="New attempt"
+                    aria-label={t('professor.liveSession.newAttempt')}
                   >
-                    New Attempt
+                    {t('professor.liveSession.newAttempt')}
                   </Button>
                 </span>
               </Tooltip>
 
-              <Tooltip title="Next question">
+              <Tooltip title={t('professor.liveSession.nextQuestion')}>
                 <span>
                   <Button
                     size="small"
@@ -897,9 +901,9 @@ export default function LiveSession() {
                     endIcon={<NextIcon />}
                     onClick={handleNext}
                     disabled={!hasNext || actionLoading}
-                    aria-label="Next question"
+                    aria-label={t('professor.liveSession.nextQuestion')}
                   >
-                    Next
+                    {t('common.next')}
                   </Button>
                 </span>
               </Tooltip>
@@ -921,13 +925,13 @@ export default function LiveSession() {
             <Paper
               variant="outlined"
               sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
-              aria-label="Current question"
+              aria-label={t('professor.liveSession.currentQuestion')}
             >
               {currentQ ? (
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      Question {qIdx + 1}
+                      {t('professor.liveSession.questionIndex', { index: qIdx + 1 })}
                     </Typography>
                     <Chip
                       label={TYPE_LABELS[qType] || 'Unknown'}
@@ -1020,11 +1024,11 @@ export default function LiveSession() {
                   {qType === QUESTION_TYPES.NUMERICAL && currentQ.correctNumerical != null && (
                     <Paper variant="outlined" sx={{ p: 1.5, mt: 1 }}>
                       <Typography variant="body2" color="text.secondary">
-                        Correct: <strong>{currentQ.correctNumerical}</strong>
+                        {t('professor.liveSession.correct', { value: currentQ.correctNumerical })}
                       </Typography>
                       {currentQ.toleranceNumerical != null && (
                         <Typography variant="body2" color="text.secondary">
-                          tolerance: {currentQ.toleranceNumerical}
+                          {t('professor.liveSession.tolerance', { value: currentQ.toleranceNumerical })}
                         </Typography>
                       )}
                     </Paper>
@@ -1034,7 +1038,7 @@ export default function LiveSession() {
                   {currentQ.solution && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                        Solution
+                        {t('common.solution')}
                       </Typography>
                       <Paper variant="outlined" sx={{ p: 1.5 }}>
                         <RichContent html={currentQ.solution} />
@@ -1044,7 +1048,7 @@ export default function LiveSession() {
                 </>
               ) : (
                 <Typography variant="body1" color="text.secondary">
-                  No question selected. Use the controls above to navigate.
+                  {t('professor.liveSession.noQuestionSelected')}
                 </Typography>
               )}
             </Paper>
@@ -1057,7 +1061,7 @@ export default function LiveSession() {
                 aria-label="Response statistics"
               >
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-                  Responses
+                  {t('professor.liveSession.responses')}
                 </Typography>
 
                 {!currentQ ? (
@@ -1066,7 +1070,7 @@ export default function LiveSession() {
                   </Typography>
                 ) : responseStats?.type === 'distribution' ? (
                   <Typography variant="body2" color="text.secondary">
-                    Distribution is shown inline with the answer options.
+                    {t('professor.liveSession.statsInline')}
                   </Typography>
                 ) : responseStats?.type === 'shortAnswer' ? (
                   <ShortAnswerList
@@ -1082,7 +1086,7 @@ export default function LiveSession() {
                   />
                 ) : (
                   <Typography variant="body2" color="text.secondary">
-                    No responses yet.
+                    {t('professor.liveSession.noResponsesYet')}
                   </Typography>
                 )}
               </Paper>
@@ -1093,15 +1097,15 @@ export default function LiveSession() {
         <Paper
           variant="outlined"
           sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}
-          aria-label="Students currently in session"
+          aria-label={t('professor.liveSession.studentsCurrently')}
         >
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-            Students in Session ({joinedCount})
+            {t('professor.liveSession.studentsInSession', { count: joinedCount })}
           </Typography>
 
           {sortedJoinedStudents.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No students have joined this session yet.
+              {t('professor.liveSession.noStudentsJoined')}
             </Typography>
           ) : (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -1152,7 +1156,7 @@ export default function LiveSession() {
         onClose={() => !ending && setEndDialogOpen(false)}
         aria-labelledby="end-session-dialog-title"
       >
-        <DialogTitle id="end-session-dialog-title">End Session</DialogTitle>
+        <DialogTitle id="end-session-dialog-title">{t('professor.liveSession.endSession')}</DialogTitle>
         <DialogContent>
           <Typography sx={{ mb: 2 }}>
             Are you sure you want to end <strong>{session.name}</strong>?
@@ -1164,12 +1168,12 @@ export default function LiveSession() {
                 onChange={(e) => setMakeReviewable(e.target.checked)}
               />
             }
-            label="Make session reviewable for students"
+            label={t('professor.liveSession.makeReviewable')}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEndDialogOpen(false)} disabled={ending}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
@@ -1177,7 +1181,7 @@ export default function LiveSession() {
             onClick={handleEndSession}
             disabled={ending}
           >
-            {ending ? 'Ending…' : 'End Session'}
+            {ending ? 'Ending…' : t('professor.liveSession.endSession')}
           </Button>
         </DialogActions>
       </Dialog>
