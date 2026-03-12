@@ -5,6 +5,7 @@ import {
   CheckCircle as CorrectIcon,
 } from '@mui/icons-material';
 import { useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
 } from './constants';
@@ -63,6 +64,7 @@ function isCorrectOption(option) {
 }
 
 export default function QuestionDisplay({ question }) {
+  const { t } = useTranslation();
   if (!question) return null;
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
@@ -73,8 +75,8 @@ export default function QuestionDisplay({ question }) {
   return (
     <Paper variant="outlined" sx={{ p: 2, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
-        {points != null && <Chip label={`${points} pt${points !== 1 ? 's' : ''}`} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+        <Chip label={TYPE_LABELS[normalizedType] || t('common.unknown')} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
+        {points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
       <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} />
@@ -98,7 +100,7 @@ export default function QuestionDisplay({ question }) {
               {shouldLetterOptions ? <Typography variant="body2" sx={{ lineHeight: 1.5 }}>{String.fromCharCode(65 + i)}.</Typography> : null}
               <RichHtml
                 value={opt.content || opt.plainText || opt.answer}
-                fallback={`Option ${i + 1}`}
+                fallback={t('questions.display.option', { index: i + 1 })}
                 sx={{
                   color: isCorrectOption(opt) ? 'success.main' : 'text.secondary',
                   '& p': { my: 0 },
@@ -121,10 +123,10 @@ export default function QuestionDisplay({ question }) {
       {normalizedType === QUESTION_TYPES.NUMERICAL && (
         <Box sx={{ pl: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Correct: {question.correctNumerical ?? '—'}
+            {t('questions.display.correct', { value: question.correctNumerical ?? '—' })}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            tolerance: {question.toleranceNumerical ?? 0}
+            {t('questions.display.tolerance', { value: question.toleranceNumerical ?? 0 })}
           </Typography>
         </Box>
       )}
@@ -132,7 +134,7 @@ export default function QuestionDisplay({ question }) {
       {(question.solution || question.solution_plainText) && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Solution
+            {t('common.solution')}
           </Typography>
           <RichHtml
             value={question.solution}

@@ -14,6 +14,7 @@ import {
   FormatItalic as ItalicIcon,
   FormatUnderlined as UnderlineIcon,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import {
   normalizeStoredHtml,
   prepareRichTextInput,
@@ -36,11 +37,14 @@ export default function StudentRichTextEditor({
   value,
   onChange,
   onChangeDebounceMs = 0,
-  placeholder = 'Type your answer…',
+  placeholder,
   disabled = false,
-  ariaLabel = 'Short answer response editor',
+  ariaLabel,
   showMathHint = true,
 }) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder || t('questions.studentRichText.placeholder');
+  const resolvedAriaLabel = ariaLabel || t('questions.studentRichText.editorLabel');
   const lastNormalizedHtmlRef = useRef('');
   const onChangeRef = useRef(onChange);
   const onChangeDebounceMsRef = useRef(onChangeDebounceMs);
@@ -82,14 +86,14 @@ export default function StudentRichTextEditor({
           underline: false,
         }),
         Underline,
-        Placeholder.configure({ placeholder }),
+        Placeholder.configure({ placeholder: resolvedPlaceholder }),
       ],
       editorProps: {
         attributes: {
           class: 'student-rich-text-editor',
           role: 'textbox',
           'aria-multiline': 'true',
-          'aria-label': ariaLabel,
+          'aria-label': resolvedAriaLabel,
           'aria-disabled': disabled ? 'true' : 'false',
           ...(showMathHint ? { 'aria-describedby': mathHintId } : {}),
         },
@@ -130,7 +134,7 @@ export default function StudentRichTextEditor({
         }, debounceMs);
       },
     },
-    [ariaLabel, disabled, flushPendingChange, mathHintId, placeholder]
+    [resolvedAriaLabel, disabled, flushPendingChange, mathHintId, resolvedPlaceholder]
   );
 
   useEffect(() => () => {
@@ -202,7 +206,7 @@ export default function StudentRichTextEditor({
                 size="small"
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 color={editor.isActive('bold') ? 'primary' : 'default'}
-                aria-label="Bold"
+                aria-label={t('questions.studentRichText.bold')}
               >
                 <BoldIcon fontSize="small" />
               </IconButton>
@@ -210,7 +214,7 @@ export default function StudentRichTextEditor({
                 size="small"
                 onClick={() => editor.chain().focus().toggleItalic().run()}
                 color={editor.isActive('italic') ? 'primary' : 'default'}
-                aria-label="Italic"
+                aria-label={t('questions.studentRichText.italic')}
               >
                 <ItalicIcon fontSize="small" />
               </IconButton>
@@ -218,7 +222,7 @@ export default function StudentRichTextEditor({
                 size="small"
                 onClick={() => editor.chain().focus().toggleUnderline().run()}
                 color={editor.isActive('underline') ? 'primary' : 'default'}
-                aria-label="Underline"
+                aria-label={t('questions.studentRichText.underline')}
               >
                 <UnderlineIcon fontSize="small" />
               </IconButton>
@@ -229,7 +233,7 @@ export default function StudentRichTextEditor({
       </Paper>
       {showMathHint && (
         <Typography id={mathHintId} variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          Use \( ... \) for inline math or $$ ... $$ for display math
+          {t('questions.studentRichText.mathTip')}
         </Typography>
       )}
     </Box>
@@ -241,6 +245,7 @@ export default function StudentRichTextEditor({
  * Shows all typed content and renders math when delimiters are present.
  */
 export function MathPreview({ html, debounceMs = 140, showLabel = true }) {
+  const { t } = useTranslation();
   const ref = useRef(null);
   const prepared = useMemo(() => prepareRichTextInput(html || ''), [html]);
   const [committedPreview, setCommittedPreview] = useState(prepared);
@@ -281,7 +286,7 @@ export function MathPreview({ html, debounceMs = 140, showLabel = true }) {
     >
       {showLabel && (
         <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-          Preview
+          {t('questions.studentRichText.preview')}
         </Typography>
       )}
       <Box
