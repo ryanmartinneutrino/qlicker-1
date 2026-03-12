@@ -12,6 +12,7 @@ import {
   FormatItalic as ItalicIcon,
   FormatUnderlined as UnderlineIcon,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import {
   extractPlainTextFromHtml,
@@ -107,10 +108,11 @@ export default function RichTextEditor({
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const { t } = useTranslation();
   const lastEditorHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
-  const editorAriaLabel = label ? `${label} editor` : 'Rich text editor';
+  const editorAriaLabel = label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel');
 
   const uploadImage = async (file, maxEditorImageWidth) => {
     const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
@@ -177,7 +179,7 @@ export default function RichTextEditor({
               view.dispatch(tr);
             })
             .catch(() => {
-              setUploadError('Image upload failed. Try again.');
+              setUploadError(t('questions.richText.uploadFailed'));
             })
             .finally(() => {
               setUploading(false);
@@ -213,7 +215,7 @@ export default function RichTextEditor({
               view.dispatch(tr);
             })
             .catch(() => {
-              setUploadError('Image upload failed. Try again.');
+              setUploadError(t('questions.richText.uploadFailed'));
             })
             .finally(() => {
               setUploading(false);
@@ -319,8 +321,8 @@ export default function RichTextEditor({
             >
               <IconButton
                 size="small"
-                aria-label="Bold"
-                title="Bold"
+                aria-label={t('questions.richText.bold')}
+                title={t('questions.richText.bold')}
                 onClick={() => editor.chain().focus().toggleBold().run()}
                 sx={{ color: editor.isActive('bold') ? 'warning.light' : 'inherit' }}
               >
@@ -328,8 +330,8 @@ export default function RichTextEditor({
               </IconButton>
               <IconButton
                 size="small"
-                aria-label="Italic"
-                title="Italic"
+                aria-label={t('questions.richText.italic')}
+                title={t('questions.richText.italic')}
                 onClick={() => editor.chain().focus().toggleItalic().run()}
                 sx={{ color: editor.isActive('italic') ? 'warning.light' : 'inherit' }}
               >
@@ -337,8 +339,8 @@ export default function RichTextEditor({
               </IconButton>
               <IconButton
                 size="small"
-                aria-label="Underline"
-                title="Underline"
+                aria-label={t('questions.richText.underline')}
+                title={t('questions.richText.underline')}
                 onClick={() => editor.chain().focus().toggleUnderline().run()}
                 sx={{ color: editor.isActive('underline') ? 'warning.light' : 'inherit' }}
               >
@@ -355,11 +357,11 @@ export default function RichTextEditor({
         {uploading ? (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CircularProgress size={14} />
-            <Typography variant="caption" color="text.secondary">Uploading image...</Typography>
+            <Typography variant="caption" color="text.secondary">{t('questions.richText.uploadingImage')}</Typography>
           </Box>
         ) : showTip ? (
           <Typography variant="caption" color="text.secondary">
-            Tip: select text for formatting. Type math as `$...$`, `\\(...\\)` or `$$...$$`. Drag/drop or paste an image to upload.
+            {t('questions.richText.editorTip')}
           </Typography>
         ) : null}
         {uploadError ? (

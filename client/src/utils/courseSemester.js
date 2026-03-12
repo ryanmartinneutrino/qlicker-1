@@ -1,10 +1,12 @@
+import i18n from '../i18n';
+
 export const SEMESTER_OPTIONS = [
-  'Fall',
-  'Winter',
-  'Fall/Winter',
-  'Spring',
-  'Summer',
-  'Spring/Summer',
+  i18n.t('semesters.fall'),
+  i18n.t('semesters.winter'),
+  i18n.t('semesters.fallWinter'),
+  i18n.t('semesters.spring'),
+  i18n.t('semesters.summer'),
+  i18n.t('semesters.springSummer'),
 ];
 
 export function getYearOptions(now = new Date()) {

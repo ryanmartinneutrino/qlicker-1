@@ -3,9 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, Button, Typography, Alert, CircularProgress,
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../api/client';
 
 export default function VerifyEmail() {
+  const { t } = useTranslation();
   const { token } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -16,7 +18,7 @@ export default function VerifyEmail() {
       try {
         await apiClient.post('/auth/verify-email', { token });
       } catch {
-        setError('Invalid or expired verification link');
+        setError(t('verifyEmail.invalidLink'));
       } finally {
         setLoading(false);
       }
@@ -29,7 +31,7 @@ export default function VerifyEmail() {
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
         <CardContent>
           <Typography variant="h4" textAlign="center" color="primary" gutterBottom>
-            Email Verification
+            {t('verifyEmail.title')}
           </Typography>
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -39,9 +41,9 @@ export default function VerifyEmail() {
             <Alert severity="error">{error}</Alert>
           ) : (
             <>
-              <Alert severity="success" sx={{ mb: 2 }}>Email verified! You can now log in.</Alert>
+              <Alert severity="success" sx={{ mb: 2 }}>{t('verifyEmail.verified')}</Alert>
               <Button fullWidth variant="contained" onClick={() => navigate('/login')}>
-                Go to Login
+                {t('verifyEmail.goToLogin')}
               </Button>
             </>
           )}

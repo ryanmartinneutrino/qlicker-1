@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import {
   BrowserRouter, Routes, Route, Navigate, useLocation,
 } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import theme from './theme/index';
 import { AuthProvider } from './contexts/AuthContext';
@@ -27,38 +28,35 @@ import SessionReview from './pages/student/SessionReview';
 import StudentLiveSession from './pages/student/LiveSession';
 import StudentQuizSession from './pages/student/QuizSession';
 
-function getPageTitle(pathname) {
-  const routes = [
-    [/^\/$/, 'Home'],
-    [/^\/login$/, 'Login'],
-    [/^\/sso-callback$/, 'Signing In'],
-    [/^\/reset\/[^/]+$/, 'Reset Password'],
-    [/^\/verify-email\/[^/]+$/, 'Verify Email'],
-    [/^\/profile$/, 'Profile'],
-    [/^\/admin$/, 'Admin Dashboard'],
-    [/^\/manage$/, 'Professor Dashboard'],
-    [/^\/manage\/course\/[^/]+$/, 'Course Details'],
-    [/^\/manage\/course\/[^/]+\/session\/[^/]+$/, 'Session Editor'],
-    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/live$/, 'Live Session'],
-    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/review$/, 'Session Review'],
-    [/^\/manage\/course\/[^/]+\/session\/[^/]+\/present$/, 'Presentation View'],
-    [/^\/student$/, 'Student Dashboard'],
-    [/^\/student\/course\/[^/]+$/, 'Course'],
-    [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, 'Session Review'],
-    [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, 'Live Session'],
-    [/^\/student\/course\/[^/]+\/session\/[^/]+\/quiz$/, 'Quiz'],
-  ];
-
-  const match = routes.find(([pattern]) => pattern.test(pathname));
-  if (!match) return 'Qlicker';
-  return `${match[1]} | Qlicker`;
-}
-
 function RouteAccessibility() {
   const location = useLocation();
+  const { t } = useTranslation();
 
   useEffect(() => {
-    document.title = getPageTitle(location.pathname);
+    const routes = [
+      [/^\/$/, t('pageTitles.home')],
+      [/^\/login$/, t('pageTitles.login')],
+      [/^\/sso-callback$/, t('pageTitles.signingIn')],
+      [/^\/reset\/[^/]+$/, t('pageTitles.resetPassword')],
+      [/^\/verify-email\/[^/]+$/, t('pageTitles.verifyEmail')],
+      [/^\/profile$/, t('pageTitles.profile')],
+      [/^\/admin$/, t('pageTitles.adminDashboard')],
+      [/^\/manage$/, t('pageTitles.professorDashboard')],
+      [/^\/manage\/course\/[^/]+$/, t('pageTitles.courseDetails')],
+      [/^\/manage\/course\/[^/]+\/session\/[^/]+$/, t('pageTitles.sessionEditor')],
+      [/^\/manage\/course\/[^/]+\/session\/[^/]+\/live$/, t('pageTitles.liveSession')],
+      [/^\/manage\/course\/[^/]+\/session\/[^/]+\/review$/, t('pageTitles.sessionReview')],
+      [/^\/manage\/course\/[^/]+\/session\/[^/]+\/present$/, t('pageTitles.presentationView')],
+      [/^\/student$/, t('pageTitles.studentDashboard')],
+      [/^\/student\/course\/[^/]+$/, t('pageTitles.course')],
+      [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, t('pageTitles.sessionReview')],
+      [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, t('pageTitles.liveSession')],
+      [/^\/student\/course\/[^/]+\/session\/[^/]+\/quiz$/, t('pageTitles.quiz')],
+    ];
+
+    const appName = t('common.appName');
+    const match = routes.find(([pattern]) => pattern.test(location.pathname));
+    document.title = match ? `${match[1]} | ${appName}` : appName;
 
     const rafId = window.requestAnimationFrame(() => {
       const mainContent = document.getElementById('main-content');
@@ -75,7 +73,7 @@ function RouteAccessibility() {
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [location.pathname]);
+  }, [location.pathname, t]);
 
   return null;
 }

@@ -17,6 +17,7 @@ import apiClient from '../../api/client';
 import {
   TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
 } from '../../components/questions/constants';
+import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 
 /* ------------------------------------------------------------------ */
@@ -253,6 +254,7 @@ function ReviewQuestionCard({
   response = null,
   mark = null,
 }) {
+  const { t } = useTranslation();
   const [solutionVisible, setSolutionVisible] = useState(false);
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
   const opts = question.options || [];
@@ -262,7 +264,7 @@ function ReviewQuestionCard({
       if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
       return null;
     }
-    if (mark?.needsGrading) return 'Pending manual grade';
+    if (mark?.needsGrading) return t('student.sessionReview.pendingManualGrade');
     return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
   }, [mark, points]);
   const markChipColor = mark?.needsGrading ? 'warning' : 'success';
@@ -368,7 +370,7 @@ function ReviewQuestionCard({
                       fontWeight: 600,
                     }}
                   >
-                    Your selection
+                    {t('student.sessionReview.yourSelection')}
                   </Typography>
                 )}
               </Box>
@@ -382,8 +384,8 @@ function ReviewQuestionCard({
         && !hasWrittenSolution && (
         <Typography variant="caption" color="text.secondary" sx={{ pl: 2, mt: 0.5, display: 'block' }}>
           {hasMarkedCorrectOption
-            ? 'Correct answer(s) are highlighted above.'
-            : 'No written solution or marked correct option was provided for this question.'}
+            ? t('student.sessionReview.correctHighlighted')
+            : t('student.sessionReview.noSolutionOrCorrect')}
         </Typography>
       )}
 
@@ -391,10 +393,10 @@ function ReviewQuestionCard({
       {normalizedType === QUESTION_TYPES.NUMERICAL && solutionVisible && (
         <Box sx={{ pl: 2, mt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            Correct: {question.correctNumerical ?? '—'}
+            {t('student.sessionReview.correct', { value: question.correctNumerical ?? '—' })}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            tolerance: {question.toleranceNumerical ?? 0}
+            {t('student.sessionReview.tolerance', { value: question.toleranceNumerical ?? 0 })}
           </Typography>
         </Box>
       )}
@@ -407,7 +409,7 @@ function ReviewQuestionCard({
           startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
           onClick={() => setSolutionVisible((prev) => !prev)}
         >
-          {solutionVisible ? 'Hide solution' : 'Show solution'}
+          {solutionVisible ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
         </Button>
       </Box>
 
@@ -415,7 +417,7 @@ function ReviewQuestionCard({
       {solutionVisible && hasWrittenSolution && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Solution
+            {t('common.solution')}
           </Typography>
           <RichHtml value={writtenSolutionHtml} fallback={writtenSolutionPlain} sx={richContentSx} />
         </Box>
@@ -425,14 +427,14 @@ function ReviewQuestionCard({
         && !hasWrittenSolution
         && ![QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType) && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          No written solution was provided for this question.
+          {t('student.sessionReview.noSolution')}
         </Typography>
       )}
 
       {mark?.feedback && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Instructor feedback
+            {t('student.sessionReview.instructorFeedback')}
           </Typography>
           <RichHtml value={mark.feedback} sx={richContentSx} />
         </Box>
@@ -445,6 +447,7 @@ function ReviewQuestionCard({
 /*  SessionReview page                                                */
 /* ================================================================== */
 export default function SessionReview() {
+  const { t } = useTranslation();
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -494,7 +497,7 @@ export default function SessionReview() {
       return true;
     } catch (err) {
       const status = err.response?.status;
-      const forbiddenMessage = err.response?.data?.message || 'You do not have permission to review this session.';
+      const forbiddenMessage = err.response?.data?.message || t('student.sessionReview.noPermission');
       if (background && (status === 403 || status === 404)) {
         navigate(fallbackCourseBackLink, { replace: true });
         return false;
@@ -502,9 +505,9 @@ export default function SessionReview() {
       if (status === 403) {
         setError(forbiddenMessage);
       } else if (status === 404) {
-        setError('Session not found.');
+        setError(t('student.sessionReview.sessionNotFound'));
       } else {
-        setError('Failed to load session review.');
+        setError(t('student.sessionReview.failedLoadReview'));
       }
       return false;
     } finally {
@@ -620,7 +623,7 @@ export default function SessionReview() {
         }
         : prev));
     } catch {
-      setFeedbackActionError('Failed to dismiss feedback notification.');
+      setFeedbackActionError(t('student.sessionReview.failedDismissFeedback'));
     } finally {
       setDismissingFeedback(false);
     }
@@ -638,7 +641,7 @@ export default function SessionReview() {
       <Box sx={{ p: 3, maxWidth: 700 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
         <Button variant="outlined" onClick={() => navigate(fallbackCourseBackLink)}>
-          Back to course
+          {t('student.sessionReview.backToCourse')}
         </Button>
       </Box>
     );
@@ -670,10 +673,10 @@ export default function SessionReview() {
       {/* Header */}
       <Box sx={{ mb: 2 }}>
         <Button size="small" onClick={() => navigate(courseBackLink)} sx={{ mb: 1 }}>
-          ← Back to course
+          ← {t('student.sessionReview.backToCourse')}
         </Button>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          {session?.name || 'Session Review'}
+          {session?.name || t('student.sessionReview.sessionReviewFallback')}
         </Typography>
         {session?.description && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -693,12 +696,12 @@ export default function SessionReview() {
               onClick={handleDismissFeedback}
               disabled={dismissingFeedback}
             >
-              {dismissingFeedback ? 'Dismissing...' : 'Dismiss'}
+              {dismissingFeedback ? t('student.sessionReview.dismissing') : t('student.sessionReview.dismiss')}
             </Button>
           )}
         >
-          New feedback received.
-          {feedbackQuestionLabel ? ` Questions: ${feedbackQuestionLabel}.` : ''}
+          {t('student.sessionReview.newFeedbackReceived')}
+          {feedbackQuestionLabel ? t('student.sessionReview.feedbackQuestions', { questions: feedbackQuestionLabel }) : ''}
         </Alert>
       )}
 
@@ -711,26 +714,26 @@ export default function SessionReview() {
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
         <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Session Grade
+            {t('student.sessionReview.sessionGrade')}
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             {sessionGrade
               ? `${formatNumeric(sessionGrade.value)}% (${formatNumeric(sessionGrade.points)} / ${formatNumeric(sessionGrade.outOf)})`
-              : 'Not available'}
+              : t('student.sessionReview.notAvailable')}
           </Typography>
         </Paper>
         <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-            Participation
+            {t('student.sessionReview.participation')}
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {sessionGrade ? `${formatNumeric(sessionGrade.participation)}%` : 'Not available'}
+            {sessionGrade ? `${formatNumeric(sessionGrade.participation)}%` : t('student.sessionReview.notAvailable')}
           </Typography>
         </Paper>
       </Box>
 
       {total === 0 ? (
-        <Alert severity="info">This session has no questions.</Alert>
+        <Alert severity="info">{t('student.sessionReview.noQuestions')}</Alert>
       ) : (
         <>
           {/* View toggle */}
@@ -741,14 +744,14 @@ export default function SessionReview() {
               onChange={handleViewModeChange}
               size="small"
             >
-              <ToggleButton value="one"><OneIcon sx={{ mr: 0.5 }} fontSize="small" />One at a time</ToggleButton>
-              <ToggleButton value="all"><AllIcon sx={{ mr: 0.5 }} fontSize="small" />All questions</ToggleButton>
+              <ToggleButton value="one"><OneIcon sx={{ mr: 0.5 }} fontSize="small" />{t('student.sessionReview.oneAtATime')}</ToggleButton>
+              <ToggleButton value="all"><AllIcon sx={{ mr: 0.5 }} fontSize="small" />{t('student.sessionReview.allQuestions')}</ToggleButton>
             </ToggleButtonGroup>
 
             {viewMode === 'one' && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Question {questionIdx + 1} of {total}
+                  {t('student.sessionReview.questionProgress', { current: questionIdx + 1, total })}
                 </Typography>
                 {total > 1 && (
                   <>
@@ -758,9 +761,9 @@ export default function SessionReview() {
                       startIcon={<PrevIcon />}
                       disabled={questionIdx <= 0}
                       onClick={() => goTo(questionIdx - 1)}
-                      aria-label="Previous question"
+                      aria-label={t('student.sessionReview.previousQuestion')}
                     >
-                      Previous
+                      {t('common.previous')}
                     </Button>
                     <Button
                       size="small"
@@ -768,9 +771,9 @@ export default function SessionReview() {
                       endIcon={<NextIcon />}
                       disabled={questionIdx >= total - 1}
                       onClick={() => goTo(questionIdx + 1)}
-                      aria-label="Next question"
+                      aria-label={t('student.sessionReview.nextQuestion')}
                     >
-                      Next
+                      {t('common.next')}
                     </Button>
                   </>
                 )}
@@ -810,11 +813,11 @@ export default function SessionReview() {
                       onClick={() => toggleResponseVisibility(currentStateKey)}
                       disabled={!hasResponses}
                     >
-                      {isResponseVisible ? 'Hide my response' : 'Show my response'}
+                      {isResponseVisible ? t('student.sessionReview.hideMyResponse') : t('student.sessionReview.showMyResponse')}
                     </Button>
                     {!hasResponses && (
                       <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                        No response recorded
+                        {t('student.sessionReview.noResponse')}
                       </Typography>
                     )}
                     {currentResponse && responses.length > 1 && (
@@ -824,29 +827,29 @@ export default function SessionReview() {
                           disabled={attemptIdx <= 0}
                           onClick={() => cycleAttempt(currentStateKey, responses, -1)}
                         >
-                          ← Prev attempt
+                          ← {t('student.sessionReview.prevAttempt')}
                         </Button>
                         <Typography variant="body2" color="text.secondary">
-                          Attempt {currentResponse.attempt} of {responses.length}
+                          {t('student.sessionReview.attemptProgress', { current: currentResponse.attempt, total: responses.length })}
                         </Typography>
                         <Button
                           size="small"
                           disabled={attemptIdx >= responses.length - 1}
                           onClick={() => cycleAttempt(currentStateKey, responses, 1)}
                         >
-                          Next attempt →
+                          {t('student.sessionReview.nextAttempt')} →
                         </Button>
                       </Box>
                     )}
                     {isResponseVisible && currentResponse && currentIsOptionType && (
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', ml: 0.5 }}>
-                        Your selected option(s) are highlighted above.
+                        {t('student.sessionReview.selectedOptionsNote')}
                       </Typography>
                     )}
                     {isResponseVisible && currentResponse && !currentIsOptionType && (
                       <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
                         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                          Your answer
+                          {t('student.sessionReview.yourAnswer')}
                         </Typography>
                         {currentQType === QUESTION_TYPES.SHORT_ANSWER ? (
                           <RichHtml
@@ -856,7 +859,7 @@ export default function SessionReview() {
                           />
                         ) : (
                           <Typography variant="body2">
-                            {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                            {normalizeAnswerValue(currentResponse.answer) || t('common.noAnswer')}
                           </Typography>
                         )}
                       </Paper>
@@ -904,11 +907,11 @@ export default function SessionReview() {
                         onClick={() => toggleResponseVisibility(stateKey)}
                         disabled={!hasResponses}
                       >
-                        {isResponseVisible ? 'Hide my response' : 'Show my response'}
+                        {isResponseVisible ? t('student.sessionReview.hideMyResponse') : t('student.sessionReview.showMyResponse')}
                       </Button>
                       {!hasResponses && (
                         <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                          No response recorded
+                          {t('student.sessionReview.noResponse')}
                         </Typography>
                       )}
                       {currentResponse && responses.length > 1 && (
@@ -918,29 +921,29 @@ export default function SessionReview() {
                             disabled={attemptIdx <= 0}
                             onClick={() => cycleAttempt(stateKey, responses, -1)}
                           >
-                            ← Prev attempt
+                            ← {t('student.sessionReview.prevAttempt')}
                           </Button>
                           <Typography variant="body2" color="text.secondary">
-                            Attempt {currentResponse.attempt} of {responses.length}
+                            {t('student.sessionReview.attemptProgress', { current: currentResponse.attempt, total: responses.length })}
                           </Typography>
                           <Button
                             size="small"
                             disabled={attemptIdx >= responses.length - 1}
                             onClick={() => cycleAttempt(stateKey, responses, 1)}
                           >
-                            Next attempt →
+                            {t('student.sessionReview.nextAttempt')} →
                           </Button>
                         </Box>
                       )}
                       {isResponseVisible && currentResponse && isOptionType && (
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', ml: 0.5 }}>
-                          Your selected option(s) are highlighted above.
+                          {t('student.sessionReview.selectedOptionsNote')}
                         </Typography>
                       )}
                       {isResponseVisible && currentResponse && !isOptionType && (
                         <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                            Your answer
+                            {t('student.sessionReview.yourAnswer')}
                           </Typography>
                           {qType === QUESTION_TYPES.SHORT_ANSWER ? (
                             <RichHtml
@@ -950,7 +953,7 @@ export default function SessionReview() {
                             />
                           ) : (
                             <Typography variant="body2">
-                              {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                              {normalizeAnswerValue(currentResponse.answer) || t('common.noAnswer')}
                             </Typography>
                           )}
                         </Paper>

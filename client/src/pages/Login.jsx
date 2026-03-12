@@ -3,10 +3,12 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 
 export default function Login() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -77,10 +79,10 @@ export default function Login() {
     setForgotLoading(true);
     try {
       await apiClient.post('/auth/forgot-password', { email: forgotEmail });
-      setForgotMsg({ severity: 'success', text: 'If that email is registered, a reset link has been sent. Please check your spam/junk folder if you don\u2019t see it in your inbox.' });
+      setForgotMsg({ severity: 'success', text: t('auth.resetLinkSent') });
       setTimeout(() => setForgotOpen(false), 5000);
     } catch {
-      setForgotMsg({ severity: 'error', text: 'Failed to send reset email. Please try again.' });
+      setForgotMsg({ severity: 'error', text: t('auth.resetEmailFailed') });
     } finally {
       setForgotLoading(false);
     }
@@ -102,17 +104,17 @@ export default function Login() {
 
   const renderEmailLoginForm = ({ showBackToSso = false } = {}) => (
     <Box component="form" onSubmit={handleLogin}>
-      <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-      <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+      <TextField fullWidth label={t('auth.email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
+      <TextField fullWidth label={t('auth.password')} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
       <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
-        {loading ? 'Logging in...' : 'Login'}
+        {loading ? t('auth.loggingIn') : t('auth.login')}
       </Button>
       <Button type="button" size="small" sx={{ mt: 1 }} onClick={() => { setForgotOpen(true); setForgotMsg(null); setForgotEmail(''); }}>
-        Forgot Password?
+        {t('auth.forgotPassword')}
       </Button>
       {showBackToSso && (
         <Button type="button" size="small" sx={{ mt: 1 }} onClick={() => { setShowEmailLogin(false); setError(''); }}>
-          Back to SSO login
+          {t('auth.backToSSO')}
         </Button>
       )}
     </Box>
@@ -135,7 +137,7 @@ export default function Login() {
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
         <CardContent>
           <Typography variant="h4" textAlign="center" color="primary" gutterBottom>
-            Qlicker
+            {t('common.appName')}
           </Typography>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {ssoEnabled ? (
@@ -148,7 +150,7 @@ export default function Login() {
                 onClick={() => { window.location.href = '/api/v1/auth/sso/login'; }}
                 sx={{ py: 1.6, mt: 1, fontWeight: 700 }}
               >
-                Login through {ssoInstitutionName || 'SSO'}
+                {t('auth.loginThrough', { institution: ssoInstitutionName || t('auth.ssoDefault') })}
               </Button>
               {!showEmailLogin ? (
                 <Box textAlign="center" sx={{ mt: 1.5 }}>
@@ -158,12 +160,12 @@ export default function Login() {
                     onClick={() => { setShowEmailLogin(true); setError(''); }}
                     sx={{ textTransform: 'none', minHeight: 'unset', p: 0, fontSize: '0.8rem' }}
                   >
-                    Have an email-based account
+                    {t('auth.haveEmailAccount')}
                   </Button>
                 </Box>
               ) : (
                 <>
-                  <Divider sx={{ my: 2 }}>or</Divider>
+                  <Divider sx={{ my: 2 }}>{t('common.or')}</Divider>
                   {renderEmailLoginForm({ showBackToSso: true })}
                 </>
               )}
@@ -171,19 +173,19 @@ export default function Login() {
           ) : (
             <>
               <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }}>
-                <Tab label="Login" />
-                <Tab label="Register" />
+                <Tab label={t('auth.login')} />
+                <Tab label={t('auth.register')} />
               </Tabs>
               {tab === 0 ? (
                 renderEmailLoginForm()
               ) : (
                 <Box component="form" onSubmit={handleRegister}>
-                  <TextField fullWidth label="First Name" value={firstname} onChange={(e) => setFirstname(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label="Last Name" value={lastname} onChange={(e) => setLastname(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label={t('auth.firstName')} value={firstname} onChange={(e) => setFirstname(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label={t('auth.lastName')} value={lastname} onChange={(e) => setLastname(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label={t('auth.email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
+                  <TextField fullWidth label={t('auth.password')} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
                   <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
-                    {loading ? 'Creating account...' : 'Create Account'}
+                    {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
                   </Button>
                 </Box>
               )}
@@ -192,18 +194,18 @@ export default function Login() {
         </CardContent>
       </Card>
       <Dialog open={forgotOpen} onClose={() => setForgotOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Forgot Password</DialogTitle>
+        <DialogTitle>{t('auth.forgotPasswordTitle')}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
-            Enter your email address and we&apos;ll send you a link to reset your password.
+            {t('auth.forgotPasswordMessage')}
           </Typography>
-          <TextField fullWidth label="Email" type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} margin="normal" />
+          <TextField fullWidth label={t('auth.email')} type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} margin="normal" />
           {forgotMsg && <Alert severity={forgotMsg.severity} sx={{ mt: 1 }}>{forgotMsg.text}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setForgotOpen(false)}>Cancel</Button>
+          <Button onClick={() => setForgotOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleForgotPassword} disabled={forgotLoading || !forgotEmail}>
-            {forgotLoading ? 'Sending…' : 'Send Reset Link'}
+            {forgotLoading ? t('auth.sending') : t('auth.sendResetLink')}
           </Button>
         </DialogActions>
       </Dialog>

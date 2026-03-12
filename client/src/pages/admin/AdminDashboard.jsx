@@ -9,10 +9,13 @@ import {
   Avatar,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/date';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import { SUPPORTED_LOCALES, DATE_FORMATS } from '../../i18n';
+import i18n from '../../i18n';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -40,12 +43,15 @@ const SSO_FIELDS = [
 
 // ── Settings Tab ────────────────────────────────────────────────────────────
 function SettingsTab() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState({
     restrictDomain: false,
     allowedDomains: '',
     requireVerified: false,
     adminEmail: '',
     tokenExpiryMinutes: 120,
+    locale: 'en',
+    dateFormat: 'DD-MMM-YYYY',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,6 +63,8 @@ function SettingsTab() {
     let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
+      const loadedLocale = data.locale ?? 'en';
+      const loadedDateFormat = data.dateFormat ?? 'DD-MMM-YYYY';
       setSettings({
         restrictDomain: data.restrictDomain ?? false,
         allowedDomains: Array.isArray(data.allowedDomains)
@@ -65,11 +73,16 @@ function SettingsTab() {
         requireVerified: data.requireVerified ?? false,
         adminEmail: data.resolvedAdminEmail ?? data.adminEmail ?? data.email ?? '',
         tokenExpiryMinutes: data.tokenExpiryMinutes ?? 120,
+        locale: loadedLocale,
+        dateFormat: loadedDateFormat,
       });
+      i18n.changeLanguage(loadedLocale);
+      localStorage.setItem('qlicker_locale', loadedLocale);
+      localStorage.setItem('qlicker_dateFormat', loadedDateFormat);
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
-        setSaveError('Failed to load settings');
+        setSaveError(t('admin.failedLoadSettings'));
       }
     }).finally(() => {
       if (mounted) {
@@ -100,13 +113,15 @@ function SettingsTab() {
             .map((d) => d.trim())
             .filter(Boolean),
           tokenExpiryMinutes: Math.max(5, parseInt(settings.tokenExpiryMinutes, 10) || 120),
+          locale: settings.locale,
+          dateFormat: settings.dateFormat,
         };
         await apiClient.patch('/settings', payload);
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }
@@ -122,39 +137,73 @@ function SettingsTab() {
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControlLabel
         control={<Checkbox checked={settings.restrictDomain} onChange={(e) => setSettings((s) => ({ ...s, restrictDomain: e.target.checked }))} />}
-        label="Restrict email domain"
+        label={t('admin.settings.restrictDomain')}
       />
       <TextField
-        label="Allowed Domains (comma-separated)"
+        label={t('admin.settings.allowedDomains')}
         value={settings.allowedDomains}
         onChange={(e) => setSettings((s) => ({ ...s, allowedDomains: e.target.value }))}
         fullWidth
       />
       <FormControlLabel
         control={<Checkbox checked={settings.requireVerified} onChange={(e) => setSettings((s) => ({ ...s, requireVerified: e.target.checked }))} />}
-        label="Require verified email"
+        label={t('admin.settings.requireVerified')}
       />
       <TextField
-        label="Admin Email"
+        label={t('admin.settings.adminEmail')}
         value={settings.adminEmail}
         onChange={(e) => setSettings((s) => ({ ...s, adminEmail: e.target.value }))}
         fullWidth
       />
       <TextField
-        label="Login Token Expiry (minutes)"
+        label={t('admin.settings.tokenExpiry')}
         type="number"
         value={settings.tokenExpiryMinutes}
         onChange={(e) => setSettings((s) => ({ ...s, tokenExpiryMinutes: e.target.value }))}
-        helperText="How long login tokens remain valid (default: 120 minutes = 2 hours, minimum: 5)"
+        helperText={t('admin.settings.tokenExpiryHelp')}
         inputProps={{ min: 5 }}
         fullWidth
       />
+      <FormControl fullWidth>
+        <InputLabel>{t('admin.settings.locale')}</InputLabel>
+        <Select
+          value={settings.locale}
+          label={t('admin.settings.locale')}
+          onChange={(e) => {
+            const newLocale = e.target.value;
+            setSettings((s) => ({ ...s, locale: newLocale }));
+            i18n.changeLanguage(newLocale);
+            localStorage.setItem('qlicker_locale', newLocale);
+          }}
+        >
+          {SUPPORTED_LOCALES.map((loc) => (
+            <MenuItem key={loc.code} value={loc.code}>{loc.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+        <InputLabel>{t('admin.settings.dateFormat')}</InputLabel>
+        <Select
+          value={settings.dateFormat}
+          label={t('admin.settings.dateFormat')}
+          onChange={(e) => {
+            const newFormat = e.target.value;
+            setSettings((s) => ({ ...s, dateFormat: newFormat }));
+            localStorage.setItem('qlicker_dateFormat', newFormat);
+          }}
+        >
+          {DATE_FORMATS.map((fmt) => (
+            <MenuItem key={fmt.key} value={fmt.key}>{fmt.example}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
     </Box>
   );
 }
 
 // ── Users Tab ───────────────────────────────────────────────────────────────
 function UsersTab({ currentUserId }) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -189,7 +238,7 @@ function UsersTab({ currentUserId }) {
       setUsers(data.users);
       setTotal(data.total);
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load users' });
+      setMsg({ severity: 'error', text: t('admin.users.failedLoadUsers') });
     } finally {
       setLoading(false);
     }
@@ -201,9 +250,9 @@ function UsersTab({ currentUserId }) {
     try {
       await apiClient.patch(`/users/${userId}/role`, { role });
       setUsers((prev) => prev.map((u) => (u._id === userId ? { ...u, profile: { ...u.profile, roles: [role] } } : u)));
-      setMsg({ severity: 'success', text: 'Role updated' });
+      setMsg({ severity: 'success', text: t('admin.users.roleUpdated') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to update role' });
+      setMsg({ severity: 'error', text: t('admin.users.failedUpdateRole') });
     }
   };
 
@@ -211,9 +260,9 @@ function UsersTab({ currentUserId }) {
     try {
       await apiClient.patch(`/users/${userId}/verify-email`);
       fetchUsers();
-      setMsg({ severity: 'success', text: 'Email verified' });
+      setMsg({ severity: 'success', text: t('admin.users.emailVerified') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to verify email' });
+      setMsg({ severity: 'error', text: t('admin.users.failedVerifyEmail') });
     }
   };
 
@@ -223,9 +272,9 @@ function UsersTab({ currentUserId }) {
       await apiClient.delete(`/users/${deleteTarget._id}`);
       setDeleteTarget(null);
       fetchUsers();
-      setMsg({ severity: 'success', text: 'User deleted' });
+      setMsg({ severity: 'success', text: t('admin.users.userDeleted') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete user' });
+      setMsg({ severity: 'error', text: t('admin.users.failedDeleteUser') });
     }
   };
 
@@ -235,9 +284,9 @@ function UsersTab({ currentUserId }) {
       setCreateOpen(false);
       setNewUser({ email: '', password: '', firstname: '', lastname: '', role: 'student' });
       fetchUsers();
-      setMsg({ severity: 'success', text: 'User created' });
+      setMsg({ severity: 'success', text: t('admin.users.userCreated') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to create user' });
+      setMsg({ severity: 'error', text: err.response?.data?.error || t('admin.users.failedCreateUser') });
     }
   };
 
@@ -246,44 +295,44 @@ function UsersTab({ currentUserId }) {
       <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
         <TextField
           size="small"
-          placeholder="Search by name or email"
+          placeholder={t('admin.users.searchPlaceholder')}
           value={search}
           onChange={(e) => { setSearch(e.target.value); setPage(0); }}
           slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
           sx={{ minWidth: 260 }}
         />
         <FormControl size="small" sx={{ minWidth: 140 }}>
-          <InputLabel>Role</InputLabel>
-          <Select value={roleFilter} label="Role" onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="admin">Admin</MenuItem>
-            <MenuItem value="professor">Professor</MenuItem>
-            <MenuItem value="student">Student</MenuItem>
+          <InputLabel>{t('admin.users.role')}</InputLabel>
+          <Select value={roleFilter} label={t('admin.users.role')} onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}>
+            <MenuItem value="">{t('admin.users.all')}</MenuItem>
+            <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
+            <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
+            <MenuItem value="student">{t('admin.users.student')}</MenuItem>
           </Select>
         </FormControl>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          Create User
+          {t('admin.users.createUser')}
         </Button>
-        <Typography variant="body2" sx={{ ml: 'auto' }}>Total: {total}</Typography>
+        <Typography variant="body2" sx={{ ml: 'auto' }}>{t('admin.users.totalCount', { total })}</Typography>
       </Box>
 
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell component="th" scope="col">Name</TableCell>
-              <TableCell component="th" scope="col">Email</TableCell>
-              <TableCell component="th" scope="col">Verified</TableCell>
-              <TableCell component="th" scope="col">Last Login</TableCell>
-              <TableCell component="th" scope="col">Role</TableCell>
-              <TableCell component="th" scope="col" align="right">Actions</TableCell>
+              <TableCell component="th" scope="col">{t('admin.users.name')}</TableCell>
+              <TableCell component="th" scope="col">{t('admin.users.email')}</TableCell>
+              <TableCell component="th" scope="col">{t('admin.users.verified')}</TableCell>
+              <TableCell component="th" scope="col">{t('admin.users.lastLogin')}</TableCell>
+              <TableCell component="th" scope="col">{t('admin.users.role')}</TableCell>
+              <TableCell component="th" scope="col" align="right">{t('admin.users.actions')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow>
             ) : users.length === 0 ? (
-              <TableRow><TableCell colSpan={6} align="center">No users found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} align="center">{t('admin.users.noUsersFound')}</TableCell></TableRow>
             ) : (
               users.map((u) => (
                 <TableRow key={u._id}>
@@ -328,11 +377,11 @@ function UsersTab({ currentUserId }) {
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
                   <TableCell>
                     {u.emails?.[0]?.verified ? (
-                      <Tooltip title="Verified">
+                      <Tooltip title={t('admin.users.verified')}>
                         <CheckCircle color="success" fontSize="small" />
                       </Tooltip>
                     ) : (
-                      <Tooltip title="Click to verify">
+                      <Tooltip title={t('admin.users.clickToVerify')}>
                         <IconButton size="small" onClick={() => handleVerifyEmail(u._id)}>
                           <Cancel color="error" fontSize="small" />
                         </IconButton>
@@ -342,10 +391,10 @@ function UsersTab({ currentUserId }) {
                   <TableCell>
                     {u.lastLogin
                       ? formatDisplayDate(u.lastLogin)
-                      : 'Never'}
+                      : t('admin.users.never')}
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={u._id === currentUserId ? 'You cannot change your own role' : ''}>
+                    <Tooltip title={u._id === currentUserId ? t('admin.users.cannotChangeOwnRole') : ''}>
                       <span>
                         <Select
                           size="small"
@@ -353,9 +402,9 @@ function UsersTab({ currentUserId }) {
                           onChange={(e) => handleRoleChange(u._id, e.target.value)}
                           disabled={u._id === currentUserId}
                         >
-                          <MenuItem value="admin">admin</MenuItem>
-                          <MenuItem value="professor">professor</MenuItem>
-                          <MenuItem value="student">student</MenuItem>
+                          <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
+                          <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
+                          <MenuItem value="student">{t('admin.users.student')}</MenuItem>
                         </Select>
                       </span>
                     </Tooltip>
@@ -384,36 +433,36 @@ function UsersTab({ currentUserId }) {
 
       {/* Delete confirmation */}
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>{t('admin.users.confirmDelete')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete <strong>{deleteTarget?.profile?.firstname} {deleteTarget?.profile?.lastname}</strong> ({deleteTarget?.emails?.[0]?.address})?
+          <span dangerouslySetInnerHTML={{ __html: t('admin.users.confirmDeleteMessage', { name: `${deleteTarget?.profile?.firstname || ''} ${deleteTarget?.profile?.lastname || ''}`.trim(), email: deleteTarget?.emails?.[0]?.address || '' }) }} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
+          <Button onClick={() => setDeleteTarget(null)}>{t('common.cancel')}</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>{t('common.delete')}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Create user dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create User</DialogTitle>
+        <DialogTitle>{t('admin.users.createUser')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label="Email" type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
-          <TextField label="Password" type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
-          <TextField label="First Name" required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
-          <TextField label="Last Name" required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
+          <TextField label={t('admin.users.email')} type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
+          <TextField label={t('admin.users.password')} type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
+          <TextField label={t('admin.users.firstName')} required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
+          <TextField label={t('admin.users.lastName')} required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
           <FormControl>
-            <InputLabel>Role</InputLabel>
-            <Select value={newUser.role} label="Role" onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
-              <MenuItem value="admin">admin</MenuItem>
-              <MenuItem value="professor">professor</MenuItem>
-              <MenuItem value="student">student</MenuItem>
+            <InputLabel>{t('admin.users.role')}</InputLabel>
+            <Select value={newUser.role} label={t('admin.users.role')} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
+              <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
+              <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
+              <MenuItem value="student">{t('admin.users.student')}</MenuItem>
             </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleCreate}>Create</Button>
+          <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+          <Button variant="contained" onClick={handleCreate}>{t('common.create')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -427,11 +476,11 @@ function UsersTab({ currentUserId }) {
               style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
             />
           ) : (
-            <Typography variant="body2" color="text.secondary">No profile image available.</Typography>
+            <Typography variant="body2" color="text.secondary">{t('admin.users.noProfileImage')}</Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setImageViewUser(null)}>Close</Button>
+          <Button onClick={() => setImageViewUser(null)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -444,6 +493,7 @@ function UsersTab({ currentUserId }) {
 
 // ── Storage Tab ─────────────────────────────────────────────────────────────
 function StorageTab() {
+  const { t } = useTranslation();
   const [storageType, setStorageType] = useState('local');
   const [s3, setS3] = useState({
     AWS_bucket: '',
@@ -481,7 +531,7 @@ function StorageTab() {
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
-        setSaveError('Failed to load storage settings');
+        setSaveError(t('admin.failedLoadSettings'));
       }
     }).finally(() => {
       if (mounted) {
@@ -512,8 +562,8 @@ function StorageTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save storage settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveStorageSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }
@@ -528,38 +578,38 @@ function StorageTab() {
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControl fullWidth>
-        <InputLabel>Storage Type</InputLabel>
-        <Select value={storageType} label="Storage Type" onChange={(e) => setStorageType(e.target.value)}>
-          <MenuItem value="local">Local</MenuItem>
-          <MenuItem value="s3">Amazon S3</MenuItem>
-          <MenuItem value="azure">Azure Blob Storage</MenuItem>
+        <InputLabel>{t('admin.storage.storageType')}</InputLabel>
+        <Select value={storageType} label={t('admin.storage.storageType')} onChange={(e) => setStorageType(e.target.value)}>
+          <MenuItem value="local">{t('admin.storage.local')}</MenuItem>
+          <MenuItem value="s3">{t('admin.storage.s3')}</MenuItem>
+          <MenuItem value="azure">{t('admin.storage.azure')}</MenuItem>
         </Select>
       </FormControl>
 
       {storageType === 's3' && (
         <>
-          <TextField label="Bucket" value={s3.AWS_bucket} onChange={(e) => setS3((s) => ({ ...s, AWS_bucket: e.target.value }))} fullWidth />
-          <TextField label="Region" value={s3.AWS_region} onChange={(e) => setS3((s) => ({ ...s, AWS_region: e.target.value }))} fullWidth />
-          <TextField label="Access Key ID" value={s3.AWS_accessKeyId} onChange={(e) => setS3((s) => ({ ...s, AWS_accessKeyId: e.target.value }))} fullWidth />
-          <TextField label="Secret Access Key" type="password" value={s3.AWS_secretAccessKey} onChange={(e) => setS3((s) => ({ ...s, AWS_secretAccessKey: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.bucket')} value={s3.AWS_bucket} onChange={(e) => setS3((s) => ({ ...s, AWS_bucket: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.region')} value={s3.AWS_region} onChange={(e) => setS3((s) => ({ ...s, AWS_region: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.accessKeyId')} value={s3.AWS_accessKeyId} onChange={(e) => setS3((s) => ({ ...s, AWS_accessKeyId: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.secretAccessKey')} type="password" value={s3.AWS_secretAccessKey} onChange={(e) => setS3((s) => ({ ...s, AWS_secretAccessKey: e.target.value }))} fullWidth />
           <TextField
-            label="Endpoint URL (optional, for MinIO/local S3)"
+            label={t('admin.storage.endpoint')}
             value={s3.AWS_endpoint}
             onChange={(e) => setS3((s) => ({ ...s, AWS_endpoint: e.target.value }))}
             fullWidth
           />
           <FormControlLabel
             control={<Checkbox checked={!!s3.AWS_forcePathStyle} onChange={(e) => setS3((s) => ({ ...s, AWS_forcePathStyle: e.target.checked }))} />}
-            label="Use path-style URLs (recommended for local S3 endpoints)"
+            label={t('admin.storage.forcePathStyle')}
           />
         </>
       )}
 
       {storageType === 'azure' && (
         <>
-          <TextField label="Storage Account" value={azure.Azure_storageAccount} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccount: e.target.value }))} fullWidth />
-          <TextField label="Storage Access Key" type="password" value={azure.Azure_storageAccessKey} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccessKey: e.target.value }))} fullWidth />
-          <TextField label="Storage Container" value={azure.Azure_storageContainer} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageContainer: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.storageAccount')} value={azure.Azure_storageAccount} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccount: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.storageAccessKey')} type="password" value={azure.Azure_storageAccessKey} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageAccessKey: e.target.value }))} fullWidth />
+          <TextField label={t('admin.storage.storageContainer')} value={azure.Azure_storageContainer} onChange={(e) => setAzure((s) => ({ ...s, Azure_storageContainer: e.target.value }))} fullWidth />
         </>
       )}
     </Box>
@@ -568,6 +618,7 @@ function StorageTab() {
 
 // ── SSO Tab ─────────────────────────────────────────────────────────────────
 function SSOTab() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState(() =>
     Object.fromEntries(SSO_FIELDS.map((f) => [f.key, f.type === 'checkbox' ? false : '']))
   );
@@ -589,7 +640,7 @@ function SSOTab() {
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
-        setSaveError('Failed to load SSO settings');
+        setSaveError(t('admin.failedLoadSettings'));
       }
     }).finally(() => {
       if (mounted) {
@@ -617,8 +668,8 @@ function SSOTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save SSO settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveSSOSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }
@@ -667,15 +718,16 @@ function SSOTab() {
 export default function AdminDashboard() {
   const [tab, setTab] = useState(0);
   const { user } = useAuth();
+  const { t } = useTranslation();
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Admin Dashboard</Typography>
+      <Typography variant="h4" gutterBottom>{t('admin.title')}</Typography>
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-        <Tab label="Settings" />
-        <Tab label="Users" />
-        <Tab label="Storage" />
-        <Tab label="SSO Configuration" />
+        <Tab label={t('admin.tabs.settings')} />
+        <Tab label={t('admin.tabs.users')} />
+        <Tab label={t('admin.tabs.storage')} />
+        <Tab label={t('admin.tabs.sso')} />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>

@@ -35,6 +35,7 @@ import {
   Refresh as RefreshIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
 import QuestionDisplay from '../questions/QuestionDisplay';
@@ -323,7 +324,7 @@ function formatAnswerValue(question, answer) {
   return normalizeAnswerValue(answer) || '—';
 }
 
-function formatCorrectAnswerValue(question) {
+function formatCorrectAnswerValue(question, t) {
   if (!question) return '—';
   const type = Number(question?.type);
   const options = Array.isArray(question?.options) ? question.options : [];
@@ -340,19 +341,19 @@ function formatCorrectAnswerValue(question) {
     const toleranceRaw = Number(question?.toleranceNumerical ?? 0);
     if (!Number.isFinite(expected)) return '—';
     const tolerance = Number.isFinite(toleranceRaw) ? Math.abs(toleranceRaw) : 0;
-    return `${expected} | tolerance: ${tolerance}`;
+    return t('grades.coursePanel.toleranceLabel', { expected, tolerance });
   }
 
-  return normalizeAnswerValue(question?.solution) || 'Manual grading';
+  return normalizeAnswerValue(question?.solution) || t('grades.coursePanel.manualGrading');
 }
 
-function buildConflictQuestionLabel(conflict) {
-  const sessionName = normalizeAnswerValue(conflict?.sessionName) || 'Session';
+function buildConflictQuestionLabel(conflict, t) {
+  const sessionName = normalizeAnswerValue(conflict?.sessionName) || t('grades.coursePanel.session');
   const questionNumber = Number(conflict?.questionNumber);
   if (Number.isInteger(questionNumber) && questionNumber > 0) {
-    return `${sessionName}/Q${questionNumber}`;
+    return `${sessionName}/${t('grades.coursePanel.questionShort', { index: questionNumber })}`;
   }
-  return `${sessionName}/${normalizeAnswerValue(conflict?.questionId) || 'Question'}`;
+  return `${sessionName}/${normalizeAnswerValue(conflict?.questionId) || t('grades.coursePanel.question')}`;
 }
 
 function isAutoGradeableConflict(conflict, question = null) {
@@ -390,6 +391,7 @@ function StudentSearchField({
   onSearchChange,
   disabled = false,
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(() => value || '');
 
   useEffect(() => {
@@ -409,7 +411,7 @@ function StudentSearchField({
   return (
     <TextField
       size="small"
-      label="Search students"
+      label={t('grades.coursePanel.searchStudents')}
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
       sx={{ minWidth: 240 }}
@@ -428,6 +430,7 @@ function GradeDetailDialog({
   instructorView,
   onGradeUpdated,
 }) {
+  const { t } = useTranslation();
   const [workingGrade, setWorkingGrade] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -477,7 +480,7 @@ function GradeDetailDialog({
       await persistGrade(data.grade);
       setEditingMarkIndex(-1);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update mark');
+      setError(err.response?.data?.message || t('grades.coursePanel.failedUpdateMark'));
     } finally {
       setSaving(false);
     }
@@ -494,7 +497,7 @@ function GradeDetailDialog({
       await persistGrade(data.grade);
       setEditingMarkIndex(-1);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to auto-grade mark');
+      setError(err.response?.data?.message || t('grades.coursePanel.failedAutoGrade'));
     } finally {
       setSaving(false);
     }
@@ -510,7 +513,7 @@ function GradeDetailDialog({
       });
       await persistGrade(data.grade);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update grade value');
+      setError(err.response?.data?.message || t('grades.coursePanel.failedUpdateGradeValue'));
     } finally {
       setSaving(false);
     }
@@ -525,7 +528,7 @@ function GradeDetailDialog({
       await persistGrade(data.grade);
       setEditingGradeValue(String(data.grade?.value ?? 0));
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to restore automatic grade');
+      setError(err.response?.data?.message || t('grades.coursePanel.failedRestoreAuto'));
     } finally {
       setSaving(false);
     }
@@ -538,16 +541,16 @@ function GradeDetailDialog({
       <DialogTitle>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
           <Box>
-            <Typography variant="h6">{student?.displayName || student?.email || 'Student'}</Typography>
+            <Typography variant="h6">{student?.displayName || student?.email || t('grades.coursePanel.student')}</Typography>
             <Typography variant="body2" color="text.secondary">{sessionName || workingGrade.name}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Chip
               size="small"
               color={workingGrade.automatic ? 'default' : 'warning'}
-              label={workingGrade.automatic ? 'Auto grade' : 'Manual override'}
+              label={workingGrade.automatic ? t('grades.coursePanel.autoGrade') : t('grades.coursePanel.manualOverride')}
             />
-            {workingGrade.needsGrading && <Chip size="small" color="error" label="Needs grading" />}
+            {workingGrade.needsGrading && <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />}
           </Box>
         </Box>
       </DialogTitle>
@@ -556,23 +559,23 @@ function GradeDetailDialog({
 
         <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Grade: {formatPercent(workingGrade.value)}% ({formatPercent(workingGrade.points)} / {formatPercent(workingGrade.outOf)})
+            {t('grades.coursePanel.gradeValue', { percent: formatPercent(workingGrade.value), points: formatPercent(workingGrade.points), outOf: formatPercent(workingGrade.outOf) })}
           </Typography>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Participation: {formatPercent(workingGrade.participation)}%
+            {t('grades.coursePanel.participationValue', { percent: formatPercent(workingGrade.participation) })}
           </Typography>
           {instructorView && (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
               <TextField
                 size="small"
                 type="number"
-                label="Grade %"
+                label={t('grades.coursePanel.gradePercent')}
                 value={editingGradeValue}
                 onChange={(event) => setEditingGradeValue(event.target.value)}
                 sx={{ width: 140 }}
               />
               <Button size="small" variant="outlined" onClick={handleSaveGradeValue} disabled={saving}>
-                Save Grade Value
+                {t('grades.coursePanel.saveGradeValue')}
               </Button>
               {!workingGrade.automatic && (
                 <Button
@@ -582,7 +585,7 @@ function GradeDetailDialog({
                   onClick={handleSetGradeAutomatic}
                   disabled={saving}
                 >
-                  Restore Automatic
+                  {t('grades.coursePanel.restoreAutomatic')}
                 </Button>
               )}
             </Box>
@@ -593,11 +596,11 @@ function GradeDetailDialog({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Question</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Points</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Attempt</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Actions</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('grades.coursePanel.question')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('common.points')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('grades.coursePanel.attempt')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('common.status')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -607,21 +610,21 @@ function GradeDetailDialog({
                 return (
                   <Fragment key={`${mark.questionId}-${index}`}>
                     <TableRow>
-                      <TableCell>Q{index + 1}</TableCell>
+                      <TableCell>{t('grades.coursePanel.questionShort', { index: index + 1 })}</TableCell>
                       <TableCell>{formatPercent(mark.points)} / {formatPercent(mark.outOf)}</TableCell>
                       <TableCell>{mark.attempt || 0}</TableCell>
                       <TableCell>
                         {mark.needsGrading ? (
-                          <Chip size="small" color="error" label="Needs grading" />
+                          <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />
                         ) : !markCanAutoGrade ? (
-                          <Chip size="small" variant="outlined" label="Manual only" />
+                          <Chip size="small" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
                         ) : (
-                          <Chip size="small" variant="outlined" color={mark.automatic ? 'default' : 'warning'} label={mark.automatic ? 'Auto' : 'Manual'} />
+                          <Chip size="small" variant="outlined" color={mark.automatic ? 'default' : 'warning'} label={mark.automatic ? t('grades.coursePanel.auto') : t('grades.coursePanel.manual')} />
                         )}
                       </TableCell>
                       <TableCell>
                         {instructorView ? (
-                          <Button size="small" onClick={() => beginEditMark(mark, index)}>Edit</Button>
+                          <Button size="small" onClick={() => beginEditMark(mark, index)}>{t('common.edit')}</Button>
                         ) : (
                           <Typography variant="caption" color="text.secondary">—</Typography>
                         )}
@@ -634,22 +637,22 @@ function GradeDetailDialog({
                             <TextField
                               size="small"
                               type="number"
-                              label="Points"
+                              label={t('common.points')}
                               value={editingMarkPoints}
                               onChange={(event) => setEditingMarkPoints(event.target.value)}
                               sx={{ maxWidth: 160 }}
                             />
                             <Box>
-                              <Typography variant="caption" color="text.secondary">Feedback</Typography>
+                              <Typography variant="caption" color="text.secondary">{t('grades.coursePanel.feedback')}</Typography>
                               <StudentRichTextEditor
                                 value={editingFeedbackHtml}
                                 onChange={({ html }) => setEditingFeedbackHtml(html)}
-                                placeholder="Add feedback for this question"
+                                placeholder={t('grades.coursePanel.addFeedback')}
                               />
                               <MathPreview html={editingFeedbackHtml} />
                             </Box>
                             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              <Button size="small" variant="outlined" onClick={handleSaveMark} disabled={saving}>Save Mark</Button>
+                              <Button size="small" variant="outlined" onClick={handleSaveMark} disabled={saving}>{t('grades.coursePanel.saveMark')}</Button>
                               {!mark.automatic && markCanAutoGrade && (
                                 <Button
                                   size="small"
@@ -658,10 +661,10 @@ function GradeDetailDialog({
                                   onClick={() => handleSetMarkAutomatic(mark)}
                                   disabled={saving}
                                 >
-                                  Set Automatic
+                                  {t('grades.coursePanel.setAutomatic')}
                                 </Button>
                               )}
-                              <Button size="small" variant="text" onClick={() => setEditingMarkIndex(-1)} disabled={saving}>Cancel</Button>
+                              <Button size="small" variant="text" onClick={() => setEditingMarkIndex(-1)} disabled={saving}>{t('common.cancel')}</Button>
                             </Box>
                           </Box>
                         </TableCell>
@@ -675,7 +678,7 @@ function GradeDetailDialog({
         </TableContainer>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose}>{t('common.close')}</Button>
       </DialogActions>
     </Dialog>
   );
@@ -697,15 +700,16 @@ function ConflictMarkDialog({
   onAcceptAuto,
   onSaveManual,
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
 
-  const questionLabel = buildConflictQuestionLabel(conflict);
+  const questionLabel = buildConflictQuestionLabel(conflict, t);
   const studentName = normalizeAnswerValue(student?.lastname) || normalizeAnswerValue(student?.firstname)
     ? `${normalizeAnswerValue(student?.lastname)}, ${normalizeAnswerValue(student?.firstname)}`.replace(/^,\s*/, '')
-    : normalizeAnswerValue(conflict?.studentName) || normalizeAnswerValue(conflict?.studentId) || 'Student';
+    : normalizeAnswerValue(conflict?.studentName) || normalizeAnswerValue(conflict?.studentId) || t('grades.coursePanel.student');
   const studentEmail = normalizeAnswerValue(student?.email);
   const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
-  const correctAnswer = formatCorrectAnswerValue(question);
+  const correctAnswer = formatCorrectAnswerValue(question, t);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -720,33 +724,33 @@ function ConflictMarkDialog({
           <>
             <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
               <Typography variant="body2">
-                <strong>Student:</strong> {studentName}{studentEmail ? ` (${studentEmail})` : ''}
+                <strong>{t('grades.coursePanel.studentLabel')}</strong> {studentName}{studentEmail ? ` (${studentEmail})` : ''}
               </Typography>
               <Typography variant="body2">
-                <strong>Current manual:</strong> {formatPercent(conflict?.existingPoints)} / {formatPercent(conflict?.outOf || question?.sessionOptions?.points || 0)}
+                <strong>{t('grades.coursePanel.currentManual')}</strong> {formatPercent(conflict?.existingPoints)} / {formatPercent(conflict?.outOf || question?.sessionOptions?.points || 0)}
               </Typography>
               <Typography variant="body2">
-                <strong>Recalculated auto:</strong> {formatPercent(conflict?.calculatedPoints)}
+                <strong>{t('grades.coursePanel.recalculatedAuto')}</strong> {formatPercent(conflict?.calculatedPoints)}
               </Typography>
             </Paper>
 
             {question ? (
               <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.75 }}>Question</Typography>
+                <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{t('grades.coursePanel.question')}</Typography>
                 <QuestionDisplay question={question} />
               </Paper>
             ) : (
               <Alert severity="warning" sx={{ mb: 1.5 }}>
-                Question content could not be loaded for this conflict.
+                {t('grades.coursePanel.questionContentNotLoaded')}
               </Alert>
             )}
 
             <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
-                <strong>Student answer:</strong> {studentAnswer}
+                <strong>{t('grades.coursePanel.studentAnswer')}</strong> {studentAnswer}
               </Typography>
               <Typography variant="body2">
-                <strong>Correct answer:</strong> {correctAnswer}
+                <strong>{t('grades.coursePanel.correctAnswer')}</strong> {correctAnswer}
               </Typography>
             </Paper>
 
@@ -754,7 +758,7 @@ function ConflictMarkDialog({
               <TextField
                 size="small"
                 type="number"
-                label="Manual points"
+                label={t('grades.coursePanel.manualPoints')}
                 value={manualPoints}
                 onChange={(event) => onManualPointsChange(event.target.value)}
                 sx={{ width: 150 }}
@@ -766,7 +770,7 @@ function ConflictMarkDialog({
                 onClick={onSaveManual}
                 disabled={saving}
               >
-                Save Manual Grade
+                {t('grades.coursePanel.saveManualGrade')}
               </Button>
               <Button
                 size="small"
@@ -775,14 +779,14 @@ function ConflictMarkDialog({
                 onClick={onAcceptAuto}
                 disabled={saving || !canAcceptAuto}
               >
-                Accept Auto Grade
+                {t('grades.coursePanel.acceptAutoGrade')}
               </Button>
             </Box>
           </>
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} disabled={saving}>Close</Button>
+        <Button onClick={onClose} disabled={saving}>{t('common.close')}</Button>
       </DialogActions>
     </Dialog>
   );
@@ -795,6 +799,7 @@ export default function CourseGradesPanel({
   availableSessions = [],
   gradingSummaryBySessionId = {},
 }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(() => !instructorView);
   const [loadingSessionOptions, setLoadingSessionOptions] = useState(false);
   const [error, setError] = useState('');
@@ -876,7 +881,7 @@ export default function CourseGradesPanel({
       }
       return payload;
     } catch (err) {
-      const message = err.response?.data?.message || 'Failed to load grades.';
+      const message = err.response?.data?.message || t('grades.coursePanel.failedLoadGrades');
       if (applyToState) {
         setError(message);
       }
@@ -899,7 +904,7 @@ export default function CourseGradesPanel({
         }))
       );
     } catch (err) {
-      setSessionOptionsError(err.response?.data?.message || 'Failed to load sessions for grade table.');
+      setSessionOptionsError(err.response?.data?.message || t('grades.coursePanel.failedLoadSessions'));
     } finally {
       setLoadingSessionOptions(false);
     }
@@ -1030,10 +1035,10 @@ export default function CourseGradesPanel({
   const exportCsvWithData = useCallback((exportSessions, exportRows) => {
     if (!exportSessions.length || !exportRows.length) return;
 
-    const header = ['Last name', 'First name', 'Email', 'Avg. Participation'];
+    const header = [t('grades.coursePanel.lastName'), t('grades.coursePanel.firstName'), t('common.email'), t('grades.coursePanel.avgParticipation')];
     exportSessions.forEach((session) => {
-      header.push(`${session.name} mark`);
-      header.push(`${session.name} participation`);
+      header.push(t('grades.coursePanel.sessionMarkHeader', { name: session.name }));
+      header.push(t('grades.coursePanel.sessionPartHeader', { name: session.name }));
     });
 
     const lines = exportRows.map((row) => {
@@ -1054,8 +1059,8 @@ export default function CourseGradesPanel({
     });
 
     const csvContent = [header.map(escapeCsvCell).join(','), ...lines].join('\n');
-    downloadCsv('course_grades.csv', csvContent);
-  }, []);
+    downloadCsv(t('grades.coursePanel.csvFilename'), csvContent);
+  }, [t]);
 
   const allSessionPickerIds = useMemo(() => (
     sessionSelectionOptions.map((session) => session._id)
@@ -1128,7 +1133,7 @@ export default function CourseGradesPanel({
       }
       setSessionPicker({ open: false, mode: 'show' });
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to load grade data.');
+      setGlobalMessage(err.response?.data?.message || t('grades.coursePanel.failedLoadGradeData'));
       setGlobalMessageType('error');
     } finally {
       setSessionPickerSubmitting(false);
@@ -1242,7 +1247,7 @@ export default function CourseGradesPanel({
         .map((conflict) => ({
           ...conflict,
           sessionId,
-          sessionName: normalizeAnswerValue(session?.name) || normalizeAnswerValue(conflict?.sessionName) || 'Session',
+          sessionName: normalizeAnswerValue(session?.name) || normalizeAnswerValue(conflict?.sessionName) || t('grades.coursePanel.session'),
         }));
       return {
         summary,
@@ -1252,7 +1257,7 @@ export default function CourseGradesPanel({
     } finally {
       setRefreshingSessionIds((prev) => ({ ...prev, [sessionId]: false }));
     }
-  }, []);
+  }, [t]);
 
   const removeConflictFromDialogs = useCallback((targetConflict) => {
     setConflictsDialog((prev) => {
@@ -1297,12 +1302,12 @@ export default function CourseGradesPanel({
         setGlobalMessage(outcome.warnings.join(' '));
         setGlobalMessageType('warning');
       } else {
-        setGlobalMessage('Grades recalculated.');
+        setGlobalMessage(t('grades.coursePanel.gradesRecalculated'));
         setGlobalMessageType('success');
       }
       await fetchGrades(selectedSessionIds, { applyToState: true });
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to recalculate grades.');
+      setGlobalMessage(err.response?.data?.message || t('grades.coursePanel.failedRecalculate'));
       setGlobalMessageType('error');
     }
   }, [
@@ -1335,7 +1340,7 @@ export default function CourseGradesPanel({
         setRecalculateAllProgress((prev) => ({
           ...prev,
           completed: index,
-          currentSessionName: normalizeAnswerValue(session?.name) || 'Session',
+          currentSessionName: normalizeAnswerValue(session?.name) || t('grades.coursePanel.session'),
         }));
 
         try {
@@ -1343,10 +1348,10 @@ export default function CourseGradesPanel({
           const outcome = await recalculateOneSession(session);
           outcome.conflicts.forEach((conflict) => collectedConflicts.push(conflict));
           outcome.warnings.forEach((warning) => {
-            warningMessages.push(`${normalizeAnswerValue(session?.name) || 'Session'}: ${warning}`);
+            warningMessages.push(`${normalizeAnswerValue(session?.name) || t('grades.coursePanel.session')}: ${warning}`);
           });
         } catch (err) {
-          errorMessages.push(`${normalizeAnswerValue(session?.name) || 'Session'}: ${err.response?.data?.message || 'Failed to recalculate grades.'}`);
+          errorMessages.push(`${normalizeAnswerValue(session?.name) || t('grades.coursePanel.session')}: ${err.response?.data?.message || t('grades.coursePanel.failedRecalculate')}`);
         }
 
         setRecalculateAllProgress((prev) => ({
@@ -1372,11 +1377,11 @@ export default function CourseGradesPanel({
         setGlobalMessage(warningMessages.join(' '));
         setGlobalMessageType('warning');
       } else {
-        setGlobalMessage('Finished recalculating grades for selected sessions.');
+        setGlobalMessage(t('grades.coursePanel.finishedRecalculating'));
         setGlobalMessageType('success');
       }
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to recalculate some grades.');
+      setGlobalMessage(err.response?.data?.message || t('grades.coursePanel.failedRecalculateSome'));
       setGlobalMessageType('error');
     } finally {
       setRecalculateAllProgress({
@@ -1403,7 +1408,7 @@ export default function CourseGradesPanel({
 
   const handleAcceptConflictFromList = useCallback(async (conflict) => {
     if (!isAutoGradeableConflict(conflict)) {
-      setGlobalMessage('This question type cannot be auto-graded.');
+      setGlobalMessage(t('grades.coursePanel.cannotAutoGrade'));
       setGlobalMessageType('warning');
       return;
     }
@@ -1411,11 +1416,11 @@ export default function CourseGradesPanel({
     try {
       await handleAcceptConflict(conflict);
       removeConflictFromDialogs(conflict);
-      setGlobalMessage('Applied recalculated automatic mark.');
+      setGlobalMessage(t('grades.coursePanel.appliedAutoMark'));
       setGlobalMessageType('success');
       await fetchGrades(selectedSessionIds, { applyToState: true });
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to apply automatic mark.');
+      setGlobalMessage(err.response?.data?.message || t('grades.coursePanel.failedApplyAuto'));
       setGlobalMessageType('error');
     }
   }, [fetchGrades, handleAcceptConflict, removeConflictFromDialogs, selectedSessionIds]);
@@ -1447,7 +1452,7 @@ export default function CourseGradesPanel({
         setConflictDetailState((prev) => ({
           ...prev,
           loading: false,
-          error: 'Conflict detail is missing session, question, or student identifiers.',
+          error: t('grades.coursePanel.conflictMissingIds'),
         }));
         return;
       }
@@ -1483,7 +1488,7 @@ export default function CourseGradesPanel({
       setConflictDetailState((prev) => ({
         ...prev,
         loading: false,
-        error: err.response?.data?.message || 'Failed to load conflict details.',
+        error: err.response?.data?.message || t('grades.coursePanel.failedLoadConflicts'),
       }));
     }
   }, [loadConflictSessionResults]);
@@ -1517,7 +1522,7 @@ export default function CourseGradesPanel({
     if (!isAutoGradeableConflict(conflict, conflictDetailState.question)) {
       setConflictDetailState((prev) => ({
         ...prev,
-        error: 'This question type cannot be auto-graded.',
+        error: t('grades.coursePanel.cannotAutoGrade'),
       }));
       return;
     }
@@ -1526,14 +1531,14 @@ export default function CourseGradesPanel({
     try {
       await handleAcceptConflict(conflict);
       removeConflictFromDialogs(conflict);
-      setGlobalMessage('Applied recalculated automatic mark.');
+      setGlobalMessage(t('grades.coursePanel.appliedAutoMark'));
       setGlobalMessageType('success');
       await fetchGrades(selectedSessionIds, { applyToState: true });
     } catch (err) {
       setConflictDetailState((prev) => ({
         ...prev,
         saving: false,
-        error: err.response?.data?.message || 'Failed to apply automatic mark.',
+        error: err.response?.data?.message || t('grades.coursePanel.failedApplyAuto'),
       }));
     }
   }, [
@@ -1553,7 +1558,7 @@ export default function CourseGradesPanel({
     if (!Number.isFinite(points) || points < 0) {
       setConflictDetailState((prev) => ({
         ...prev,
-        error: 'Manual points must be a valid number greater than or equal to zero.',
+        error: t('grades.coursePanel.invalidManualPoints'),
       }));
       return;
     }
@@ -1562,14 +1567,14 @@ export default function CourseGradesPanel({
     try {
       await apiClient.patch(`/grades/${conflict.gradeId}/marks/${conflict.questionId}`, { points });
       removeConflictFromDialogs(conflict);
-      setGlobalMessage('Manual grade saved.');
+      setGlobalMessage(t('grades.coursePanel.manualGradeSaved'));
       setGlobalMessageType('success');
       await fetchGrades(selectedSessionIds, { applyToState: true });
     } catch (err) {
       setConflictDetailState((prev) => ({
         ...prev,
         saving: false,
-        error: err.response?.data?.message || 'Failed to save manual grade.',
+        error: err.response?.data?.message || t('grades.coursePanel.failedSaveManual'),
       }));
     }
   }, [
@@ -1583,7 +1588,7 @@ export default function CourseGradesPanel({
   const handleAcceptAllConflicts = useCallback(async () => {
     const autoConflicts = conflictsDialog.conflicts.filter((conflict) => isAutoGradeableConflict(conflict));
     if (!autoConflicts.length) {
-      setGlobalMessage('No auto-gradeable conflicts to apply.');
+      setGlobalMessage(t('grades.coursePanel.noAutoConflicts'));
       setGlobalMessageType('warning');
       return;
     }
@@ -1597,7 +1602,7 @@ export default function CourseGradesPanel({
         await handleAcceptConflict(conflict);
         acceptedConflicts.push(conflict);
       } catch (err) {
-        errors.push(err.response?.data?.message || 'Failed to apply some recalculated marks.');
+        errors.push(err.response?.data?.message || t('grades.coursePanel.failedApplySomeAuto'));
       }
     }
 
@@ -1631,10 +1636,10 @@ export default function CourseGradesPanel({
     } else {
       const skippedCount = conflictsDialog.conflicts.length - autoConflicts.length;
       if (skippedCount > 0) {
-        setGlobalMessage(`Applied automatic marks where supported. ${skippedCount} conflict(s) require manual handling.`);
+        setGlobalMessage(t('grades.coursePanel.appliedAutoPartial', { count: skippedCount }));
         setGlobalMessageType('warning');
       } else {
-        setGlobalMessage('Applied recalculated automatic marks for selected manual overrides.');
+        setGlobalMessage(t('grades.coursePanel.appliedAutoMarks'));
         setGlobalMessageType('success');
       }
     }
@@ -1700,7 +1705,7 @@ export default function CourseGradesPanel({
             onClick={() => openSessionPicker('show')}
             disabled={!canOpenSessionPicker}
           >
-            {tableVisible ? 'Edit Grade Table' : 'Show Grade Table'}
+            {tableVisible ? t('grades.coursePanel.editGradeTable') : t('grades.coursePanel.showGradeTable')}
           </Button>
           <Button
             size="small"
@@ -1709,7 +1714,7 @@ export default function CourseGradesPanel({
             onClick={handleExportCsv}
             disabled={tableVisible ? !canExportCurrentTable : !canOpenSessionPicker}
           >
-            Export grades to CSV
+            {t('grades.coursePanel.exportGradesCSV')}
           </Button>
           {loadingSessionOptions && <CircularProgress size={18} />}
         </Box>
@@ -1721,7 +1726,7 @@ export default function CourseGradesPanel({
 
       {instructorView && !tableVisible && (
         <Alert severity="info" sx={{ mb: 1.5 }}>
-          Choose one or more sessions to show the grade table.
+          {t('grades.coursePanel.chooseSessionsInfo')}
         </Alert>
       )}
 
@@ -1732,14 +1737,14 @@ export default function CourseGradesPanel({
         fullWidth
       >
         <DialogTitle>
-          {sessionPicker.mode === 'show' ? 'Select sessions for grade table' : 'Select sessions for CSV export'}
+          {sessionPicker.mode === 'show' ? t('grades.coursePanel.selectSessionsTable') : t('grades.coursePanel.selectSessionsCSV')}
         </DialogTitle>
         <DialogContent dividers>
           <TextField
             size="small"
             fullWidth
-            label="Search sessions"
-            placeholder="Filter by session name"
+            label={t('grades.coursePanel.searchSessions')}
+            placeholder={t('grades.coursePanel.filterBySession')}
             value={sessionPickerSearch}
             onChange={(event) => setSessionPickerSearch(event.target.value)}
             sx={{ mb: 1.25 }}
@@ -1753,12 +1758,12 @@ export default function CourseGradesPanel({
                 onChange={(event) => toggleSelectAllSessions(event.target.checked)}
               />
             )}
-            label={`Select all (${filteredSessionPickerIds.length})`}
+            label={t('grades.coursePanel.selectAll', { count: filteredSessionPickerIds.length })}
             sx={{ mb: 1 }}
           />
           {filteredSessionSelectionOptions.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No sessions match your search.
+              {t('grades.coursePanel.noSessionsMatch')}
             </Typography>
           ) : (
             <List dense sx={{ border: 1, borderColor: 'divider', borderRadius: 1, maxHeight: 360, overflowY: 'auto' }}>
@@ -1770,11 +1775,11 @@ export default function CourseGradesPanel({
                   <ListItemButton key={sessionId} onClick={() => toggleSessionPickerSession(sessionId)}>
                     <Checkbox size="small" checked={checked} />
                     <ListItemText
-                      primary={session.name || 'Untitled session'}
-                      secondary={session.status ? `Status: ${session.status}` : undefined}
+                      primary={session.name || t('grades.coursePanel.untitledSession')}
+                      secondary={session.status ? t('grades.coursePanel.sessionStatus', { status: session.status }) : undefined}
                     />
                     {ungradedCount > 0 && (
-                      <Chip size="small" color="warning" variant="outlined" label={`Needs grading (${ungradedCount})`} />
+                      <Chip size="small" color="warning" variant="outlined" label={t('grades.coursePanel.needsGradingCount', { count: ungradedCount })} />
                     )}
                   </ListItemButton>
                 );
@@ -1784,14 +1789,14 @@ export default function CourseGradesPanel({
         </DialogContent>
         <DialogActions>
           <Button onClick={closeSessionPicker} disabled={sessionPickerSubmitting}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
             onClick={handleConfirmSessionPicker}
             disabled={sessionPickerSubmitting || !validSessionPickerSelection.length}
           >
-            {sessionPicker.mode === 'show' ? 'Show Table' : 'Export CSV'}
+            {sessionPicker.mode === 'show' ? t('grades.coursePanel.showTable') : t('grades.coursePanel.exportCSV')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1814,7 +1819,7 @@ export default function CourseGradesPanel({
                 onClick={handleRecalculateAll}
                 disabled={!visibleSessions.length || recalculateAllProgress.active}
               >
-                Re-calculate all
+                {t('grades.coursePanel.recalculateAll')}
               </Button>
             )}
             {!instructorView && (
@@ -1825,14 +1830,14 @@ export default function CourseGradesPanel({
                 onClick={handleExportCsv}
                 disabled={!visibleSessions.length || !sortedRows.length}
               >
-                Export CSV
+                {t('grades.coursePanel.exportCSV')}
               </Button>
             )}
             {instructorView && (
               <Chip
                 size="small"
                 variant="outlined"
-                label={`${visibleSessions.length} session${visibleSessions.length === 1 ? '' : 's'} selected`}
+                label={t('grades.coursePanel.sessionsSelected', { count: visibleSessions.length })}
               />
             )}
           </Box>
@@ -1840,8 +1845,9 @@ export default function CourseGradesPanel({
           {recalculateAllProgress.active && (
             <Paper variant="outlined" sx={{ p: 1.25, mb: 1.25 }}>
               <Typography variant="body2" sx={{ mb: 0.5 }}>
-                Recalculating grades {recalculateAllProgress.completed}/{recalculateAllProgress.total}
-                {recalculateAllProgress.currentSessionName ? `: ${recalculateAllProgress.currentSessionName}` : ''}
+                {recalculateAllProgress.currentSessionName
+                  ? t('grades.coursePanel.recalculatingSession', { completed: recalculateAllProgress.completed, total: recalculateAllProgress.total, sessionName: recalculateAllProgress.currentSessionName })
+                  : t('grades.coursePanel.recalculatingProgress', { completed: recalculateAllProgress.completed, total: recalculateAllProgress.total })}
               </Typography>
               <LinearProgress
                 variant="determinate"
@@ -1877,8 +1883,8 @@ export default function CourseGradesPanel({
                   setRowsPerPage(Number.isFinite(nextValue) ? nextValue : 25);
                   setPage(0);
                 }}
-                rowsPerPageOptions={instructorView ? [25, 50, 100, { label: 'All', value: -1 }] : [rowsPerPage]}
-                labelRowsPerPage={instructorView ? 'Rows per page:' : ''}
+                rowsPerPageOptions={instructorView ? [25, 50, 100, { label: t('grades.coursePanel.all'), value: -1 }] : [rowsPerPage]}
+                labelRowsPerPage={instructorView ? t('grades.coursePanel.rowsPerPage') : ''}
                 sx={{ mb: 0.75 }}
               />
 
@@ -1914,7 +1920,7 @@ export default function CourseGradesPanel({
                           direction={sort.field === 'name' ? sort.direction : 'asc'}
                           onClick={() => handleSort('name')}
                         >
-                          Student
+                          {t('grades.coursePanel.student')}
                         </TableSortLabel>
                       </TableCell>
                       <TableCell sx={{ fontWeight: 700, minWidth: 160 }}>
@@ -1923,7 +1929,7 @@ export default function CourseGradesPanel({
                           direction={sort.field === 'email' ? sort.direction : 'asc'}
                           onClick={() => handleSort('email')}
                         >
-                          Email
+                          {t('common.email')}
                         </TableSortLabel>
                       </TableCell>
                       <TableCell sx={{ fontWeight: 700, minWidth: 96 }}>
@@ -1932,7 +1938,7 @@ export default function CourseGradesPanel({
                           direction={sort.field === 'avgParticipation' ? sort.direction : 'desc'}
                           onClick={() => handleSort('avgParticipation')}
                         >
-                          Avg. Participation
+                          {t('grades.coursePanel.avgParticipation')}
                         </TableSortLabel>
                       </TableCell>
                       {visibleSessions.flatMap((session) => {
@@ -1954,10 +1960,10 @@ export default function CourseGradesPanel({
                                   direction={sort.field === markSortKey ? sort.direction : 'desc'}
                                   onClick={() => handleSort(markSortKey)}
                                 >
-                                  {session.name} mark
+                                  {t('grades.coursePanel.sessionMarkHeader', { name: session.name })}
                                 </TableSortLabel>
                                 {typeof onOpenSession === 'function' && (
-                                  <Tooltip title="Open session review">
+                                  <Tooltip title={t('grades.coursePanel.openSessionReview')}>
                                     <span>
                                       <IconButton
                                         size="small"
@@ -1970,7 +1976,7 @@ export default function CourseGradesPanel({
                                   </Tooltip>
                                 )}
                                 {instructorView && (
-                                  <Tooltip title="Re-calculate this session's grades">
+                                  <Tooltip title={t('grades.coursePanel.recalculateSessionTooltip')}>
                                     <span>
                                       <IconButton
                                         size="small"
@@ -1988,7 +1994,7 @@ export default function CourseGradesPanel({
                                   size="small"
                                   color="warning"
                                   variant="outlined"
-                                  label={instructorView ? `${ungradedCount} ungraded` : 'Ungraded'}
+                                  label={instructorView ? t('grades.coursePanel.ungradedCount', { count: ungradedCount }) : t('grades.coursePanel.ungraded')}
                                   sx={{ maxWidth: 140 }}
                                 />
                               )}
@@ -2059,23 +2065,23 @@ export default function CourseGradesPanel({
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Manual override conflicts</DialogTitle>
+        <DialogTitle>{t('grades.coursePanel.manualOverrideConflicts')}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Automatic recalculation produced different marks than existing manual overrides. Manual marks were preserved.
+            {t('grades.coursePanel.autoRecalcNote')}
           </Typography>
           {conflictsDialog.conflicts.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">No conflicts.</Typography>
+            <Typography variant="body2" color="text.secondary">{t('grades.coursePanel.noConflicts')}</Typography>
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Student</TableCell>
-                    <TableCell>Question</TableCell>
-                    <TableCell>Manual</TableCell>
-                    <TableCell>Auto</TableCell>
-                    <TableCell>Action</TableCell>
+                    <TableCell>{t('grades.coursePanel.student')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.question')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.manual')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.auto')}</TableCell>
+                    <TableCell>{t('common.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -2101,7 +2107,7 @@ export default function CourseGradesPanel({
                           onClick={() => handleAcceptConflictFromList(conflict)}
                           disabled={!isAutoGradeableConflict(conflict)}
                         >
-                          Accept Auto
+                          {t('grades.coursePanel.acceptAuto')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -2112,9 +2118,9 @@ export default function CourseGradesPanel({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConflictsDialog({ open: false, conflicts: [] })}>Keep Manual</Button>
+          <Button onClick={() => setConflictsDialog({ open: false, conflicts: [] })}>{t('grades.coursePanel.keepManual')}</Button>
           <Button variant="contained" onClick={handleAcceptAllConflicts} disabled={!conflictsDialog.conflicts.length}>
-            Accept All Auto Marks
+            {t('grades.coursePanel.acceptAllAuto')}
           </Button>
         </DialogActions>
       </Dialog>

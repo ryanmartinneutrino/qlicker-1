@@ -55,6 +55,10 @@ const SettingsSchema = new mongoose.Schema(
     // Token expiry (minutes). Default 120 = 2 hours. Adjustable in admin panel.
     tokenExpiryMinutes: { type: Number, default: 120 },
 
+    // i18n / locale settings
+    locale: { type: String, default: 'en' },
+    dateFormat: { type: String, default: 'DD-MMM-YYYY' },
+
     // Legacy extra fields (preserved so they aren't stripped on save)
     maxImageSize: { type: Number, default: 0 },
     maxImageWidth: { type: Number, default: 0 },

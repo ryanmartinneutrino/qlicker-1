@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Typography, TextField, Button, Alert, CircularProgress, Divider, Paper, Avatar,
+  FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import { PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
+import i18n, { SUPPORTED_LOCALES } from '../i18n';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import AutoSaveStatus from '../components/common/AutoSaveStatus';
@@ -26,6 +29,7 @@ function diffProfile(previousProfile, nextProfile) {
 }
 
 export default function Profile() {
+  const { t } = useTranslation();
   const { user, loadUser } = useAuth();
   const [profile, setProfile] = useState({ firstname: '', lastname: '', studentNumber: '' });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -36,6 +40,7 @@ export default function Profile() {
   const [profileSaveError, setProfileSaveError] = useState('');
   const [changingPw, setChangingPw] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [userLocale, setUserLocale] = useState('');
   const fileInputRef = useRef(null);
   const profileHydratedRef = useRef(false);
   const profileSaveInFlightRef = useRef(false);
@@ -43,7 +48,7 @@ export default function Profile() {
   const lastSavedProfileRef = useRef(normalizeProfile());
 
   const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
-  const numberLabel = isStaff ? 'Employee Number' : 'Student Number';
+  const numberLabel = isStaff ? t('profile.employeeNumber') : t('profile.studentNumber');
 
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {
@@ -52,7 +57,14 @@ export default function Profile() {
       setProfile(normalizedProfile);
       lastSavedProfileRef.current = normalizedProfile;
       profileHydratedRef.current = true;
-    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load profile' }))
+      // Load per-user locale preference (empty = use app default)
+      const savedLocale = u.locale || '';
+      setUserLocale(savedLocale);
+      if (savedLocale) {
+        i18n.changeLanguage(savedLocale);
+        localStorage.setItem('qlicker_locale', savedLocale);
+      }
+    }).catch(() => setMsg({ severity: 'error', text: t('profile.profileFailed') }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -92,8 +104,8 @@ export default function Profile() {
         await loadUser();
       } catch (err) {
         setProfileSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to update profile.';
-        setProfileSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('profile.profileFailed');
+        setProfileSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         profileSaveInFlightRef.current = false;
 
@@ -128,11 +140,11 @@ export default function Profile() {
   const handleChangePassword = async () => {
     setPwMsg(null);
     if (passwords.newPassword !== passwords.confirmPassword) {
-      setPwMsg({ severity: 'error', text: 'New passwords do not match' });
+      setPwMsg({ severity: 'error', text: t('profile.passwordsNoMatch') });
       return;
     }
     if (passwords.newPassword.length < 6) {
-      setPwMsg({ severity: 'error', text: 'New password must be at least 6 characters' });
+      setPwMsg({ severity: 'error', text: t('profile.passwordTooShort') });
       return;
     }
     setChangingPw(true);
@@ -142,9 +154,9 @@ export default function Profile() {
         newPassword: passwords.newPassword,
       });
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setPwMsg({ severity: 'success', text: 'Password changed' });
+      setPwMsg({ severity: 'success', text: t('profile.passwordChanged') });
     } catch (err) {
-      setPwMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to change password' });
+      setPwMsg({ severity: 'error', text: err.response?.data?.error || t('profile.failedChangePassword') });
     } finally {
       setChangingPw(false);
     }
@@ -163,12 +175,27 @@ export default function Profile() {
       const { data } = await apiClient.post('/images', formData);
       await apiClient.patch('/users/me/image', { profileImage: data.image.url });
       await loadUser();
-      setMsg({ severity: 'success', text: 'Profile photo updated' });
+      setMsg({ severity: 'success', text: t('profile.photoUpdated') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to upload photo' });
+      setMsg({ severity: 'error', text: t('profile.photoFailed') });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleLocaleChange = async (e) => {
+    const newLocale = e.target.value;
+    setUserLocale(newLocale);
+    // Apply immediately
+    const effectiveLocale = newLocale || 'en';
+    i18n.changeLanguage(effectiveLocale);
+    localStorage.setItem('qlicker_locale', effectiveLocale);
+    // Persist to server
+    try {
+      await apiClient.patch('/users/me', { locale: newLocale });
+    } catch {
+      // Best-effort; locale is also stored in localStorage
     }
   };
 
@@ -176,13 +203,13 @@ export default function Profile() {
 
   return (
     <Box sx={{ p: 3, maxWidth: 600 }}>
-      <Typography variant="h4" gutterBottom>Profile</Typography>
+      <Typography variant="h4" gutterBottom>{t('profile.title')}</Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
         {user?.email} &middot; {user?.role}
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Profile Photo</Typography>
+        <Typography variant="h6" gutterBottom>{t('profile.photo')}</Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Avatar
             src={user?.profile?.profileImage}
@@ -204,37 +231,58 @@ export default function Profile() {
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
-              {uploading ? 'Uploading…' : 'Upload Photo'}
+              {uploading ? t('profile.uploading') : t('profile.uploadPhoto')}
             </Button>
           </Box>
         </Box>
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" gutterBottom>Personal Information</Typography>
+        <Typography variant="h6" gutterBottom>{t('profile.personalInfo')}</Typography>
         <AutoSaveStatus status={profileSaveStatus} errorText={profileSaveError} />
         {user?.isSSOUser && (
-          <Alert severity="info" sx={{ mb: 2 }}>First name and last name are managed by your SSO provider and cannot be changed here.</Alert>
+          <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoManagedNote')}</Alert>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="First Name" value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
-          <TextField label="Last Name" value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
+          <TextField label={t('profile.firstName')} value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
+          <TextField label={t('profile.lastName')} value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
           <TextField label={numberLabel} value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
           {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         </Box>
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Change Password</Typography>
+        <Typography variant="h6" gutterBottom>{t('profile.changePassword')}</Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="Current Password" type="password" value={passwords.currentPassword} onChange={(e) => setPasswords((s) => ({ ...s, currentPassword: e.target.value }))} fullWidth />
-          <TextField label="New Password" type="password" value={passwords.newPassword} onChange={(e) => setPasswords((s) => ({ ...s, newPassword: e.target.value }))} fullWidth />
-          <TextField label="Confirm New Password" type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords((s) => ({ ...s, confirmPassword: e.target.value }))} fullWidth />
+          <TextField label={t('profile.currentPassword')} type="password" value={passwords.currentPassword} onChange={(e) => setPasswords((s) => ({ ...s, currentPassword: e.target.value }))} fullWidth />
+          <TextField label={t('profile.newPassword')} type="password" value={passwords.newPassword} onChange={(e) => setPasswords((s) => ({ ...s, newPassword: e.target.value }))} fullWidth />
+          <TextField label={t('profile.confirmNewPassword')} type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords((s) => ({ ...s, confirmPassword: e.target.value }))} fullWidth />
           <Button variant="contained" onClick={handleChangePassword} disabled={changingPw}>
-            {changingPw ? 'Changing…' : 'Change Password'}
+            {changingPw ? t('profile.changingPassword') : t('profile.changePassword')}
           </Button>
           {pwMsg && <Alert severity={pwMsg.severity} onClose={() => setPwMsg(null)}>{pwMsg.text}</Alert>}
         </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>{t('profile.language')}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t('profile.languageHelp')}
+        </Typography>
+        <FormControl fullWidth>
+          <InputLabel id="profile-locale-label">{t('profile.language')}</InputLabel>
+          <Select
+            labelId="profile-locale-label"
+            value={userLocale}
+            label={t('profile.language')}
+            onChange={handleLocaleChange}
+          >
+            <MenuItem value="">{t('profile.useAppDefault')}</MenuItem>
+            {SUPPORTED_LOCALES.map((loc) => (
+              <MenuItem key={loc.code} value={loc.code}>{loc.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Paper>
     </Box>
   );

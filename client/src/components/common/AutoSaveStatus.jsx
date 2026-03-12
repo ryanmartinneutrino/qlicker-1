@@ -3,18 +3,20 @@ import {
   Alert, Snackbar, useMediaQuery, useTheme,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import { useTranslation } from 'react-i18next';
 
-const DEFAULT_SAVE_ERROR = 'Changes could not be saved. Your last change was not recorded.';
-const DEFAULT_SAVE_SUCCESS = 'Changes saved';
+const DEFAULT_SAVE_ERROR_KEY = 'autoSave.errorNotSaved';
+const DEFAULT_SAVE_SUCCESS_KEY = 'autoSave.saved';
 
 export default function AutoSaveStatus({ status = 'idle', errorText = '' }) {
+  const { t } = useTranslation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [notice, setNotice] = useState({
     key: 0,
     open: false,
     severity: 'success',
-    message: DEFAULT_SAVE_SUCCESS,
+    message: t(DEFAULT_SAVE_SUCCESS_KEY),
     autoHideDuration: 1200,
   });
 
@@ -24,7 +26,7 @@ export default function AutoSaveStatus({ status = 'idle', errorText = '' }) {
         key: prev.key + 1,
         open: true,
         severity: 'success',
-        message: DEFAULT_SAVE_SUCCESS,
+        message: t(DEFAULT_SAVE_SUCCESS_KEY),
         autoHideDuration: 1200,
       }));
       return;
@@ -35,11 +37,11 @@ export default function AutoSaveStatus({ status = 'idle', errorText = '' }) {
         key: prev.key + 1,
         open: true,
         severity: 'error',
-        message: errorText || DEFAULT_SAVE_ERROR,
+        message: errorText || t(DEFAULT_SAVE_ERROR_KEY),
         autoHideDuration: null,
       }));
     }
-  }, [status, errorText]);
+  }, [status, errorText, t]);
 
   const closeNotice = () => {
     setNotice((prev) => ({ ...prev, open: false }));

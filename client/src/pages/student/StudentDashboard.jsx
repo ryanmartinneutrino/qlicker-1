@@ -6,10 +6,12 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
 
 export default function StudentDashboard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export default function StudentDashboard() {
       const { data } = await apiClient.get('/courses');
       setCourses(data.courses || []);
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load courses' });
+      setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
     } finally {
       setLoading(false);
     }
@@ -42,9 +44,9 @@ export default function StudentDashboard() {
       setEnrollOpen(false);
       setEnrollCode('');
       fetchCourses();
-      setMsg({ severity: 'success', text: 'Successfully enrolled in course' });
+      setMsg({ severity: 'success', text: t('student.dashboard.enrollSuccess') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to enroll' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('student.dashboard.failedEnroll') });
     } finally {
       setEnrolling(false);
     }
@@ -62,9 +64,9 @@ export default function StudentDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Typography variant="h4">My Courses</Typography>
+        <Typography variant="h4">{t('student.dashboard.myCourses')}</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEnrollOpen(true)}>
-          Enroll in Course
+          {t('student.dashboard.enrollInCourse')}
         </Button>
       </Box>
 
@@ -73,12 +75,12 @@ export default function StudentDashboard() {
       ) : courses.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <SchoolIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary">No courses yet</Typography>
+          <Typography variant="h6" color="text.secondary">{t('student.dashboard.noCoursesYet')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Use an enrollment code from your instructor to join a course.
+            {t('student.dashboard.enrollMessage')}
           </Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setEnrollOpen(true)}>
-            Enroll in Course
+            {t('student.dashboard.enrollInCourse')}
           </Button>
         </Box>
       ) : (
@@ -108,7 +110,7 @@ export default function StudentDashboard() {
                   </Typography>
                   {course.section && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Section: {course.section}
+                      {t('student.dashboard.section', { section: course.section })}
                     </Typography>
                   )}
                 </CardContent>
@@ -120,13 +122,13 @@ export default function StudentDashboard() {
 
       {/* Enroll Dialog */}
       <Dialog open={enrollOpen} onClose={() => setEnrollOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Enroll in Course</DialogTitle>
+        <DialogTitle>{t('student.dashboard.enrollInCourse')}</DialogTitle>
         <DialogContent sx={{ pt: '8px !important' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Enter the enrollment code provided by your instructor.
+            {t('student.dashboard.enrollmentCodeMessage')}
           </Typography>
           <TextField
-            label="Enrollment Code"
+            label={t('student.dashboard.enrollmentCode')}
             value={enrollCode}
             onChange={(e) => setEnrollCode(e.target.value)}
             fullWidth
@@ -134,9 +136,9 @@ export default function StudentDashboard() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEnrollOpen(false)}>Cancel</Button>
+          <Button onClick={() => setEnrollOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleEnroll} disabled={enrolling || !enrollCode.trim()}>
-            {enrolling ? 'Enrolling…' : 'Enroll'}
+            {enrolling ? t('student.dashboard.enrolling') : t('student.dashboard.enroll')}
           </Button>
         </DialogActions>
       </Dialog>

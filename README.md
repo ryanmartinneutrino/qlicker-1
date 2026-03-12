@@ -257,8 +257,47 @@ AZURE_CONTAINER_NAME=images
 
 > **Note:** Azurite uses a different blob endpoint format (`http://127.0.0.1:10000/devstoreaccount1`). The upload plugin currently constructs Azure URLs using the standard `https://<account>.blob.core.windows.net` pattern. For production usage this is correct; for local Azurite testing, uploaded files can be accessed directly via the Azurite endpoint.
 
+## Internationalization (i18n)
+
+Qlicker supports multiple languages. Currently **English** (`en`) and **French** (`fr`) are included.
+
+### How It Works
+
+- **Client-side:** Uses [`react-i18next`](https://react.i18next.com/) with browser language detection (`i18next-browser-languagedetector`).
+- **Translation files:** `client/src/i18n/locales/en.json` and `client/src/i18n/locales/fr.json` (879 keys each).
+- **Language detection order:** `localStorage` (`qlicker_locale`) → browser language → fallback `en`.
+
+### Admin Panel (App Default)
+
+Administrators can set the **app-wide default language** and **date format** in the Admin Dashboard → Settings tab. These values are stored in the `Settings` collection (`locale`, `dateFormat`).
+
+### User Override (Profile Page)
+
+Each user can override the app default by selecting a language on their **Profile** page. Choices are:
+- **Use app default** — follows the admin setting
+- **English**
+- **Français**
+
+The per-user preference is stored in `User.locale` and also cached in `localStorage`.
+
+### Adding a New Language
+
+1. Copy `client/src/i18n/locales/en.json` to a new file (e.g., `es.json`)
+2. Translate all 879 keys
+3. Register the new locale in `client/src/i18n/index.js`:
+   - Add to `resources` object
+   - Add to `SUPPORTED_LOCALES` array
+4. The admin and profile dropdowns will automatically include the new language
+
+### Legacy Database Compatibility
+
+- The `User.locale` field defaults to `''` (empty string). Legacy user documents without this field will seamlessly use the app default — no migration required.
+- The `Settings.locale` and `Settings.dateFormat` fields have defaults (`'en'` and `'DD-MMM-YYYY'`). Legacy settings documents without these fields will use the defaults automatically.
+- All `t()` translation calls use fallback keys, so missing translations gracefully fall back to English.
+
 ## Documentation
 
+- [Coding Standards](CODING_STANDARDS.md) — **Read before making any changes.** APIs, DB patterns, i18n, performance, security, and shared utilities
 - [Requirements](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) — Master requirements for the migration
 - [Migration Plan](MIGRATION.md) — Detailed migration plan, progress, and agent assignments
 - [Agent Task Files](agents/) — Detailed sub-task plans for each parallel agent

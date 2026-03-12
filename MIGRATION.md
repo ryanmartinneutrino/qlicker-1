@@ -840,10 +840,12 @@ The existing MongoDB database uses Meteor's conventions:
 
 ### Internationalization (i18n) Readiness
 
-- **Current state:** No i18n framework. All UI strings are hardcoded in English.
-- **Future-proofing strategy:** When `react-i18next` (or equivalent) is introduced, all hardcoded strings must be extracted to translation files. Until then, new UI text should be kept in clearly identifiable constants or component-level variables (not buried in JSX) to simplify future extraction.
-- **Date/number formatting:** `client/src/utils/date.js` uses hardcoded English month abbreviations. Should eventually switch to `Intl.DateTimeFormat` for locale-aware formatting. New formatting code should prefer the built-in `Intl` APIs.
-- **Error messages:** Server error messages are in English. Client-side messages should avoid duplicating server text when possible — prefer error codes that the client maps to localized messages.
+- **Current state:** ✅ `react-i18next` is installed and fully wired. English and French translations are complete (879 keys each). All 30+ React components use `useTranslation()` hooks.
+- **Admin control:** App-wide default language and date format are configurable in Admin Dashboard → Settings tab (`Settings.locale`, `Settings.dateFormat`).
+- **Per-user override:** Users can override the app default on their Profile page. Stored in `User.locale` (empty = use app default).
+- **Adding languages:** Copy `client/src/i18n/locales/en.json`, translate, register in `client/src/i18n/index.js` (see README for details).
+- **Date formatting:** `client/src/utils/date.js` provides `formatDisplayDate()` which uses the configured date format preset. Locale-aware `Intl.DateTimeFormat` can be substituted in future.
+- **Error messages:** Server error messages remain in English (technical codes). Client-side UI messages are fully translated via `t()` calls.
 
 ### Styling Guidelines
 
@@ -1037,7 +1039,7 @@ Phase 6 is complete (grading fully functional). A comprehensive code review (202
 8. **E2E tests:** Set up Playwright and implement flow tests for login, course management, session creation, live session, quiz, and grading.
 9. ~~**Legacy DB indexes:** Add Mongoose indexes matching the legacy index definitions to preserve query performance.~~ ✅ Done — Added to User, Question, Session, Grade, Image models.
 10. **Storage hardening:** Move from public object URLs to private-bucket image delivery (staged DB migration + bucket policy cutover).
-11. **i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings.
+11. ~~**i18n framework:** Introduce `react-i18next` and begin extracting hardcoded strings.~~ ✅ Done — `react-i18next` installed with 879 translation keys (en/fr), admin locale selector, per-user locale override on Profile page, all 30+ components wired.
 12. **Copy sessions between courses** (Agent 3 remaining task).
 13. **Client bundle optimization:** Main JS chunk is 1.6 MB (482 KB gzipped). Apply code-splitting with dynamic imports for heavy pages (SessionEditor, LiveSession, etc.).
 
@@ -1423,35 +1425,37 @@ MUI components provide a strong baseline for accessibility (proper ARIA roles, k
 
 ### Internationalization (i18n)
 
-#### Current State: Not Implemented
+#### Current State: ✅ Fully Implemented
 
-There is no i18n framework installed. All user-facing text is hardcoded in English across ~50+ components. This includes:
-- UI labels ("Dashboard", "Courses", "Login", "Draft", "Live", "Ended")
-- Status messages ("Changes saved", "Logging in...", "Failed to load")
-- Error messages ("Invalid email or password", "Email already registered")
-- Date formatting (`client/src/utils/date.js` uses hardcoded English month abbreviations)
-- Number formatting (uses `.toFixed(2)` without locale awareness)
+The i18n framework is installed and all user-facing strings have been extracted to translation files.
 
-#### Recommended Approach
+**Infrastructure:**
+- **Framework:** `react-i18next` + `i18next` + `i18next-browser-languagedetector`
+- **Config:** `client/src/i18n/index.js` — language detection (localStorage → browser → fallback 'en')
+- **Locale files:** `client/src/i18n/locales/en.json` (English), `client/src/i18n/locales/fr.json` (French)
+- **Exports:** `SUPPORTED_LOCALES`, `DATE_FORMATS`, `DEFAULT_DATE_FORMAT`, `DEFAULT_LOCALE`
 
-1. **Phase 7:** Install `react-i18next` + `i18next`. Create `client/src/i18n/` with English translation file as baseline.
-2. **Phase 7–8:** Extract all hardcoded strings to translation keys. Start with high-traffic pages (Login, Dashboard, LiveSession).
-3. **Phase 8:** Switch `client/src/utils/date.js` from `MONTH_SHORT[]` array to `Intl.DateTimeFormat` for locale-aware date display.
-4. **Phase 8:** Switch number formatting to `Intl.NumberFormat`.
+**App-wide settings (admin):**
+- `Settings.locale` — default app language (set in Admin Dashboard → Settings tab)
+- `Settings.dateFormat` — default date format preset (DD-MMM-YYYY, MMM-DD-YYYY, YYYY-MM-DD)
 
-#### Immediate Best Practice (No Framework Needed)
+**Per-user override:**
+- `User.locale` — per-user language preference (set in Profile page language dropdown)
+- Empty string means "use app default"
+- Stored in both the database and `localStorage` (`qlicker_locale`)
 
-Until `react-i18next` is introduced, new UI text should be placed in **named constants at the top of files** (not buried inline in JSX). This makes future extraction mechanical. Example:
+**Coverage:** All 30+ JSX components use `useTranslation()` hook with `t()` calls. Translation keys are organized by feature area:
+- `common.*` — shared labels (Save, Cancel, Loading, etc.)
+- `auth.*`, `profile.*`, `admin.*` — authentication and admin UI
+- `professor.course.*`, `professor.sessionEditor.*`, `professor.liveSession.*`, etc. — professor features
+- `student.course.*`, `student.liveSession.*`, `student.quiz.*`, etc. — student features
+- `grades.coursePanel.*`, `grades.questionPanel.*` — grading interface
+- `questions.editor.*`, `questions.display.*`, `questions.richText.*` — question components
+- `pageTitles.*` — document.title values
 
-```jsx
-// Good — easy to extract later
-const LABELS = { save: 'Save', cancel: 'Cancel', delete: 'Delete' };
-// ...
-<Button>{LABELS.save}</Button>
+**Legacy database compatibility:** The `User.locale` field defaults to empty string. Legacy user documents without a `locale` field will gracefully fall back to the app default via `user.locale || ''` → empty → app default.
 
-// Avoid — hard to find and extract
-<Button>Save</Button>
-```
+**Server-side note:** Server API error messages remain in English. These are technical error codes/messages consumed programmatically by the client, which displays its own translated user-facing messages. Server i18n is not needed at this time.
 
 ### Legacy Database Compatibility Check
 
@@ -1476,7 +1480,7 @@ All findings from this review are consistent with the existing legacy compatibil
 | **Performance** | ✅ Delta WS, ✅ query dedup, ✅ WS push for course pages | Client bundle code-splitting | Phase 7 (major optimizations complete) |
 | **Security** | Rate limiting, helmet, ReDoS, passwords, login logging, HTML sanitization | CSRF, localStorage token, SAML validation, token rotation, file magic bytes | Phases 7–8 |
 | **Accessibility** | ARIA on editors, aria-live regions, semantic logo, table headers, skip link, page titles, route focus management | Add automated accessibility regression tests (axe-core) | Phase 7 |
-| **i18n** | — | Install react-i18next, extract strings, locale-aware formatting | Phases 7–8 |
+| **i18n** | ✅ react-i18next installed, 879 translation keys (en/fr), admin locale selector, per-user locale override, all components wired | Number formatting via Intl.NumberFormat | Complete |
 | **Legacy DB** | All known issues addressed; defensive array fallbacks; msScoringMethod backfill | Group categories shape, loginServiceConfiguration decision, missing indexes | Phase 7 |
-| **Documentation** | README ✅, grading docs ✅ | Swagger registration, complete developer guide, complete user manual | Phases 7–8 |
-| **Testing** | 150 server + 3 client unit tests | Playwright E2E, CI pipeline, component tests, legacy DB compat tests | Phase 7–8 |
+| **Documentation** | README ✅, grading docs ✅, i18n docs ✅ | Swagger registration, complete developer guide, complete user manual | Phases 7–8 |
+| **Testing** | 173 server + 3 client unit tests (incl. user locale, legacy compat) | Playwright E2E, CI pipeline, component tests | Phase 7–8 |

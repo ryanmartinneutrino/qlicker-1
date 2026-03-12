@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Alert, Collapse } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 
 const POLL_INTERVAL = 15000;
 
 export default function ConnectionStatus() {
+  const { t } = useTranslation();
   const [isConnected, setIsConnected] = useState(true);
 
   const checkConnection = useCallback(async () => {
@@ -40,7 +42,7 @@ export default function ConnectionStatus() {
   return (
     <Collapse in={!isConnected}>
       <Alert severity="warning" sx={{ borderRadius: 0 }}>
-        Unable to connect to the server. Some features may not be available.
+        {t('connection.serverUnavailable')}
       </Alert>
     </Collapse>
   );

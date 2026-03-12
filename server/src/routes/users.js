@@ -25,7 +25,7 @@ export default async function userRoutes(app) {
 
   // PATCH /me
   app.patch('/me', { preHandler: authenticate }, async (request, reply) => {
-    const allowed = ['firstname', 'lastname', 'studentNumber'];
+    const profileAllowed = ['firstname', 'lastname', 'studentNumber'];
     const updates = {};
 
     const user = await User.findById(request.user.userId);
@@ -35,13 +35,18 @@ export default async function userRoutes(app) {
 
     const isSSOUser = !!user.services?.sso?.id;
 
-    for (const key of allowed) {
+    for (const key of profileAllowed) {
       if (request.body?.[key] !== undefined) {
         if (isSSOUser && (key === 'firstname' || key === 'lastname')) {
           continue; // SSO users cannot change name fields
         }
         updates[`profile.${key}`] = request.body[key];
       }
+    }
+
+    // Per-user locale preference
+    if (request.body?.locale !== undefined) {
+      updates.locale = request.body.locale;
     }
 
     const updated = await User.findByIdAndUpdate(

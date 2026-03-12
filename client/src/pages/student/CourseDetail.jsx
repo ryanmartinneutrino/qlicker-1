@@ -10,6 +10,7 @@ import apiClient from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 
 function getTimestamp(value) {
@@ -91,7 +92,7 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
     return {
       clickable: true,
       path: `/student/course/${courseId}/session/${session._id}/review?returnTab=${listTabIndex}`,
-      label: 'Review',
+      label: 'student.course.review',
       chipColor: 'success',
       chipVariant: 'outlined',
     };
@@ -101,7 +102,7 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
     return {
       clickable: false,
       path: '',
-      label: 'Quiz submitted',
+      label: 'student.course.quizSubmitted',
       chipColor: 'success',
       chipVariant: 'outlined',
     };
@@ -111,7 +112,7 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
     return {
       clickable: true,
       path: `/student/course/${courseId}/session/${session._id}/live`,
-      label: 'Join live',
+      label: 'student.course.joinLive',
       chipColor: 'primary',
       chipVariant: 'filled',
     };
@@ -120,13 +121,13 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
   if (isQuiz && session.status === 'running') {
     const hasResponses = !!session.quizHasResponsesByCurrentUser;
     const allQuestionsAnswered = !!session.quizAllQuestionsAnsweredByCurrentUser;
-    let quizActionLabel = 'Start quiz';
+    let quizActionLabel = 'student.course.startQuiz';
     let chipColor = 'primary';
     if (allQuestionsAnswered) {
-      quizActionLabel = 'Submit quiz';
+      quizActionLabel = 'student.course.submitQuiz';
       chipColor = 'error';
     } else if (hasResponses) {
-      quizActionLabel = 'Resume quiz';
+      quizActionLabel = 'student.course.resumeQuiz';
       chipColor = 'error';
     }
     return {
@@ -142,7 +143,7 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
     return {
       clickable: false,
       path: '',
-      label: 'Upcoming quiz',
+      label: 'student.course.upcomingQuiz',
       chipColor: 'default',
       chipVariant: 'outlined',
     };
@@ -158,6 +159,7 @@ function getStudentSessionAction(session, courseId, listTabIndex) {
 }
 
 export default function StudentCourseDetail() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -176,7 +178,7 @@ export default function StudentCourseDetail() {
       const { data } = await apiClient.get(`/courses/${id}`);
       setCourse(data.course || data);
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load course' });
+      setMsg({ severity: 'error', text: t('student.course.failedLoadCourse') });
     } finally {
       setLoading(false);
     }
@@ -301,14 +303,14 @@ export default function StudentCourseDetail() {
       await apiClient.delete(`/courses/${id}/students/${user._id}`);
       navigate('/student');
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to unenroll' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('student.course.failedUnenroll') });
       setUnenrolling(false);
       setUnenrollOpen(false);
     }
   };
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
-  if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
+  if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortSessions(sessions);
   const interactiveSessions = sortedSessions.filter((s) => !isQuizSession(s));
   const quizSessions = sortedSessions.filter(isQuizSession);
@@ -354,7 +356,7 @@ export default function StudentCourseDetail() {
                             <SessionStatusChip status={s.status} />
                             {s.hasNewFeedback && (
                               <Chip
-                                label="New feedback"
+                                label={t('student.course.newFeedback')}
                                 size="small"
                                 color="warning"
                                 variant="filled"
@@ -363,17 +365,17 @@ export default function StudentCourseDetail() {
                             )}
                             {s.status === 'done' && !s.reviewable && (
                               <Chip
-                                label="Not Reviewable"
+                                label={t('student.course.notReviewable')}
                                 size="small"
                                 variant="outlined"
                                 color="default"
                                 sx={COMPACT_CHIP_SX}
                               />
                             )}
-                            {s.practiceQuiz && <Chip label="Practice" size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                            {s.practiceQuiz && <Chip label={t('student.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
                             {action.label && (
                               <Chip
-                                label={action.label}
+                                label={t(action.label)}
                                 size="small"
                                 color={action.chipColor}
                                 variant={action.chipVariant}
@@ -385,7 +387,7 @@ export default function StudentCourseDetail() {
                       )}
                       secondary={(
                         <>
-                          {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                          {t('student.course.questionCount', { count: (s.questions || []).length })}
                           {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
                         </>
                       )}
@@ -409,7 +411,7 @@ export default function StudentCourseDetail() {
           </Typography>
           {headerSection && (
             <Typography variant="caption" color="text.secondary">
-              Section {headerSection}
+              {t('student.course.sectionHeader', { section: headerSection })}
             </Typography>
           )}
         </Box>
@@ -430,24 +432,24 @@ export default function StudentCourseDetail() {
         variant="scrollable"
         allowScrollButtonsMobile
       >
-        <Tab label={`Lectures (${interactiveSessions.length})`} />
-        <Tab label={`Quizzes (${quizSessions.length})`} />
-        <Tab label="Grades" />
-        <Tab label="Settings" />
+        <Tab label={`${t('student.course.lectures')} (${interactiveSessions.length})`} />
+        <Tab label={`${t('student.course.quizzes')} (${quizSessions.length})`} />
+        <Tab label={t('student.course.grades')} />
+        <Tab label={t('student.course.settings')} />
       </Tabs>
 
       <TabPanel value={tab} index={0}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Lectures</Typography>
-        {renderSessionList(interactiveSessions, 'No lectures available.', 0)}
+        <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.lectures')}</Typography>
+        {renderSessionList(interactiveSessions, t('student.course.noLectures'), 0)}
       </TabPanel>
 
       <TabPanel value={tab} index={1}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Quizzes</Typography>
-        {renderSessionList(quizSessions, 'No quizzes available.', 1)}
+        <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.quizzes')}</Typography>
+        {renderSessionList(quizSessions, t('student.course.noQuizzes'), 1)}
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
-        <Typography variant="h6" sx={{ mb: 1.5 }}>Grades</Typography>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>{t('student.course.grades')}</Typography>
         <CourseGradesPanel
           courseId={id}
           instructorView={false}
@@ -456,27 +458,27 @@ export default function StudentCourseDetail() {
       </TabPanel>
 
       <TabPanel value={tab} index={3}>
-        <Typography variant="h6" sx={{ mb: 1.5 }}>Course Settings</Typography>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>{t('student.course.courseSettings')}</Typography>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
-            Manage your enrollment for this course.
+            {t('student.course.manageEnrollment')}
           </Typography>
           <Button variant="outlined" color="error" onClick={() => setUnenrollOpen(true)}>
-            Unenroll from Course
+            {t('student.course.unenroll')}
           </Button>
         </Paper>
       </TabPanel>
 
       {/* Unenroll Confirmation */}
       <Dialog open={unenrollOpen} onClose={() => setUnenrollOpen(false)}>
-        <DialogTitle>Unenroll from Course</DialogTitle>
+        <DialogTitle>{t('student.course.unenrollConfirm')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to unenroll from <strong>{course.name}</strong>?
+          {t('student.course.unenrollMessage', { name: course.name })}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setUnenrollOpen(false)}>Cancel</Button>
+          <Button onClick={() => setUnenrollOpen(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={handleUnenroll} disabled={unenrolling}>
-            {unenrolling ? 'Unenrolling…' : 'Unenroll'}
+            {unenrolling ? t('student.course.unenrolling') : t('student.course.unenroll')}
           </Button>
         </DialogActions>
       </Dialog>
