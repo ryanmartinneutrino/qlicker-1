@@ -181,7 +181,8 @@ describe('GET /api/v1/courses/:id', () => {
     const body = res.json();
     expect(body.course).toBeDefined();
     expect(body.course.students).toBeUndefined();
-    expect(body.course.groupCategories).toBeUndefined();
+    // Students now see limited groupCategories for video chat (but no full member lists)
+    expect(body.course.currentUserId).toBeDefined();
   });
 
   it('non-enrolled user gets 403', async (ctx) => {

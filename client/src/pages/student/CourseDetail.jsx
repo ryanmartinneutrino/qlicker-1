@@ -12,6 +12,7 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
+import VideoChatPanel from '../../components/video/VideoChatPanel';
 
 function getTimestamp(value) {
   const timestamp = new Date(value || 0).getTime();
@@ -57,7 +58,7 @@ function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
 }
 
-const MAX_STUDENT_TAB_INDEX = 3;
+const MAX_STUDENT_TAB_INDEX = 4;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -172,6 +173,19 @@ export default function StudentCourseDetail() {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
+
+  // Video chat availability
+  const [videoEnabled, setVideoEnabled] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings/public').then(({ data }) => {
+      if (mounted && data.Jitsi_Enabled) {
+        setVideoEnabled(true);
+      }
+    }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
 
   const fetchCourse = useCallback(async () => {
     try {
@@ -402,6 +416,15 @@ export default function StudentCourseDetail() {
     );
   };
 
+  // Determine if video is available for this course based on course data
+  const courseHasVideo = videoEnabled && !!(
+    (course?.videoChatOptions && course.videoChatOptions.urlId) ||
+    (course?.groupCategories || []).some((cat) => cat.catVideoChatOptions && cat.catVideoChatOptions.urlId)
+  );
+
+  const videoTabIndex = courseHasVideo ? 3 : -1;
+  const settingsTabIndex = courseHasVideo ? 4 : 3;
+
   return (
     <Box sx={{ p: 2.5, maxWidth: 980 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2, flexWrap: 'wrap', gap: 2 }}>
@@ -435,6 +458,7 @@ export default function StudentCourseDetail() {
         <Tab label={`${t('student.course.lectures')} (${interactiveSessions.length})`} />
         <Tab label={`${t('student.course.quizzes')} (${quizSessions.length})`} />
         <Tab label={t('student.course.grades')} />
+        {courseHasVideo && <Tab label={t('student.course.video')} />}
         <Tab label={t('student.course.settings')} />
       </Tabs>
 
@@ -457,7 +481,19 @@ export default function StudentCourseDetail() {
         />
       </TabPanel>
 
-      <TabPanel value={tab} index={3}>
+      {courseHasVideo && (
+        <TabPanel value={tab} index={videoTabIndex}>
+          <Typography variant="h6" sx={{ mb: 1.5 }}>{t('video.title')}</Typography>
+          <VideoChatPanel
+            courseId={id}
+            course={course}
+            isStudent
+            onCourseRefresh={fetchCourse}
+          />
+        </TabPanel>
+      )}
+
+      <TabPanel value={tab} index={settingsTabIndex}>
         <Typography variant="h6" sx={{ mb: 1.5 }}>{t('student.course.courseSettings')}</Typography>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>

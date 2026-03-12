@@ -714,6 +714,140 @@ function SSOTab() {
   );
 }
 
+// ── Video/Jitsi Tab ─────────────────────────────────────────────────────────
+function VideoTab() {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState({
+    Jitsi_Enabled: false,
+    Jitsi_Domain: '',
+    Jitsi_EtherpadDomain: '',
+    Jitsi_EnabledCourses: [],
+  });
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [saveError, setSaveError] = useState('');
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      apiClient.get('/settings'),
+      apiClient.get('/courses', { params: { limit: 100 } }).catch(() => ({ data: { courses: [] } })),
+    ]).then(([settingsRes, coursesRes]) => {
+      if (!mounted) return;
+      const data = settingsRes.data;
+      setSettings({
+        Jitsi_Enabled: data.Jitsi_Enabled ?? false,
+        Jitsi_Domain: data.Jitsi_Domain ?? '',
+        Jitsi_EtherpadDomain: data.Jitsi_EtherpadDomain ?? '',
+        Jitsi_EnabledCourses: data.Jitsi_EnabledCourses ?? [],
+      });
+      setCourses(coursesRes.data.courses || []);
+    }).catch(() => {
+      if (mounted) {
+        setSaveStatus('error');
+        setSaveError(t('admin.failedLoadSettings'));
+      }
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSaving(true);
+      setSaveStatus('saving');
+      setSaveError('');
+      try {
+        await apiClient.patch('/settings', settings);
+        setSaveStatus('success');
+      } catch (err) {
+        setSaveStatus('error');
+        const message = err.response?.data?.message || t('admin.failedSaveVideoSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
+      } finally {
+        setSaving(false);
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [settings, loading]);
+
+  if (loading) return <CircularProgress />;
+
+  const courseLabel = (c) => {
+    const parts = [c.deptCode, c.courseNumber, c.section, c.name].filter(Boolean);
+    return parts.join(' - ') || c._id;
+  };
+
+  return (
+    <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={settings.Jitsi_Enabled}
+            onChange={(e) => setSettings((s) => ({ ...s, Jitsi_Enabled: e.target.checked }))}
+          />
+        }
+        label={t('admin.video.enableJitsi')}
+      />
+      {settings.Jitsi_Enabled ? (
+        <>
+          <TextField
+            label={t('admin.video.jitsiDomain')}
+            value={settings.Jitsi_Domain}
+            onChange={(e) => setSettings((s) => ({ ...s, Jitsi_Domain: e.target.value }))}
+            placeholder={t('admin.video.jitsiDomainPlaceholder')}
+            fullWidth
+          />
+          <TextField
+            label={t('admin.video.etherpadDomain')}
+            value={settings.Jitsi_EtherpadDomain}
+            onChange={(e) => setSettings((s) => ({ ...s, Jitsi_EtherpadDomain: e.target.value }))}
+            placeholder={t('admin.video.etherpadDomainPlaceholder')}
+            fullWidth
+          />
+          <FormControl fullWidth>
+            <InputLabel>{t('admin.video.enabledCourses')}</InputLabel>
+            <Select
+              multiple
+              value={settings.Jitsi_EnabledCourses}
+              label={t('admin.video.enabledCourses')}
+              onChange={(e) => setSettings((s) => ({ ...s, Jitsi_EnabledCourses: e.target.value }))}
+              renderValue={(selected) =>
+                selected
+                  .map((id) => {
+                    const c = courses.find((course) => course._id === id);
+                    return c ? courseLabel(c) : id;
+                  })
+                  .join(', ')
+              }
+            >
+              {courses.map((c) => (
+                <MenuItem key={c._id} value={c._id}>{courseLabel(c)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.video.jitsiNotEnabled')}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [tab, setTab] = useState(0);
@@ -728,11 +862,13 @@ export default function AdminDashboard() {
         <Tab label={t('admin.tabs.users')} />
         <Tab label={t('admin.tabs.storage')} />
         <Tab label={t('admin.tabs.sso')} />
+        <Tab label={t('admin.tabs.video')} />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
       <TabPanel value={tab} index={2}><StorageTab /></TabPanel>
       <TabPanel value={tab} index={3}><SSOTab /></TabPanel>
+      <TabPanel value={tab} index={4}><VideoTab /></TabPanel>
     </Box>
   );
 }

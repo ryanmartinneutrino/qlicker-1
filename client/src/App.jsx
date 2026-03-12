@@ -27,6 +27,7 @@ import StudentCourseDetail from './pages/student/CourseDetail';
 import SessionReview from './pages/student/SessionReview';
 import StudentLiveSession from './pages/student/LiveSession';
 import StudentQuizSession from './pages/student/QuizSession';
+import JitsiWindow from './pages/JitsiWindow';
 
 function RouteAccessibility() {
   const location = useLocation();
@@ -94,6 +95,8 @@ export default function App() {
             {/* Second desktop route outside AppLayout (no appbar/avatar) */}
             <Route element={<RequireAuth />}>
               <Route path="/manage/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><SecondDesktop /></RequireRole>} />
+              <Route path="/video/:courseId" element={<JitsiWindow />} />
+              <Route path="/video/:courseId/category/:catNum/group/:groupIdx" element={<JitsiWindow />} />
             </Route>
             <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
               <Route path="/profile" element={<Profile />} />
