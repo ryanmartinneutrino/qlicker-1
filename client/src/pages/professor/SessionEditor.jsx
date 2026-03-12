@@ -21,6 +21,7 @@ import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import { useTranslation } from 'react-i18next';
 
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
@@ -110,6 +111,7 @@ export default function SessionEditor() {
   const [searchParams] = useSearchParams();
   const returnTab = parseCourseTab(searchParams.get('returnTab') ?? location.state?.returnTab);
   const returnToReview = (searchParams.get('returnTo') || location.state?.returnTo) === 'review';
+  const { t } = useTranslation();
   const sessionReviewLink = returnTab === 0
     ? `/manage/course/${courseId}/session/${sessionId}/review`
     : `/manage/course/${courseId}/session/${sessionId}/review?returnTab=${returnTab}`;
@@ -333,7 +335,7 @@ export default function SessionEditor() {
       await apiClient.post(`/sessions/${sessionId}/start`);
       navigate(`/manage/course/${courseId}/session/${sessionId}/live`);
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to launch session' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedLaunch') });
     }
   };
 
@@ -355,7 +357,7 @@ export default function SessionEditor() {
     try {
       const { data } = await apiClient.post(`/sessions/${sessionId}/copy`);
       const newId = data.session?._id || data._id;
-      setMsg({ severity: 'success', text: 'Session copied' });
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.sessionCopied') });
       if (newId) {
         const nextParams = new URLSearchParams();
         if (returnTab > 0) {
@@ -371,7 +373,7 @@ export default function SessionEditor() {
         );
       }
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to copy session' });
+      setMsg({ severity: 'error', text: t('professor.sessionEditor.failedCopySession') });
     } finally {
       setCopying(false);
     }
@@ -428,7 +430,7 @@ export default function SessionEditor() {
 
   const openInsertEditorAt = (index) => {
     if (questionsEditingLocked) {
-      setMsg({ severity: 'warning', text: 'Unlock editing before adding or changing questions in an ended session.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeAdd') });
       return;
     }
     setInlineEditor((prev) => {
@@ -439,7 +441,7 @@ export default function SessionEditor() {
 
   const openEditEditor = (questionId) => {
     if (questionsEditingLocked) {
-      setMsg({ severity: 'warning', text: 'Unlock editing before changing questions in an ended session.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeChange') });
       return;
     }
     const baselineQuestion = questions.find((q) => q._id === questionId) || null;
@@ -511,7 +513,7 @@ export default function SessionEditor() {
 
       return created;
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to auto-save question' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedAutoSave') });
       throw err;
     }
   };
@@ -519,12 +521,12 @@ export default function SessionEditor() {
   // Delete question
   const handleDeleteQuestion = async (qId) => {
     if (questionsEditingLocked) {
-      setMsg({ severity: 'warning', text: 'Unlock editing before deleting questions in an ended session.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeDelete') });
       return;
     }
     if (hasResponseDataForQuestion(qId)) {
       setDeleteQTarget(null);
-      setMsg({ severity: 'warning', text: 'Questions with response data cannot be deleted.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.responsesPreventDelete') });
       return;
     }
     try {
@@ -537,16 +539,16 @@ export default function SessionEditor() {
       });
       setDeleteQTarget(null);
       fetchSession();
-      setMsg({ severity: 'success', text: 'Question deleted' });
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.questionDeleted') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to delete question' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedDeleteQuestion') });
     }
   };
 
   // Move question (reorder)
   const handleMove = async (idx, direction) => {
     if (questionsEditingLocked) {
-      setMsg({ severity: 'warning', text: 'Unlock editing before reordering questions in an ended session.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeReorder') });
       return;
     }
     const ids = questions.map(q => q._id);
@@ -560,7 +562,7 @@ export default function SessionEditor() {
       await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
     } catch {
       fetchSession();
-      setMsg({ severity: 'error', text: 'Failed to reorder questions' });
+      setMsg({ severity: 'error', text: t('professor.sessionEditor.failedReorder') });
     }
   };
 
@@ -631,7 +633,7 @@ export default function SessionEditor() {
     closeQuestionActions();
     if (!context) return;
     if (questionsEditingLocked) {
-      setMsg({ severity: 'warning', text: 'Unlock editing before changing questions in an ended session.' });
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeChange') });
       return;
     }
 
@@ -662,7 +664,7 @@ export default function SessionEditor() {
 
     if (action === 'delete' && context.question) {
       if (hasResponseDataForQuestion(context.question._id)) {
-        setMsg({ severity: 'warning', text: 'Questions with response data cannot be deleted.' });
+        setMsg({ severity: 'warning', text: t('professor.sessionEditor.responsesPreventDelete') });
         return;
       }
       setDeleteQTarget(context.question);
@@ -753,10 +755,10 @@ export default function SessionEditor() {
         const isoStart = toIsoIfValid(extension.quizStart);
         const isoEnd = toIsoIfValid(extension.quizEnd);
         if (!isoStart || !isoEnd) {
-          throw new Error('Each extension requires valid start and end times.');
+          throw new Error(t('professor.sessionEditor.extensionTimesRequired'));
         }
         if (new Date(isoEnd).getTime() <= new Date(isoStart).getTime()) {
-          throw new Error('Each extension end time must be later than start time.');
+          throw new Error(t('professor.sessionEditor.extensionEndAfterStart'));
         }
         return {
           userId: extension.userId,
@@ -776,9 +778,9 @@ export default function SessionEditor() {
         quizEnd: toDateTimeLocalString(extension.quizEnd),
       })));
       setExtensionsOpen(false);
-      setMsg({ severity: 'success', text: 'Quiz extensions updated' });
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.extensionsUpdated') });
     } catch (err) {
-      const fallbackMessage = err.message || 'Failed to update quiz extensions';
+      const fallbackMessage = err.message || t('professor.sessionEditor.failedUpdateExtensions');
       setMsg({ severity: 'error', text: err.response?.data?.message || fallbackMessage });
     } finally {
       setSavingExtensions(false);
@@ -827,10 +829,10 @@ export default function SessionEditor() {
           }}
         >
           <Typography variant="subtitle2" color="text.secondary">
-            {initialQuestion ? `Question ${currentIndex + 1}` : `Insert at ${index + 1}`}
+            {initialQuestion ? t('professor.sessionEditor.questionNumber', { number: currentIndex + 1 }) : t('professor.sessionEditor.insertAt', { number: index + 1 })}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-            <Tooltip title="Close editor">
+            <Tooltip title={t('professor.sessionEditor.closeEditor')}>
               <IconButton size="small" onClick={() => closeInlineEditor()}>
                 <CloseIcon fontSize="small" />
               </IconButton>
@@ -857,12 +859,12 @@ export default function SessionEditor() {
             flexShrink: 0,
           }}
         >
-          <Tooltip title="Close editor">
+          <Tooltip title={t('professor.sessionEditor.closeEditor')}>
             <IconButton size="small" onClick={() => closeInlineEditor()}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title={initialQuestion ? 'Move up' : 'Move insertion up'}>
+          <Tooltip title={initialQuestion ? t('professor.sessionEditor.moveUp') : t('professor.sessionEditor.moveInsertionUp')}>
             <span>
               <IconButton
                 size="small"
@@ -879,7 +881,7 @@ export default function SessionEditor() {
           <Typography variant="subtitle2" color="text.secondary" sx={{ lineHeight: 1.2 }}>
             {currentIndex + 1}.
           </Typography>
-          <Tooltip title={initialQuestion ? 'Move down' : 'Move insertion down'}>
+          <Tooltip title={initialQuestion ? t('professor.sessionEditor.moveDown') : t('professor.sessionEditor.moveInsertionDown')}>
             <span>
               <IconButton
                 size="small"
@@ -895,7 +897,7 @@ export default function SessionEditor() {
           </Tooltip>
           {initialQuestion ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: 0.5 }}>
-              <Tooltip title={questionHasResponses ? 'Cannot delete: this question has response data' : 'Delete'}>
+              <Tooltip title={questionHasResponses ? t('professor.sessionEditor.cannotDeleteHasResponses') : t('common.delete')}>
                 <span>
                   <IconButton
                     size="small"
@@ -921,7 +923,7 @@ export default function SessionEditor() {
             initial={initialQuestion}
             initialBaseline={baselineQuestion}
             disableTypeSelection={questionHasResponses}
-            typeSelectionLockReason="Question type is locked because this question has response data."
+            typeSelectionLockReason={t('professor.sessionEditor.questionTypeLocked')}
           />
         </Box>
 
@@ -931,7 +933,7 @@ export default function SessionEditor() {
   };
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
-  if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">Session not found</Alert></Box>;
+  if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">{t('professor.sessionEditor.sessionNotFound')}</Alert></Box>;
 
   return (
     <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.25, pb: 2, maxWidth: 980, mx: 'auto' }}>
@@ -947,9 +949,9 @@ export default function SessionEditor() {
             startIcon={<LaunchIcon />}
             onClick={() => setConfirmGoLiveOpen(true)}
             size="small"
-            aria-label="Launch session"
+            aria-label={t('professor.sessionEditor.joinLiveSession')}
           >
-            Launch
+            {t('professor.course.launch')}
           </Button>
         )}
         {!session.quiz && status === 'running' && (
@@ -959,20 +961,20 @@ export default function SessionEditor() {
             startIcon={<JoinIcon />}
             onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}/live`)}
             size="small"
-            aria-label="Join live session"
+            aria-label={t('professor.sessionEditor.joinLiveSession')}
           >
-            Join Session
+            {t('professor.course.joinSession')}
           </Button>
         )}
       </Box>
 
       {/* Session Properties */}
       <Paper sx={{ p: { xs: 2, sm: 2.25 }, mb: PAGE_SECTION_GAP }}>
-        <Typography variant="h6" sx={{ mb: SETTINGS_STACK_GAP }}>Session Settings</Typography>
+        <Typography variant="h6" sx={{ mb: SETTINGS_STACK_GAP }}>{t('professor.sessionEditor.sessionSettings')}</Typography>
         <AutoSaveStatus status={sessionSaveStatus} errorText={sessionSaveError} />
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
           <TextField
-            label="Name"
+            label={t('professor.sessionEditor.name')}
             fullWidth
             size="small"
             value={editFields.name}
@@ -990,7 +992,7 @@ export default function SessionEditor() {
             }}
           />
           <TextField
-            label="Description"
+            label={t('professor.sessionEditor.description')}
             fullWidth
             size="small"
             value={editFields.description}
@@ -1005,17 +1007,17 @@ export default function SessionEditor() {
           />
 
           <FormControl size="small" sx={{ maxWidth: 280 }}>
-            <InputLabel>Status</InputLabel>
+            <InputLabel>{t('professor.sessionEditor.status')}</InputLabel>
             <Select
-              label="Status"
+              label={t('professor.sessionEditor.status')}
               value={status}
               onChange={(e) => handleStatusChange(e.target.value)}
               disabled={savingSession}
             >
-              <MenuItem value="hidden">Draft</MenuItem>
-              <MenuItem value="visible">Upcoming</MenuItem>
-              <MenuItem value="running">Live</MenuItem>
-              <MenuItem value="done">Ended</MenuItem>
+              <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
+              <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
+              <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
+              <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
             </Select>
           </FormControl>
 
@@ -1054,8 +1056,8 @@ export default function SessionEditor() {
                 />
               )}
               label={(
-                <Tooltip title="Enable quiz mode with quiz dates and quiz-specific student behavior." arrow>
-                  <span>Quiz</span>
+                <Tooltip title={t('professor.sessionEditor.quizHelp')} arrow>
+                  <span>{t('professor.sessionEditor.quiz')}</span>
                 </Tooltip>
               )}
             />
@@ -1080,8 +1082,8 @@ export default function SessionEditor() {
                 />
               )}
               label={(
-                <Tooltip title="Practice quizzes still use quiz flow but are intended for low-stakes use." arrow>
-                  <span>Practice Quiz</span>
+                <Tooltip title={t('professor.sessionEditor.practiceQuizHelp')} arrow>
+                  <span>{t('professor.sessionEditor.practiceQuiz')}</span>
                 </Tooltip>
               )}
             />
@@ -1098,8 +1100,8 @@ export default function SessionEditor() {
                 />
               )}
               label={(
-                <Tooltip title="Students can open review mode after the session has ended." arrow>
-                  <span>Reviewable</span>
+                <Tooltip title={t('professor.sessionEditor.reviewableHelp')} arrow>
+                  <span>{t('professor.sessionEditor.reviewable')}</span>
                 </Tooltip>
               )}
             />
@@ -1121,16 +1123,16 @@ export default function SessionEditor() {
                   />
                 )}
                 label={(
-                  <Tooltip title="Students have to enter a passcode to enter." arrow>
-                    <span>Require Passcode</span>
+                  <Tooltip title={t('professor.sessionEditor.passcodeHelp')} arrow>
+                    <span>{t('professor.sessionEditor.requirePasscode')}</span>
                   </Tooltip>
                 )}
               />
               {joinCodeEnabled && (
-                <Tooltip title="How often the passcode rotates while the join period is open." arrow>
+                <Tooltip title={t('professor.sessionEditor.codeRefreshHelp')} arrow>
                   <span>
                     <TextField
-                      label="Code refresh interval (seconds)"
+                      label={t('professor.sessionEditor.codeRefreshInterval')}
                       size="small"
                       type="number"
                       inputProps={{ min: 5, max: 120 }}
@@ -1152,10 +1154,10 @@ export default function SessionEditor() {
           )}
 
           <FormControl size="small" sx={{ maxWidth: 360 }}>
-            <InputLabel id="ms-scoring-method-label">MS Scoring</InputLabel>
+            <InputLabel id="ms-scoring-method-label">{t('professor.sessionEditor.msScoring')}</InputLabel>
             <Select
               labelId="ms-scoring-method-label"
-              label="MS Scoring"
+              label={t('professor.sessionEditor.msScoring')}
               value={msScoringMethod}
               onChange={(e) => {
                 const nextMethod = e.target.value;
@@ -1164,12 +1166,12 @@ export default function SessionEditor() {
               }}
               disabled={savingSession}
             >
-              <MenuItem value="right-minus-wrong">Right minus wrong (default)</MenuItem>
-              <MenuItem value="all-or-nothing">All or nothing</MenuItem>
-              <MenuItem value="correctness-ratio">Correctness ratio</MenuItem>
+              <MenuItem value="right-minus-wrong">{t('professor.sessionEditor.rightMinusWrong')}</MenuItem>
+              <MenuItem value="all-or-nothing">{t('professor.sessionEditor.allOrNothing')}</MenuItem>
+              <MenuItem value="correctness-ratio">{t('professor.sessionEditor.correctnessRatio')}</MenuItem>
             </Select>
             <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-              Applies to all session types. For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.
+              {t('professor.sessionEditor.msScoringHelp')}
             </Typography>
           </FormControl>
 
@@ -1177,7 +1179,7 @@ export default function SessionEditor() {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
               <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
                 <TextField
-                  label="Quiz Start"
+                  label={t('professor.sessionEditor.quizStart')}
                   size="small"
                   type="datetime-local"
                   fullWidth
@@ -1197,7 +1199,7 @@ export default function SessionEditor() {
                   disabled={savingSession}
                 />
                 <TextField
-                  label="Quiz End"
+                  label={t('professor.sessionEditor.quizEnd')}
                   size="small"
                   type="datetime-local"
                   fullWidth
@@ -1225,7 +1227,7 @@ export default function SessionEditor() {
                   onClick={applyTodayQuizWindow}
                   disabled={savingSession}
                 >
-                  Today
+                  {t('professor.sessionEditor.today')}
                 </Button>
                 <Button
                   size="small"
@@ -1233,15 +1235,15 @@ export default function SessionEditor() {
                   onClick={applyTwentyFourHourQuizWindow}
                   disabled={savingSession}
                 >
-                  Set 24h Window
+                  {t('professor.sessionEditor.set24hWindow')}
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Default quiz windows are 24 hours.
+                  {t('professor.sessionEditor.defaultQuizWindows')}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                 <Typography variant="body2" color="text.secondary">
-                  Quiz extensions: {extensionDrafts.length} student{extensionDrafts.length === 1 ? '' : 's'}
+                  {t('professor.sessionEditor.quizExtensions', { count: extensionDrafts.length })}
                 </Typography>
                 <Button
                   variant="outlined"
@@ -1249,7 +1251,7 @@ export default function SessionEditor() {
                   onClick={openExtensionsDialog}
                   disabled={savingSession}
                 >
-                  Manage Extensions
+                  {t('professor.sessionEditor.manageExtensions')}
                 </Button>
               </Box>
             </Box>
@@ -1257,7 +1259,7 @@ export default function SessionEditor() {
 
           {!(quiz || practiceQuiz) && (
             <TextField
-              label="Session Date"
+              label={t('professor.sessionEditor.sessionDate')}
               size="small"
               type="datetime-local"
               InputLabelProps={{ shrink: true }}
@@ -1275,10 +1277,10 @@ export default function SessionEditor() {
 
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button startIcon={<CopyIcon />} onClick={handleCopySession} disabled={copying}>
-              {copying ? 'Copying…' : 'Copy Session'}
+              {copying ? t('professor.sessionEditor.copying') : t('professor.sessionEditor.copySession')}
             </Button>
             <Button color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteOpen(true)}>
-              Delete Session
+              {t('professor.sessionEditor.deleteSession')}
             </Button>
           </Box>
         </Box>
@@ -1286,7 +1288,7 @@ export default function SessionEditor() {
 
       {/* Questions */}
       <Paper sx={{ p: { xs: 2, sm: 2.25 } }}>
-        <Typography variant="h6" sx={{ mb: SETTINGS_STACK_GAP }}>Questions ({questions.length})</Typography>
+        <Typography variant="h6" sx={{ mb: SETTINGS_STACK_GAP }}>{t('professor.sessionEditor.questionsCount', { count: questions.length })}</Typography>
 
         {status === 'done' && questionsEditingLocked && (
           <Alert
@@ -1299,16 +1301,16 @@ export default function SessionEditor() {
                 onClick={() => setUnlockEndedEditing(true)}
                 aria-label="Unlock question editing"
               >
-                Unlock Editing
+                {t('professor.sessionEditor.unlockEditing')}
               </Button>
             )}
           >
-            This session is ended. Unlock editing to modify the question list. Questions with response data still cannot be deleted or have their type changed.
+            {t('professor.sessionEditor.endedEditNote')}
           </Alert>
         )}
         {status === 'done' && !questionsEditingLocked && (
           <Alert severity="warning" sx={{ mb: SETTINGS_STACK_GAP }}>
-            Editing is unlocked for this ended session. Questions with response data are protected from delete and type-change actions.
+            {t('professor.sessionEditor.editingUnlocked')}
           </Alert>
         )}
 
@@ -1322,7 +1324,7 @@ export default function SessionEditor() {
         >
           {questions.length === 0 && (
             <Typography color="text.secondary" sx={{ pb: 1.5, textAlign: 'center' }}>
-              No questions yet. Use the button below to add one.
+              {t('professor.sessionEditor.noQuestionsYet')}
             </Typography>
           )}
 
@@ -1368,7 +1370,7 @@ export default function SessionEditor() {
                       disabled={questionsEditingLocked}
                       aria-label={`Add question at position ${slotIdx + 1}`}
                     >
-                      Add Question
+                      {t('professor.sessionEditor.addQuestion')}
                     </Button>
                   ) : (
                     <Button
@@ -1403,7 +1405,7 @@ export default function SessionEditor() {
                       <Box className="insert-question-line" />
                       <AddIcon fontSize="small" />
                       <Typography variant="caption" sx={{ ml: 0.2, display: { xs: 'none', sm: 'inline' } }}>
-                        Add
+                        {t('common.add')}
                       </Typography>
                     </Button>
                   )}
@@ -1432,7 +1434,7 @@ export default function SessionEditor() {
                         }}
                       >
                         <Typography variant="subtitle2" color="text.secondary">
-                          Question {displayedQuestionNumber}
+                          {t('professor.sessionEditor.questionNumber', { number: displayedQuestionNumber })}
                         </Typography>
                         <IconButton
                           size="small"
@@ -1456,7 +1458,7 @@ export default function SessionEditor() {
                           flexShrink: 0,
                         }}
                       >
-                        <Tooltip title="Edit">
+                        <Tooltip title={t('common.edit')}>
                           <span>
                             <IconButton
                               size="small"
@@ -1467,7 +1469,7 @@ export default function SessionEditor() {
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Tooltip title="Move up">
+                        <Tooltip title={t('professor.sessionEditor.moveUp')}>
                           <span>
                             <IconButton
                               size="small"
@@ -1481,7 +1483,7 @@ export default function SessionEditor() {
                         <Typography variant="subtitle2" color="text.secondary" sx={{ lineHeight: 1.2 }}>
                           {displayedQuestionNumber}.
                         </Typography>
-                        <Tooltip title="Move down">
+                        <Tooltip title={t('professor.sessionEditor.moveDown')}>
                           <span>
                             <IconButton
                               size="small"
@@ -1492,7 +1494,7 @@ export default function SessionEditor() {
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Tooltip title={questionHasResponses ? 'Cannot delete: this question has response data' : 'Delete'}>
+                        <Tooltip title={questionHasResponses ? t('professor.sessionEditor.cannotDeleteHasResponses') : t('common.delete')}>
                           <span>
                             <IconButton
                               size="small"
@@ -1537,7 +1539,7 @@ export default function SessionEditor() {
                             }}
                           >
                             <Typography variant="caption" color="text.secondary">
-                              {isQuestionExpanded ? 'Tap to collapse' : 'Tap to expand'}
+                              {isQuestionExpanded ? t('professor.sessionEditor.tapCollapse') : t('professor.sessionEditor.tapExpand')}
                             </Typography>
                             <ExpandMoreIcon
                               fontSize="small"
@@ -1583,53 +1585,53 @@ export default function SessionEditor() {
 
       {/* Delete Session Confirmation */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <DialogTitle>Delete Session?</DialogTitle>
+        <DialogTitle>{t('professor.sessionEditor.deleteSessionTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>This will permanently delete &quot;{session.name}&quot; and all its questions. This cannot be undone.</Typography>
+          <Typography>{t('professor.sessionEditor.deleteSessionMessage', { name: session.name })}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDeleteOpen(false)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={handleDeleteSession} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete'}
+            {deleting ? t('professor.course.deleting') : t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Go Live Confirmation */}
       <Dialog open={confirmGoLiveOpen} onClose={() => setConfirmGoLiveOpen(false)}>
-        <DialogTitle>Go live now?</DialogTitle>
+        <DialogTitle>{t('professor.sessionEditor.goLiveTitle')}</DialogTitle>
         <DialogContent>
           <Typography>
-            Changing status to Live will immediately make this session available to students.
+            {t('professor.sessionEditor.goLiveMessage')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmGoLiveOpen(false)}>Cancel</Button>
+          <Button onClick={() => setConfirmGoLiveOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" color="success" onClick={confirmGoLive}>
-            Go Live
+            {t('professor.sessionEditor.goLive')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Delete Question Confirmation */}
       <Dialog open={!!deleteQTarget} onClose={() => setDeleteQTarget(null)}>
-        <DialogTitle>Delete Question?</DialogTitle>
+        <DialogTitle>{t('professor.sessionEditor.deleteQuestionTitle')}</DialogTitle>
         <DialogContent>
           <Typography>
             {deleteTargetHasResponses
-              ? 'This question has response data and cannot be deleted.'
-              : 'This will permanently remove this question from the session.'}
+              ? t('professor.sessionEditor.responsesPreventDelete')
+              : t('professor.sessionEditor.deleteQuestionMessage')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteQTarget(null)}>Cancel</Button>
+          <Button onClick={() => setDeleteQTarget(null)}>{t('common.cancel')}</Button>
           <Button
             color="error"
             variant="contained"
             disabled={deleteTargetHasResponses || questionsEditingLocked}
             onClick={() => handleDeleteQuestion(deleteQTarget._id)}
           >
-            Delete
+            {t('common.delete')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1642,14 +1644,14 @@ export default function SessionEditor() {
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
         <MenuItem onClick={() => runQuestionAction('move-up')} disabled={!actionCanMoveUp}>
-          Move up
+          {t('professor.sessionEditor.moveUp')}
         </MenuItem>
         <MenuItem onClick={() => runQuestionAction('move-down')} disabled={!actionCanMoveDown}>
-          Move down
+          {t('professor.sessionEditor.moveDown')}
         </MenuItem>
         {actionContext?.mode === 'view' && (
           <MenuItem onClick={() => runQuestionAction('edit')} disabled={questionsEditingLocked}>
-            Edit
+            {t('common.edit')}
           </MenuItem>
         )}
         {(actionContext?.mode === 'view' || actionContext?.mode === 'edit') && (
@@ -1658,7 +1660,7 @@ export default function SessionEditor() {
             disabled={questionsEditingLocked || actionContextQuestionHasResponses}
             sx={{ color: 'error.main' }}
           >
-            Delete
+            {t('common.delete')}
           </MenuItem>
         )}
       </Menu>
@@ -1671,10 +1673,10 @@ export default function SessionEditor() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Quiz Extensions</DialogTitle>
+        <DialogTitle>{t('professor.sessionEditor.extensionsTitle')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <Typography variant="body2" color="text.secondary">
-            Add students who should receive custom quiz access windows.
+            {t('professor.sessionEditor.extensionsMessage')}
           </Typography>
           <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
             <Autocomplete
@@ -1686,8 +1688,8 @@ export default function SessionEditor() {
                 <TextField
                   {...params}
                   size="small"
-                  label="Select student"
-                  placeholder="Search by name or email"
+                  label={t('professor.sessionEditor.selectStudent')}
+                  placeholder={t('professor.sessionEditor.searchByNameOrEmail')}
                 />
               )}
               sx={{ flex: 1 }}
@@ -1697,12 +1699,12 @@ export default function SessionEditor() {
               onClick={addExtensionStudent}
               disabled={!extensionStudent?._id}
             >
-              Add
+              {t('common.add')}
             </Button>
           </Box>
 
           {extensionDrafts.length === 0 ? (
-            <Alert severity="info">No student extensions configured.</Alert>
+            <Alert severity="info">{t('professor.sessionEditor.noExtensions')}</Alert>
           ) : (
             extensionDrafts.map((extension) => {
               const student = studentById.get(String(extension.userId));
@@ -1716,7 +1718,7 @@ export default function SessionEditor() {
                       size="small"
                       color="error"
                       onClick={() => removeExtensionDraft(extension.userId)}
-                      aria-label="Remove extension"
+                      aria-label={t('professor.sessionEditor.removeExtension')}
                     >
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -1724,7 +1726,7 @@ export default function SessionEditor() {
                   <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
                     <TextField
                       size="small"
-                      label="Start"
+                      label={t('professor.sessionEditor.start')}
                       type="datetime-local"
                       InputLabelProps={{ shrink: true }}
                       value={extension.quizStart || ''}
@@ -1733,7 +1735,7 @@ export default function SessionEditor() {
                     />
                     <TextField
                       size="small"
-                      label="End"
+                      label={t('professor.sessionEditor.end')}
                       type="datetime-local"
                       InputLabelProps={{ shrink: true }}
                       value={extension.quizEnd || ''}
@@ -1747,9 +1749,9 @@ export default function SessionEditor() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setExtensionsOpen(false)} disabled={savingExtensions}>Cancel</Button>
+          <Button onClick={() => setExtensionsOpen(false)} disabled={savingExtensions}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={saveExtensions} disabled={savingExtensions}>
-            {savingExtensions ? 'Saving...' : 'Save Extensions'}
+            {savingExtensions ? '...' : t('professor.sessionEditor.saveExtensions')}
           </Button>
         </DialogActions>
       </Dialog>
