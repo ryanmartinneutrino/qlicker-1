@@ -122,7 +122,7 @@ export default function LiveSession() {
       setLiveData(data);
       setError(null);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load live session');
+      setError(err.response?.data?.message || t('student.liveSession.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
@@ -278,7 +278,7 @@ export default function LiveSession() {
     apiClient.post(`/sessions/${sessionId}/join`, {})
       .then(() => fetchLive())
       .catch((err) => {
-        setJoinError(err.response?.data?.message || 'Failed to join session');
+        setJoinError(err.response?.data?.message || t('student.liveSession.failedJoinSession'));
       })
       .finally(() => setJoining(false));
   }, [liveData, sessionId, fetchLive, autoJoinAttempted]);
@@ -295,7 +295,7 @@ export default function LiveSession() {
       await apiClient.post(`/sessions/${sessionId}/join`, { joinCode: joinCode.trim() });
       await fetchLive();
     } catch (err) {
-      setJoinError(err.response?.data?.message || 'Invalid join code');
+      setJoinError(err.response?.data?.message || t('student.liveSession.invalidJoinCode'));
     } finally {
       setJoining(false);
     }
@@ -316,7 +316,7 @@ export default function LiveSession() {
       // Update local state with the submitted response — avoids a full re-fetch of /live
       setLiveData((prev) => prev ? { ...prev, studentResponse: data.response || prev.studentResponse } : prev);
     } catch (err) {
-      setSubmitError(err.response?.data?.message || 'Failed to submit response');
+      setSubmitError(err.response?.data?.message || t('student.liveSession.failedSubmitResponse'));
     } finally {
       setSubmitting(false);
     }
@@ -368,16 +368,16 @@ export default function LiveSession() {
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
     displayedQuestionCount > 0 && displayedQuestionNumber != null
-      ? `Question ${displayedQuestionNumber} of ${displayedQuestionCount}.`
+      ? t('student.liveSession.questionOf', { number: displayedQuestionNumber, total: displayedQuestionCount })
       : null,
-    currentAttempt ? `Attempt ${currentAttempt.number ?? 1}.` : null,
+    currentAttempt ? t('student.liveSession.attemptNumber', { number: currentAttempt.number ?? 1 }) : null,
     hasSubmitted
-      ? 'Response submitted.'
+      ? t('student.liveSession.responseSubmitted')
       : responseClosed
-        ? 'Responses are currently closed.'
-        : 'Responses are currently open.',
-    showStats ? 'Response statistics are visible.' : null,
-    showCorrect ? 'Correct answer is visible.' : null,
+        ? t('student.liveSession.responsesCurrentlyClosed')
+        : t('student.liveSession.responsesCurrentlyOpen'),
+    showStats ? t('student.liveSession.statsVisible') : null,
+    showCorrect ? t('student.liveSession.correctVisible') : null,
   ].filter(Boolean).join(' ');
 
   // --------------------------------------------------
@@ -399,7 +399,7 @@ export default function LiveSession() {
   if (error || !session) {
     return (
       <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
-        <Alert severity="error" sx={{ mb: 2 }}>{error || 'Session not found'}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.liveSession.sessionNotFound')}</Alert>
         <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
           {t('student.liveSession.backToCourse')}
         </Button>
@@ -415,7 +415,7 @@ export default function LiveSession() {
     return (
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
         <Alert severity="info" sx={{ mb: 3, justifyContent: 'center' }}>
-          Session has ended.
+          {t('student.liveSession.sessionEnded')}
         </Alert>
         <Button variant="contained" onClick={() => navigate(`/student/course/${courseId}`)}>
           {t('student.liveSession.backToCourse')}
@@ -493,7 +493,7 @@ export default function LiveSession() {
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
         <Paper variant="outlined" sx={{ p: 4 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-            {session.name || 'Live Session'}
+            {session.name || t('student.liveSession.liveSessionFallback')}
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
             {t('student.liveSession.waitingForPasscode')}
@@ -538,7 +538,7 @@ export default function LiveSession() {
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
         <Paper variant="outlined" sx={{ p: 4 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-            {session.name || 'Live Session'}
+            {session.name || t('student.liveSession.liveSessionFallback')}
           </Typography>
 
           <Box
@@ -598,7 +598,7 @@ export default function LiveSession() {
       {/* ============================================================ */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
-          {session.name || 'Live Session'}
+          {session.name || t('student.liveSession.liveSessionFallback')}
         </Typography>
         <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
           {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
@@ -612,7 +612,7 @@ export default function LiveSession() {
           )}
           {currentAttempt && (
             <Chip
-              label={`Attempt ${currentAttempt.number ?? 1}`}
+              label={t('student.liveSession.attemptLabel', { number: currentAttempt.number ?? 1 })}
               size="small"
               variant="outlined"
               sx={COMPACT_CHIP_SX}
@@ -855,7 +855,7 @@ export default function LiveSession() {
                 {studentResponse?.answerWysiwyg ? (
                   <RichContent html={studentResponse.answerWysiwyg} />
                 ) : (
-                  <Typography variant="body2">{displayAnswer || '(no answer)'}</Typography>
+                  <Typography variant="body2">{displayAnswer || t('common.noAnswer')}</Typography>
                 )}
               </Paper>
             ) : (
@@ -907,11 +907,11 @@ export default function LiveSession() {
         <Box role="status" aria-live="polite" aria-atomic="true">
           {hasSubmitted ? (
             <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
-              ✓ Response submitted
+              {t('student.liveSession.responseSubmittedCheck')}
             </Alert>
           ) : responseClosed ? (
             <Alert severity="warning" sx={{ justifyContent: 'center' }}>
-              Responses are currently closed
+              {t('student.liveSession.responsesCurrentlyClosedShort')}
             </Alert>
           ) : (
             <Button
@@ -981,7 +981,7 @@ export default function LiveSession() {
                 {r.answerWysiwyg ? (
                   <RichContent html={r.answerWysiwyg} />
                 ) : (
-                  <Typography variant="body2">{r.answer ?? '(no answer)'}</Typography>
+                  <Typography variant="body2">{r.answer ?? t('common.noAnswer')}</Typography>
                 )}
               </Paper>
             ))}

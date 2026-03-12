@@ -120,8 +120,8 @@ function SettingsTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }
@@ -250,9 +250,9 @@ function UsersTab({ currentUserId }) {
     try {
       await apiClient.patch(`/users/${userId}/role`, { role });
       setUsers((prev) => prev.map((u) => (u._id === userId ? { ...u, profile: { ...u.profile, roles: [role] } } : u)));
-      setMsg({ severity: 'success', text: 'Role updated' });
+      setMsg({ severity: 'success', text: t('admin.users.roleUpdated') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to update role' });
+      setMsg({ severity: 'error', text: t('admin.users.failedUpdateRole') });
     }
   };
 
@@ -260,9 +260,9 @@ function UsersTab({ currentUserId }) {
     try {
       await apiClient.patch(`/users/${userId}/verify-email`);
       fetchUsers();
-      setMsg({ severity: 'success', text: 'Email verified' });
+      setMsg({ severity: 'success', text: t('admin.users.emailVerified') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to verify email' });
+      setMsg({ severity: 'error', text: t('admin.users.failedVerifyEmail') });
     }
   };
 
@@ -272,9 +272,9 @@ function UsersTab({ currentUserId }) {
       await apiClient.delete(`/users/${deleteTarget._id}`);
       setDeleteTarget(null);
       fetchUsers();
-      setMsg({ severity: 'success', text: 'User deleted' });
+      setMsg({ severity: 'success', text: t('admin.users.userDeleted') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete user' });
+      setMsg({ severity: 'error', text: t('admin.users.failedDeleteUser') });
     }
   };
 
@@ -284,9 +284,9 @@ function UsersTab({ currentUserId }) {
       setCreateOpen(false);
       setNewUser({ email: '', password: '', firstname: '', lastname: '', role: 'student' });
       fetchUsers();
-      setMsg({ severity: 'success', text: 'User created' });
+      setMsg({ severity: 'success', text: t('admin.users.userCreated') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to create user' });
+      setMsg({ severity: 'error', text: err.response?.data?.error || t('admin.users.failedCreateUser') });
     }
   };
 
@@ -391,10 +391,10 @@ function UsersTab({ currentUserId }) {
                   <TableCell>
                     {u.lastLogin
                       ? formatDisplayDate(u.lastLogin)
-                      : 'Never'}
+                      : t('admin.users.never')}
                   </TableCell>
                   <TableCell>
-                    <Tooltip title={u._id === currentUserId ? 'You cannot change your own role' : ''}>
+                    <Tooltip title={u._id === currentUserId ? t('admin.users.cannotChangeOwnRole') : ''}>
                       <span>
                         <Select
                           size="small"
@@ -435,7 +435,7 @@ function UsersTab({ currentUserId }) {
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
         <DialogTitle>{t('admin.users.confirmDelete')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete <strong>{deleteTarget?.profile?.firstname} {deleteTarget?.profile?.lastname}</strong> ({deleteTarget?.emails?.[0]?.address})?
+          <span dangerouslySetInnerHTML={{ __html: t('admin.users.confirmDeleteMessage', { name: `${deleteTarget?.profile?.firstname || ''} ${deleteTarget?.profile?.lastname || ''}`.trim(), email: deleteTarget?.emails?.[0]?.address || '' }) }} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)}>{t('common.cancel')}</Button>
@@ -562,8 +562,8 @@ function StorageTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save storage settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveStorageSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }
@@ -668,8 +668,8 @@ function SSOTab() {
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
-        const message = err.response?.data?.message || 'Failed to save SSO settings.';
-        setSaveError(`${message} Your last change was not recorded.`);
+        const message = err.response?.data?.message || t('admin.failedSaveSSOSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         setSaving(false);
       }

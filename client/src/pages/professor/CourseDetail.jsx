@@ -288,7 +288,7 @@ export default function CourseDetail() {
         return previousFields;
       });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load course' });
+      setMsg({ severity: 'error', text: t('professor.course.failedLoadCourse') });
     } finally {
       setLoading(false);
     }
@@ -377,7 +377,7 @@ export default function CourseDetail() {
   const copyCode = () => {
     if (course?.enrollmentCode) {
       navigator.clipboard.writeText(course.enrollmentCode);
-      setMsg({ severity: 'success', text: 'Enrollment code copied' });
+      setMsg({ severity: 'success', text: t('professor.dashboard.enrollmentCodeCopied') });
     }
   };
 
@@ -451,7 +451,7 @@ export default function CourseDetail() {
   const markSettingAutoSaveError = (err, fallbackMessage) => {
     setSettingsAutoSaveStatus('error');
     const message = err.response?.data?.message || fallbackMessage;
-    setSettingsAutoSaveError(`${message} Your last change was not recorded.`);
+    setSettingsAutoSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
   };
 
   const persistCourseEditFields = useCallback(async (fieldsToPersist) => {
@@ -487,9 +487,9 @@ export default function CourseDetail() {
         ));
         setSettingsAutoSaveStatus('success');
       } catch (err) {
-        const message = err.response?.data?.message || 'Failed to update course.';
+        const message = err.response?.data?.message || t('professor.course.failedUpdateCourse');
         setSettingsAutoSaveStatus('error');
-        setSettingsAutoSaveError(`${message} Your last change was not recorded.`);
+        setSettingsAutoSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       } finally {
         settingsSaveInFlightRef.current = false;
 
@@ -527,9 +527,9 @@ export default function CourseDetail() {
       await apiClient.patch(`/courses/${id}/active`, { inactive: !course.inactive });
       fetchCourse();
       setSettingsAutoSaveStatus('success');
-      setMsg({ severity: 'success', text: `Course ${course.inactive ? 'activated' : 'deactivated'}` });
+      setMsg({ severity: 'success', text: course.inactive ? t('professor.course.courseActivated') : t('professor.course.courseDeactivated') });
     } catch (err) {
-      markSettingAutoSaveError(err, 'Failed to update course setting.');
+      markSettingAutoSaveError(err, t('professor.course.failedUpdateCourseSetting'));
     }
   };
 
@@ -540,7 +540,7 @@ export default function CourseDetail() {
       fetchCourse();
       setSettingsAutoSaveStatus('success');
     } catch (err) {
-      markSettingAutoSaveError(err, 'Failed to update setting.');
+      markSettingAutoSaveError(err, t('professor.course.failedUpdateSetting'));
     }
   };
 
@@ -551,7 +551,7 @@ export default function CourseDetail() {
       fetchCourse();
       setSettingsAutoSaveStatus('success');
     } catch (err) {
-      markSettingAutoSaveError(err, 'Failed to update setting.');
+      markSettingAutoSaveError(err, t('professor.course.failedUpdateSetting'));
     }
   };
 
@@ -559,9 +559,9 @@ export default function CourseDetail() {
     try {
       await apiClient.post(`/courses/${id}/regenerate-code`);
       fetchCourse();
-      setMsg({ severity: 'success', text: 'Enrollment code regenerated' });
+      setMsg({ severity: 'success', text: t('professor.course.enrollmentCodeRegenerated') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to regenerate code' });
+      setMsg({ severity: 'error', text: t('professor.course.failedRegenerateCode') });
     }
   };
 
@@ -571,7 +571,7 @@ export default function CourseDetail() {
       await apiClient.delete(`/courses/${id}`);
       navigate('/manage');
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete course' });
+      setMsg({ severity: 'error', text: t('professor.course.failedDeleteCourse') });
       setDeleting(false);
     }
   };
@@ -603,10 +603,10 @@ export default function CourseDetail() {
         );
       } else {
         await fetchSessions();
-        setMsg({ severity: 'success', text: 'Session created' });
+        setMsg({ severity: 'success', text: t('professor.course.sessionCreated') });
       }
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to create session' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedCreateSession') });
     } finally {
       setCreatingSess(false);
     }
@@ -617,9 +617,9 @@ export default function CourseDetail() {
       await apiClient.delete(`/sessions/${sessionId}`);
       setDeleteSessionTarget(null);
       fetchSessions();
-      setMsg({ severity: 'success', text: 'Session deleted' });
+      setMsg({ severity: 'success', text: t('professor.course.sessionDeleted') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete session' });
+      setMsg({ severity: 'error', text: t('professor.course.failedDeleteSession') });
     }
   };
 
@@ -627,9 +627,9 @@ export default function CourseDetail() {
     try {
       await apiClient.post(`/sessions/${sessionId}/copy`);
       fetchSessions();
-      setMsg({ severity: 'success', text: 'Session copied' });
+      setMsg({ severity: 'success', text: t('professor.course.sessionCopied') });
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to copy session' });
+      setMsg({ severity: 'error', text: t('professor.course.failedCopySession') });
     }
   };
 
@@ -643,11 +643,11 @@ export default function CourseDetail() {
       if (warnings.length > 0) {
         setMsg({ severity: 'warning', text: warnings.join(' ') });
       } else {
-        setMsg({ severity: 'success', text: 'Session updated' });
+        setMsg({ severity: 'success', text: t('professor.course.sessionUpdated') });
       }
       await fetchSessions();
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to update session' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedUpdateSession') });
       fetchSessions();
     } finally {
       setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: false }));
@@ -660,12 +660,12 @@ export default function CourseDetail() {
       fetchSessions();
       navigate(`/manage/course/${id}/session/${sessionId}/live`);
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to launch session' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedLaunchSession') });
     }
   };
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
-  if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">Course not found</Alert></Box>;
+  if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('professor.course.courseNotFound')}</Alert></Box>;
 
   const students = sortPeopleByLastName(course.students || []);
   const instructors = sortPeopleByLastName(course.instructors || []);
@@ -752,7 +752,7 @@ export default function CourseDetail() {
                     )}
                     secondary={(
                       <>
-                        {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                        {t('professor.course.questionCount', { count: (s.questions || []).length })}
                         {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
                       </>
                     )}

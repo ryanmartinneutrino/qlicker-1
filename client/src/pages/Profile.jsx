@@ -156,7 +156,7 @@ export default function Profile() {
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setPwMsg({ severity: 'success', text: t('profile.passwordChanged') });
     } catch (err) {
-      setPwMsg({ severity: 'error', text: err.response?.data?.error || 'Failed to change password' });
+      setPwMsg({ severity: 'error', text: err.response?.data?.error || t('profile.failedChangePassword') });
     } finally {
       setChangingPw(false);
     }

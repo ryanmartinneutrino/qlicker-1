@@ -303,7 +303,7 @@ export default function StudentCourseDetail() {
       await apiClient.delete(`/courses/${id}/students/${user._id}`);
       navigate('/student');
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to unenroll' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('student.course.failedUnenroll') });
       setUnenrolling(false);
       setUnenrollOpen(false);
     }
@@ -387,7 +387,7 @@ export default function StudentCourseDetail() {
                       )}
                       secondary={(
                         <>
-                          {(s.questions || []).length} question{(s.questions || []).length === 1 ? '' : 's'}
+                          {t('student.course.questionCount', { count: (s.questions || []).length })}
                           {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
                         </>
                       )}

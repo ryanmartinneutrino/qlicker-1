@@ -66,10 +66,11 @@ function RichContent({ html, fallback }) {
 
 /** Numerical statistics display (large format) with histogram. */
 function NumericalStats({ stats, allResponses }) {
+  const { t } = useTranslation();
   if (!stats) {
     return (
       <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
-        No responses yet.
+        {t('professor.secondDesktop.noResponsesYet')}
       </Typography>
     );
   }
@@ -81,10 +82,10 @@ function NumericalStats({ stats, allResponses }) {
   const histogramData = buildHistogramData(values);
 
   const entries = [
-    { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
-    { label: 'Median', value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
-    { label: 'Min', value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
-    { label: 'Max', value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.mean'), value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.median'), value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.min'), value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.max'), value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
     <Box>
@@ -105,10 +106,11 @@ function NumericalStats({ stats, allResponses }) {
 
 /** Short-answer responses list (large format, rendered rich text). */
 function ShortAnswerList({ responses }) {
+  const { t } = useTranslation();
   if (!responses || !responses.length) {
     return (
       <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
-        No responses yet.
+        {t('professor.secondDesktop.noResponsesYet')}
       </Typography>
     );
   }
@@ -119,7 +121,7 @@ function ShortAnswerList({ responses }) {
           {r.answerWysiwyg ? (
             <RichContent html={r.answerWysiwyg} />
           ) : (
-            <Typography variant="body1">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+            <Typography variant="body1">{r.answer ?? r.value ?? r.text ?? t('common.noAnswer')}</Typography>
           )}
         </Paper>
       ))}
@@ -151,7 +153,7 @@ export default function SecondDesktop() {
         setSessionEnded(true);
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load live session');
+      setError(err.response?.data?.message || t('professor.secondDesktop.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
@@ -320,7 +322,7 @@ export default function SecondDesktop() {
   }, [sessionEnded]);
 
   useEffect(() => {
-    const name = session?.name || 'Presentation';
+    const name = session?.name || t('professor.secondDesktop.presentation');
     document.title = `${name} — Qlicker`;
   }, [session?.name]);
 
@@ -599,7 +601,7 @@ export default function SecondDesktop() {
           aria-label="Solution"
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
-            Solution
+            {t('common.solution')}
           </Typography>
           <RichContent html={currentQ.solution} />
         </Paper>

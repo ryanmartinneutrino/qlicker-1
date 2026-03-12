@@ -126,13 +126,13 @@ function ShortAnswerList({ responses, showStudentNames = false }) {
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
           {showStudentNames && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              {r.studentName || 'Unknown Student'}
+              {r.studentName || t('common.unknown')}
             </Typography>
           )}
           {r.answerWysiwyg ? (
             <RichContent html={r.answerWysiwyg} />
           ) : (
-            <Typography variant="body2">{r.answer ?? r.value ?? r.text ?? '(no answer)'}</Typography>
+            <Typography variant="body2">{r.answer ?? r.value ?? r.text ?? t('common.noAnswer')}</Typography>
           )}
         </Paper>
       ))}
@@ -222,7 +222,7 @@ export default function LiveSession() {
         navigate(`/manage/course/${courseId}`, { replace: true });
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load live session');
+      setError(err.response?.data?.message || t('professor.liveSession.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
@@ -415,7 +415,7 @@ export default function LiveSession() {
       if (successMsg) setMsg({ severity: 'success', text: successMsg });
       await fetchLive();
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Action failed' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.liveSession.actionFailed') });
     } finally {
       setActionLoading(false);
     }
@@ -472,7 +472,7 @@ export default function LiveSession() {
       setEndDialogOpen(false);
       navigate(`/manage/course/${courseId}`, { replace: true });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to end session' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.liveSession.failedEndSession') });
     } finally {
       setEnding(false);
     }
@@ -509,7 +509,7 @@ export default function LiveSession() {
     }
     const rounded = Math.round(parsed);
     if (rounded < 5 || rounded > 120) {
-      setMsg({ severity: 'error', text: 'Join code interval must be between 5 and 120 seconds' });
+      setMsg({ severity: 'error', text: t('professor.liveSession.joinCodeIntervalRange') });
       setJoinCodeIntervalInput(String(currentInterval));
       return;
     }
@@ -517,7 +517,7 @@ export default function LiveSession() {
 
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeInterval: rounded }),
-      'Join code interval updated',
+      t('professor.liveSession.joinCodeIntervalUpdated'),
     );
   }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
@@ -575,12 +575,12 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    totalQ > 0 && qIdx >= 0 ? `Question ${qIdx + 1} of ${totalQ}.` : null,
-    `${joinedCount} students joined.`,
-    `${responseCount} of ${joinedCount} students responded.`,
-    `Attempt ${attemptNum}.`,
-    responsesClosed ? 'Responses are currently closed.' : 'Responses are currently open.',
-    isHidden ? 'Current question is hidden.' : 'Current question is visible.',
+    totalQ > 0 && qIdx >= 0 ? t('professor.liveSession.questionOfTotal', { current: qIdx + 1, total: totalQ }) : null,
+    t('professor.liveSession.studentsJoined', { count: joinedCount }),
+    t('professor.liveSession.studentsResponded', { responded: responseCount, total: joinedCount }),
+    t('professor.liveSession.attemptNumber', { number: attemptNum }),
+    responsesClosed ? t('professor.liveSession.responsesCurrentlyClosed') : t('professor.liveSession.responsesCurrentlyOpen'),
+    isHidden ? t('professor.liveSession.questionHidden') : t('professor.liveSession.questionVisible'),
   ].filter(Boolean).join(' ');
 
   // --------------------------------------------------
@@ -598,7 +598,7 @@ export default function LiveSession() {
   if (error || !session) {
     return (
       <Box sx={{ p: 4 }}>
-        <Alert severity="error">{error || 'Session not found'}</Alert>
+        <Alert severity="error">{error || t('professor.liveSession.sessionNotFound')}</Alert>
         <Button sx={{ mt: 2 }} onClick={() => navigate(`/manage/course/${courseId}`)}>
           {t('professor.liveSession.backToCourse')}
         </Button>
@@ -635,7 +635,7 @@ export default function LiveSession() {
       >
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25, width: '100%' }}>
           <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
-            {session.name || 'Live Session'}
+            {session.name || t('professor.liveSession.liveSessionFallback')}
           </Typography>
 
           <Tooltip title={t('professor.liveSession.openPresentationView')}>

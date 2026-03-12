@@ -264,7 +264,7 @@ function ReviewQuestionCard({
       if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
       return null;
     }
-    if (mark?.needsGrading) return 'Pending manual grade';
+    if (mark?.needsGrading) return t('student.sessionReview.pendingManualGrade');
     return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
   }, [mark, points]);
   const markChipColor = mark?.needsGrading ? 'warning' : 'success';
@@ -384,8 +384,8 @@ function ReviewQuestionCard({
         && !hasWrittenSolution && (
         <Typography variant="caption" color="text.secondary" sx={{ pl: 2, mt: 0.5, display: 'block' }}>
           {hasMarkedCorrectOption
-            ? 'Correct answer(s) are highlighted above.'
-            : 'No written solution or marked correct option was provided for this question.'}
+            ? t('student.sessionReview.correctHighlighted')
+            : t('student.sessionReview.noSolutionOrCorrect')}
         </Typography>
       )}
 
@@ -497,7 +497,7 @@ export default function SessionReview() {
       return true;
     } catch (err) {
       const status = err.response?.status;
-      const forbiddenMessage = err.response?.data?.message || 'You do not have permission to review this session.';
+      const forbiddenMessage = err.response?.data?.message || t('student.sessionReview.noPermission');
       if (background && (status === 403 || status === 404)) {
         navigate(fallbackCourseBackLink, { replace: true });
         return false;
@@ -505,9 +505,9 @@ export default function SessionReview() {
       if (status === 403) {
         setError(forbiddenMessage);
       } else if (status === 404) {
-        setError('Session not found.');
+        setError(t('student.sessionReview.sessionNotFound'));
       } else {
-        setError('Failed to load session review.');
+        setError(t('student.sessionReview.failedLoadReview'));
       }
       return false;
     } finally {
@@ -623,7 +623,7 @@ export default function SessionReview() {
         }
         : prev));
     } catch {
-      setFeedbackActionError('Failed to dismiss feedback notification.');
+      setFeedbackActionError(t('student.sessionReview.failedDismissFeedback'));
     } finally {
       setDismissingFeedback(false);
     }
@@ -676,7 +676,7 @@ export default function SessionReview() {
           ← {t('student.sessionReview.backToCourse')}
         </Button>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          {session?.name || 'Session Review'}
+          {session?.name || t('student.sessionReview.sessionReviewFallback')}
         </Typography>
         {session?.description && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -696,12 +696,12 @@ export default function SessionReview() {
               onClick={handleDismissFeedback}
               disabled={dismissingFeedback}
             >
-              {dismissingFeedback ? 'Dismissing...' : 'Dismiss'}
+              {dismissingFeedback ? t('student.sessionReview.dismissing') : t('student.sessionReview.dismiss')}
             </Button>
           )}
         >
-          New feedback received.
-          {feedbackQuestionLabel ? ` Questions: ${feedbackQuestionLabel}.` : ''}
+          {t('student.sessionReview.newFeedbackReceived')}
+          {feedbackQuestionLabel ? t('student.sessionReview.feedbackQuestions', { questions: feedbackQuestionLabel }) : ''}
         </Alert>
       )}
 
@@ -719,7 +719,7 @@ export default function SessionReview() {
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
             {sessionGrade
               ? `${formatNumeric(sessionGrade.value)}% (${formatNumeric(sessionGrade.points)} / ${formatNumeric(sessionGrade.outOf)})`
-              : 'Not available'}
+              : t('student.sessionReview.notAvailable')}
           </Typography>
         </Paper>
         <Paper variant="outlined" sx={{ px: 1.5, py: 1 }}>
@@ -727,7 +727,7 @@ export default function SessionReview() {
             {t('student.sessionReview.participation')}
           </Typography>
           <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {sessionGrade ? `${formatNumeric(sessionGrade.participation)}%` : 'Not available'}
+            {sessionGrade ? `${formatNumeric(sessionGrade.participation)}%` : t('student.sessionReview.notAvailable')}
           </Typography>
         </Paper>
       </Box>
@@ -813,7 +813,7 @@ export default function SessionReview() {
                       onClick={() => toggleResponseVisibility(currentStateKey)}
                       disabled={!hasResponses}
                     >
-                      {isResponseVisible ? 'Hide my response' : 'Show my response'}
+                      {isResponseVisible ? t('student.sessionReview.hideMyResponse') : t('student.sessionReview.showMyResponse')}
                     </Button>
                     {!hasResponses && (
                       <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
@@ -859,7 +859,7 @@ export default function SessionReview() {
                           />
                         ) : (
                           <Typography variant="body2">
-                            {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                            {normalizeAnswerValue(currentResponse.answer) || t('common.noAnswer')}
                           </Typography>
                         )}
                       </Paper>
@@ -907,7 +907,7 @@ export default function SessionReview() {
                         onClick={() => toggleResponseVisibility(stateKey)}
                         disabled={!hasResponses}
                       >
-                        {isResponseVisible ? 'Hide my response' : 'Show my response'}
+                        {isResponseVisible ? t('student.sessionReview.hideMyResponse') : t('student.sessionReview.showMyResponse')}
                       </Button>
                       {!hasResponses && (
                         <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
@@ -953,7 +953,7 @@ export default function SessionReview() {
                             />
                           ) : (
                             <Typography variant="body2">
-                              {normalizeAnswerValue(currentResponse.answer) || '(no answer)'}
+                              {normalizeAnswerValue(currentResponse.answer) || t('common.noAnswer')}
                             </Typography>
                           )}
                         </Paper>

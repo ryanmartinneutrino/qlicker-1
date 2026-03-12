@@ -165,7 +165,7 @@ export default function QuizSession() {
       hydrateFromPayload(data);
       setError('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load quiz');
+      setError(err.response?.data?.message || t('student.quiz.failedLoadQuiz'));
     } finally {
       setLoading(false);
     }
@@ -252,7 +252,7 @@ export default function QuizSession() {
       await apiClient.post(`/sessions/${sessionId}/submit`);
       navigate(courseQuizTabLink);
     } catch (err) {
-      setSubmitError(err.response?.data?.message || 'Failed to submit quiz');
+      setSubmitError(err.response?.data?.message || t('student.quiz.failedSubmitQuiz'));
     } finally {
       setSubmittingQuiz(false);
     }
@@ -279,7 +279,7 @@ export default function QuizSession() {
       }
       navigate(courseQuizTabLink);
     } catch (err) {
-      setSubmitError(err.response?.data?.message || 'Failed to submit quiz');
+      setSubmitError(err.response?.data?.message || t('student.quiz.failedSubmitQuiz'));
     } finally {
       setSubmittingQuiz(false);
     }
@@ -296,7 +296,7 @@ export default function QuizSession() {
       await apiClient.post(`/sessions/${sessionId}/quiz-question-submit`, { questionId });
       await fetchQuiz();
     } catch (err) {
-      setSubmitError(err.response?.data?.message || 'Failed to submit this question');
+      setSubmitError(err.response?.data?.message || t('student.quiz.failedSubmitQuestion'));
     } finally {
       setLockingQuestionId('');
     }
@@ -345,7 +345,7 @@ export default function QuizSession() {
   if (error || !session) {
     return (
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
-        <Alert severity="error" sx={{ mb: 2 }}>{error || 'Quiz not found'}</Alert>
+        <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.quiz.quizNotFound')}</Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           {t('student.quiz.backToCourse')}
         </Button>
@@ -357,7 +357,7 @@ export default function QuizSession() {
     return (
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
         <Alert severity="info" sx={{ mb: 2 }}>
-          This quiz is closed.
+          {t('student.quiz.quizClosed')}
         </Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           {t('student.quiz.backToCourse')}
@@ -370,7 +370,7 @@ export default function QuizSession() {
     return (
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
         <Alert severity="success" sx={{ mb: 2 }}>
-          You have already submitted this quiz.
+          {t('student.quiz.alreadySubmitted')}
         </Alert>
         <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
           {t('student.quiz.backToCourse')}
@@ -389,10 +389,10 @@ export default function QuizSession() {
 
       <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
         <Typography variant="h5" sx={{ fontWeight: 700, flexGrow: 1 }}>
-          {session.name || 'Quiz'}
+          {session.name || t('student.quiz.quizFallback')}
         </Typography>
-        <Chip label={practiceQuiz ? 'Practice Quiz' : 'Quiz'} color={practiceQuiz ? 'info' : 'primary'} size="small" />
-        <Chip label={`${answeredCount}/${questions.length} answered`} variant="outlined" size="small" />
+        <Chip label={practiceQuiz ? t('student.quiz.practiceQuizLabel') : t('student.quiz.quizLabel')} color={practiceQuiz ? 'info' : 'primary'} size="small" />
+        <Chip label={t('student.quiz.answeredCount', { answered: answeredCount, total: questions.length })} variant="outlined" size="small" />
       </Box>
 
       <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
@@ -414,7 +414,7 @@ export default function QuizSession() {
               onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
               disabled={currentQuestionIndex <= 0}
             >
-              Previous
+              {t('common.previous')}
             </Button>
             <Chip label={`${t('student.quiz.questionNumber', { number: currentQuestionIndex + 1 })}/${questions.length}`} size="small" variant="outlined" />
             <Button
@@ -423,7 +423,7 @@ export default function QuizSession() {
               onClick={() => setCurrentQuestionIndex((index) => Math.min(questions.length - 1, index + 1))}
               disabled={currentQuestionIndex >= questions.length - 1}
             >
-              Next
+              {t('common.next')}
             </Button>
           </Box>
         )}
@@ -567,7 +567,7 @@ export default function QuizSession() {
                     {response?.answerWysiwyg ? (
                       <RichContent html={response.answerWysiwyg} />
                     ) : (
-                      <Typography variant="body2">{normalizeValue(response?.answer) || '(no answer)'}</Typography>
+                      <Typography variant="body2">{normalizeValue(response?.answer) || t('common.noAnswer')}</Typography>
                     )}
                   </Paper>
                 ) : (
@@ -619,7 +619,7 @@ export default function QuizSession() {
                     onClick={() => handleSubmitPracticeQuestion(qId)}
                     disabled={!hasAnswerForDraft(question, draft) || lockingQuestionId === qId}
                   >
-                    {lockingQuestionId === qId ? 'Submitting...' : 'Submit Question'}
+                    {lockingQuestionId === qId ? t('student.quiz.submittingQuestion') : t('student.quiz.submitQuestion')}
                   </Button>
                 )}
                 {!locked && (
@@ -675,10 +675,10 @@ export default function QuizSession() {
           disabled={practiceQuiz ? submittingQuiz : !canSubmitQuiz}
         >
           {submittingQuiz
-            ? 'Submitting...'
+            ? t('student.quiz.submitting')
             : practiceQuiz
-              ? 'Submit Practice Quiz'
-              : 'Submit Quiz'}
+              ? t('student.quiz.submitPracticeQuiz')
+              : t('student.quiz.submitQuiz')}
         </Button>
       ) : (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center' }}>

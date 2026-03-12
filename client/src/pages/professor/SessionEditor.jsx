@@ -25,7 +25,7 @@ import { useTranslation } from 'react-i18next';
 
 const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
-const QUIZ_WINDOW_VALIDATION_MESSAGE = 'Quiz end must be later than quiz start.';
+const QUIZ_WINDOW_VALIDATION_MESSAGE = 'professor.sessionEditor.quizEndAfterStart';
 const DEFAULT_MS_SCORING_METHOD = 'right-minus-wrong';
 
 const MAX_COURSE_TAB_INDEX = 4;
@@ -226,7 +226,7 @@ export default function SessionEditor() {
         setCourseStudents([]);
       }
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load session' });
+      setMsg({ severity: 'error', text: t('professor.sessionEditor.failedLoadSession') });
     } finally {
       setLoading(false);
     }
@@ -281,8 +281,8 @@ export default function SessionEditor() {
       setSessionSaveStatus('success');
     } catch (err) {
       setSessionSaveStatus('error');
-      const message = err.response?.data?.message || 'Failed to update session.';
-      setSessionSaveError(`${message} Your last change was not recorded.`);
+      const message = err.response?.data?.message || t('professor.sessionEditor.failedUpdateSession');
+      setSessionSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
       fetchSession();
     } finally {
       setSavingSession(false);
@@ -292,7 +292,7 @@ export default function SessionEditor() {
   const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}) => {
     const validationMessage = validateQuizWindow(nextStart, nextEnd);
     if (validationMessage) {
-      setMsg({ severity: 'error', text: validationMessage });
+      setMsg({ severity: 'error', text: t(validationMessage) });
       return false;
     }
     const updates = { ...extraUpdates };
@@ -346,7 +346,7 @@ export default function SessionEditor() {
       await apiClient.delete(`/sessions/${sessionId}`);
       navigate(courseBackLink);
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to delete session' });
+      setMsg({ severity: 'error', text: t('professor.sessionEditor.failedDeleteSession') });
       setDeleting(false);
     }
   };
@@ -1190,7 +1190,7 @@ export default function SessionEditor() {
                     setQuizStart(val);
                     const validationMessage = validateQuizWindow(val, quizEnd);
                     if (validationMessage) {
-                      setMsg({ severity: 'error', text: validationMessage });
+                      setMsg({ severity: 'error', text: t(validationMessage) });
                       return;
                     }
                     const iso = toIsoIfValid(val);
@@ -1210,7 +1210,7 @@ export default function SessionEditor() {
                     setQuizEnd(val);
                     const validationMessage = validateQuizWindow(quizStart, val);
                     if (validationMessage) {
-                      setMsg({ severity: 'error', text: validationMessage });
+                      setMsg({ severity: 'error', text: t(validationMessage) });
                       return;
                     }
                     const iso = toIsoIfValid(val);
