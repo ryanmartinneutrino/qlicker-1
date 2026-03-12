@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
@@ -131,6 +132,7 @@ function ShortAnswerList({ responses }) {
 // ---------------------------------------------------------------------------
 
 export default function SecondDesktop() {
+  const { t } = useTranslation();
   const { courseId, sessionId } = useParams();
 
   const [liveData, setLiveData] = useState(null);
@@ -358,7 +360,7 @@ export default function SecondDesktop() {
         }}
       >
         <Typography variant="h2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-          Session Ended
+          {t('professor.secondDesktop.sessionEnded')}
         </Typography>
       </Box>
     );
@@ -374,10 +376,10 @@ export default function SecondDesktop() {
           alignItems: 'center', minHeight: '100vh', bgcolor: 'background.default',
           p: 4, textAlign: 'center',
         }}
-        aria-label="Join code display"
+        aria-label={t('professor.secondDesktop.joinCodeDisplay')}
       >
         <Typography variant="h5" sx={{ fontWeight: 600, color: 'text.secondary', mb: 2 }}>
-          Join Code
+          {t('professor.secondDesktop.joinCode')}
         </Typography>
         <Typography
           variant="h1"
@@ -393,11 +395,11 @@ export default function SecondDesktop() {
           {session.currentJoinCode}
         </Typography>
         <Typography variant="h6" sx={{ mt: 3, color: 'text.secondary' }}>
-          {session.name || 'Live Session'}
+          {session.name || t('professor.secondDesktop.liveSession')}
         </Typography>
         {session.joinCodeInterval && (
           <Chip
-            label={`Refreshes every ${session.joinCodeInterval}s`}
+            label={t('professor.secondDesktop.refreshesEvery', { interval: session.joinCodeInterval })}
             size="small"
             variant="outlined"
             sx={{ ...COMPACT_CHIP_SX, mt: 2 }}
@@ -419,10 +421,10 @@ export default function SecondDesktop() {
         }}
       >
         <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
-          {session?.name || 'Live Session'}
+          {session?.name || t('professor.secondDesktop.liveSession')}
         </Typography>
         <Typography variant="h5" sx={{ color: 'text.secondary' }}>
-          Waiting for the next question…
+          {t('professor.secondDesktop.waitingForQuestion')}
         </Typography>
       </Box>
     );
@@ -541,7 +543,7 @@ export default function SecondDesktop() {
       {qType === QUESTION_TYPES.SHORT_ANSWER && (
         <Paper variant="outlined" sx={{ p: 3, mb: 3, textAlign: 'center' }}>
           <Typography variant="h6" color="text.secondary">
-            Short Answer Question
+            {t('professor.secondDesktop.shortAnswerQuestion')}
           </Typography>
         </Paper>
       )}
@@ -550,15 +552,15 @@ export default function SecondDesktop() {
       {qType === QUESTION_TYPES.NUMERICAL && (
         <Paper variant="outlined" sx={{ p: 3, mb: 3, textAlign: 'center' }}>
           <Typography variant="h6" color="text.secondary">
-            Numerical Question
+            {t('professor.secondDesktop.numericalQuestion')}
           </Typography>
           {showCorrect && currentQ.correctNumerical != null && (
             <Box sx={{ mt: 1 }}>
               <Typography variant="body1">
-                Correct: {currentQ.correctNumerical}
+                {t('professor.secondDesktop.correct', { value: currentQ.correctNumerical })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                tolerance: {currentQ.toleranceNumerical ?? 0}
+                {t('professor.secondDesktop.tolerance', { value: currentQ.toleranceNumerical ?? 0 })}
               </Typography>
             </Box>
           )}
@@ -570,10 +572,10 @@ export default function SecondDesktop() {
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}
-          aria-label="Response statistics"
+          aria-label={t('professor.secondDesktop.responseStatistics')}
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-            Responses
+            {t('professor.secondDesktop.responses')}
           </Typography>
           {responseStats?.type === 'shortAnswer' ? (
             <ShortAnswerList responses={responseStats.answers || allResponses} />
@@ -583,7 +585,7 @@ export default function SecondDesktop() {
             <ShortAnswerList responses={allResponses} />
           ) : (
             <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
-              No responses yet.
+              {t('professor.secondDesktop.noResponsesYet')}
             </Typography>
           )}
         </Paper>

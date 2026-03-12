@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
@@ -42,6 +43,7 @@ function getSuggestedSemester() {
 }
 
 export default function ProfDashboard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export default function ProfDashboard() {
       const { data } = await apiClient.get('/courses');
       setCourses(data.courses || []);
     } catch {
-      setMsg({ severity: 'error', text: 'Failed to load courses' });
+      setMsg({ severity: 'error', text: t('professor.dashboard.failedLoadCourses') });
     } finally {
       setLoading(false);
     }
@@ -77,7 +79,7 @@ export default function ProfDashboard() {
       const { season, year, ...rest } = newCourse;
       const semester = formatSemester(season, year);
       if (!semester) {
-        setMsg({ severity: 'error', text: 'Semester and year are required.' });
+        setMsg({ severity: 'error', text: t('professor.dashboard.semesterYearRequired', 'Semester and year are required.') });
         return;
       }
       await apiClient.post('/courses', { ...rest, semester });
@@ -85,9 +87,9 @@ export default function ProfDashboard() {
       const s = getSuggestedSemester();
       setNewCourse({ name: '', deptCode: '', courseNumber: '', section: '', season: s.season, year: s.year });
       fetchCourses();
-      setMsg({ severity: 'success', text: 'Course created' });
+      setMsg({ severity: 'success', text: t('professor.dashboard.courseCreated') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || 'Failed to create course' });
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.dashboard.failedCreateCourse') });
     } finally {
       setCreating(false);
     }
@@ -95,7 +97,7 @@ export default function ProfDashboard() {
 
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
-    setMsg({ severity: 'success', text: 'Enrollment code copied' });
+    setMsg({ severity: 'success', text: t('professor.dashboard.enrollmentCodeCopied') });
   };
 
   const filtered = courses.filter((c) => {
@@ -123,15 +125,15 @@ export default function ProfDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Typography variant="h4">My Courses</Typography>
+        <Typography variant="h4">{t('professor.dashboard.myCourses')}</Typography>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          Create Course
+          {t('professor.dashboard.createCourse')}
         </Button>
       </Box>
 
       <TextField
         size="small"
-        placeholder="Search courses…"
+        placeholder={t('professor.dashboard.searchCourses')}
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
@@ -144,11 +146,11 @@ export default function ProfDashboard() {
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <SchoolIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">
-            {search ? 'No courses match your search' : 'No courses yet'}
+            {search ? t('professor.dashboard.noCoursesMatch') : t('professor.dashboard.noCoursesYet')}
           </Typography>
           {!search && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Create your first course to get started.
+              {t('professor.dashboard.createFirstCourse')}
             </Typography>
           )}
         </Box>
@@ -179,12 +181,12 @@ export default function ProfDashboard() {
                   </Typography>
                   {course.section && (
                     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      Section: {course.section}
+                      {t('professor.dashboard.section', { section: course.section })}
                     </Typography>
                   )}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
                     <Chip
-                      label={course.inactive ? 'Inactive' : 'Active'}
+                      label={course.inactive ? t('professor.dashboard.inactive') : t('professor.dashboard.active')}
                       color={course.inactive ? 'default' : 'success'}
                       size="small"
                       sx={COMPACT_CHIP_SX}
@@ -192,7 +194,7 @@ export default function ProfDashboard() {
                   </Box>
                   {course.enrollmentCode && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
-                      <Typography variant="caption" color="text.secondary">Code:</Typography>
+                      <Typography variant="caption" color="text.secondary">{t('professor.dashboard.code')}</Typography>
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {course.enrollmentCode}
                       </Typography>
@@ -212,19 +214,19 @@ export default function ProfDashboard() {
 
       {/* Create Course Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Create Course</DialogTitle>
+        <DialogTitle>{t('professor.dashboard.createCourse')}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label="Course Name" placeholder="e.g. Calculus-based physics" required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
+          <TextField label={t('professor.dashboard.courseName')} placeholder={t('professor.dashboard.courseNamePlaceholder')} required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Dept Code" placeholder="e.g. PHYS" value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label="Course Number" placeholder="e.g. 101" value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label={t('professor.dashboard.deptCode')} placeholder={t('professor.dashboard.deptCodePlaceholder')} value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label={t('professor.dashboard.courseNumber')} placeholder={t('professor.dashboard.courseNumberPlaceholder')} value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="Section" placeholder="e.g. 001" value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
+            <TextField label={t('professor.dashboard.sectionLabel')} placeholder={t('professor.dashboard.sectionPlaceholder')} value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
             <FormControl sx={{ flex: 1 }}>
-              <InputLabel>Semester</InputLabel>
+              <InputLabel>{t('professor.dashboard.semester')}</InputLabel>
               <Select
-                label="Semester"
+                label={t('professor.dashboard.semester')}
                 value={newCourse.season}
                 onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}
               >
@@ -247,18 +249,18 @@ export default function ProfDashboard() {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Year"
-                  placeholder="e.g. 2026 or 2026/2027"
-                  helperText="Use YYYY or YYYY/YYYY"
+                  label={t('professor.dashboard.year')}
+                  placeholder={t('professor.dashboard.yearPlaceholder')}
+                  helperText={t('professor.dashboard.yearHelp')}
                 />
               )}
             />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>Cancel</Button>
+          <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
           <Button variant="contained" onClick={handleCreate} disabled={creating || !newCourse.name || !newCourse.season || !newCourse.year}>
-            {creating ? 'Creating…' : 'Create'}
+            {creating ? t('professor.dashboard.creating') : t('common.create')}
           </Button>
         </DialogActions>
       </Dialog>
