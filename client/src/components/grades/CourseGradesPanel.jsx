@@ -1994,7 +1994,7 @@ export default function CourseGradesPanel({
                                   size="small"
                                   color="warning"
                                   variant="outlined"
-                                  label={instructorView ? `${ungradedCount} ungraded` : 'Ungraded'}
+                                  label={instructorView ? t('grades.coursePanel.ungradedCount', { count: ungradedCount }) : t('grades.coursePanel.ungraded')}
                                   sx={{ maxWidth: 140 }}
                                 />
                               )}
@@ -2065,23 +2065,23 @@ export default function CourseGradesPanel({
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>Manual override conflicts</DialogTitle>
+        <DialogTitle>{t('grades.coursePanel.manualOverrideConflicts')}</DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" sx={{ mb: 1 }}>
-            Automatic recalculation produced different marks than existing manual overrides. Manual marks were preserved.
+            {t('grades.coursePanel.autoRecalcNote')}
           </Typography>
           {conflictsDialog.conflicts.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">No conflicts.</Typography>
+            <Typography variant="body2" color="text.secondary">{t('grades.coursePanel.noConflicts')}</Typography>
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Student</TableCell>
-                    <TableCell>Question</TableCell>
-                    <TableCell>Manual</TableCell>
-                    <TableCell>Auto</TableCell>
-                    <TableCell>Action</TableCell>
+                    <TableCell>{t('grades.coursePanel.student')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.question')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.manual')}</TableCell>
+                    <TableCell>{t('grades.coursePanel.auto')}</TableCell>
+                    <TableCell>{t('common.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -2107,7 +2107,7 @@ export default function CourseGradesPanel({
                           onClick={() => handleAcceptConflictFromList(conflict)}
                           disabled={!isAutoGradeableConflict(conflict)}
                         >
-                          Accept Auto
+                          {t('grades.coursePanel.acceptAuto')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -2118,9 +2118,9 @@ export default function CourseGradesPanel({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConflictsDialog({ open: false, conflicts: [] })}>Keep Manual</Button>
+          <Button onClick={() => setConflictsDialog({ open: false, conflicts: [] })}>{t('grades.coursePanel.keepManual')}</Button>
           <Button variant="contained" onClick={handleAcceptAllConflicts} disabled={!conflictsDialog.conflicts.length}>
-            Accept All Auto Marks
+            {t('grades.coursePanel.acceptAllAuto')}
           </Button>
         </DialogActions>
       </Dialog>
