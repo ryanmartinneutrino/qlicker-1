@@ -133,7 +133,10 @@
     "profileFailed": "Failed to update profile.",
     "lastChangeNotRecorded": "Your last change was not recorded.",
     "photoUpdated": "Profile photo updated",
-    "photoFailed": "Failed to upload photo"
+    "photoFailed": "Failed to upload photo",
+    "language": "Language",
+    "languageHelp": "Choose your preferred language. Select \"Use app default\" to follow the system-wide setting configured by your administrator.",
+    "useAppDefault": "Use app default"
   },
   "admin": {
     "title": "Admin Dashboard",

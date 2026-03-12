@@ -133,7 +133,10 @@
     "profileFailed": "Échec de la mise à jour du profil.",
     "lastChangeNotRecorded": "Votre dernière modification n'a pas été enregistrée.",
     "photoUpdated": "Photo de profil mise à jour",
-    "photoFailed": "Échec du téléversement de la photo"
+    "photoFailed": "Échec du téléversement de la photo",
+    "language": "Langue",
+    "languageHelp": "Choisissez votre langue préférée. Sélectionnez « Utiliser la langue par défaut » pour suivre le réglage défini par votre administrateur.",
+    "useAppDefault": "Utiliser la langue par défaut"
   },
   "admin": {
     "title": "Tableau de bord administrateur",

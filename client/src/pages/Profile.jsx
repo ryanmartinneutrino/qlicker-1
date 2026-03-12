@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Box, Typography, TextField, Button, Alert, CircularProgress, Divider, Paper, Avatar,
+  FormControl, InputLabel, Select, MenuItem,
 } from '@mui/material';
 import { PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import i18n, { SUPPORTED_LOCALES } from '../i18n';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import AutoSaveStatus from '../components/common/AutoSaveStatus';
@@ -38,6 +40,7 @@ export default function Profile() {
   const [profileSaveError, setProfileSaveError] = useState('');
   const [changingPw, setChangingPw] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [userLocale, setUserLocale] = useState('');
   const fileInputRef = useRef(null);
   const profileHydratedRef = useRef(false);
   const profileSaveInFlightRef = useRef(false);
@@ -54,7 +57,14 @@ export default function Profile() {
       setProfile(normalizedProfile);
       lastSavedProfileRef.current = normalizedProfile;
       profileHydratedRef.current = true;
-    }).catch(() => setMsg({ severity: 'error', text: 'Failed to load profile' }))
+      // Load per-user locale preference (empty = use app default)
+      const savedLocale = u.locale || '';
+      setUserLocale(savedLocale);
+      if (savedLocale) {
+        i18n.changeLanguage(savedLocale);
+        localStorage.setItem('qlicker_locale', savedLocale);
+      }
+    }).catch(() => setMsg({ severity: 'error', text: t('profile.profileFailed') }))
       .finally(() => setLoading(false));
   }, []);
 
@@ -174,6 +184,21 @@ export default function Profile() {
     }
   };
 
+  const handleLocaleChange = async (e) => {
+    const newLocale = e.target.value;
+    setUserLocale(newLocale);
+    // Apply immediately
+    const effectiveLocale = newLocale || 'en';
+    i18n.changeLanguage(effectiveLocale);
+    localStorage.setItem('qlicker_locale', effectiveLocale);
+    // Persist to server
+    try {
+      await apiClient.patch('/users/me', { locale: newLocale });
+    } catch {
+      // Best-effort; locale is also stored in localStorage
+    }
+  };
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
 
   return (
@@ -237,6 +262,27 @@ export default function Profile() {
           </Button>
           {pwMsg && <Alert severity={pwMsg.severity} onClose={() => setPwMsg(null)}>{pwMsg.text}</Alert>}
         </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>{t('profile.language')}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t('profile.languageHelp')}
+        </Typography>
+        <FormControl fullWidth>
+          <InputLabel id="profile-locale-label">{t('profile.language')}</InputLabel>
+          <Select
+            labelId="profile-locale-label"
+            value={userLocale}
+            label={t('profile.language')}
+            onChange={handleLocaleChange}
+          >
+            <MenuItem value="">{t('profile.useAppDefault')}</MenuItem>
+            {SUPPORTED_LOCALES.map((loc) => (
+              <MenuItem key={loc.code} value={loc.code}>{loc.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Paper>
     </Box>
   );

@@ -110,6 +110,9 @@ const UserSchema = new mongoose.Schema(
     profile: { type: ProfileSchema, default: () => ({}) },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date },
+    // Per-user locale preference (overrides app default from Settings).
+    // Empty string or missing means "use app default".
+    locale: { type: String, default: '' },
   },
   {
     collection: 'users',
