@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import ConnectionStatus from '../components/common/ConnectionStatus';
 import './HomeAnimated.css';
 
@@ -20,6 +21,7 @@ function rand(min, max) {
 
 export default function Home() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const heroRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -214,22 +216,21 @@ export default function Home() {
 
         <div className="homeHeroContent">
           <div className="homeHeroCopy">
-            <div className="homeHeroEyebrow">An open-source in-class response system, and so much more.</div>
-            <h1 className="homeHeroTitle">Learning by answering questions.</h1>
+            <div className="homeHeroEyebrow">{t('home.tagline')}</div>
+            <h1 className="homeHeroTitle">{t('home.subtitle')}</h1>
             <p className="homeHeroSubtitle">
-              In-class polling, at home quizzes, student practice sessions, grade management,
-              statistics, and so much more. All at your fingertips and for free!
+              {t('home.description')}
             </p>
             <div className="homeHeroCtaRow">
               <button className="homeHeroBtn homeHeroBtnPrimary" type="button" onClick={() => navigate('/login')}>
-                Get started
+                {t('home.getStarted')}
               </button>
             </div>
-            <div className="homeHeroNote">Motion respects <code>prefers-reduced-motion</code>.</div>
+            <div className="homeHeroNote">{t('home.motionNote')}</div>
           </div>
 
           <div className="homeHeroDevice">
-            <img className="homeHeroPhone" src="/animated-hero/assets/phone/phone-body.png" alt="Phone showing Qlicker" />
+            <img className="homeHeroPhone" src="/animated-hero/assets/phone/phone-body.png" alt={t('home.phoneAlt')} />
             <div className="homeHeroScreenMask" aria-hidden="true">
               <video className="homeHeroScreenVideo" autoPlay muted loop playsInline preload="auto">
                 <source src="/animated-hero/assets/video/screen.webm" type="video/webm" />

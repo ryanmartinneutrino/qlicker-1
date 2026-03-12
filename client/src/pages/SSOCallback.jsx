@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SSOCallback() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { loadUser } = useAuth();
   const navigate = useNavigate();
@@ -12,7 +14,7 @@ export default function SSOCallback() {
   useEffect(() => {
     const token = searchParams.get('token');
     if (!token) {
-      setError('No authentication token received');
+      setError(t('ssoCallback.noToken'));
       return;
     }
 
@@ -21,11 +23,11 @@ export default function SSOCallback() {
     loadUser().then(() => {
       const stored = localStorage.getItem('token');
       if (!stored) {
-        setError('Authentication failed');
+        setError(t('ssoCallback.authFailed'));
       }
       // Navigation is handled by the separate useEffect watching `user`.
     }).catch(() => {
-      setError('Failed to load user profile');
+      setError(t('ssoCallback.profileFailed'));
     });
   }, [searchParams, loadUser, navigate]);
 
