@@ -203,13 +203,17 @@ All routes are prefixed with `/api/v1`. WebSocket endpoint at `/ws`.
 | POST | `/api/v1/courses/:id/regenerate-code` | New enrollment code |
 | PATCH | `/api/v1/courses/:id/active` | Toggle active |
 | POST | `/api/v1/courses/:id/copy-sessions` | Copy all sessions *(not yet implemented — Phase 7)* |
-| **Course Groups** | | *(Not yet implemented — Phase 7)* |
+| **Course Groups** | | *Implemented* |
 | GET | `/api/v1/courses/:id/groups` | List group categories |
 | POST | `/api/v1/courses/:id/groups` | Create category |
 | DELETE | `/api/v1/courses/:id/groups/:catId` | Delete category |
 | POST | `/api/v1/courses/:id/groups/:catId/groups` | Add group |
 | DELETE | `/api/v1/courses/:id/groups/:catId/groups/:gId` | Delete group |
-| PATCH | `/api/v1/courses/:id/groups/:catId/groups/:gId` | Update group |
+| PATCH | `/api/v1/courses/:id/groups/:catId/groups/:gId` | Update group (rename, toggle student) |
+| POST | `/api/v1/courses/:id/groups/:catId/groups/:gId/students` | Add student to group |
+| DELETE | `/api/v1/courses/:id/groups/:catId/groups/:gId/students/:studentId` | Remove student from group |
+| GET | `/api/v1/courses/:id/groups/csv` | Download group data as CSV |
+| POST | `/api/v1/courses/:id/groups/csv` | Upload CSV to create/update category |
 | **Sessions** | | |
 | POST | `/api/v1/courses/:courseId/sessions` | Create session |
 | GET | `/api/v1/courses/:courseId/sessions` | List course sessions |
@@ -443,7 +447,7 @@ After this script has been applied in all environments, remove temporary client 
 - Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path (affects users with pending reset tokens from the old app).
 - ~~Add missing model indexes (especially `users`, `responses`, `questions`, `sessions`, `grades`) to preserve legacy query performance/uniqueness expectations.~~ ✅ **Done** — Added indexes to User (`emails.address`), Question (`sessionId`, `courseId`, `owner`), Session (`courseId`), Grade (`userId`, `sessionId`, `courseId`, compound `userId+sessionId`), and Image (`UID`). Response already had compound indexes.
 - Confirm whether `meteor_accounts_loginServiceConfiguration` should remain unsupported, be migrated, or be explicitly deprecated.
-- Legacy `groupCategories.groups` shape mismatch (`groupNumber/groupName/students` vs `name/members`) needs migration logic or schema alignment before group features are implemented.
+- ~~Legacy `groupCategories.groups` shape mismatch (`groupNumber/groupName/students` vs `name/members`) needs migration logic or schema alignment before group features are implemented.~~ ✅ **Done** — Group API uses `.lean()` queries and `normalizeGroupCategories()` to transparently handle both legacy (`groupNumber/groupName/students`) and current (`name/members`) shapes. Legacy data is normalized on read and persisted in the current schema on write.
 
 ---
 
@@ -641,8 +645,10 @@ See [agents/AGENT_3_COURSES.md](agents/AGENT_3_COURSES.md)
 - [x] TA management (add, remove)
 - [x] Enrollment code generation/regeneration
 - [x] Course settings (active/inactive, verification, student questions)
-- [ ] Group category CRUD
-- [ ] Group management (add/remove students, rename)
+- [x] Group category CRUD
+- [x] Group management (add/remove students, rename)
+- [x] Group CSV download/upload
+- [x] Legacy `groupCategories` shape normalization (groupNumber/groupName/students → name/members)
 - [ ] Video chat integration (Jitsi room management)
 - [ ] Copy sessions between courses
 
@@ -719,7 +725,8 @@ See [agents/AGENT_7_FRONTEND.md](agents/AGENT_7_FRONTEND.md)
 - [x] Question components (display, edit, all 5 types: SA, MC, TF, MS, NU)
 - [x] Answer distribution display — MUI LinearProgress bars for MC/MS/TF, custom HistogramBars for NU
 - [x] SecondDesktop projector view (popup window, auto-close on session end)
-- [ ] Group management UI
+- [x] Group management UI
+- [x] Group filter in grading/review interface
 - [ ] Video chat (Jitsi) integration
 - [x] Shared components (tables, forms, modals, lists, AutoSaveStatus)
 - [x] Connection status indicator (health check banner)
@@ -895,7 +902,7 @@ The existing MongoDB database uses Meteor's conventions:
 | 4. Session editor | ✅ Complete | Phase 4 |
 | 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
 | 7. Grading | ✅ Complete (auto/manual grading, visibility, CSV, review) | Phase 6 |
-| 8. Groups, video, SSO confirmed | ⬜ Not started | Phase 7 |
+| 8. Groups, video, SSO confirmed | 🔄 Groups complete; video & SSO remaining | Phase 7 |
 | 9. Production ready | ⬜ Not started | Phase 8 |
 
 ### Phase 2 Bug Fixes (from Comments.md)
@@ -1030,7 +1037,7 @@ Phase 6 is complete (grading fully functional). A comprehensive code review (202
 **Phase 7 priorities (in order):**
 
 1. ~~**WebSocket delta messages (CRITICAL for production):** Replace generic `session:updated` events with granular delta payloads to eliminate N+1 re-fetch pattern — see Code Review § Performance. This is the single biggest scalability blocker.~~ ✅ Done — Implemented `session:response-added`, `session:question-changed`, `session:visibility-changed`, `session:status-changed` events with delta payloads. Added `wsSendToUsers()` for single-serialize broadcast. Professor LiveSession uses throttled 2s re-fetch for responses. Student LiveSession ignores response-added (sent only to instructors). Estimated 98%+ reduction in DB queries during live sessions.
-2. **Group management:** Implement group category CRUD, group management (add/remove students), and legacy `groupCategories` shape migration (`groupNumber/groupName/students` → `name/members`).
+2. ~~**Group management:** Implement group category CRUD, group management (add/remove students), and legacy `groupCategories` shape migration (`groupNumber/groupName/students` → `name/members`).~~ ✅ Done — Full group API (10 endpoints), GroupManagementPanel UI, CSV import/export, legacy normalization, group filter in grading interface. 17 backend tests.
 3. **Video chat integration:** Jitsi room management for course groups.
 4. **SSO SAML production confirmation:** Verify SAML login/callback/metadata/logout work end-to-end in a production-like environment. Fix SAML logout signature validation (currently manually parses XML without crypto verification).
 5. **Security hardening:** CSRF protection (`@fastify/csrf-protection`), move JWT access token from localStorage to memory-only, refresh token rotation, file upload content validation (magic bytes).
@@ -1315,7 +1322,7 @@ A comprehensive code review was conducted covering performance, security, access
 
 | Requirement | Status | Notes |
 |---|---|---|
-| Same functionality as MeteorJS | 🔄 In progress | Phases 1–6 complete (including grading). Groups and video remain (Phase 7). |
+| Same functionality as MeteorJS | 🔄 In progress | Phases 1–6 complete (including grading). Groups complete; video and SSO confirmation remain (Phase 7). |
 | Same database compatibility | ✅ Verified | Legacy DB restores work. Case-insensitive emails, argon2id migration, legacy field compat all applied. |
 | Fewer dependencies / well-maintained | ✅ On track | Using Fastify ecosystem, MUI, custom chart components, TipTap, KaTeX. All actively maintained. |
 | API-first design | ✅ Complete | 30+ REST endpoints + WebSocket. `@fastify/swagger` installed but not yet registered in app.js. |

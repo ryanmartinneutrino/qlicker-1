@@ -19,7 +19,10 @@ import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import StudentListItem from '../../components/common/StudentListItem';
+import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
+import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
 import { useTranslation } from 'react-i18next';
 
 function buildWebsocketUrl(token) {
@@ -72,7 +75,8 @@ function sortSessions(items) {
   });
 }
 
-const MAX_COURSE_TAB_INDEX = 5;
+// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Settings
+const MAX_COURSE_TAB_INDEX = 6;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -203,6 +207,9 @@ export default function CourseDetail() {
 
   // Full-size image viewer
   const [imageViewUrl, setImageViewUrl] = useState(null);
+
+  // Student info modal
+  const [studentInfoTarget, setStudentInfoTarget] = useState(null);
 
   // Settings
   const [editFields, setEditFields] = useState(EMPTY_COURSE_EDIT_FIELDS);
@@ -694,6 +701,7 @@ export default function CourseDetail() {
     t('professor.course.grades'),
     `${t('professor.course.students')} (${students.length})`,
     `${t('professor.course.instructors')} (${instructors.length})`,
+    t('professor.course.groups'),
     t('professor.course.settings'),
   ];
 
@@ -971,28 +979,10 @@ export default function CourseDetail() {
               {students.map((s, i) => (
                 <Box key={s._id || i}>
                   {i > 0 && <Divider />}
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar
-                        src={s.profile?.profileImage || s.profile?.profileThumbnail || ''}
-                        sx={{ width: 36, height: 36, cursor: (s.profile?.profileImage) ? 'pointer' : 'default' }}
-                        onClick={() => {
-                          if (s.profile?.profileImage) setImageViewUrl(s.profile.profileImage);
-                        }}
-                      >
-                        {(s.profile?.firstname?.[0] || '').toUpperCase()}
-                      </Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={`${s.profile?.firstname || ''} ${s.profile?.lastname || ''}`.trim() || 'Unknown'}
-                      secondary={s.emails?.[0]?.address || s.email || ''}
-                    />
-                    <ListItemSecondaryAction>
-                      <IconButton edge="end" color="error" size="small" onClick={() => setRemoveStudentTarget(s)}>
-                        <PersonRemoveIcon fontSize="small" />
-                      </IconButton>
-                    </ListItemSecondaryAction>
-                  </ListItem>
+                  <StudentListItem
+                    student={s}
+                    onClick={() => setStudentInfoTarget(s)}
+                  />
                 </Box>
               ))}
             </List>
@@ -1055,8 +1045,14 @@ export default function CourseDetail() {
         )}
       </TabPanel>
 
-      {/* Settings Tab */}
+      {/* Groups Tab */}
       <TabPanel value={tab} index={5}>
+        <Typography variant="h6" sx={{ mb: 1.5 }}>{t('professor.course.groups')}</Typography>
+        <GroupManagementPanel courseId={id} students={students} />
+      </TabPanel>
+
+      {/* Settings Tab */}
+      <TabPanel value={tab} index={6}>
         <Box sx={{ maxWidth: 500, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <AutoSaveStatus status={settingsAutoSaveStatus} errorText={settingsAutoSaveError} />
           {hasMissingCourseProperties && (
@@ -1202,6 +1198,19 @@ export default function CourseDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Student Info Modal */}
+      <StudentInfoModal
+        open={!!studentInfoTarget}
+        onClose={() => setStudentInfoTarget(null)}
+        student={studentInfoTarget}
+        courseId={id}
+        onRemoved={() => {
+          setStudentInfoTarget(null);
+          fetchCourse();
+          setMsg({ severity: 'success', text: t('professor.course.studentRemoved') });
+        }}
+      />
 
       {/* Confirm Remove Student */}
       <Dialog open={!!removeStudentTarget} onClose={() => setRemoveStudentTarget(null)}>

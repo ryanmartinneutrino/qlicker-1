@@ -21,6 +21,7 @@ import courseRoutes from './routes/courses.js';
 import sessionRoutes from './routes/sessions.js';
 import questionRoutes from './routes/questions.js';
 import gradeRoutes from './routes/grades.js';
+import groupRoutes from './routes/groups.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -104,6 +105,7 @@ export async function buildApp(opts = {}) {
   await app.register(sessionRoutes, { prefix: '/api/v1' });
   await app.register(questionRoutes, { prefix: '/api/v1' });
   await app.register(gradeRoutes, { prefix: '/api/v1' });
+  await app.register(groupRoutes, { prefix: '/api/v1/courses' });
 
   return app;
 }
