@@ -3,10 +3,12 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button,
 } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import ConnectionStatus from '../common/ConnectionStatus';
 
 export default function AppLayout() {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -76,7 +78,7 @@ export default function AppLayout() {
           },
         }}
       >
-        Skip to main content
+        {t('nav.skipToMain')}
       </Box>
       <ConnectionStatus />
       <AppBar position="static">
@@ -85,7 +87,7 @@ export default function AppLayout() {
             <Button
               color="inherit"
               onClick={() => navigate(dashboardPath)}
-              aria-label="Go to dashboard"
+              aria-label={t('nav.goToDashboard')}
               sx={{
                 p: 0,
                 minWidth: 0,
@@ -94,12 +96,12 @@ export default function AppLayout() {
               }}
             >
               <Typography variant="h4" sx={{ fontWeight: 500 }}>
-                Qlicker
+                {t('common.appName')}
               </Typography>
             </Button>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
-          <IconButton onClick={handleMenuOpen} color="inherit" aria-label="Open account menu">
+          <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
             <Avatar
               src={user?.profile?.profileImage}
               sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
@@ -112,15 +114,15 @@ export default function AppLayout() {
               {user?.profile?.firstname} {user?.profile?.lastname}
             </MenuItem>
             {currentPath !== dashboardPath && (
-              <MenuItem onClick={() => { handleMenuClose(); navigate(dashboardPath); }}>Dashboard</MenuItem>
+              <MenuItem onClick={() => { handleMenuClose(); navigate(dashboardPath); }}>{t('nav.dashboard')}</MenuItem>
             )}
             {currentPath !== '/profile' && (
-              <MenuItem onClick={handleProfile}>Profile</MenuItem>
+              <MenuItem onClick={handleProfile}>{t('nav.profile')}</MenuItem>
             )}
             {isAdmin && !isOnCourseList && (
-              <MenuItem onClick={() => { handleMenuClose(); navigate('/manage'); }}>Courses</MenuItem>
+              <MenuItem onClick={() => { handleMenuClose(); navigate('/manage'); }}>{t('nav.courses')}</MenuItem>
             )}
-            <MenuItem onClick={handleLogout}>Logout</MenuItem>
+            <MenuItem onClick={handleLogout}>{t('nav.logout')}</MenuItem>
           </Menu>
         </Toolbar>
       </AppBar>
