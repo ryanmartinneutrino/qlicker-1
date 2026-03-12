@@ -297,6 +297,7 @@ The per-user preference is stored in `User.locale` and also cached in `localStor
 
 ## Documentation
 
+- [Coding Standards](CODING_STANDARDS.md) — **Read before making any changes.** APIs, DB patterns, i18n, performance, security, and shared utilities
 - [Requirements](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) — Master requirements for the migration
 - [Migration Plan](MIGRATION.md) — Detailed migration plan, progress, and agent assignments
 - [Agent Task Files](agents/) — Detailed sub-task plans for each parallel agent
