@@ -1,6 +1,7 @@
 import {
   useCallback, useEffect, useMemo, useRef, useState,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
@@ -175,6 +176,7 @@ export default function QuestionEditor({
   disableTypeSelection = false,
   typeSelectionLockReason = 'Question type is locked for this question.',
 }) {
+  const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
   const [autosaveState, setAutosaveState] = useState('idle');
@@ -211,7 +213,7 @@ export default function QuestionEditor({
         return savedQuestion;
       } catch (err) {
         setAutosaveState('error');
-        setAutosaveError(err.response?.data?.message || 'Autosave failed');
+        setAutosaveError(err.response?.data?.message || t('questions.editor.autosaveFailed'));
         throw err;
       } finally {
         saveInFlightRef.current = false;
@@ -324,7 +326,7 @@ export default function QuestionEditor({
     const switchingToNonOptionBasedType = ![QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(type);
     if (switchingFromOptionBasedType && switchingToNonOptionBasedType && hasAnyOptionContent(form.options)) {
       const confirmReset = window.confirm(
-        'Changing this question type will erase existing options. Continue?'
+        t('questions.editor.confirmTypeChange')
       );
       if (!confirmReset) return;
     }
@@ -334,7 +336,7 @@ export default function QuestionEditor({
       const correctCount = form.options.filter((option) => !!option.correct).length;
       if (correctCount > 1) {
         const confirmSingleCorrect = window.confirm(
-          'Multiple Choice allows only one correct option. Continue and keep only the first correct selection?'
+          t('questions.editor.confirmSingleCorrect')
         );
         if (!confirmSingleCorrect) return;
       }
@@ -425,11 +427,11 @@ export default function QuestionEditor({
                 ...COMPACT_FIELD_SX,
               }}
             >
-              <InputLabel>Question Type</InputLabel>
+              <InputLabel>{t('questions.editor.questionType')}</InputLabel>
               <Select
                 size="small"
                 value={form.type}
-                label="Question Type"
+                label={t('questions.editor.questionType')}
                 disabled={disableTypeSelection}
                 onChange={e => handleTypeChange(Number(e.target.value))}
               >
@@ -446,7 +448,7 @@ export default function QuestionEditor({
           </Box>
 
           <TextField
-            label="Points"
+            label={t('questions.editor.points')}
             type="number"
             size="small"
             sx={{ width: 120, ...COMPACT_FIELD_SX }}
@@ -458,21 +460,21 @@ export default function QuestionEditor({
 
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>
-            <Typography variant="subtitle2">Question Text</Typography>
+            <Typography variant="subtitle2">{t('questions.editor.questionText')}</Typography>
             {hasChangesSinceOpen ? (
               <Button
                 size="small"
                 onClick={handleUndoAllChanges}
                 disabled={closing}
               >
-                Undo all changes
+                {t('questions.editor.undoAllChanges')}
               </Button>
             ) : null}
           </Box>
           <RichTextEditor
             value={form.content}
             onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
-            placeholder="Write the question here..."
+            placeholder={t('questions.editor.questionPlaceholder')}
             minHeight={26}
             resizable
             showTip
@@ -482,7 +484,7 @@ export default function QuestionEditor({
         {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type) && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
-              Options {form.type === QUESTION_TYPES.MULTI_SELECT ? '(select all correct)' : '(select one correct)'}
+              {form.type === QUESTION_TYPES.MULTI_SELECT ? t('questions.editor.optionsSelectAll') : t('questions.editor.optionsSelectOne')}
             </Typography>
             {form.options.map((opt, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
@@ -505,25 +507,25 @@ export default function QuestionEditor({
                 )}
               </Box>
             ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={addOption}>Add Option</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={addOption}>{t('questions.editor.addOption')}</Button>
           </Box>
         )}
 
         {form.type === QUESTION_TYPES.TRUE_FALSE && (
           <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Correct Answer</Typography>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('questions.editor.correctAnswer')}</Typography>
             <FormGroup row>
               <FormControlLabel
                 control={<Checkbox checked={form.options[0]?.correct || false} onChange={() => {
                   setForm({ ...form, options: buildTrueFalseOptions(0) });
                 }} />}
-                label="True"
+                label={t('questions.editor.true')}
               />
               <FormControlLabel
                 control={<Checkbox checked={form.options[1]?.correct || false} onChange={() => {
                   setForm({ ...form, options: buildTrueFalseOptions(1) });
                 }} />}
-                label="False"
+                label={t('questions.editor.false')}
               />
             </FormGroup>
           </Box>
@@ -532,14 +534,14 @@ export default function QuestionEditor({
         {form.type === QUESTION_TYPES.NUMERICAL && (
           <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
             <TextField
-              label="Correct Answer"
+              label={t('questions.editor.correctAnswer')}
               type="number"
               fullWidth
               value={form.correctNumerical}
               onChange={e => setForm({ ...form, correctNumerical: e.target.value })}
             />
             <TextField
-              label="Tolerance"
+              label={t('questions.editor.toleranceLabel')}
               type="number"
               fullWidth
               value={form.toleranceNumerical}
@@ -551,19 +553,19 @@ export default function QuestionEditor({
         <Divider sx={{ my: 2 }} />
 
         <RichTextEditor
-          label="Solution / Explanation (optional)"
+          label={t('questions.editor.solutionLabel')}
           value={form.solution}
           onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
-          placeholder="Add an optional explanation..."
+          placeholder={t('questions.editor.solutionPlaceholder')}
           minHeight={26}
           resizable
         />
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          Live Preview
+          {t('questions.editor.livePreview')}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Math delimiters stay visible while typing; rendered KaTeX is shown below.
+          {t('questions.editor.mathDelimitersNote')}
         </Typography>
         <Paper variant="outlined" sx={{ mt: 1, p: 1.5 }}>
           <Typography variant="caption" color="text.secondary">
@@ -608,10 +610,10 @@ export default function QuestionEditor({
           {form.type === QUESTION_TYPES.NUMERICAL && (
             <Box sx={{ mt: 0.75 }}>
               <Typography variant="body2" color="text.secondary">
-                Correct: {previewPayload.correctNumerical ?? 0}
+                {t('questions.editor.correctValue', { value: previewPayload.correctNumerical ?? 0 })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                tolerance: {previewPayload.toleranceNumerical ?? 0}
+                {t('questions.editor.toleranceValue', { value: previewPayload.toleranceNumerical ?? 0 })}
               </Typography>
             </Box>
           )}
@@ -619,7 +621,7 @@ export default function QuestionEditor({
           {previewPayload.solution ? (
             <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" color="text.secondary">
-                Solution
+                {t('common.solution')}
               </Typography>
               <MathLivePreview
                 html={previewPayload.solution}
@@ -651,11 +653,11 @@ export default function QuestionEditor({
           onClick={handleUndoAllChanges}
           disabled={!hasChangesSinceOpen || closing}
         >
-          Undo all changes
+          {t('questions.editor.undoAllChanges')}
         </Button>
       </Box>
       <Button onClick={handleCloseRequest} disabled={closing}>
-        {closing ? 'Closing…' : 'Close'}
+        {closing ? t('questions.editor.closing') : t('common.close')}
       </Button>
     </Box>
   );
@@ -679,7 +681,7 @@ export default function QuestionEditor({
         handleCloseRequest();
       }}
     >
-      <DialogTitle>{persistedQuestionId ? 'Edit Question' : 'New Question'}</DialogTitle>
+      <DialogTitle>{persistedQuestionId ? t('questions.editor.editQuestion') : t('questions.editor.newQuestion')}</DialogTitle>
       <DialogContent dividers>
         <Paper variant="outlined" sx={{ border: 'none', boxShadow: 'none' }}>
           {editorFields}

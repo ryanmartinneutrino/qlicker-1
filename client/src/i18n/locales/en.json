@@ -611,7 +611,13 @@
       "solutionPlaceholder": "Add an optional explanation...",
       "livePreview": "Live Preview",
       "mathDelimitersNote": "Math delimiters stay visible while typing; rendered KaTeX is shown below.",
-      "undoAllChanges": "Undo all changes"
+      "undoAllChanges": "Undo all changes",
+      "confirmTypeChange": "Changing this question type will erase existing options. Continue?",
+      "confirmSingleCorrect": "Multiple Choice allows only one correct option. Continue and keep only the first correct selection?",
+      "autosaveFailed": "Autosave failed",
+      "editQuestion": "Edit Question",
+      "newQuestion": "New Question",
+      "closing": "Closing…"
     },
     "richText": {
       "editorLabel": "{{label}} editor",
@@ -706,6 +712,24 @@
       "recalculateGrades": "Re-calculate all grades",
       "outOf": "/ {{value}}"
     }
+  },
+  "pageTitles": {
+    "home": "Home",
+    "login": "Login",
+    "signingIn": "Signing In",
+    "resetPassword": "Reset Password",
+    "verifyEmail": "Verify Email",
+    "profile": "Profile",
+    "adminDashboard": "Admin Dashboard",
+    "professorDashboard": "Professor Dashboard",
+    "courseDetails": "Course Details",
+    "sessionEditor": "Session Editor",
+    "liveSession": "Live Session",
+    "sessionReview": "Session Review",
+    "presentationView": "Presentation View",
+    "studentDashboard": "Student Dashboard",
+    "course": "Course",
+    "quiz": "Quiz"
   },
   "semesters": {
     "fall": "Fall",

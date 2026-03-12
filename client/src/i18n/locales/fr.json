@@ -611,7 +611,13 @@
       "solutionPlaceholder": "Ajouter une explication facultative...",
       "livePreview": "Aperçu en direct",
       "mathDelimitersNote": "Les délimiteurs mathématiques restent visibles pendant la saisie ; le rendu KaTeX est affiché ci-dessous.",
-      "undoAllChanges": "Annuler toutes les modifications"
+      "undoAllChanges": "Annuler toutes les modifications",
+      "confirmTypeChange": "Changer le type de question effacera les options existantes. Continuer ?",
+      "confirmSingleCorrect": "Le choix multiple ne permet qu'une seule bonne réponse. Continuer en ne gardant que la première sélection correcte ?",
+      "autosaveFailed": "Échec de la sauvegarde automatique",
+      "editQuestion": "Modifier la question",
+      "newQuestion": "Nouvelle question",
+      "closing": "Fermeture…"
     },
     "richText": {
       "editorLabel": "Éditeur {{label}}",
@@ -706,6 +712,24 @@
       "recalculateGrades": "Recalculer toutes les notes",
       "outOf": "/ {{value}}"
     }
+  },
+  "pageTitles": {
+    "home": "Accueil",
+    "login": "Connexion",
+    "signingIn": "Connexion en cours",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "verifyEmail": "Vérification de l'adresse courriel",
+    "profile": "Profil",
+    "adminDashboard": "Tableau de bord administrateur",
+    "professorDashboard": "Tableau de bord professeur",
+    "courseDetails": "Détails du cours",
+    "sessionEditor": "Éditeur de session",
+    "liveSession": "Session en direct",
+    "sessionReview": "Révision de session",
+    "presentationView": "Vue de présentation",
+    "studentDashboard": "Tableau de bord étudiant",
+    "course": "Cours",
+    "quiz": "Quiz"
   },
   "semesters": {
     "fall": "Automne",
