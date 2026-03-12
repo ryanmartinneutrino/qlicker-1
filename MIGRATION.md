@@ -1423,35 +1423,37 @@ MUI components provide a strong baseline for accessibility (proper ARIA roles, k
 
 ### Internationalization (i18n)
 
-#### Current State: Not Implemented
+#### Current State: ✅ Fully Implemented
 
-There is no i18n framework installed. All user-facing text is hardcoded in English across ~50+ components. This includes:
-- UI labels ("Dashboard", "Courses", "Login", "Draft", "Live", "Ended")
-- Status messages ("Changes saved", "Logging in...", "Failed to load")
-- Error messages ("Invalid email or password", "Email already registered")
-- Date formatting (`client/src/utils/date.js` uses hardcoded English month abbreviations)
-- Number formatting (uses `.toFixed(2)` without locale awareness)
+The i18n framework is installed and all user-facing strings have been extracted to translation files.
 
-#### Recommended Approach
+**Infrastructure:**
+- **Framework:** `react-i18next` + `i18next` + `i18next-browser-languagedetector`
+- **Config:** `client/src/i18n/index.js` — language detection (localStorage → browser → fallback 'en')
+- **Locale files:** `client/src/i18n/locales/en.json` (English), `client/src/i18n/locales/fr.json` (French)
+- **Exports:** `SUPPORTED_LOCALES`, `DATE_FORMATS`, `DEFAULT_DATE_FORMAT`, `DEFAULT_LOCALE`
 
-1. **Phase 7:** Install `react-i18next` + `i18next`. Create `client/src/i18n/` with English translation file as baseline.
-2. **Phase 7–8:** Extract all hardcoded strings to translation keys. Start with high-traffic pages (Login, Dashboard, LiveSession).
-3. **Phase 8:** Switch `client/src/utils/date.js` from `MONTH_SHORT[]` array to `Intl.DateTimeFormat` for locale-aware date display.
-4. **Phase 8:** Switch number formatting to `Intl.NumberFormat`.
+**App-wide settings (admin):**
+- `Settings.locale` — default app language (set in Admin Dashboard → Settings tab)
+- `Settings.dateFormat` — default date format preset (DD-MMM-YYYY, MMM-DD-YYYY, YYYY-MM-DD)
 
-#### Immediate Best Practice (No Framework Needed)
+**Per-user override:**
+- `User.locale` — per-user language preference (set in Profile page language dropdown)
+- Empty string means "use app default"
+- Stored in both the database and `localStorage` (`qlicker_locale`)
 
-Until `react-i18next` is introduced, new UI text should be placed in **named constants at the top of files** (not buried inline in JSX). This makes future extraction mechanical. Example:
+**Coverage:** All 30+ JSX components use `useTranslation()` hook with `t()` calls. Translation keys are organized by feature area:
+- `common.*` — shared labels (Save, Cancel, Loading, etc.)
+- `auth.*`, `profile.*`, `admin.*` — authentication and admin UI
+- `professor.course.*`, `professor.sessionEditor.*`, `professor.liveSession.*`, etc. — professor features
+- `student.course.*`, `student.liveSession.*`, `student.quiz.*`, etc. — student features
+- `grades.coursePanel.*`, `grades.questionPanel.*` — grading interface
+- `questions.editor.*`, `questions.display.*`, `questions.richText.*` — question components
+- `pageTitles.*` — document.title values
 
-```jsx
-// Good — easy to extract later
-const LABELS = { save: 'Save', cancel: 'Cancel', delete: 'Delete' };
-// ...
-<Button>{LABELS.save}</Button>
+**Legacy database compatibility:** The `User.locale` field defaults to empty string. Legacy user documents without a `locale` field will gracefully fall back to the app default via `user.locale || ''` → empty → app default.
 
-// Avoid — hard to find and extract
-<Button>Save</Button>
-```
+**Server-side note:** Server API error messages remain in English. These are technical error codes/messages consumed programmatically by the client, which displays its own translated user-facing messages. Server i18n is not needed at this time.
 
 ### Legacy Database Compatibility Check
 
