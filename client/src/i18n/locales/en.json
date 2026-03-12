@@ -26,7 +26,8 @@
     "email": "Email",
     "points": "Points",
     "solution": "Solution",
-    "noContent": "(no content)"
+    "noContent": "(no content)",
+    "noAnswer": "(no answer)"
   },
   "autoSave": {
     "errorNotSaved": "Changes could not be saved. Your last change was not recorded.",
@@ -136,7 +137,8 @@
     "photoFailed": "Failed to upload photo",
     "language": "Language",
     "languageHelp": "Choose your preferred language. Select \"Use app default\" to follow the system-wide setting configured by your administrator.",
-    "useAppDefault": "Use app default"
+    "useAppDefault": "Use app default",
+    "failedChangePassword": "Failed to change password"
   },
   "admin": {
     "title": "Admin Dashboard",
@@ -180,7 +182,18 @@
       "lastName": "Last Name",
       "noProfileImage": "No profile image available.",
       "failedLoadUsers": "Failed to load users",
-      "profileImage": "Profile Image"
+      "profileImage": "Profile Image",
+      "roleUpdated": "Role updated",
+      "failedUpdateRole": "Failed to update role",
+      "emailVerified": "Email verified",
+      "failedVerifyEmail": "Failed to verify email",
+      "userDeleted": "User deleted",
+      "failedDeleteUser": "Failed to delete user",
+      "userCreated": "User created",
+      "failedCreateUser": "Failed to create user",
+      "never": "Never",
+      "cannotChangeOwnRole": "You cannot change your own role",
+      "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?"
     },
     "storage": {
       "storageType": "Storage Type",
@@ -197,7 +210,10 @@
       "storageAccessKey": "Storage Access Key",
       "storageContainer": "Storage Container"
     },
-    "failedLoadSettings": "Failed to load settings"
+    "failedLoadSettings": "Failed to load settings",
+    "failedSaveSettings": "Failed to save settings.",
+    "failedSaveStorageSettings": "Failed to save storage settings.",
+    "failedSaveSSOSettings": "Failed to save SSO settings."
   },
   "professor": {
     "dashboard": {
@@ -300,7 +316,28 @@
       "noInstructors": "No instructors assigned.",
       "noStudents": "No students enrolled yet.",
       "removeInstructorAction": "Remove instructor",
-      "sectionHeader": "Section {{section}}"
+      "sectionHeader": "Section {{section}}",
+      "failedLoadCourse": "Failed to load course",
+      "failedUpdateCourse": "Failed to update course.",
+      "courseActivated": "Course activated",
+      "courseDeactivated": "Course deactivated",
+      "failedUpdateCourseSetting": "Failed to update course setting.",
+      "failedUpdateSetting": "Failed to update setting.",
+      "enrollmentCodeRegenerated": "Enrollment code regenerated",
+      "failedRegenerateCode": "Failed to regenerate code",
+      "failedDeleteCourse": "Failed to delete course",
+      "sessionCreated": "Session created",
+      "failedCreateSession": "Failed to create session",
+      "sessionDeleted": "Session deleted",
+      "failedDeleteSession": "Failed to delete session",
+      "sessionCopied": "Session copied",
+      "failedCopySession": "Failed to copy session",
+      "sessionUpdated": "Session updated",
+      "failedUpdateSession": "Failed to update session",
+      "failedLaunchSession": "Failed to launch session",
+      "courseNotFound": "Course not found",
+      "questionCount": "{{count}} question",
+      "questionCount_other": "{{count}} questions"
     },
     "sessionEditor": {
       "sessionSettings": "Session Settings",
@@ -384,7 +421,11 @@
       "failedLaunch": "Failed to launch session",
       "joinLiveSession": "Join live session",
       "backToCourse": "Back to Course",
-      "sessionNotFound": "Session not found"
+      "sessionNotFound": "Session not found",
+      "quizEndAfterStart": "Quiz end must be later than quiz start.",
+      "failedLoadSession": "Failed to load session",
+      "failedUpdateSession": "Failed to update session.",
+      "failedDeleteSession": "Failed to delete session"
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -429,7 +470,22 @@
       "nextQuestion": "Next question",
       "prev": "Prev",
       "settings": "Settings",
-      "backToCourse": "Back to course"
+      "backToCourse": "Back to course",
+      "failedLoadLiveSession": "Failed to load live session",
+      "actionFailed": "Action failed",
+      "failedEndSession": "Failed to end session",
+      "joinCodeIntervalRange": "Join code interval must be between 5 and 120 seconds",
+      "responsesCurrentlyClosed": "Responses are currently closed.",
+      "responsesCurrentlyOpen": "Responses are currently open.",
+      "sessionNotFound": "Session not found",
+      "liveSessionFallback": "Live Session",
+      "questionOfTotal": "Question {{current}} of {{total}}.",
+      "studentsJoined": "{{count}} students joined.",
+      "studentsResponded": "{{responded}} of {{total}} students responded.",
+      "attemptNumber": "Attempt {{number}}.",
+      "questionHidden": "Current question is hidden.",
+      "questionVisible": "Current question is visible.",
+      "joinCodeIntervalUpdated": "Join code interval updated"
     },
     "sessionReview": {
       "questions": "Questions",
@@ -499,7 +555,13 @@
       "responses": "Responses",
       "noResponsesYet": "No responses yet.",
       "sessionEnded": "Session Ended",
-      "responseStatistics": "Response statistics"
+      "responseStatistics": "Response statistics",
+      "failedLoadLiveSession": "Failed to load live session",
+      "presentation": "Presentation",
+      "mean": "Mean",
+      "median": "Median",
+      "min": "Min",
+      "max": "Max"
     }
   },
   "student": {
@@ -542,7 +604,10 @@
       "failedLoadCourse": "Failed to load course",
       "courseNotFound": "Course not found",
       "noLectures": "No lectures available.",
-      "noQuizzes": "No quizzes available."
+      "noQuizzes": "No quizzes available.",
+      "failedUnenroll": "Failed to unenroll",
+      "questionCount": "{{count}} question",
+      "questionCount_other": "{{count}} questions"
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -563,7 +628,24 @@
       "waitingForQuestion": "Waiting for question…",
       "waitingForPasscode": "Waiting for the instructor to open passcode entry…",
       "backToCourse": "Back to course",
-      "tolerance": "tolerance: {{value}}"
+      "tolerance": "tolerance: {{value}}",
+      "failedLoadLiveSession": "Failed to load live session",
+      "failedJoinSession": "Failed to join session",
+      "invalidJoinCode": "Invalid join code",
+      "failedSubmitResponse": "Failed to submit response",
+      "questionOf": "Question {{number}} of {{total}}.",
+      "attemptNumber": "Attempt {{number}}.",
+      "responseSubmitted": "Response submitted.",
+      "responsesCurrentlyClosed": "Responses are currently closed.",
+      "responsesCurrentlyOpen": "Responses are currently open.",
+      "statsVisible": "Response statistics are visible.",
+      "correctVisible": "Correct answer is visible.",
+      "sessionNotFound": "Session not found",
+      "sessionEnded": "Session has ended.",
+      "liveSessionFallback": "Live Session",
+      "attemptLabel": "Attempt {{number}}",
+      "responseSubmittedCheck": "✓ Response submitted",
+      "responsesCurrentlyClosedShort": "Responses are currently closed"
     },
     "quiz": {
       "oneAtATime": "One question at a time",
@@ -581,7 +663,22 @@
       "saved": "Saved",
       "saveFailed": "Save failed",
       "submitted": "Submitted",
-      "backToCourse": "Back to course"
+      "backToCourse": "Back to course",
+      "failedLoadQuiz": "Failed to load quiz",
+      "failedSubmitQuiz": "Failed to submit quiz",
+      "failedSubmitQuestion": "Failed to submit this question",
+      "quizNotFound": "Quiz not found",
+      "quizClosed": "This quiz is closed.",
+      "alreadySubmitted": "You have already submitted this quiz.",
+      "quizFallback": "Quiz",
+      "practiceQuizLabel": "Practice Quiz",
+      "quizLabel": "Quiz",
+      "answeredCount": "{{answered}}/{{total}} answered",
+      "submitQuestion": "Submit Question",
+      "submittingQuestion": "Submitting...",
+      "submitting": "Submitting...",
+      "submitPracticeQuiz": "Submit Practice Quiz",
+      "submitQuiz": "Submit Quiz"
     },
     "sessionReview": {
       "questionProgress": "Question {{current}} of {{total}}",
@@ -603,7 +700,22 @@
       "instructorFeedback": "Instructor feedback",
       "tolerance": "tolerance: {{value}}",
       "noQuestions": "This session has no questions.",
-      "backToCourse": "Back to course"
+      "backToCourse": "Back to course",
+      "pendingManualGrade": "Pending manual grade",
+      "correctHighlighted": "Correct answer(s) are highlighted above.",
+      "noSolutionOrCorrect": "No written solution or marked correct option was provided for this question.",
+      "noPermission": "You do not have permission to review this session.",
+      "sessionNotFound": "Session not found.",
+      "failedLoadReview": "Failed to load session review.",
+      "failedDismissFeedback": "Failed to dismiss feedback notification.",
+      "sessionReviewFallback": "Session Review",
+      "dismissing": "Dismissing...",
+      "dismiss": "Dismiss",
+      "newFeedbackReceived": "New feedback received.",
+      "feedbackQuestions": " Questions: {{questions}}.",
+      "notAvailable": "Not available",
+      "hideMyResponse": "Hide my response",
+      "showMyResponse": "Show my response"
     }
   },
   "questions": {

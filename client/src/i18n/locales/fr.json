@@ -26,7 +26,8 @@
     "email": "Courriel",
     "points": "Points",
     "solution": "Solution",
-    "noContent": "(aucun contenu)"
+    "noContent": "(aucun contenu)",
+    "noAnswer": "(pas de réponse)"
   },
   "autoSave": {
     "errorNotSaved": "Les modifications n'ont pas pu être enregistrées. Votre dernière modification n'a pas été enregistrée.",
@@ -136,7 +137,8 @@
     "photoFailed": "Échec du téléversement de la photo",
     "language": "Langue",
     "languageHelp": "Choisissez votre langue préférée. Sélectionnez « Utiliser la langue par défaut » pour suivre le réglage défini par votre administrateur.",
-    "useAppDefault": "Utiliser la langue par défaut"
+    "useAppDefault": "Utiliser la langue par défaut",
+    "failedChangePassword": "Échec du changement de mot de passe"
   },
   "admin": {
     "title": "Tableau de bord administrateur",
@@ -180,7 +182,18 @@
       "lastName": "Nom de famille",
       "noProfileImage": "Aucune photo de profil disponible.",
       "failedLoadUsers": "Échec du chargement des utilisateurs",
-      "profileImage": "Photo de profil"
+      "profileImage": "Photo de profil",
+      "roleUpdated": "Rôle mis à jour",
+      "failedUpdateRole": "Échec de la mise à jour du rôle",
+      "emailVerified": "Courriel vérifié",
+      "failedVerifyEmail": "Échec de la vérification du courriel",
+      "userDeleted": "Utilisateur supprimé",
+      "failedDeleteUser": "Échec de la suppression de l'utilisateur",
+      "userCreated": "Utilisateur créé",
+      "failedCreateUser": "Échec de la création de l'utilisateur",
+      "never": "Jamais",
+      "cannotChangeOwnRole": "Vous ne pouvez pas changer votre propre rôle",
+      "confirmDeleteMessage": "Êtes-vous sûr de vouloir supprimer <strong>{{name}}</strong> ({{email}}) ?"
     },
     "storage": {
       "storageType": "Type de stockage",
@@ -197,7 +210,10 @@
       "storageAccessKey": "Clé d'accès au stockage",
       "storageContainer": "Conteneur de stockage"
     },
-    "failedLoadSettings": "Échec du chargement des paramètres"
+    "failedLoadSettings": "Échec du chargement des paramètres",
+    "failedSaveSettings": "Échec de la sauvegarde des paramètres.",
+    "failedSaveStorageSettings": "Échec de la sauvegarde des paramètres de stockage.",
+    "failedSaveSSOSettings": "Échec de la sauvegarde des paramètres SSO."
   },
   "professor": {
     "dashboard": {
@@ -300,7 +316,28 @@
       "noInstructors": "Aucun enseignant assigné.",
       "noStudents": "Aucun étudiant inscrit pour l'instant.",
       "removeInstructorAction": "Retirer l'enseignant",
-      "sectionHeader": "Section {{section}}"
+      "sectionHeader": "Section {{section}}",
+      "failedLoadCourse": "Échec du chargement du cours",
+      "failedUpdateCourse": "Échec de la mise à jour du cours.",
+      "courseActivated": "Cours activé",
+      "courseDeactivated": "Cours désactivé",
+      "failedUpdateCourseSetting": "Échec de la mise à jour du paramètre du cours.",
+      "failedUpdateSetting": "Échec de la mise à jour du paramètre.",
+      "enrollmentCodeRegenerated": "Code d'inscription regénéré",
+      "failedRegenerateCode": "Échec de la regénération du code",
+      "failedDeleteCourse": "Échec de la suppression du cours",
+      "sessionCreated": "Session créée",
+      "failedCreateSession": "Échec de la création de la session",
+      "sessionDeleted": "Session supprimée",
+      "failedDeleteSession": "Échec de la suppression de la session",
+      "sessionCopied": "Session copiée",
+      "failedCopySession": "Échec de la copie de la session",
+      "sessionUpdated": "Session mise à jour",
+      "failedUpdateSession": "Échec de la mise à jour de la session",
+      "failedLaunchSession": "Échec du lancement de la session",
+      "courseNotFound": "Cours introuvable",
+      "questionCount": "{{count}} question",
+      "questionCount_other": "{{count}} questions"
     },
     "sessionEditor": {
       "sessionSettings": "Paramètres de la séance",
@@ -384,7 +421,11 @@
       "failedLaunch": "Échec du lancement de la séance",
       "joinLiveSession": "Rejoindre la séance en direct",
       "backToCourse": "Retour au cours",
-      "sessionNotFound": "Séance non trouvée"
+      "sessionNotFound": "Séance non trouvée",
+      "quizEndAfterStart": "La fin du quiz doit être postérieure au début du quiz.",
+      "failedLoadSession": "Échec du chargement de la session",
+      "failedUpdateSession": "Échec de la mise à jour de la session.",
+      "failedDeleteSession": "Échec de la suppression de la session"
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -429,7 +470,22 @@
       "nextQuestion": "Question suivante",
       "prev": "Préc.",
       "settings": "Paramètres",
-      "backToCourse": "Retour au cours"
+      "backToCourse": "Retour au cours",
+      "failedLoadLiveSession": "Échec du chargement de la session en direct",
+      "actionFailed": "Échec de l'action",
+      "failedEndSession": "Échec de la fin de la session",
+      "joinCodeIntervalRange": "L'intervalle du code doit être entre 5 et 120 secondes",
+      "responsesCurrentlyClosed": "Les réponses sont actuellement fermées.",
+      "responsesCurrentlyOpen": "Les réponses sont actuellement ouvertes.",
+      "sessionNotFound": "Session introuvable",
+      "liveSessionFallback": "Session en direct",
+      "questionOfTotal": "Question {{current}} de {{total}}.",
+      "studentsJoined": "{{count}} étudiants connectés.",
+      "studentsResponded": "{{responded}} de {{total}} étudiants ont répondu.",
+      "attemptNumber": "Tentative {{number}}.",
+      "questionHidden": "La question actuelle est masquée.",
+      "questionVisible": "La question actuelle est visible.",
+      "joinCodeIntervalUpdated": "Intervalle du code d'accès mis à jour"
     },
     "sessionReview": {
       "questions": "Questions",
@@ -499,7 +555,13 @@
       "responses": "Réponses",
       "noResponsesYet": "Aucune réponse pour l'instant.",
       "sessionEnded": "Séance terminée",
-      "responseStatistics": "Statistiques de réponse"
+      "responseStatistics": "Statistiques de réponse",
+      "failedLoadLiveSession": "Échec du chargement de la session en direct",
+      "presentation": "Présentation",
+      "mean": "Moyenne",
+      "median": "Médiane",
+      "min": "Min",
+      "max": "Max"
     }
   },
   "student": {
@@ -542,7 +604,10 @@
       "failedLoadCourse": "Échec du chargement du cours",
       "courseNotFound": "Cours non trouvé",
       "noLectures": "Aucun cours magistral disponible.",
-      "noQuizzes": "Aucun questionnaire disponible."
+      "noQuizzes": "Aucun questionnaire disponible.",
+      "failedUnenroll": "Échec de la désinscription",
+      "questionCount": "{{count}} question",
+      "questionCount_other": "{{count}} questions"
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -563,7 +628,24 @@
       "waitingForQuestion": "En attente de la question…",
       "waitingForPasscode": "En attente de l'ouverture de la saisie du code d'accès par l'enseignant…",
       "backToCourse": "Retour au cours",
-      "tolerance": "tolérance : {{value}}"
+      "tolerance": "tolérance : {{value}}",
+      "failedLoadLiveSession": "Échec du chargement de la session en direct",
+      "failedJoinSession": "Échec de la connexion à la session",
+      "invalidJoinCode": "Code d'accès invalide",
+      "failedSubmitResponse": "Échec de la soumission de la réponse",
+      "questionOf": "Question {{number}} de {{total}}.",
+      "attemptNumber": "Tentative {{number}}.",
+      "responseSubmitted": "Réponse soumise.",
+      "responsesCurrentlyClosed": "Les réponses sont actuellement fermées.",
+      "responsesCurrentlyOpen": "Les réponses sont actuellement ouvertes.",
+      "statsVisible": "Les statistiques de réponses sont visibles.",
+      "correctVisible": "La bonne réponse est visible.",
+      "sessionNotFound": "Session introuvable",
+      "sessionEnded": "La session est terminée.",
+      "liveSessionFallback": "Session en direct",
+      "attemptLabel": "Tentative {{number}}",
+      "responseSubmittedCheck": "✓ Réponse soumise",
+      "responsesCurrentlyClosedShort": "Les réponses sont actuellement fermées"
     },
     "quiz": {
       "oneAtATime": "Une question à la fois",
@@ -581,7 +663,22 @@
       "saved": "Enregistré",
       "saveFailed": "Échec de l'enregistrement",
       "submitted": "Soumis",
-      "backToCourse": "Retour au cours"
+      "backToCourse": "Retour au cours",
+      "failedLoadQuiz": "Échec du chargement du quiz",
+      "failedSubmitQuiz": "Échec de la soumission du quiz",
+      "failedSubmitQuestion": "Échec de la soumission de cette question",
+      "quizNotFound": "Quiz introuvable",
+      "quizClosed": "Ce quiz est fermé.",
+      "alreadySubmitted": "Vous avez déjà soumis ce quiz.",
+      "quizFallback": "Quiz",
+      "practiceQuizLabel": "Quiz pratique",
+      "quizLabel": "Quiz",
+      "answeredCount": "{{answered}}/{{total}} répondu(es)",
+      "submitQuestion": "Soumettre la question",
+      "submittingQuestion": "Soumission...",
+      "submitting": "Soumission...",
+      "submitPracticeQuiz": "Soumettre le quiz pratique",
+      "submitQuiz": "Soumettre le quiz"
     },
     "sessionReview": {
       "questionProgress": "Question {{current}} sur {{total}}",
@@ -603,7 +700,22 @@
       "instructorFeedback": "Commentaires de l'enseignant",
       "tolerance": "tolérance : {{value}}",
       "noQuestions": "Cette séance n'a pas de questions.",
-      "backToCourse": "Retour au cours"
+      "backToCourse": "Retour au cours",
+      "pendingManualGrade": "En attente de notation manuelle",
+      "correctHighlighted": "La ou les bonne(s) réponse(s) sont surlignées ci-dessus.",
+      "noSolutionOrCorrect": "Aucune solution écrite ou option correcte n'a été fournie pour cette question.",
+      "noPermission": "Vous n'avez pas la permission de réviser cette session.",
+      "sessionNotFound": "Session introuvable.",
+      "failedLoadReview": "Échec du chargement de la révision de la session.",
+      "failedDismissFeedback": "Échec de la fermeture de la notification de commentaire.",
+      "sessionReviewFallback": "Révision de la session",
+      "dismissing": "Fermeture...",
+      "dismiss": "Fermer",
+      "newFeedbackReceived": "Nouveau commentaire reçu.",
+      "feedbackQuestions": " Questions : {{questions}}.",
+      "notAvailable": "Non disponible",
+      "hideMyResponse": "Masquer ma réponse",
+      "showMyResponse": "Afficher ma réponse"
     }
   },
   "questions": {
