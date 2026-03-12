@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar,
@@ -327,8 +328,9 @@ function TabPanel({ children, value, index }) {
 function DistributionBars({
   data, highlightCorrect, correctIndices, options, responseCount,
 }) {
+  const { t } = useTranslation();
   if (!data || !data.length) {
-    return <Typography variant="body2" color="text.secondary">No responses yet.</Typography>;
+    return <Typography variant="body2" color="text.secondary">{t('professor.sessionReview.noResponsesYet')}</Typography>;
   }
   const total = Number(responseCount) > 0
     ? Number(responseCount)
@@ -391,6 +393,7 @@ export default function SessionReview() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -434,12 +437,12 @@ export default function SessionReview() {
 
       setError(null);
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to load session results.';
+      const msg = err.response?.data?.message || t('professor.sessionReview.failedToLoadResults');
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   useEffect(() => { fetchResults(); }, [fetchResults]);
 
@@ -454,11 +457,11 @@ export default function SessionReview() {
       setSession((prev) => (prev ? { ...prev, ...updatedSession } : prev));
       setReviewableWarning(warnings.join(' '));
     } catch (err) {
-      setReviewableWarning(err.response?.data?.message || 'Failed to update reviewable setting.');
+      setReviewableWarning(err.response?.data?.message || t('professor.sessionReview.failedToUpdateReviewable'));
     } finally {
       setTogglingReviewable(false);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   // ---- Summary stats ----
 
@@ -583,7 +586,7 @@ export default function SessionReview() {
     const first = normalizeAnswerValue(student.firstname);
     const last = normalizeAnswerValue(student.lastname);
     const fullName = `${first} ${last}`.trim();
-    const displayName = fullName || student.email || 'Unknown Student';
+    const displayName = fullName || student.email || t('professor.sessionReview.unknownStudent');
     const joinedAtMillis = student.joinedAt ? new Date(student.joinedAt).getTime() : NaN;
 
     return {
@@ -598,7 +601,7 @@ export default function SessionReview() {
       percentCorrectValue: gradedCount > 0 ? Math.round((1000 * correctCount) / gradedCount) / 10 : null,
       joinedAtValue: Number.isFinite(joinedAtMillis) ? joinedAtMillis : null,
     };
-  }), [studentResults, questions]);
+  }), [studentResults, questions, t]);
 
   const handleStudentsSort = useCallback((field) => {
     setStudentSort((prev) => {
@@ -677,16 +680,16 @@ export default function SessionReview() {
   const handleExportCsv = useCallback(() => {
     if (!csvQuestionAttempts.length || !studentResults.length) return;
 
-    const headers = ['Last Name', 'First Name', 'Email', 'Participation'];
+    const headers = [t('professor.sessionReview.csvLastName'), t('professor.sessionReview.csvFirstName'), t('professor.sessionReview.csvEmail'), t('professor.sessionReview.csvParticipation')];
     csvQuestionAttempts.forEach(({ questionNumber, attempts }) => {
       if (attempts.length <= 1) {
-        headers.push(`Q${questionNumber} Response`);
-        headers.push(`Q${questionNumber} Points`);
+        headers.push(t('professor.sessionReview.csvResponse', { number: questionNumber }));
+        headers.push(t('professor.sessionReview.csvPoints', { number: questionNumber }));
         return;
       }
       attempts.forEach((attemptNumber) => {
-        headers.push(`Q${questionNumber} Attempt ${attemptNumber} Response`);
-        headers.push(`Q${questionNumber} Attempt ${attemptNumber} Points`);
+        headers.push(t('professor.sessionReview.csvAttemptResponse', { number: questionNumber, attempt: attemptNumber }));
+        headers.push(t('professor.sessionReview.csvAttemptPoints', { number: questionNumber, attempt: attemptNumber }));
       });
     });
 
@@ -759,7 +762,7 @@ export default function SessionReview() {
     const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
     const filename = `${(session?.name || 'session').replace(/[^a-zA-Z0-9]/g, '_')}_results.csv`;
     downloadCsv(filename, csvContent);
-  }, [csvQuestionAttempts, studentResults, session?.name]);
+  }, [csvQuestionAttempts, studentResults, session?.name, t]);
 
   // ---- Render: loading ----
 
@@ -782,7 +785,7 @@ export default function SessionReview() {
           startIcon={<BackIcon />}
           onClick={() => navigate(backToCoursePath)}
         >
-          Back to course
+          {t('professor.sessionReview.backToCourse')}
         </Button>
       </Box>
     );
@@ -799,10 +802,10 @@ export default function SessionReview() {
           onClick={() => navigate(backToCoursePath)}
           sx={{ mb: 2 }}
         >
-          Back to course
+          {t('professor.sessionReview.backToCourse')}
         </Button>
         <Alert severity="info">
-          This session is still running. Results will be available after the session ends.
+          {t('professor.sessionReview.sessionStillRunning')}
         </Alert>
       </Box>
     );
@@ -818,7 +821,7 @@ export default function SessionReview() {
             startIcon={<BackIcon />}
             onClick={() => navigate(backToCoursePath)}
           >
-            Back to course
+            {t('professor.sessionReview.backToCourse')}
           </Button>
           <Button
             size="small"
@@ -826,11 +829,11 @@ export default function SessionReview() {
             startIcon={<EditIcon />}
             onClick={() => navigate(editSessionPath, { state: { returnTab: resolvedReturnTab, returnTo: 'review' } })}
           >
-            Edit session
+            {t('professor.sessionReview.editSession')}
           </Button>
         </Box>
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
-          {session?.name || 'Session Review'}
+          {session?.name || t('professor.sessionReview.sessionReview')}
         </Typography>
         {session?.description && (
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -847,12 +850,12 @@ export default function SessionReview() {
         }}
       >
         <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Questions</Typography>
+          <Typography variant="caption" color="text.secondary">{t('professor.sessionReview.questions')}</Typography>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalQuestions}</Typography>
         </Paper>
         <Paper variant="outlined" sx={{ p: 1.5, minWidth: 110, textAlign: 'center' }}>
-          <Typography variant="caption" color="text.secondary">Joined Session</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>{joinedStudents}/{totalStudents}</Typography>
+          <Typography variant="caption" color="text.secondary">{t('professor.sessionReview.joinedSession')}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.joinedCount', { joined: joinedStudents, total: totalStudents })}</Typography>
         </Paper>
 
         <Box sx={{ flex: 1 }} />
@@ -866,8 +869,8 @@ export default function SessionReview() {
               size="small"
             />
           }
-          label="Students can review"
-          aria-label="Toggle student review access"
+          label={t('professor.sessionReview.studentsCanReview')}
+          aria-label={t('professor.sessionReview.toggleReview')}
         />
 
         <Button
@@ -876,9 +879,9 @@ export default function SessionReview() {
           startIcon={<DownloadIcon />}
           onClick={handleExportCsv}
           disabled={!studentResults.length}
-          aria-label="Export results to CSV"
+          aria-label={t('professor.sessionReview.exportResultsCSV')}
         >
-          Export CSV
+          {t('professor.sessionReview.exportCSV')}
         </Button>
       </Box>
       {reviewableWarning ? (
@@ -888,7 +891,15 @@ export default function SessionReview() {
       ) : null}
       {hasOutstandingManualGrading ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
-          {`There ${gradingNeedsSummary.questions === 1 ? 'is' : 'are'} ${gradingNeedsSummary.questions} ungraded question${gradingNeedsSummary.questions === 1 ? '' : 's'}, affecting ${gradingNeedsSummary.students} student${gradingNeedsSummary.students === 1 ? '' : 's'} (${gradingNeedsSummary.marks} mark${gradingNeedsSummary.marks === 1 ? '' : 's'}).`}
+          {t('professor.sessionReview.ungradedSummary', {
+            verb: gradingNeedsSummary.questions === 1 ? 'is' : 'are',
+            questions: gradingNeedsSummary.questions,
+            questionWord: gradingNeedsSummary.questions === 1 ? 'question' : 'questions',
+            students: gradingNeedsSummary.students,
+            studentWord: gradingNeedsSummary.students === 1 ? 'student' : 'students',
+            marks: gradingNeedsSummary.marks,
+            markWord: gradingNeedsSummary.marks === 1 ? 'mark' : 'marks',
+          })}
         </Alert>
       ) : null}
 
@@ -896,17 +907,17 @@ export default function SessionReview() {
       <Tabs
         value={tab}
         onChange={(_, newTab) => setTab(newTab)}
-        aria-label="Session review tabs"
+        aria-label={t('professor.sessionReview.sessionReviewTabs')}
       >
-        <Tab label="Results" />
-        <Tab label="Response Data" />
-        <Tab label="Students" />
+        <Tab label={t('professor.sessionReview.results')} />
+        <Tab label={t('professor.sessionReview.responseData')} />
+        <Tab label={t('professor.sessionReview.students')} />
         <Tab
           label={(
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <span>Grading</span>
+              <span>{t('professor.sessionReview.grading')}</span>
               {hasOutstandingManualGrading && (
-                <Chip size="small" color="error" label={`Needs grading (${gradingNeedsSummary.marks})`} />
+                <Chip size="small" color="error" label={t('professor.sessionReview.needsGradingCount', { count: gradingNeedsSummary.marks })} />
               )}
             </Box>
           )}
@@ -917,7 +928,7 @@ export default function SessionReview() {
       {/* Questions tab – all questions shown at once with inline stats */}
       <TabPanel value={tab} index={0}>
         {totalQuestions === 0 ? (
-          <Alert severity="info">This session has no questions.</Alert>
+          <Alert severity="info">{t('professor.sessionReview.noQuestions')}</Alert>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             {questionAttemptRows.map((row) => {
@@ -934,28 +945,28 @@ export default function SessionReview() {
                     </Typography>
                     {row.attemptTotal > 1 && (
                       <Chip
-                        label={`Attempt ${row.attemptIndex}/${row.attemptTotal}`}
+                        label={t('professor.sessionReview.attemptProgress', { current: row.attemptIndex, total: row.attemptTotal })}
                         size="small"
                         variant="outlined"
                         sx={COMPACT_CHIP_SX}
                       />
                     )}
                     <Chip
-                      label={TYPE_LABELS[qT] || 'Unknown'}
+                      label={TYPE_LABELS[qT] || t('common.unknown')}
                       color={TYPE_COLORS[qT] || 'default'}
                       size="small"
                       sx={COMPACT_CHIP_SX}
                     />
                     {q.sessionOptions?.points != null && (
                       <Chip
-                        label={`${q.sessionOptions.points} pt${q.sessionOptions.points !== 1 ? 's' : ''}`}
+                        label={t('professor.sessionReview.pointsAbbrev', { count: q.sessionOptions.points })}
                         size="small"
                         variant="outlined"
                         sx={COMPACT_CHIP_SX}
                       />
                     )}
                     <Chip
-                      label={`${row.responseCount || 0} response${row.responseCount !== 1 ? 's' : ''}`}
+                      label={t('professor.sessionReview.responseCountLabel', { count: row.responseCount || 0 })}
                       size="small"
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}
@@ -1014,10 +1025,10 @@ export default function SessionReview() {
                   {qT === QUESTION_TYPES.NUMERICAL && q.correctNumerical != null && (
                     <Box sx={{ mb: 1 }}>
                       <Typography variant="body2" color="text.secondary">
-                        Correct: {q.correctNumerical}
+                        {t('professor.sessionReview.correct', { value: q.correctNumerical })}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        tolerance: {q.toleranceNumerical ?? 0}
+                        {t('professor.sessionReview.tolerance', { value: q.toleranceNumerical ?? 0 })}
                       </Typography>
                     </Box>
                   )}
@@ -1031,15 +1042,15 @@ export default function SessionReview() {
       {/* Response Data tab */}
       <TabPanel value={tab} index={1}>
         {studentResults.length === 0 ? (
-          <Alert severity="info">No student results available.</Alert>
+          <Alert severity="info">{t('professor.sessionReview.noResults')}</Alert>
         ) : (
           <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Student results">
+            <Table size="small" aria-label={t('professor.sessionReview.studentResults')}>
               <TableHead>
                 <TableRow>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>Name</TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>Email</TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">Participation</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.name')}</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.email')}</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">{t('professor.sessionReview.participation')}</TableCell>
                   {questions.map((_, i) => (
                     <TableCell key={i} component="th" scope="col" sx={{ fontWeight: 700 }} align="center">
                       Q{i + 1}
@@ -1088,7 +1099,7 @@ export default function SessionReview() {
                         <TableCell key={qi} align="center">
                           <Typography variant="body2">{display}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            attempt {qr.responses.length}
+                            {t('professor.sessionReview.attemptCount', { count: qr.responses.length })}
                           </Typography>
                         </TableCell>
                       );
@@ -1104,7 +1115,7 @@ export default function SessionReview() {
       {/* Students tab */}
       <TabPanel value={tab} index={2}>
         {sortedStudentsTabRows.length === 0 ? (
-          <Alert severity="info">No students are available for this session.</Alert>
+          <Alert severity="info">{t('professor.sessionReview.noStudentsAvailable')}</Alert>
         ) : (
           <>
             <Autocomplete
@@ -1115,15 +1126,15 @@ export default function SessionReview() {
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Search students"
-                  placeholder="Name or email"
+                  label={t('professor.sessionReview.searchStudents')}
+                  placeholder={t('professor.sessionReview.nameOrEmail')}
                   size="small"
                 />
               )}
               sx={{ mb: 1.5, maxWidth: 420 }}
             />
             <TableContainer component={Paper} variant="outlined">
-              <Table size="small" aria-label="Session student list">
+              <Table size="small" aria-label={t('professor.sessionReview.sessionStudentList')}>
                 <TableHead>
                   <TableRow>
                     <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
@@ -1132,7 +1143,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'name' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('name')}
                       >
-                        Name
+                        {t('professor.sessionReview.name')}
                       </TableSortLabel>
                     </TableCell>
                     <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
@@ -1141,7 +1152,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'email' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('email')}
                       >
-                        Email
+                        {t('professor.sessionReview.email')}
                       </TableSortLabel>
                     </TableCell>
                     <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
@@ -1150,7 +1161,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'inSession' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('inSession')}
                       >
-                        In Session
+                        {t('professor.sessionReview.inSession')}
                       </TableSortLabel>
                     </TableCell>
                     <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
@@ -1159,7 +1170,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'participation' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('participation')}
                       >
-                        Participation
+                        {t('professor.sessionReview.participation')}
                       </TableSortLabel>
                     </TableCell>
                     <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
@@ -1168,7 +1179,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('percentCorrect')}
                       >
-                        Percent Correct
+                        {t('professor.sessionReview.percentCorrect')}
                       </TableSortLabel>
                     </TableCell>
                     <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
@@ -1177,7 +1188,7 @@ export default function SessionReview() {
                         direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
                         onClick={() => handleStudentsSort('joinedAt')}
                       >
-                        Joined Session
+                        {t('professor.sessionReview.joinedSession')}
                       </TableSortLabel>
                     </TableCell>
                   </TableRow>
@@ -1196,7 +1207,7 @@ export default function SessionReview() {
                       <TableCell>{student.email || '—'}</TableCell>
                       <TableCell align="center">
                         <Chip
-                          label={student.inSession ? 'Yes' : 'No'}
+                          label={student.inSession ? t('common.yes') : t('common.no')}
                           color={student.inSession ? 'success' : 'default'}
                           size="small"
                           variant={student.inSession ? 'filled' : 'outlined'}
