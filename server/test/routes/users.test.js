@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import User from '../../src/models/User.js';
+import { generateMeteorId } from '../../src/utils/meteorId.js';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 
 let app;
@@ -309,7 +310,7 @@ describe('Legacy database compatibility', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     // Insert a legacy-style document directly into MongoDB (no locale field)
-    const legacyId = new mongoose.Types.ObjectId().toString();
+    const legacyId = generateMeteorId();
     await User.collection.insertOne({
       _id: legacyId,
       emails: [{ address: 'legacy-no-locale@example.com', verified: true }],
@@ -352,7 +353,7 @@ describe('Legacy database compatibility', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     // Insert minimal legacy document
-    const legacyId = new mongoose.Types.ObjectId().toString();
+    const legacyId = generateMeteorId();
     await User.collection.insertOne({
       _id: legacyId,
       emails: [{ address: 'minimal-legacy@example.com', verified: false }],
