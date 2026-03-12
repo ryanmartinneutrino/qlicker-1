@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Avatar,
@@ -77,12 +78,12 @@ function formatPercent(value) {
   return String(Math.round(numeric * 10) / 10);
 }
 
-function formatDisplayName(student) {
+function formatDisplayName(student, fallback = 'Unknown Student') {
   const first = normalizeValue(student?.firstname);
   const last = normalizeValue(student?.lastname);
   const fullName = `${first} ${last}`.trim();
   if (fullName) return fullName;
-  return normalizeValue(student?.email) || 'Unknown Student';
+  return normalizeValue(student?.email) || fallback;
 }
 
 function buildStudentInitials(student) {
@@ -199,7 +200,7 @@ function isAutoGradeableQuestionType(questionType) {
   ].includes(questionType);
 }
 
-function buildResponseSummary(question, response) {
+function buildResponseSummary(question, response, noAnswerLabel = '(no answer)') {
   if (!response) {
     return {
       displayText: '—',
@@ -215,7 +216,7 @@ function buildResponseSummary(question, response) {
     const richHtml = normalizeValue(response?.answerWysiwyg);
     const plain = normalizeValue(answer) || stripHtml(richHtml);
     return {
-      displayText: plain || '(no answer)',
+      displayText: plain || noAnswerLabel,
       filterText: [plain, stripHtml(richHtml)].filter(Boolean).join(' '),
       richHtml,
     };
@@ -254,13 +255,13 @@ function buildResponseSummary(question, response) {
   }
 
   return {
-    displayText: displayText || '(no answer)',
+    displayText: displayText || noAnswerLabel,
     filterText: displayText,
     richHtml: '',
   };
 }
 
-function formatCorrectAnswerSummary(question) {
+function formatCorrectAnswerSummary(question, labels = {}) {
   if (!question) return '—';
   const qType = normalizeQuestionType(question);
 
@@ -274,7 +275,7 @@ function formatCorrectAnswerSummary(question) {
         const text = stripHtml(optionDisplayHtml(option));
         return text ? `${label}: ${text}` : label;
       });
-    if (correctEntries.length === 0) return 'No correct option configured.';
+    if (correctEntries.length === 0) return labels.noCorrectOption || 'No correct option configured.';
     return correctEntries.join(' | ');
   }
 
@@ -286,7 +287,7 @@ function formatCorrectAnswerSummary(question) {
   }
 
   if (qType === QUESTION_TYPES.SHORT_ANSWER) {
-    return 'Manual grading required.';
+    return labels.manualGradingRequired || 'Manual grading required.';
   }
 
   return '—';
@@ -343,6 +344,7 @@ export default function SessionQuestionGradingPanel({
   studentResults = [],
   onUngradedSummaryChange = null,
 }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [globalMessage, setGlobalMessage] = useState('');
@@ -373,7 +375,7 @@ export default function SessionQuestionGradingPanel({
       });
       setGradesByStudentId(next);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load grades for this session.');
+      setError(err.response?.data?.message || t('grades.questionPanel.failedLoadGrades'));
     } finally {
       setLoading(false);
     }
@@ -475,8 +477,8 @@ export default function SessionQuestionGradingPanel({
         (result) => String(result?.questionId) === questionId
       );
       const latestResponse = getLatestResponse(questionResult?.responses || []);
-      const responseSummary = buildResponseSummary(activeQuestion, latestResponse);
-      const displayName = formatDisplayName(student);
+      const responseSummary = buildResponseSummary(activeQuestion, latestResponse, t('grades.questionPanel.noAnswer'));
+      const displayName = formatDisplayName(student, t('common.unknown'));
       const markNeedsGrading = !!mark?.needsGrading;
       const needsManualGrading = questionNeedsManualGrading && !!latestResponse && (!mark || markNeedsGrading);
       const rowNeedsGrading = markNeedsGrading || needsManualGrading;
@@ -610,7 +612,7 @@ export default function SessionQuestionGradingPanel({
     const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
     const parsedPoints = Number(draft.points);
     if (!Number.isFinite(parsedPoints) || parsedPoints < 0) {
-      setGlobalMessage('Points must be a number greater than or equal to 0.');
+      setGlobalMessage(t('grades.questionPanel.pointsInvalid'));
       setGlobalMessageType('error');
       return;
     }
@@ -625,10 +627,10 @@ export default function SessionQuestionGradingPanel({
         }
       );
       applyUpdatedGrade(data?.grade);
-      setGlobalMessage(`Saved grade for ${row.displayName}.`);
+      setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
       setGlobalMessageType('success');
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || `Failed to save grade for ${row.displayName}.`);
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.failedSaveGrade', { name: row.displayName }));
       setGlobalMessageType('error');
     } finally {
       setSavingByStudentId((prev) => ({ ...prev, [row.studentId]: false }));
@@ -650,14 +652,14 @@ export default function SessionQuestionGradingPanel({
     if (!activeQuestionId) return;
     const parsedPoints = Number(bulkPoints);
     if (!Number.isFinite(parsedPoints) || parsedPoints < 0) {
-      setGlobalMessage('Bulk points must be a number greater than or equal to 0.');
+      setGlobalMessage(t('grades.questionPanel.bulkPointsInvalid'));
       setGlobalMessageType('error');
       return;
     }
 
     const targetRows = filteredRows.filter((row) => row.gradeId && row.mark);
     if (targetRows.length === 0) {
-      setGlobalMessage('No filtered rows can be updated.');
+      setGlobalMessage(t('grades.questionPanel.noFilteredRows'));
       setGlobalMessageType('warning');
       return;
     }
@@ -674,10 +676,10 @@ export default function SessionQuestionGradingPanel({
         applyUpdatedGrade(data?.grade);
         updatedCount += 1;
       }
-      setGlobalMessage(`Updated points for ${updatedCount} student${updatedCount === 1 ? '' : 's'}.`);
+      setGlobalMessage(t('grades.questionPanel.updatedPoints', { count: updatedCount }));
       setGlobalMessageType('success');
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Bulk points update failed.');
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.bulkPointsFailed'));
       setGlobalMessageType('error');
     } finally {
       setBulkApplying(false);
@@ -688,7 +690,7 @@ export default function SessionQuestionGradingPanel({
     if (!activeQuestionId) return;
     const targetRows = filteredRows.filter((row) => row.gradeId && row.mark);
     if (targetRows.length === 0) {
-      setGlobalMessage('No filtered rows can be updated.');
+      setGlobalMessage(t('grades.questionPanel.noFilteredRows'));
       setGlobalMessageType('warning');
       return;
     }
@@ -705,10 +707,10 @@ export default function SessionQuestionGradingPanel({
         applyUpdatedGrade(data?.grade);
         updatedCount += 1;
       }
-      setGlobalMessage(`Updated feedback for ${updatedCount} student${updatedCount === 1 ? '' : 's'}.`);
+      setGlobalMessage(t('grades.questionPanel.updatedFeedback', { count: updatedCount }));
       setGlobalMessageType('success');
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Bulk feedback update failed.');
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.bulkFeedbackFailed'));
       setGlobalMessageType('error');
     } finally {
       setBulkApplying(false);
@@ -727,12 +729,12 @@ export default function SessionQuestionGradingPanel({
         setGlobalMessage(warnings.join(' '));
         setGlobalMessageType('warning');
       } else {
-        setGlobalMessage('Grades recalculated.');
+        setGlobalMessage(t('grades.questionPanel.gradesRecalculated'));
         setGlobalMessageType('success');
       }
       await fetchSessionGrades();
     } catch (err) {
-      setGlobalMessage(err.response?.data?.message || 'Failed to re-calculate grades.');
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.failedRecalculate'));
       setGlobalMessageType('error');
     } finally {
       setRecalculating(false);
@@ -753,7 +755,7 @@ export default function SessionQuestionGradingPanel({
         severity="error"
         action={(
           <Button size="small" color="inherit" onClick={fetchSessionGrades}>
-            Retry
+            {t('common.retry')}
           </Button>
         )}
       >
@@ -763,17 +765,20 @@ export default function SessionQuestionGradingPanel({
   }
 
   if (!questions.length) {
-    return <Alert severity="info">This session has no questions to grade.</Alert>;
+    return <Alert severity="info">{t('grades.questionPanel.noQuestions')}</Alert>;
   }
 
   if (!activeQuestion) {
-    return <Alert severity="info">Select a question to begin grading.</Alert>;
+    return <Alert severity="info">{t('grades.questionPanel.selectQuestion')}</Alert>;
   }
 
   const activeQuestionType = normalizeQuestionType(activeQuestion);
   const activeQuestionPoints = getQuestionPoints(activeQuestion);
   const hasSolution = !!normalizeValue(activeQuestion.solution);
-  const correctAnswerSummary = formatCorrectAnswerSummary(activeQuestion);
+  const correctAnswerSummary = formatCorrectAnswerSummary(activeQuestion, {
+    noCorrectOption: t('grades.questionPanel.noCorrectOption'),
+    manualGradingRequired: t('grades.questionPanel.manualGradingRequired'),
+  });
   const optionTypeQuestion = [
     QUESTION_TYPES.MULTIPLE_CHOICE,
     QUESTION_TYPES.TRUE_FALSE,
@@ -781,8 +786,8 @@ export default function SessionQuestionGradingPanel({
   ].includes(activeQuestionType);
   const questionOptions = Array.isArray(activeQuestion.options) ? activeQuestion.options : [];
   const displayedStudentHint = isQuizSession
-    ? `Showing ${sortedRows.length} of ${allRows.length} student${allRows.length === 1 ? '' : 's'} who have saved at least one quiz response.`
-    : `Showing ${sortedRows.length} of ${allRows.length} student${allRows.length === 1 ? '' : 's'} who joined this session.`;
+    ? t('grades.questionPanel.showingStudentsQuiz', { showing: sortedRows.length, total: allRows.length })
+    : t('grades.questionPanel.showingStudentsSession', { showing: sortedRows.length, total: allRows.length });
 
   const renderQuestionRibbon = () => (
     <Box
@@ -831,16 +836,16 @@ export default function SessionQuestionGradingPanel({
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-            Question {questions.findIndex((question) => String(question?._id) === activeQuestionId) + 1}
+            {t('grades.questionPanel.questionNumber', { number: questions.findIndex((question) => String(question?._id) === activeQuestionId) + 1 })}
           </Typography>
           <Chip
-            label={TYPE_LABELS[activeQuestionType] || 'Question'}
+            label={TYPE_LABELS[activeQuestionType] || t('grades.coursePanel.question')}
             color={TYPE_COLORS[activeQuestionType] || 'default'}
             size="small"
             sx={COMPACT_CHIP_SX}
           />
           <Chip
-            label={`${activeQuestionPoints} pt${activeQuestionPoints === 1 ? '' : 's'}`}
+            label={t('grades.questionPanel.pointsValue', { count: activeQuestionPoints })}
             size="small"
             variant="outlined"
             sx={COMPACT_CHIP_SX}
@@ -881,18 +886,18 @@ export default function SessionQuestionGradingPanel({
         )}
 
         <Typography variant="body2" sx={{ mt: 1 }}>
-          <strong>Correct answer:</strong> {correctAnswerSummary}
+          <strong>{t('grades.questionPanel.correctAnswer')}</strong> {correctAnswerSummary}
         </Typography>
 
         {hasSolution && (
           <Box sx={{ mt: 1 }}>
             <Button size="small" variant="outlined" onClick={() => setShowSolution((prev) => !prev)}>
-              {showSolution ? 'Hide Solution' : 'Show Solution'}
+              {showSolution ? t('grades.questionPanel.hideSolution') : t('grades.questionPanel.showSolution')}
             </Button>
             {showSolution && (
               <Paper variant="outlined" sx={{ mt: 1, p: 1.25 }}>
                 <Typography variant="subtitle2" sx={{ mb: 0.5, fontWeight: 700 }}>
-                  Solution
+                  {t('common.solution')}
                 </Typography>
                 <RichContent html={activeQuestion.solution} fallback={activeQuestion.solution_plainText} />
               </Paper>
@@ -905,13 +910,13 @@ export default function SessionQuestionGradingPanel({
 
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          Bulk update filtered rows ({sortedRows.length})
+          {t('grades.questionPanel.bulkUpdateFiltered', { count: sortedRows.length })}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             size="small"
             type="number"
-            label="Bulk points"
+            label={t('grades.questionPanel.bulkPoints')}
             value={bulkPoints}
             onChange={(event) => setBulkPoints(event.target.value)}
             sx={{ width: 140 }}
@@ -922,11 +927,11 @@ export default function SessionQuestionGradingPanel({
             onClick={handleBulkApplyPoints}
             disabled={bulkApplying}
           >
-            Apply points
+            {t('grades.questionPanel.applyPoints')}
           </Button>
           <TextField
             size="small"
-            label="Bulk feedback"
+            label={t('grades.questionPanel.bulkFeedback')}
             value={bulkFeedback}
             onChange={(event) => setBulkFeedback(event.target.value)}
             sx={{ minWidth: 260, flex: 1 }}
@@ -937,7 +942,7 @@ export default function SessionQuestionGradingPanel({
             onClick={handleBulkApplyFeedback}
             disabled={bulkApplying}
           >
-            Apply feedback
+            {t('grades.questionPanel.applyFeedback')}
           </Button>
         </Box>
       </Paper>
@@ -945,14 +950,14 @@ export default function SessionQuestionGradingPanel({
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.25, alignItems: 'center' }}>
         <TextField
           size="small"
-          label="Search students"
+          label={t('grades.questionPanel.searchStudents')}
           value={studentQuery}
           onChange={(event) => setStudentQuery(event.target.value)}
           sx={{ minWidth: 220 }}
         />
         <TextField
           size="small"
-          label="Search answer content"
+          label={t('grades.questionPanel.searchAnswerContent')}
           value={answerQuery}
           onChange={(event) => setAnswerQuery(event.target.value)}
           sx={{ minWidth: 260, flex: 1 }}
@@ -964,7 +969,7 @@ export default function SessionQuestionGradingPanel({
           onClick={handleRecalculateAll}
           disabled={recalculating}
         >
-          Re-calculate all grades
+          {t('grades.questionPanel.recalculateGrades')}
         </Button>
         <FormControlLabel
           control={(
@@ -974,7 +979,7 @@ export default function SessionQuestionGradingPanel({
               onChange={(event) => setShowNeedsGradingOnly(event.target.checked)}
             />
           )}
-          label="Only needs grading"
+          label={t('grades.questionPanel.onlyNeedsGrading')}
           sx={{ ml: { xs: 0, sm: 0.5 } }}
         />
       </Box>
@@ -983,13 +988,13 @@ export default function SessionQuestionGradingPanel({
         {displayedStudentHint}
       </Typography>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.25 }}>
-        Feedback math syntax: use \( ... \) for inline math or $$ ... $$ for display math.
+        {t('grades.questionPanel.feedbackMathTip')}
       </Typography>
 
       <TableContainer component={Paper} variant="outlined">
         <Table
           size="small"
-          aria-label="Question grading table"
+          aria-label={t('grades.questionPanel.questionGradingTable')}
           sx={{
             '& .MuiTableCell-root': {
               px: 0.75,
@@ -1006,7 +1011,7 @@ export default function SessionQuestionGradingPanel({
                   direction={tableSort.field === 'student' ? tableSort.direction : 'asc'}
                   onClick={() => handleTableSort('student')}
                 >
-                  Student
+                  {t('grades.coursePanel.student')}
                 </TableSortLabel>
               </TableCell>
               <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
@@ -1015,7 +1020,7 @@ export default function SessionQuestionGradingPanel({
                   direction={tableSort.field === 'response' ? tableSort.direction : 'asc'}
                   onClick={() => handleTableSort('response')}
                 >
-                  Response
+                  {t('grades.questionPanel.response')}
                 </TableSortLabel>
               </TableCell>
               <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>
@@ -1024,7 +1029,7 @@ export default function SessionQuestionGradingPanel({
                   direction={tableSort.field === 'mark' ? tableSort.direction : 'desc'}
                   onClick={() => handleTableSort('mark')}
                 >
-                  Mark
+                  {t('grades.questionPanel.mark')}
                 </TableSortLabel>
               </TableCell>
               <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
@@ -1033,10 +1038,10 @@ export default function SessionQuestionGradingPanel({
                   direction={tableSort.field === 'feedback' ? tableSort.direction : 'asc'}
                   onClick={() => handleTableSort('feedback')}
                 >
-                  Feedback
+                  {t('grades.coursePanel.feedback')}
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 96 }} align="right">Action</TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 96 }} align="right">{t('grades.questionPanel.action')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -1084,7 +1089,7 @@ export default function SessionQuestionGradingPanel({
                     </Box>
                     {row.latestResponse?.attempt ? (
                       <Typography variant="caption" color="text.secondary">
-                        attempt {row.latestResponse.attempt}
+                        {t('grades.questionPanel.attemptNumber', { number: row.latestResponse.attempt })}
                       </Typography>
                     ) : null}
                   </TableCell>
@@ -1103,7 +1108,7 @@ export default function SessionQuestionGradingPanel({
                         inputProps={{ min: 0 }}
                       />
                       <Typography variant="caption" color="text.secondary">
-                        / {formatPercent(row.mark?.outOf || 0)}
+                        {t('grades.questionPanel.outOf', { value: formatPercent(row.mark?.outOf || 0) })}
                       </Typography>
                     </Box>
                     {rowNeedsGrading && (
@@ -1111,7 +1116,7 @@ export default function SessionQuestionGradingPanel({
                         size="small"
                         color="error"
                         variant="outlined"
-                        label="Needs grading"
+                        label={t('grades.questionPanel.needsGrading')}
                         sx={{ mt: 0.5 }}
                       />
                     )}
@@ -1120,7 +1125,7 @@ export default function SessionQuestionGradingPanel({
                         size="small"
                         color="warning"
                         variant="outlined"
-                        label="No grade item"
+                        label={t('grades.questionPanel.noGradeItem')}
                         sx={{ mt: 0.5 }}
                       />
                     )}
@@ -1135,8 +1140,8 @@ export default function SessionQuestionGradingPanel({
                           const value = html || '';
                           handleUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
                         }}
-                        placeholder="Add feedback"
-                        ariaLabel={`Feedback editor for ${row.displayName}`}
+                        placeholder={t('grades.questionPanel.addFeedback')}
+                        ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
                         showMathHint={false}
                       />
                       {rowDirty && hasMathSyntax(draft.feedback) && (
@@ -1152,7 +1157,7 @@ export default function SessionQuestionGradingPanel({
                         onClick={() => handleSaveRow(row)}
                         disabled={rowDisabled || saving || !rowDirty}
                       >
-                        Save
+                        {t('common.save')}
                       </Button>
                       {rowDirty && (
                         <Button
@@ -1161,7 +1166,7 @@ export default function SessionQuestionGradingPanel({
                           onClick={() => handleCancelRow(row)}
                           disabled={rowDisabled || saving}
                         >
-                          Cancel
+                          {t('common.cancel')}
                         </Button>
                       )}
                     </Box>
@@ -1173,7 +1178,7 @@ export default function SessionQuestionGradingPanel({
               <TableRow>
                 <TableCell colSpan={5}>
                   <Typography variant="body2" color="text.secondary">
-                    No students match the current filters.
+                    {t('grades.questionPanel.noStudentsMatch')}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -1183,13 +1188,13 @@ export default function SessionQuestionGradingPanel({
       </TableContainer>
 
       <Dialog open={!!imageViewUrl} onClose={() => setImageViewUrl('')} maxWidth="md" fullWidth>
-        <DialogTitle>Profile Image</DialogTitle>
+        <DialogTitle>{t('grades.questionPanel.profileImage')}</DialogTitle>
         <DialogContent dividers>
           {imageViewUrl ? (
             <Box
               component="img"
               src={imageViewUrl}
-              alt="Profile"
+              alt={t('grades.questionPanel.profileImage')}
               sx={{ width: '100%', maxHeight: 540, objectFit: 'contain', display: 'block' }}
             />
           ) : null}
