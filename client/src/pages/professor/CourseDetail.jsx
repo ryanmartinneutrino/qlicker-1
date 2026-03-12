@@ -75,6 +75,7 @@ function sortSessions(items) {
   });
 }
 
+// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Settings
 const MAX_COURSE_TAB_INDEX = 6;
 
 function parseCourseTab(value) {

@@ -292,25 +292,19 @@ export default async function groupRoutes(app) {
       // Toggle student membership
       if (request.body.toggleStudentId) {
         const studentId = request.body.toggleStudentId;
-        // Remove from any other group in this category first
+        // Check if student is currently in this specific group before any changes
+        const wasInThisGroup = group.members.includes(studentId);
+        // Remove from all groups in this category
         for (const g of cat.groups) {
           const memberIdx = g.members.indexOf(studentId);
           if (memberIdx !== -1) {
             g.members.splice(memberIdx, 1);
           }
         }
-        // Add to this group (toggle: if student was already in this specific group,
-        // the above loop removed them – so we check if they were specifically in THIS group)
-        const wasInThisGroup = (course.groupCategories || [])
-          .find((c) => c.categoryNumber === catNum || c.categoryName === cat.categoryName);
-        const originalGroup = wasInThisGroup
-          ? (wasInThisGroup.groups || [])[gIdx]
-          : null;
-        const originalMembers = originalGroup?.members ?? originalGroup?.students ?? [];
-        if (!originalMembers.includes(studentId)) {
+        // Toggle: add to this group only if they weren't already in it
+        if (!wasInThisGroup) {
           group.members.push(studentId);
         }
-        // else: student was already in this group, removal above means "toggle off"
       }
 
       await Course.findByIdAndUpdate(course._id, { $set: { groupCategories: categories } });
