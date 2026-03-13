@@ -886,27 +886,12 @@ export default function LiveSession() {
             <Box
               sx={{
                 display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
                 justifyContent: 'center',
-                alignItems: 'center',
-                flexWrap: 'wrap',
+                alignItems: 'stretch',
                 gap: 1,
               }}
             >
-              <Tooltip title={t('professor.liveSession.previousQuestion')}>
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<PrevIcon />}
-                    onClick={handlePrev}
-                    disabled={!hasPrev || actionLoading}
-                    aria-label={t('professor.liveSession.previousQuestion')}
-                  >
-                    {t('professor.liveSession.prev')}
-                  </Button>
-                </span>
-              </Tooltip>
-
               <Tooltip title={t('professor.liveSession.startNewAttempt')}>
                 <span>
                   <Button
@@ -916,26 +901,62 @@ export default function LiveSession() {
                     onClick={handleNewAttempt}
                     disabled={!currentQ || actionLoading}
                     aria-label={t('professor.liveSession.newAttempt')}
+                    sx={{
+                      width: { xs: '100%', sm: 'auto' },
+                    }}
                   >
                     {t('professor.liveSession.newAttempt')}
                   </Button>
                 </span>
               </Tooltip>
 
-              <Tooltip title={t('professor.liveSession.nextQuestion')}>
-                <span>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    endIcon={<NextIcon />}
-                    onClick={handleNext}
-                    disabled={!hasNext || actionLoading}
-                    aria-label={t('professor.liveSession.nextQuestion')}
-                  >
-                    {t('common.next')}
-                  </Button>
-                </span>
-              </Tooltip>
+              <Box
+                sx={{
+                  display: 'flex',
+                  width: '100%',
+                  justifyContent: 'center',
+                  alignItems: 'stretch',
+                  gap: 1,
+                }}
+              >
+                <Tooltip title={t('professor.liveSession.previousQuestion')}>
+                  <span style={{ display: 'flex', flex: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<PrevIcon />}
+                      onClick={handlePrev}
+                      disabled={!hasPrev || actionLoading}
+                      aria-label={t('professor.liveSession.previousQuestion')}
+                      sx={{
+                        flex: { xs: 1, sm: '0 0 auto' },
+                        width: { xs: '100%', sm: 'auto' },
+                      }}
+                    >
+                      {t('professor.liveSession.prev')}
+                    </Button>
+                  </span>
+                </Tooltip>
+
+                <Tooltip title={t('professor.liveSession.nextQuestion')}>
+                  <span style={{ display: 'flex', flex: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      endIcon={<NextIcon />}
+                      onClick={handleNext}
+                      disabled={!hasNext || actionLoading}
+                      aria-label={t('professor.liveSession.nextQuestion')}
+                      sx={{
+                        flex: { xs: 1, sm: '0 0 auto' },
+                        width: { xs: '100%', sm: 'auto' },
+                      }}
+                    >
+                      {t('common.next')}
+                    </Button>
+                  </span>
+                </Tooltip>
+              </Box>
             </Box>
           </Paper>
 

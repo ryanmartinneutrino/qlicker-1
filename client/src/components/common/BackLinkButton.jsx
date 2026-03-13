@@ -14,7 +14,12 @@ export default function BackLinkButton({
       startIcon={<BackIcon />}
       variant={variant}
       onClick={onClick}
-      sx={sx}
+      sx={{
+        justifyContent: 'flex-start',
+        textAlign: 'left',
+        alignSelf: 'flex-start',
+        ...sx,
+      }}
       {...buttonProps}
     >
       {label}

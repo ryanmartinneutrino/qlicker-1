@@ -108,6 +108,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ File upload content validation — magic bytes via `file-type` library
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
+- ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session mobile controls keep Prev/Next paired with New attempt stacked above
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
