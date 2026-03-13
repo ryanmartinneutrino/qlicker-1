@@ -623,7 +623,7 @@ export default function GroupManagementPanel({ courseId, students = [] }) {
               value={uploadCsvText}
               onChange={(e) => setUploadCsvText(e.target.value)}
               fullWidth
-              placeholder="GroupName,Email,LastName,FirstName"
+              placeholder={t('groups.csvExamplePlaceholder')}
             />
             {uploadResult && (
               <Alert severity="info">

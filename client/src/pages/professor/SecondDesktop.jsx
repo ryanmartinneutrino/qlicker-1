@@ -501,7 +501,7 @@ export default function PresentationWindow() {
           Q{qIdx + 1}/{totalQ}
         </Typography>
         <Chip
-          label={TYPE_LABELS[qType] || 'Question'}
+          label={TYPE_LABELS[qType] || t('professor.secondDesktop.question')}
           color={TYPE_COLORS[qType] || 'default'}
           size="small"
           sx={COMPACT_CHIP_SX}
@@ -512,7 +512,7 @@ export default function PresentationWindow() {
       <Paper
         variant="outlined"
         sx={{ p: { xs: 2, sm: 3 }, mb: 3, flex: '0 0 auto' }}
-        aria-label="Current question"
+        aria-label={t('professor.secondDesktop.currentQuestion')}
       >
         <RichContent html={currentQ.content} fallback={currentQ.plainText} />
       </Paper>
@@ -647,7 +647,7 @@ export default function PresentationWindow() {
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3, borderColor: 'success.main' }}
-          aria-label="Solution"
+          aria-label={t('common.solution')}
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
             {t('common.solution')}

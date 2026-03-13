@@ -581,7 +581,7 @@ export default function RichTextEditor({
             label={t('questions.richText.linkUrl')}
             value={linkDraft}
             onChange={(event) => setLinkDraft(event.target.value)}
-            placeholder="https://example.com"
+            placeholder={t('questions.richText.linkUrlPlaceholder')}
             sx={{ mt: 1 }}
           />
         </DialogContent>

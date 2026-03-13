@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest | Unit tests (216 server + 4 client) |
+| **Testing** | Vitest | Unit tests (216 server + 7 client) |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -101,7 +101,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ WebSocket delta messages — ~98% reduction in DB queries during live sessions
 - ✅ Course page WebSocket push — replaced polling for session status events
 - ✅ Legacy DB indexes — all models indexed
-- ✅ i18n — react-i18next with 1050 translation keys (en/fr), all 30+ components wired
+- ✅ i18n — react-i18next with 1053 translation keys (en/fr), all 30+ components wired
 - ✅ CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
 - ✅ JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
 - ✅ SAML logout validation — node-saml crypto validation with XML fallback
@@ -114,7 +114,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 ### Test Summary
 
 - **Server:** 216 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
-- **Client:** 4 tests in 1 file (grading UI)
+- **Client:** 7 tests in 2 files (grading UI, student quiz CTA)
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 
@@ -297,7 +297,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 220 tests (216 server + 4 client) |
+| Unit tests | ✅ 223 tests (216 server + 7 client) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -323,7 +323,7 @@ cd server && npm install && npx vitest run
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (4 tests, 1 file)
+# Client tests (7 tests, 2 files)
 cd client && npx vitest run
 ```
 

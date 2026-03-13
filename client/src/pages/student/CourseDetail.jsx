@@ -86,7 +86,7 @@ function TabPanel({ children, value, index }) {
   return <Box sx={{ pt: 2 }}>{children}</Box>;
 }
 
-function getStudentSessionAction(session, courseId, listTabIndex) {
+export function getStudentSessionAction(session, courseId, listTabIndex) {
   const isQuiz = isQuizSession(session);
   const submittedQuiz = isQuiz && session.quizSubmittedByCurrentUser && !session.practiceQuiz;
 
