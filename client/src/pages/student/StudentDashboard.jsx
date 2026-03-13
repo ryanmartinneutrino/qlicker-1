@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
-  CircularProgress,
+  CircularProgress, Chip,
 } from '@mui/material';
-import { Add as AddIcon, School as SchoolIcon } from '@mui/icons-material';
+import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -14,6 +14,7 @@ export default function StudentDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
+  const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
 
@@ -25,8 +26,12 @@ export default function StudentDashboard() {
   const fetchCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await apiClient.get('/courses');
-      setCourses(data.courses || []);
+      const [coursesRes, liveRes] = await Promise.all([
+        apiClient.get('/courses'),
+        apiClient.get('/sessions/live').catch(() => ({ data: { liveSessions: [] } })),
+      ]);
+      setCourses(coursesRes.data.courses || []);
+      setLiveSessions(liveRes.data.liveSessions || []);
     } catch {
       setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
     } finally {
@@ -69,6 +74,27 @@ export default function StudentDashboard() {
           {t('student.dashboard.enrollInCourse')}
         </Button>
       </Box>
+
+      {liveSessions.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+            <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
+            {t('dashboard.liveSessions')}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {liveSessions.map((ls) => (
+              <Chip
+                key={ls._id}
+                label={`${ls.courseName} — ${ls.name}`}
+                color="success"
+                variant="outlined"
+                onClick={() => navigate(`/student/course/${ls.courseId}/session/${ls._id}/live`)}
+                sx={{ cursor: 'pointer' }}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>

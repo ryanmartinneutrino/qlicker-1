@@ -5,7 +5,7 @@ import {
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  CircularProgress, Tooltip,
+  CircularProgress, Tooltip, Autocomplete, Chip,
   Avatar,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
@@ -720,7 +720,6 @@ function VideoTab() {
   const [settings, setSettings] = useState({
     Jitsi_Enabled: false,
     Jitsi_Domain: '',
-    Jitsi_EtherpadDomain: '',
     Jitsi_EnabledCourses: [],
   });
   const [courses, setCourses] = useState([]);
@@ -741,7 +740,6 @@ function VideoTab() {
       setSettings({
         Jitsi_Enabled: data.Jitsi_Enabled ?? false,
         Jitsi_Domain: data.Jitsi_Domain ?? '',
-        Jitsi_EtherpadDomain: data.Jitsi_EtherpadDomain ?? '',
         Jitsi_EnabledCourses: data.Jitsi_EnabledCourses ?? [],
       });
       setCourses(coursesRes.data.courses || []);
@@ -785,9 +783,19 @@ function VideoTab() {
   if (loading) return <CircularProgress />;
 
   const courseLabel = (c) => {
-    const parts = [c.deptCode, c.courseNumber, c.section, c.name].filter(Boolean);
-    return parts.join(' - ') || c._id;
+    const parts = [c.deptCode, c.courseNumber, c.section, c.name, c.semester].filter(Boolean);
+    return parts.join(' – ') || c._id;
   };
+
+  const sortedCourses = [...courses].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  const selectedCourseObjects = settings.Jitsi_EnabledCourses
+    .map((cid) => sortedCourses.find((c) => c._id === cid))
+    .filter(Boolean);
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -810,34 +818,34 @@ function VideoTab() {
             placeholder={t('admin.video.jitsiDomainPlaceholder')}
             fullWidth
           />
-          <TextField
-            label={t('admin.video.etherpadDomain')}
-            value={settings.Jitsi_EtherpadDomain}
-            onChange={(e) => setSettings((s) => ({ ...s, Jitsi_EtherpadDomain: e.target.value }))}
-            placeholder={t('admin.video.etherpadDomainPlaceholder')}
+          <Autocomplete
+            multiple
+            options={sortedCourses}
+            value={selectedCourseObjects}
+            onChange={(_, newValue) => {
+              setSettings((s) => ({ ...s, Jitsi_EnabledCourses: newValue.map((c) => c._id) }));
+            }}
+            getOptionLabel={(option) => courseLabel(option)}
+            isOptionEqualToValue={(option, value) => option._id === value._id}
+            renderTags={(value, getTagProps) =>
+              value.map((option, index) => (
+                <Chip
+                  label={courseLabel(option)}
+                  size="small"
+                  {...getTagProps({ index })}
+                  key={option._id}
+                />
+              ))
+            }
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('admin.video.enabledCourses')}
+                placeholder={t('admin.video.searchCourses')}
+              />
+            )}
             fullWidth
           />
-          <FormControl fullWidth>
-            <InputLabel>{t('admin.video.enabledCourses')}</InputLabel>
-            <Select
-              multiple
-              value={settings.Jitsi_EnabledCourses}
-              label={t('admin.video.enabledCourses')}
-              onChange={(e) => setSettings((s) => ({ ...s, Jitsi_EnabledCourses: e.target.value }))}
-              renderValue={(selected) =>
-                selected
-                  .map((id) => {
-                    const c = courses.find((course) => course._id === id);
-                    return c ? courseLabel(c) : id;
-                  })
-                  .join(', ')
-              }
-            >
-              {courses.map((c) => (
-                <MenuItem key={c._id} value={c._id}>{courseLabel(c)}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
         </>
       ) : (
         <Typography variant="body2" color="text.secondary">

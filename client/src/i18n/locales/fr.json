@@ -6,6 +6,7 @@
     "close": "Fermer",
     "delete": "Supprimer",
     "save": "Enregistrer",
+    "saving": "Enregistrement…",
     "edit": "Modifier",
     "add": "Ajouter",
     "create": "Créer",
@@ -59,6 +60,9 @@
     "profile": "Profil",
     "courses": "Cours",
     "logout": "Déconnexion"
+  },
+  "dashboard": {
+    "liveSessions": "Séances en direct"
   },
   "home": {
     "tagline": "Un système de réponse en classe à code source ouvert, et bien plus encore.",
@@ -223,6 +227,7 @@
       "etherpadDomainPlaceholder": "ex. etherpad.wikimedia.org",
       "enabledCourses": "Cours avec vidéo activé",
       "enabledCoursesHelp": "Sélectionnez les cours pour lesquels le chat vidéo est disponible",
+      "searchCourses": "Rechercher des cours…",
       "noCourses": "Aucun cours trouvé",
       "failedLoadCourses": "Échec du chargement des cours",
       "jitsiNotEnabled": "Le chat vidéo Jitsi est désactivé. Cochez la case ci-dessus pour configurer.",
@@ -463,6 +468,11 @@
       "joinPeriod": "Période d'inscription",
       "responsesOpen": "Réponses ouvertes",
       "makeReviewable": "Rendre la séance révisable pour les étudiants",
+      "nonAutoGradeableWarning": "Cette séance contient {{count}} question(s) qui ne peuvent pas être corrigées automatiquement (ex. réponse courte). Les notes seront créées mais ces questions devront être corrigées manuellement.",
+      "nonAutoGradeableChoose": "Choisissez comment procéder :",
+      "nonAutoGradeableProceed": "Procéder quand même (les questions devront être corrigées manuellement)",
+      "nonAutoGradeableZero": "Mettre les points de ces questions à zéro (n'affectera pas la note ou la participation)",
+      "nonAutoGradeableCancel": "Ne pas rendre révisable",
       "requirePasscode": "Exiger un code d'accès",
       "refreshJoinCode": "Rafraîchir le code d'inscription",
       "refreshJoinCodeNow": "Rafraîchir le code d'inscription maintenant",
@@ -937,6 +947,8 @@
       "bulkPointsFailed": "Échec de la mise à jour groupée des points.",
       "updatedFeedback": "Commentaires mis à jour pour {{count}} étudiant(s).",
       "bulkFeedbackFailed": "Échec de la mise à jour groupée des commentaires.",
+      "bulkSaveSuccess": "Modifications groupées enregistrées pour {{count}} étudiant(s).",
+      "bulkSaveFailed": "Échec de l'enregistrement groupé.",
       "gradesRecalculated": "Notes recalculées.",
       "failedRecalculate": "Échec du recalcul des notes.",
       "failedLoadGrades": "Échec du chargement des notes pour cette session.",

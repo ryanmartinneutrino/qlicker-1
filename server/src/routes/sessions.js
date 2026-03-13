@@ -9,6 +9,7 @@ import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
   getTimestampMs,
+  isQuestionAutoGradeable,
   recalculateSessionGrades,
   summarizeGradeFeedback,
   setSessionGradesVisibility,
@@ -826,6 +827,52 @@ export default async function sessionRoutes(app) {
     }
   );
 
+  // GET /sessions/live - List running sessions across all courses for the current user
+  app.get(
+    '/sessions/live',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const roles = request.user.roles || [];
+      const userId = request.user.userId;
+      const isAdmin = roles.includes('admin');
+
+      const courseFilter = {};
+      if (!isAdmin) {
+        if (roles.includes('professor')) {
+          courseFilter.instructors = userId;
+        } else {
+          courseFilter.students = userId;
+          courseFilter.inactive = { $ne: true };
+        }
+      }
+
+      const courses = await Course.find(courseFilter).lean();
+      if (courses.length === 0) return { liveSessions: [] };
+
+      const courseIds = courses.map((c) => String(c._id));
+      const courseById = new Map(courses.map((c) => [String(c._id), c]));
+
+      const sessions = await Session.find({
+        courseId: { $in: courseIds },
+        status: 'running',
+        quiz: { $ne: true },
+      }).lean();
+
+      const liveSessions = sessions.map((s) => {
+        const c = courseById.get(String(s.courseId));
+        return {
+          _id: s._id,
+          name: s.name,
+          courseId: s.courseId,
+          courseName: c ? [c.deptCode, c.courseNumber, c.name].filter(Boolean).join(' – ') : '',
+          status: s.status,
+        };
+      });
+
+      return { liveSessions };
+    }
+  );
+
   // GET /courses/:courseId/sessions - List sessions for a course
   app.get(
     '/courses/:courseId/sessions',
@@ -1252,13 +1299,31 @@ export default async function sessionRoutes(app) {
       );
 
       let grading = null;
+      let nonAutoGradeableWarning = null;
       if (request.body?.reviewable === true && !session.reviewable) {
+        // Check for non-autogradable questions and warn the professor
+        const questionIds = updated.questions || [];
+        const questionDocs = questionIds.length > 0
+          ? await Question.find({ _id: { $in: questionIds } }).lean()
+          : [];
+        const nonAutoGradeable = questionDocs.filter((q) => !isQuestionAutoGradeable(q.type));
+        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+          nonAutoGradeableWarning = {
+            questionCount: nonAutoGradeable.length,
+            questionNames: nonAutoGradeable.map((q) => q.plainText || q.question || 'Untitled'),
+          };
+        }
+
+        // If zeroNonAutoGradeable is set, zero out the points for those questions
+        const zeroNonAutoGradeable = !!request.body.zeroNonAutoGradeable;
+
         const gradingResult = await recalculateSessionGrades({
           sessionId: updated._id,
           sessionDoc: updated,
           courseDoc: course,
           missingOnly: true,
           visibleToStudents: true,
+          zeroNonAutoGradeable,
         });
         grading = gradingResult.summary;
       } else if (request.body?.reviewable === false && session.reviewable) {
@@ -1270,10 +1335,9 @@ export default async function sessionRoutes(app) {
 
       notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'done' });
 
-      return { session: updated.toObject(), grading };
+      return { session: updated.toObject(), grading, nonAutoGradeableWarning };
     }
   );
-
   // PATCH /sessions/:id/current - Set current question in a live session
   app.patch(
     '/sessions/:id/current',
@@ -2688,7 +2752,11 @@ export default async function sessionRoutes(app) {
 
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
-        { $set: { 'sessionOptions.attempts': closedAttempts } },
+        { $set: {
+          'sessionOptions.attempts': closedAttempts,
+          'sessionOptions.stats': false,
+          'sessionOptions.correct': false,
+        } },
         { new: true }
       );
 

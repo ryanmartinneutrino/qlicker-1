@@ -6,6 +6,7 @@
     "close": "Close",
     "delete": "Delete",
     "save": "Save",
+    "saving": "Saving…",
     "edit": "Edit",
     "add": "Add",
     "create": "Create",
@@ -59,6 +60,9 @@
     "profile": "Profile",
     "courses": "Courses",
     "logout": "Logout"
+  },
+  "dashboard": {
+    "liveSessions": "Live Sessions"
   },
   "home": {
     "tagline": "An open-source in-class response system, and so much more.",
@@ -223,6 +227,7 @@
       "etherpadDomainPlaceholder": "e.g. etherpad.wikimedia.org",
       "enabledCourses": "Courses with video enabled",
       "enabledCoursesHelp": "Select courses for which video chat is available",
+      "searchCourses": "Search courses…",
       "noCourses": "No courses found",
       "failedLoadCourses": "Failed to load courses",
       "jitsiNotEnabled": "Jitsi video chat is disabled. Enable the checkbox above to configure.",
@@ -463,6 +468,11 @@
       "joinPeriod": "Join Period",
       "responsesOpen": "Responses Open",
       "makeReviewable": "Make session reviewable for students",
+      "nonAutoGradeableWarning": "This session has {{count}} question(s) that cannot be auto-graded (e.g. Short Answer). Grades will be created but those questions will need manual grading.",
+      "nonAutoGradeableChoose": "Choose how to proceed:",
+      "nonAutoGradeableProceed": "Proceed anyway (questions will need manual grading)",
+      "nonAutoGradeableZero": "Set point values for those questions to zero (won't affect grade or participation)",
+      "nonAutoGradeableCancel": "Don't make reviewable",
       "requirePasscode": "Require Passcode",
       "refreshJoinCode": "Refresh join code",
       "refreshJoinCodeNow": "Refresh join code now",
@@ -937,6 +947,8 @@
       "bulkPointsFailed": "Bulk points update failed.",
       "updatedFeedback": "Updated feedback for {{count}} student(s).",
       "bulkFeedbackFailed": "Bulk feedback update failed.",
+      "bulkSaveSuccess": "Saved bulk changes for {{count}} student(s).",
+      "bulkSaveFailed": "Bulk save failed.",
       "gradesRecalculated": "Grades recalculated.",
       "failedRecalculate": "Failed to re-calculate grades.",
       "failedLoadGrades": "Failed to load grades for this session.",

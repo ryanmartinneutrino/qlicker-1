@@ -343,6 +343,7 @@ export default function SessionQuestionGradingPanel({
   questions = [],
   studentResults = [],
   onUngradedSummaryChange = null,
+  filterSlot = null,
 }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -717,6 +718,54 @@ export default function SessionQuestionGradingPanel({
     }
   }, [activeQuestionId, applyUpdatedGrade, bulkFeedback, filteredRows]);
 
+  const handleBulkSave = useCallback(async () => {
+    if (!activeQuestionId) return;
+
+    const hasPoints = bulkPoints !== '';
+    const hasFeedback = bulkFeedback !== '';
+    if (!hasPoints && !hasFeedback) return;
+
+    if (hasPoints) {
+      const parsedPoints = Number(bulkPoints);
+      if (!Number.isFinite(parsedPoints) || parsedPoints < 0) {
+        setGlobalMessage(t('grades.questionPanel.bulkPointsInvalid'));
+        setGlobalMessageType('error');
+        return;
+      }
+    }
+
+    const targetRows = filteredRows.filter((row) => row.gradeId && row.mark);
+    if (targetRows.length === 0) {
+      setGlobalMessage(t('grades.questionPanel.noFilteredRows'));
+      setGlobalMessageType('warning');
+      return;
+    }
+
+    setBulkApplying(true);
+    let updatedCount = 0;
+    try {
+      for (const row of targetRows) {
+        const payload = {};
+        if (hasPoints) payload.points = Number(bulkPoints);
+        if (hasFeedback) payload.feedback = bulkFeedback;
+        // eslint-disable-next-line no-await-in-loop
+        const { data } = await apiClient.patch(
+          `/grades/${row.gradeId}/marks/${activeQuestionId}`,
+          payload
+        );
+        applyUpdatedGrade(data?.grade);
+        updatedCount += 1;
+      }
+      setGlobalMessage(t('grades.questionPanel.bulkSaveSuccess', { count: updatedCount }));
+      setGlobalMessageType('success');
+    } catch (err) {
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.bulkSaveFailed'));
+      setGlobalMessageType('error');
+    } finally {
+      setBulkApplying(false);
+    }
+  }, [activeQuestionId, applyUpdatedGrade, bulkPoints, bulkFeedback, filteredRows]);
+
   const handleRecalculateAll = useCallback(async () => {
     if (!sessionId) return;
     setRecalculating(true);
@@ -921,14 +970,6 @@ export default function SessionQuestionGradingPanel({
             onChange={(event) => setBulkPoints(event.target.value)}
             sx={{ width: 140 }}
           />
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={handleBulkApplyPoints}
-            disabled={bulkApplying}
-          >
-            {t('grades.questionPanel.applyPoints')}
-          </Button>
           <TextField
             size="small"
             label={t('grades.questionPanel.bulkFeedback')}
@@ -938,11 +979,11 @@ export default function SessionQuestionGradingPanel({
           />
           <Button
             size="small"
-            variant="outlined"
-            onClick={handleBulkApplyFeedback}
-            disabled={bulkApplying}
+            variant="contained"
+            onClick={handleBulkSave}
+            disabled={bulkApplying || (!bulkPoints && !bulkFeedback)}
           >
-            {t('grades.questionPanel.applyFeedback')}
+            {bulkApplying ? t('common.saving') : t('common.save')}
           </Button>
         </Box>
       </Paper>
@@ -955,6 +996,7 @@ export default function SessionQuestionGradingPanel({
           onChange={(event) => setStudentQuery(event.target.value)}
           sx={{ minWidth: 220 }}
         />
+        {filterSlot}
         <TextField
           size="small"
           label={t('grades.questionPanel.searchAnswerContent')}
