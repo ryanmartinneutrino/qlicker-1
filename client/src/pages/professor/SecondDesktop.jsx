@@ -321,6 +321,7 @@ export default function PresentationWindow() {
     ? { current: qIdx + 1, total: totalQ }
     : null);
   const questionProgress = liveData?.questionProgress || null;
+  const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const showInlineOptionStats = isOptionBasedQuestion
     && showStats
@@ -503,7 +504,7 @@ export default function PresentationWindow() {
           mb: 3, flexWrap: 'wrap',
         }}
       >
-        {pageProgress && (
+        {hasSlidesInSession && pageProgress && (
           <Chip
             label={t('professor.secondDesktop.pageProgress', pageProgress)}
             size="small"
@@ -511,7 +512,7 @@ export default function PresentationWindow() {
             sx={COMPACT_CHIP_SX}
           />
         )}
-        {questionProgress && (
+        {!isSlide && questionProgress && (
           <Chip
             label={t('professor.secondDesktop.questionProgress', questionProgress)}
             size="small"

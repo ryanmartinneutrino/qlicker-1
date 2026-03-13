@@ -580,6 +580,7 @@ export default function LiveSession() {
     ? { current: qIdx + 1, total: totalQ }
     : null);
   const questionProgress = liveData?.questionProgress || null;
+  const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
@@ -593,8 +594,8 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    pageProgress ? t('professor.liveSession.pageProgress', pageProgress) : null,
-    questionProgress ? t('professor.liveSession.questionProgress', questionProgress) : null,
+    hasSlidesInSession && pageProgress ? t('professor.liveSession.pageProgress', pageProgress) : null,
+    !isSlide && questionProgress ? t('professor.liveSession.questionProgress', questionProgress) : null,
     t('professor.liveSession.studentsJoined', { count: joinedCount }),
     !isSlide ? t('professor.liveSession.studentsResponded', { responded: responseCount, total: joinedCount }) : null,
     attemptNum != null ? t('professor.liveSession.attemptNumber', { number: attemptNum }) : null,
@@ -973,7 +974,7 @@ export default function LiveSession() {
               {currentQ ? (
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                    {pageProgress && (
+                    {hasSlidesInSession && pageProgress && (
                       <Chip
                         label={t('professor.liveSession.pageProgress', pageProgress)}
                         size="small"
@@ -981,7 +982,7 @@ export default function LiveSession() {
                         sx={COMPACT_CHIP_SX}
                       />
                     )}
-                    {questionProgress && (
+                    {!isSlide && questionProgress && (
                       <Chip
                         label={t('professor.liveSession.questionProgress', questionProgress)}
                         size="small"

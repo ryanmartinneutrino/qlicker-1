@@ -349,6 +349,7 @@ export default function LiveSession() {
       : null
   );
   const questionProgress = liveData?.questionProgress || null;
+  const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
   const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
   const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
 
@@ -366,8 +367,8 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    pageProgress ? t('student.liveSession.pageProgress', pageProgress) : null,
-    questionProgress ? t('student.liveSession.questionProgress', questionProgress) : null,
+    hasSlidesInSession && pageProgress ? t('student.liveSession.pageProgress', pageProgress) : null,
+    !isSlide && questionProgress ? t('student.liveSession.questionProgress', questionProgress) : null,
     currentAttempt ? t('student.liveSession.attemptNumber', { number: currentAttempt.number ?? 1 }) : null,
     isSlide
       ? null
@@ -595,7 +596,7 @@ export default function LiveSession() {
           {session.name || t('student.liveSession.liveSessionFallback')}
         </Typography>
         <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {pageProgress && (
+          {hasSlidesInSession && pageProgress && (
             <Chip
               label={t('student.liveSession.pageProgress', pageProgress)}
               size="small"
@@ -604,7 +605,7 @@ export default function LiveSession() {
               aria-label={t('student.liveSession.pageProgress', pageProgress)}
             />
           )}
-          {questionProgress && (
+          {!isSlide && questionProgress && (
             <Chip
               label={t('student.liveSession.questionProgress', questionProgress)}
               size="small"
