@@ -561,77 +561,93 @@ export default function GroupManagementPanel({ courseId, students = [] }) {
       {/* === Create category dialog === */}
       <Dialog open={createCatOpen} onClose={() => setCreateCatOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('groups.createCategory')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField
-            label={t('groups.categoryName')}
-            value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)}
-            fullWidth
-            autoFocus
-          />
-          <TextField
-            label={t('groups.numberOfGroups')}
-            type="number"
-            value={newCatGroupCount}
-            onChange={(e) => setNewCatGroupCount(Math.max(1, Number(e.target.value) || 1))}
-            inputProps={{ min: 1 }}
-            fullWidth
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateCatOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleCreateCategory} disabled={creating || !newCatName.trim()}>
-            {creating ? t('common.loading') : t('common.create')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCreateCategory();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label={t('groups.categoryName')}
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              fullWidth
+              autoFocus
+            />
+            <TextField
+              label={t('groups.numberOfGroups')}
+              type="number"
+              value={newCatGroupCount}
+              onChange={(e) => setNewCatGroupCount(Math.max(1, Number(e.target.value) || 1))}
+              inputProps={{ min: 1 }}
+              fullWidth
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateCatOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={creating || !newCatName.trim()}>
+              {creating ? t('common.loading') : t('common.create')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       {/* === CSV upload dialog === */}
       <Dialog open={uploadOpen} onClose={() => setUploadOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('groups.uploadCsv')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField
-            label={t('groups.categoryName')}
-            value={uploadCatName}
-            onChange={(e) => setUploadCatName(e.target.value)}
-            fullWidth
-            autoFocus
-          />
-          <Button variant="outlined" onClick={() => fileInputRef.current?.click()}>
-            {t('groups.chooseFile')}
-          </Button>
-          <input type="file" accept=".csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelect} />
-          <TextField
-            label={t('groups.csvContent')}
-            multiline
-            rows={6}
-            value={uploadCsvText}
-            onChange={(e) => setUploadCsvText(e.target.value)}
-            fullWidth
-            placeholder="GroupName,Email,LastName,FirstName"
-          />
-          {uploadResult && (
-            <Alert severity="info">
-              {t('groups.importSummary', {
-                groups: uploadResult.groups,
-                students: uploadResult.students,
-              })}
-              {uploadResult.notFound?.length > 0 && (
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    {t('groups.emailsNotFound')}: {uploadResult.notFound.join(', ')}
-                  </Typography>
-                </Box>
-              )}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUploadOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleUploadCsv} disabled={uploading || !uploadCatName.trim() || !uploadCsvText.trim()}>
-            {uploading ? t('common.loading') : t('groups.importBtn')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleUploadCsv();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label={t('groups.categoryName')}
+              value={uploadCatName}
+              onChange={(e) => setUploadCatName(e.target.value)}
+              fullWidth
+              autoFocus
+            />
+            <Button variant="outlined" onClick={() => fileInputRef.current?.click()}>
+              {t('groups.chooseFile')}
+            </Button>
+            <input type="file" accept=".csv" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelect} />
+            <TextField
+              label={t('groups.csvContent')}
+              multiline
+              rows={6}
+              value={uploadCsvText}
+              onChange={(e) => setUploadCsvText(e.target.value)}
+              fullWidth
+              placeholder="GroupName,Email,LastName,FirstName"
+            />
+            {uploadResult && (
+              <Alert severity="info">
+                {t('groups.importSummary', {
+                  groups: uploadResult.groups,
+                  students: uploadResult.students,
+                })}
+                {uploadResult.notFound?.length > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      {t('groups.emailsNotFound')}: {uploadResult.notFound.join(', ')}
+                    </Typography>
+                  </Box>
+                )}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setUploadOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={uploading || !uploadCatName.trim() || !uploadCsvText.trim()}>
+              {uploading ? t('common.loading') : t('groups.importBtn')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>

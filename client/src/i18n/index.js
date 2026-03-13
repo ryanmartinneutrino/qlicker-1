@@ -14,6 +14,7 @@ i18n
       fr: { translation: fr },
     },
     fallbackLng: 'en',
+    showSupportNotice: false,
     interpolation: {
       escapeValue: false, // React already escapes
     },

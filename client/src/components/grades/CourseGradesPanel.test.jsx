@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitForElementToBeRemoved } from '@testing-library/react';
+import { fireEvent, render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
 import CourseGradesPanel from './CourseGradesPanel';
 import apiClient from '../../api/client';
+import i18n from '../../i18n';
 
 vi.mock('../../api/client', () => ({
   default: {
@@ -67,9 +68,19 @@ function buildGradesPayload() {
   };
 }
 
+async function openInstructorGradeTable() {
+  fireEvent.click(screen.getByRole('button', { name: 'Show Grade Table' }));
+  const dialog = await screen.findByRole('dialog', { name: /select sessions for grade table/i });
+  fireEvent.click(within(dialog).getByText('Week 1'));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Show Table' }));
+  await waitForElementToBeRemoved(dialog);
+  await screen.findByLabelText(/search students/i);
+}
+
 describe('CourseGradesPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    i18n.changeLanguage('en');
     apiClient.get.mockResolvedValue({ data: buildGradesPayload() });
   });
 
@@ -87,22 +98,18 @@ describe('CourseGradesPanel', () => {
       <CourseGradesPanel
         courseId="course-1"
         instructorView
-        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 5 }]}
+        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 5, autoGradeableQuestionIds: ['q-mc'] }]}
       />
     );
 
     expect(screen.queryByText(/week 1 mark/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/search students/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /show grades table/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Show Grade Table' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /show grades table/i }));
-    expect(await screen.findByText(/select sessions for grade table/i)).toBeInTheDocument();
-    expect(screen.getByText(/needs grading \(5\)/i)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /show table/i }));
-    await screen.findByText(/week 1 mark/i);
+    await openInstructorGradeTable();
     expect(screen.getByLabelText(/search students/i)).toBeInTheDocument();
     expect(screen.getByText(/5 ungraded/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /87.5%/i })).toBeInTheDocument();
   });
 
   it('labels non-auto-gradeable mark rows as manual only in the grade detail modal', async () => {
@@ -114,14 +121,80 @@ describe('CourseGradesPanel', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /show grades table/i }));
-    await screen.findByText(/select sessions for grade table/i);
-    fireEvent.click(screen.getByRole('button', { name: /show table/i }));
-    await screen.findByText(/week 1 mark/i);
-    await waitForElementToBeRemoved(() => screen.queryByText(/select sessions for grade table/i));
+    await openInstructorGradeTable();
 
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
-    expect(screen.getByText(/^auto$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^graded$/i)).toBeInTheDocument();
+  });
+
+  it('opens the nested question detail dialog with the latest response and student identity details', async () => {
+    apiClient.get.mockImplementation(async (url) => {
+      if (url === '/courses/course-1/grades') {
+        return { data: buildGradesPayload() };
+      }
+      if (url === '/sessions/session-1/results') {
+        return {
+          data: {
+            questions: [
+              {
+                _id: 'q-mc',
+                type: 0,
+                content: '<p>MC question</p>',
+                plainText: 'MC question',
+                options: [
+                  { answer: 'A', plainText: 'A', correct: true },
+                  { answer: 'B', plainText: 'B', correct: false },
+                ],
+              },
+              {
+                _id: 'q-sa',
+                type: 2,
+                content: '<p>Explain your reasoning</p>',
+                plainText: 'Explain your reasoning',
+                sessionOptions: { points: 1 },
+              },
+            ],
+            studentResults: [
+              {
+                studentId: 'student-1',
+                questionResults: [
+                  {
+                    questionId: 'q-sa',
+                    responses: [
+                      {
+                        attempt: 1,
+                        answer: 'Because the derivative is positive.',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    render(
+      <CourseGradesPanel
+        courseId="course-1"
+        instructorView
+        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 5, autoGradeableQuestionIds: ['q-mc'] }]}
+      />
+    );
+
+    await openInstructorGradeTable();
+    expect(screen.getByText('ada@example.edu')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
+    await screen.findByText(/manual only/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /q2/i }));
+
+    expect(await screen.findByText(/because the derivative is positive\./i)).toBeInTheDocument();
+    expect(screen.getByText(/explain your reasoning/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save mark/i })).toBeInTheDocument();
   });
 });

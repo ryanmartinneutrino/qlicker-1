@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Tabs, Tab, Typography, TextField, Button, Checkbox,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
@@ -13,7 +14,9 @@ import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/date';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import SessionListCard from '../../components/common/SessionListCard';
 import { SUPPORTED_LOCALES, DATE_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
 
@@ -40,6 +43,38 @@ const SSO_FIELDS = [
   { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
   { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
 ];
+
+function normalizeCourseField(value) {
+  return String(value || '').trim();
+}
+
+function buildCourseOptionLabel(course = {}) {
+  const code = [course.deptCode, course.courseNumber].map(normalizeCourseField).filter(Boolean).join(' ');
+  const section = normalizeCourseField(course.section);
+  const name = normalizeCourseField(course.name);
+  const semester = normalizeCourseField(course.semester);
+  return [code, section, name, semester].filter(Boolean).join(' - ') || normalizeCourseField(course._id);
+}
+
+function buildCourseSearchIndex(course = {}) {
+  return [
+    buildCourseTitle(course, 'long'),
+    buildCourseOptionLabel(course),
+    normalizeCourseField(course.deptCode),
+    normalizeCourseField(course.courseNumber),
+    normalizeCourseField(course.section),
+    normalizeCourseField(course.name),
+    normalizeCourseField(course.semester),
+  ].join(' ').toLowerCase();
+}
+
+function sortCoursesByRecent(courses = []) {
+  return [...courses].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
 
 // ── Settings Tab ────────────────────────────────────────────────────────────
 function SettingsTab() {
@@ -446,24 +481,32 @@ function UsersTab({ currentUserId }) {
       {/* Create user dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('admin.users.createUser')}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label={t('admin.users.email')} type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
-          <TextField label={t('admin.users.password')} type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
-          <TextField label={t('admin.users.firstName')} required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
-          <TextField label={t('admin.users.lastName')} required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
-          <FormControl>
-            <InputLabel>{t('admin.users.role')}</InputLabel>
-            <Select value={newUser.role} label={t('admin.users.role')} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
-              <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
-              <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
-              <MenuItem value="student">{t('admin.users.student')}</MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleCreate}>{t('common.create')}</Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCreate();
+          }}
+        >
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+            <TextField label={t('admin.users.email')} type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
+            <TextField label={t('admin.users.password')} type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
+            <TextField label={t('admin.users.firstName')} required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
+            <TextField label={t('admin.users.lastName')} required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
+            <FormControl>
+              <InputLabel>{t('admin.users.role')}</InputLabel>
+              <Select value={newUser.role} label={t('admin.users.role')} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
+                <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
+                <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
+                <MenuItem value="student">{t('admin.users.student')}</MenuItem>
+              </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained">{t('common.create')}</Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Dialog open={!!imageViewUser} onClose={() => setImageViewUser(null)} maxWidth="sm" fullWidth>
@@ -733,7 +776,7 @@ function VideoTab() {
     let mounted = true;
     Promise.all([
       apiClient.get('/settings'),
-      apiClient.get('/courses', { params: { limit: 100 } }).catch(() => ({ data: { courses: [] } })),
+      apiClient.get('/courses', { params: { limit: 500 } }).catch(() => ({ data: { courses: [] } })),
     ]).then(([settingsRes, coursesRes]) => {
       if (!mounted) return;
       const data = settingsRes.data;
@@ -782,20 +825,12 @@ function VideoTab() {
 
   if (loading) return <CircularProgress />;
 
-  const courseLabel = (c) => {
-    const parts = [c.deptCode, c.courseNumber, c.section, c.name, c.semester].filter(Boolean);
-    return parts.join(' – ') || c._id;
-  };
-
-  const sortedCourses = [...courses].sort((a, b) => {
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
-
-  const selectedCourseObjects = settings.Jitsi_EnabledCourses
-    .map((cid) => sortedCourses.find((c) => c._id === cid))
-    .filter(Boolean);
+  const sortedCourses = useMemo(() => sortCoursesByRecent(courses), [courses]);
+  const selectedCourseObjects = useMemo(() => (
+    settings.Jitsi_EnabledCourses
+      .map((cid) => sortedCourses.find((course) => course._id === cid))
+      .filter(Boolean)
+  ), [settings.Jitsi_EnabledCourses, sortedCourses]);
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -825,12 +860,27 @@ function VideoTab() {
             onChange={(_, newValue) => {
               setSettings((s) => ({ ...s, Jitsi_EnabledCourses: newValue.map((c) => c._id) }));
             }}
-            getOptionLabel={(option) => courseLabel(option)}
+            filterOptions={(options, state) => {
+              const searchTerm = String(state.inputValue || '').trim().toLowerCase();
+              if (!searchTerm) return options;
+              return options.filter((option) => buildCourseSearchIndex(option).includes(searchTerm));
+            }}
+            getOptionLabel={(option) => buildCourseOptionLabel(option)}
             isOptionEqualToValue={(option, value) => option._id === value._id}
+            renderOption={(props, option) => (
+              <Box component="li" {...props} key={option._id} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {buildCourseOptionLabel(option)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {buildCourseTitle(option, 'long')}
+                </Typography>
+              </Box>
+            )}
             renderTags={(value, getTagProps) =>
               value.map((option, index) => (
                 <Chip
-                  label={courseLabel(option)}
+                  label={buildCourseOptionLabel(option)}
                   size="small"
                   {...getTagProps({ index })}
                   key={option._id}
@@ -842,6 +892,7 @@ function VideoTab() {
                 {...params}
                 label={t('admin.video.enabledCourses')}
                 placeholder={t('admin.video.searchCourses')}
+                helperText={t('admin.video.enabledCoursesHelp')}
               />
             )}
             fullWidth
@@ -851,6 +902,81 @@ function VideoTab() {
         <Typography variant="body2" color="text.secondary">
           {t('admin.video.jitsiNotEnabled')}
         </Typography>
+      )}
+    </Box>
+  );
+}
+
+// ── Courses Tab ─────────────────────────────────────────────────────────────
+function CoursesTab() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/courses', { params: { limit: 500 } }).then(({ data }) => {
+      if (mounted) {
+        setCourses(data.courses || []);
+      }
+    }).catch((error) => {
+      if (mounted) {
+        setMessage(error.response?.data?.message || t('admin.courses.failedLoadCourses'));
+      }
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [t]);
+
+  const visibleCourses = useMemo(() => {
+    const searchTerm = String(search || '').trim().toLowerCase();
+    const baseCourses = sortCoursesByRecent(courses);
+    if (!searchTerm) return baseCourses;
+    return baseCourses.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
+  }, [courses, search]);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('admin.courses.searchPlaceholder')}
+          slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
+          sx={{ minWidth: 280 }}
+        />
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.courses.totalCount', { total: visibleCourses.length })}
+        </Typography>
+      </Box>
+
+      {loading ? (
+        <CircularProgress />
+      ) : message ? (
+        <Alert severity="error">{message}</Alert>
+      ) : visibleCourses.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.courses.noCoursesFound')}
+        </Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          {visibleCourses.map((course) => (
+            <SessionListCard
+              key={course._id}
+              onClick={() => navigate(`/manage/course/${course._id}`)}
+              title={buildCourseTitle(course, 'medium')}
+              badges={<Chip size="small" label={course.inactive ? t('admin.courses.inactive') : t('admin.courses.active')} color={course.inactive ? 'default' : 'success'} />}
+              subtitle={buildCourseOptionLabel(course)}
+            />
+          ))}
+        </Box>
       )}
     </Box>
   );
@@ -868,15 +994,17 @@ export default function AdminDashboard() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         <Tab label={t('admin.tabs.settings')} />
         <Tab label={t('admin.tabs.users')} />
+        <Tab label={t('admin.tabs.courses')} />
         <Tab label={t('admin.tabs.storage')} />
         <Tab label={t('admin.tabs.sso')} />
         <Tab label={t('admin.tabs.video')} />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
-      <TabPanel value={tab} index={2}><StorageTab /></TabPanel>
-      <TabPanel value={tab} index={3}><SSOTab /></TabPanel>
-      <TabPanel value={tab} index={4}><VideoTab /></TabPanel>
+      <TabPanel value={tab} index={2}><CoursesTab /></TabPanel>
+      <TabPanel value={tab} index={3}><StorageTab /></TabPanel>
+      <TabPanel value={tab} index={4}><SSOTab /></TabPanel>
+      <TabPanel value={tab} index={5}><VideoTab /></TabPanel>
     </Box>
   );
 }

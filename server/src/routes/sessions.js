@@ -8,6 +8,7 @@ import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
+  getQuestionPoints,
   getTimestampMs,
   isQuestionAutoGradeable,
   recalculateSessionGrades,
@@ -49,6 +50,8 @@ const updateSessionSchema = {
       joinCodeEnabled: { type: 'boolean' },
       joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
       msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
+      acknowledgeNonAutoGradeable: { type: 'boolean' },
+      zeroNonAutoGradeable: { type: 'boolean' },
     },
     additionalProperties: false,
   },
@@ -71,6 +74,8 @@ const toggleReviewableSchema = {
     required: ['reviewable'],
     properties: {
       reviewable: { type: 'boolean' },
+      acknowledgeNonAutoGradeable: { type: 'boolean' },
+      zeroNonAutoGradeable: { type: 'boolean' },
     },
     additionalProperties: false,
   },
@@ -191,6 +196,38 @@ function toDateOrNull(value) {
 
 function isQuizLikeSession(session) {
   return !!(session?.quiz || session?.practiceQuiz);
+}
+
+async function getNonAutoGradeableQuestions(session) {
+  const questionIds = Array.isArray(session?.questions) ? session.questions : [];
+  if (questionIds.length === 0) return [];
+
+  const questionDocs = await Question.find({ _id: { $in: questionIds } }).lean();
+  return questionDocs.filter((question) => (
+    !isQuestionAutoGradeable(question?.type) && getQuestionPoints(question) > 0
+  ));
+}
+
+function buildNonAutoGradeableWarning(questionDocs = []) {
+  return {
+    questionCount: questionDocs.length,
+    questionNames: questionDocs.map((question) => (
+      question?.plainText || question?.question || question?.name || 'Untitled'
+    )),
+  };
+}
+
+async function zeroQuestionPoints(questionDocs = []) {
+  const questionIds = questionDocs
+    .map((question) => String(question?._id || ''))
+    .filter(Boolean);
+
+  if (questionIds.length === 0) return;
+
+  await Question.updateMany(
+    { _id: { $in: questionIds } },
+    { $set: { 'sessionOptions.points': 0 } }
+  );
 }
 
 function getQuizWindowValidationMessage(session, updates = {}) {
@@ -1141,6 +1178,21 @@ export default async function sessionRoutes(app) {
         }
       }
 
+      if (updates.reviewable === true && !session.reviewable) {
+        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
+        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+          return {
+            session: session.toObject(),
+            grading: null,
+            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+          };
+        }
+
+        if (request.body.zeroNonAutoGradeable) {
+          await zeroQuestionPoints(nonAutoGradeable);
+        }
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
@@ -1169,7 +1221,7 @@ export default async function sessionRoutes(app) {
 
       notifySessionUpdated(app, course, updated?._id || request.params.id);
 
-      return { session: updated.toObject(), grading };
+      return { session: updated.toObject(), grading, nonAutoGradeableWarning: null };
     }
   );
 
@@ -1271,14 +1323,10 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const updates = {
-        status: 'done',
-        joinCodeActive: false,
-        currentJoinCode: '',
-        joinCodeExpiresAt: null,
-      };
-      if (request.body?.reviewable !== undefined) {
-        if (request.body.reviewable === true && isQuizLikeSession(session)) {
+      const makingReviewable = request.body?.reviewable === true && !session.reviewable;
+      let nonAutoGradeableWarning = null;
+      if (makingReviewable) {
+        if (isQuizLikeSession(session)) {
           const runtime = getQuizRuntimeState(session.toObject(), {
             instructorView: true,
           });
@@ -1289,6 +1337,28 @@ export default async function sessionRoutes(app) {
             });
           }
         }
+
+        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
+        if (nonAutoGradeable.length > 0 && !request.body?.acknowledgeNonAutoGradeable) {
+          return {
+            session: session.toObject(),
+            grading: null,
+            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+          };
+        }
+
+        if (request.body?.zeroNonAutoGradeable) {
+          await zeroQuestionPoints(nonAutoGradeable);
+        }
+      }
+
+      const updates = {
+        status: 'done',
+        joinCodeActive: false,
+        currentJoinCode: '',
+        joinCodeExpiresAt: null,
+      };
+      if (request.body?.reviewable !== undefined) {
         updates.reviewable = request.body.reviewable;
       }
 
@@ -1299,31 +1369,13 @@ export default async function sessionRoutes(app) {
       );
 
       let grading = null;
-      let nonAutoGradeableWarning = null;
-      if (request.body?.reviewable === true && !session.reviewable) {
-        // Check for non-autogradable questions and warn the professor
-        const questionIds = updated.questions || [];
-        const questionDocs = questionIds.length > 0
-          ? await Question.find({ _id: { $in: questionIds } }).lean()
-          : [];
-        const nonAutoGradeable = questionDocs.filter((q) => !isQuestionAutoGradeable(q.type));
-        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
-          nonAutoGradeableWarning = {
-            questionCount: nonAutoGradeable.length,
-            questionNames: nonAutoGradeable.map((q) => q.plainText || q.question || 'Untitled'),
-          };
-        }
-
-        // If zeroNonAutoGradeable is set, zero out the points for those questions
-        const zeroNonAutoGradeable = !!request.body.zeroNonAutoGradeable;
-
+      if (makingReviewable) {
         const gradingResult = await recalculateSessionGrades({
           sessionId: updated._id,
           sessionDoc: updated,
           courseDoc: course,
           missingOnly: true,
           visibleToStudents: true,
-          zeroNonAutoGradeable,
         });
         grading = gradingResult.summary;
       } else if (request.body?.reviewable === false && session.reviewable) {
@@ -1432,6 +1484,21 @@ export default async function sessionRoutes(app) {
         }
       }
 
+      if (request.body.reviewable === true && !session.reviewable) {
+        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
+        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+          return {
+            session: session.toObject(),
+            grading: null,
+            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+          };
+        }
+
+        if (request.body.zeroNonAutoGradeable) {
+          await zeroQuestionPoints(nonAutoGradeable);
+        }
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { reviewable: request.body.reviewable } },
@@ -1457,7 +1524,7 @@ export default async function sessionRoutes(app) {
 
       notifySessionUpdated(app, course, updated?._id || request.params.id);
 
-      return { session: updated.toObject(), grading };
+      return { session: updated.toObject(), grading, nonAutoGradeableWarning: null };
     }
   );
 
@@ -2314,7 +2381,11 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
-      const includeStudentNames = isInstrOrAdmin && parseBooleanQuery(request.query?.includeStudentNames);
+      const presentationView = isInstrOrAdmin
+        && normalizeAnswerValue(request.query?.view).toLowerCase() === 'presentation';
+      const includeStudentNames = isInstrOrAdmin
+        && !presentationView
+        && parseBooleanQuery(request.query?.includeStudentNames);
       const userId = request.user.userId;
       let isJoined = (session.joined || []).includes(userId);
 
@@ -2434,7 +2505,7 @@ export default async function sessionRoutes(app) {
       }
 
       let joinedStudents = [];
-      if (isInstrOrAdmin) {
+      if (isInstrOrAdmin && !presentationView) {
         const joinedIds = [...new Set((session.joined || []).map((id) => String(id)).filter(Boolean))];
         const joinedUsers = joinedIds.length > 0
           ? await User.find({ _id: { $in: joinedIds } })
@@ -2479,6 +2550,14 @@ export default async function sessionRoutes(app) {
       // Build response payload.
       // Student payload is intentionally minimal and only includes fields needed for live participation.
       const result = {
+        course: {
+          _id: course._id,
+          name: course.name,
+          deptCode: course.deptCode,
+          courseNumber: course.courseNumber,
+          section: course.section,
+          semester: course.semester,
+        },
         session: isInstrOrAdmin
           ? {
             _id: session._id,
@@ -2512,12 +2591,13 @@ export default async function sessionRoutes(app) {
       }
 
       if (isInstrOrAdmin) {
-        result.session.joined = session.joined;
-        result.session.joinRecords = session.joinRecords;
-        result.session.joinCodeEnabled = session.joinCodeEnabled;
+        if (!presentationView) {
+          result.session.joined = session.joined;
+          result.session.joinRecords = session.joinRecords;
+          result.session.joinedStudents = joinedStudents;
+        }
         result.session.joinCodeInterval = session.joinCodeInterval;
         result.session.currentJoinCode = session.currentJoinCode;
-        result.session.joinedStudents = joinedStudents;
         result.allResponses = allResponses;
 
         if (currentQuestion) {

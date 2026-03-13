@@ -18,6 +18,7 @@ import {
   getYearOptions,
 } from '../../utils/courseSemester';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import SessionListCard from '../../components/common/SessionListCard';
 
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
@@ -151,15 +152,15 @@ export default function ProfDashboard() {
             <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
             {t('dashboard.liveSessions')}
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
             {liveSessions.map((ls) => (
-              <Chip
+              <SessionListCard
                 key={ls._id}
-                label={`${ls.courseName} — ${ls.name}`}
-                color="success"
-                variant="outlined"
+                highlighted
                 onClick={() => navigate(`/manage/course/${ls.courseId}/session/${ls._id}/live`)}
-                sx={{ cursor: 'pointer' }}
+                title={ls.name}
+                subtitle={ls.courseName}
+                badges={<Chip label={t('sessionStatus.live')} size="small" color="success" sx={COMPACT_CHIP_SX} />}
               />
             ))}
           </Box>
@@ -241,54 +242,62 @@ export default function ProfDashboard() {
       {/* Create Course Dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('professor.dashboard.createCourse')}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label={t('professor.dashboard.courseName')} placeholder={t('professor.dashboard.courseNamePlaceholder')} required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label={t('professor.dashboard.deptCode')} placeholder={t('professor.dashboard.deptCodePlaceholder')} value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
-            <TextField label={t('professor.dashboard.courseNumber')} placeholder={t('professor.dashboard.courseNumberPlaceholder')} value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
-          </Box>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label={t('professor.dashboard.sectionLabel')} placeholder={t('professor.dashboard.sectionPlaceholder')} value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
-            <FormControl sx={{ flex: 1 }}>
-              <InputLabel>{t('professor.dashboard.semester')}</InputLabel>
-              <Select
-                label={t('professor.dashboard.semester')}
-                value={newCourse.season}
-                onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}
-              >
-                {SEMESTER_OPTIONS.map((option) => (
-                  <MenuItem key={option} value={option}>{option}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <Autocomplete
-              freeSolo
-              options={yearOptions}
-              value={newCourse.year}
-              onChange={(_, value) => {
-                setNewCourse((s) => ({ ...s, year: String(value || '').trim() }));
-              }}
-              onInputChange={(_, value) => {
-                setNewCourse((s) => ({ ...s, year: value }));
-              }}
-              sx={{ flex: 1 }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t('professor.dashboard.year')}
-                  placeholder={t('professor.dashboard.yearPlaceholder')}
-                  helperText={t('professor.dashboard.yearHelp')}
-                />
-              )}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleCreate} disabled={creating || !newCourse.name || !newCourse.season || !newCourse.year}>
-            {creating ? t('professor.dashboard.creating') : t('common.create')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCreate();
+          }}
+        >
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+            <TextField label={t('professor.dashboard.courseName')} placeholder={t('professor.dashboard.courseNamePlaceholder')} required value={newCourse.name} onChange={(e) => setNewCourse((s) => ({ ...s, name: e.target.value }))} />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField label={t('professor.dashboard.deptCode')} placeholder={t('professor.dashboard.deptCodePlaceholder')} value={newCourse.deptCode} onChange={(e) => setNewCourse((s) => ({ ...s, deptCode: e.target.value }))} sx={{ flex: 1 }} />
+              <TextField label={t('professor.dashboard.courseNumber')} placeholder={t('professor.dashboard.courseNumberPlaceholder')} value={newCourse.courseNumber} onChange={(e) => setNewCourse((s) => ({ ...s, courseNumber: e.target.value }))} sx={{ flex: 1 }} />
+            </Box>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField label={t('professor.dashboard.sectionLabel')} placeholder={t('professor.dashboard.sectionPlaceholder')} value={newCourse.section} onChange={(e) => setNewCourse((s) => ({ ...s, section: e.target.value }))} sx={{ flex: 1 }} />
+              <FormControl sx={{ flex: 1 }}>
+                <InputLabel>{t('professor.dashboard.semester')}</InputLabel>
+                <Select
+                  label={t('professor.dashboard.semester')}
+                  value={newCourse.season}
+                  onChange={(e) => setNewCourse((s) => ({ ...s, season: e.target.value }))}
+                >
+                  {SEMESTER_OPTIONS.map((option) => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Autocomplete
+                freeSolo
+                options={yearOptions}
+                value={newCourse.year}
+                onChange={(_, value) => {
+                  setNewCourse((s) => ({ ...s, year: String(value || '').trim() }));
+                }}
+                onInputChange={(_, value) => {
+                  setNewCourse((s) => ({ ...s, year: value }));
+                }}
+                sx={{ flex: 1 }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={t('professor.dashboard.year')}
+                    placeholder={t('professor.dashboard.yearPlaceholder')}
+                    helperText={t('professor.dashboard.yearHelp')}
+                  />
+                )}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={creating || !newCourse.name || !newCourse.season || !newCourse.year}>
+              {creating ? t('professor.dashboard.creating') : t('common.create')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>

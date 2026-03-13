@@ -10,6 +10,7 @@ import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import SessionListCard from '../../components/common/SessionListCard';
 import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
@@ -267,6 +268,9 @@ export default function StudentCourseDetail() {
             || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
             fetchSessions();
           }
+          if (evt === 'video:updated') {
+            fetchCourse();
+          }
         } catch {
           // Ignore malformed websocket payloads.
         }
@@ -337,82 +341,55 @@ export default function StudentCourseDetail() {
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
     }
     return (
-      <Paper variant="outlined">
-        <List disablePadding>
-          {sessionItems.map((s, i) => {
-            const action = getStudentSessionAction(s, id, listTabIndex);
-            const clickable = action.clickable && !!action.path;
-            return (
-              <Box key={s._id}>
-                {i > 0 && <Divider />}
-                <ListItem
-                  disablePadding
-                  sx={{
-                    alignItems: 'stretch',
-                  }}
-                >
-                  <ListItemButton
-                    onClick={clickable ? () => navigate(action.path) : undefined}
-                    disabled={!clickable}
-                    sx={{
-                      alignItems: 'flex-start',
-                      flexWrap: 'wrap',
-                      gap: 1,
-                    }}
-                  >
-                    <ListItemText
-                      primary={(
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.6 }}>
-                          <Typography variant="subtitle2" sx={{ lineHeight: 1.3 }}>
-                            {s.name}
-                          </Typography>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'wrap' }}>
-                            <SessionStatusChip status={s.status} />
-                            {s.hasNewFeedback && (
-                              <Chip
-                                label={t('student.course.newFeedback')}
-                                size="small"
-                                color="warning"
-                                variant="filled"
-                                sx={COMPACT_CHIP_SX}
-                              />
-                            )}
-                            {s.status === 'done' && !s.reviewable && (
-                              <Chip
-                                label={t('student.course.notReviewable')}
-                                size="small"
-                                variant="outlined"
-                                color="default"
-                                sx={COMPACT_CHIP_SX}
-                              />
-                            )}
-                            {s.practiceQuiz && <Chip label={t('student.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-                            {action.label && (
-                              <Chip
-                                label={t(action.label)}
-                                size="small"
-                                color={action.chipColor}
-                                variant={action.chipVariant}
-                                sx={COMPACT_CHIP_SX}
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                      )}
-                      secondary={(
-                        <>
-                          {t('student.course.questionCount', { count: (s.questions || []).length })}
-                          {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
-                        </>
-                      )}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+        {sessionItems.map((s) => {
+          const action = getStudentSessionAction(s, id, listTabIndex);
+          const clickable = action.clickable && !!action.path;
+          return (
+            <SessionListCard
+              key={s._id}
+              highlighted={s.status === 'running'}
+              onClick={clickable ? () => navigate(action.path) : undefined}
+              disabled={!clickable}
+              title={s.name}
+              badges={(
+                <>
+                  <SessionStatusChip status={s.status} />
+                  {s.hasNewFeedback && (
+                    <Chip
+                      label={t('student.course.newFeedback')}
+                      size="small"
+                      color="warning"
+                      variant="filled"
+                      sx={COMPACT_CHIP_SX}
                     />
-                  </ListItemButton>
-                </ListItem>
-              </Box>
-            );
-          })}
-        </List>
-      </Paper>
+                  )}
+                  {s.status === 'done' && !s.reviewable && (
+                    <Chip
+                      label={t('student.course.notReviewable')}
+                      size="small"
+                      variant="outlined"
+                      color="default"
+                      sx={COMPACT_CHIP_SX}
+                    />
+                  )}
+                  {s.practiceQuiz && <Chip label={t('student.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                  {action.label && (
+                    <Chip
+                      label={t(action.label)}
+                      size="small"
+                      color={action.chipColor}
+                      variant={action.chipVariant}
+                      sx={COMPACT_CHIP_SX}
+                    />
+                  )}
+                </>
+              )}
+              subtitle={`${t('student.course.questionCount', { count: (s.questions || []).length })}${getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}`}
+            />
+          );
+        })}
+      </Box>
     );
   };
 

@@ -18,6 +18,7 @@ import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
 
@@ -64,22 +65,22 @@ function normalizeValue(value) {
   return String(value).trim();
 }
 
-function formatJoinedTimestamp(value) {
-  if (!value) return 'Join time unavailable';
+function formatJoinedTimestamp(value, fallbackLabel) {
+  if (!value) return fallbackLabel;
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return 'Join time unavailable';
+  if (Number.isNaN(parsed.getTime())) return fallbackLabel;
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(parsed);
 }
 
-function formatJoinedStudentName(student) {
+function formatJoinedStudentName(student, fallbackLabel) {
   const first = normalizeValue(student?.firstname);
   const last = normalizeValue(student?.lastname);
   const full = `${first} ${last}`.trim();
   if (full) return full;
-  return normalizeValue(student?.displayName) || normalizeValue(student?.email) || 'Unknown Student';
+  return normalizeValue(student?.displayName) || normalizeValue(student?.email) || fallbackLabel;
 }
 
 function joinedStudentInitials(student) {
@@ -156,11 +157,11 @@ function NumericalStats({ stats, allResponses }) {
   const histogramData = buildHistogramData(values);
 
   const entries = [
-    { label: 'Count', value: stats.total ?? stats.count ?? 0 },
-    { label: 'Mean', value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
-    { label: 'Median', value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
-    { label: 'Min', value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
-    { label: 'Max', value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
+    { label: t('common.count'), value: stats.total ?? stats.count ?? 0 },
+    { label: t('professor.secondDesktop.mean'), value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.median'), value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.min'), value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.max'), value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
     <Box>
@@ -458,9 +459,9 @@ export default function LiveSession() {
   const handleNewAttempt = useCallback(() => {
     doAction(
       () => apiClient.post(`/sessions/${sessionId}/new-attempt`),
-      'New attempt started',
+      t('professor.liveSession.newAttemptStarted'),
     );
-  }, [doAction, sessionId]);
+  }, [doAction, sessionId, t]);
 
   const handleToggleResponses = useCallback(() => {
     const closed = liveData?.currentAttempt?.closed;
@@ -498,23 +499,23 @@ export default function LiveSession() {
   const handleTogglePasscodeRequired = useCallback((enabled) => {
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeEnabled: enabled }),
-      enabled ? 'Passcode requirement enabled' : 'Passcode requirement disabled',
+      enabled ? t('professor.liveSession.passcodeEnabled') : t('professor.liveSession.passcodeDisabled'),
     );
-  }, [doAction, sessionId]);
+  }, [doAction, sessionId, t]);
 
   const handleToggleJoinCode = useCallback((active) => {
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeActive: active }),
-      active ? 'Join period started' : 'Join period closed',
+      active ? t('professor.liveSession.joinPeriodStarted') : t('professor.liveSession.joinPeriodClosed'),
     );
-  }, [doAction, sessionId]);
+  }, [doAction, sessionId, t]);
 
   const handleRefreshJoinCode = useCallback(() => {
     doAction(
       () => apiClient.post(`/sessions/${sessionId}/refresh-join-code`),
-      'Join code refreshed',
+      t('professor.liveSession.joinCodeRefreshed'),
     );
-  }, [doAction, sessionId]);
+  }, [doAction, sessionId, t]);
 
   const handleJoinCodeIntervalBlur = useCallback(() => {
     const currentInterval = Number(liveData?.session?.joinCodeInterval || 10);
@@ -537,8 +538,8 @@ export default function LiveSession() {
     );
   }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
-  // Second desktop / present window
-  const secondDesktopRef = useRef(null);
+  // Presentation window
+  const presentationWindowRef = useRef(null);
 
   const handleOpenPresent = useCallback(() => {
     const url = `/manage/course/${courseId}/session/${sessionId}/present`;
@@ -547,8 +548,8 @@ export default function LiveSession() {
     const left = Math.round((window.screen.availWidth - w) / 2);
     const top = Math.round((window.screen.availHeight - h) / 2);
     const features = `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,location=no,status=no,scrollbars=yes,resizable=yes`;
-    const win = window.open(url, 'qlicker-second-desktop', features);
-    if (win) secondDesktopRef.current = win;
+    const win = window.open(url, 'qlicker-presentation-window', features);
+    if (win) presentationWindowRef.current = win;
   }, [courseId, sessionId]);
 
   // --------------------------------------------------
@@ -556,6 +557,9 @@ export default function LiveSession() {
   // --------------------------------------------------
 
   const session = liveData?.session;
+  const courseTitle = useMemo(() => (
+    liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
+  ), [liveData?.course]);
   const currentQ = liveData?.currentQuestion;
   const currentAttempt = liveData?.currentAttempt;
   const responseStats = liveData?.responseStats;
@@ -650,19 +654,26 @@ export default function LiveSession() {
         }}
       >
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25, width: '100%' }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
-            {session.name || t('professor.liveSession.liveSessionFallback')}
-          </Typography>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            {courseTitle ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
+                {courseTitle}
+              </Typography>
+            ) : null}
+            <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
+              {session.name || t('professor.liveSession.liveSessionFallback')}
+            </Typography>
+          </Box>
 
-          <Tooltip title={t('professor.liveSession.openPresentationView')}>
+          <Tooltip title={t('professor.liveSession.openPresentationWindow')}>
             <Button
               size="small"
               variant="outlined"
               startIcon={<OpenInNewIcon />}
               onClick={handleOpenPresent}
-              aria-label={t('professor.liveSession.openSecondDesktop')}
+              aria-label={t('professor.liveSession.openPresentationWindow')}
             >
-              {isMobile ? 'Present' : 'Second Desktop'}
+              {isMobile ? t('professor.liveSession.present') : t('professor.liveSession.presentationWindow')}
             </Button>
           </Tooltip>
 
@@ -692,24 +703,28 @@ export default function LiveSession() {
 
         <Box
           role="tablist"
-          aria-label="Live session panels"
+          aria-label={t('professor.liveSession.panelsLabel')}
           sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: '100%' }}
         >
           <Button
             size="medium"
             variant={activePanel === 'question' ? 'contained' : 'outlined'}
             onClick={() => setActivePanel('question')}
-            aria-label={totalQ > 0 && qIdx >= 0 ? `Show question controls. Question ${qIdx + 1} of ${totalQ}` : 'Show question controls'}
+            aria-label={totalQ > 0 && qIdx >= 0
+              ? t('professor.liveSession.questionControlsProgress', { current: qIdx + 1, total: totalQ })
+              : t('professor.liveSession.questionControls')}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
-            {totalQ > 0 && qIdx >= 0 ? `Question Controls (Q${qIdx + 1}/${totalQ})` : 'Question Controls'}
+            {totalQ > 0 && qIdx >= 0
+              ? t('professor.liveSession.questionControlsLabel', { current: qIdx + 1, total: totalQ })
+              : t('professor.liveSession.questionControls')}
           </Button>
           <Button
             size="medium"
             variant={activePanel === 'students' ? 'contained' : 'outlined'}
             startIcon={<PeopleIcon />}
             onClick={() => setActivePanel('students')}
-            aria-label={`Show students panel with ${joinedCount} joined`}
+            aria-label={t('professor.liveSession.showStudentsPanel', { count: joinedCount })}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
             {t('professor.liveSession.studentsInSession', { count: joinedCount })}
@@ -718,17 +733,17 @@ export default function LiveSession() {
 
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, width: '100%' }}>
           <Chip
-            label={`${responseCount} / ${joinedCount} responded`}
+            label={t('professor.liveSession.respondedSummary', { responded: responseCount, total: joinedCount })}
             size="small"
             variant="outlined"
             color={responseCount >= joinedCount && joinedCount > 0 ? 'success' : 'default'}
             sx={COMPACT_CHIP_SX}
-            aria-label={`${responseCount} of ${joinedCount} students responded`}
+            aria-label={t('professor.liveSession.respondedSummaryAria', { responded: responseCount, total: joinedCount })}
           />
 
           {activePanel === 'question' && (
             <Chip
-              label={`Attempt ${attemptNum}`}
+              label={t('professor.liveSession.attemptChip', { number: attemptNum })}
               size="small"
               variant="outlined"
               sx={COMPACT_CHIP_SX}
@@ -828,7 +843,7 @@ export default function LiveSession() {
                     size="small"
                   />
                 }
-                label={<Typography variant="body2">Visible</Typography>}
+                label={<Typography variant="body2">{t('professor.liveSession.visible')}</Typography>}
               />
 
               <FormControlLabel
@@ -894,7 +909,7 @@ export default function LiveSession() {
                 </span>
               </Tooltip>
 
-              <Tooltip title="Start a new attempt for this question">
+              <Tooltip title={t('professor.liveSession.startNewAttempt')}>
                 <span>
                   <Button
                     size="small"
@@ -950,13 +965,13 @@ export default function LiveSession() {
                       {t('professor.liveSession.questionIndex', { index: qIdx + 1 })}
                     </Typography>
                     <Chip
-                      label={TYPE_LABELS[qType] || 'Unknown'}
+                      label={TYPE_LABELS[qType] || t('sessionStatus.unknown')}
                       size="small"
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}
                     />
                     {isHidden && (
-                      <Chip label="Hidden" size="small" color="warning" sx={COMPACT_CHIP_SX} />
+                      <Chip label={t('professor.liveSession.hidden')} size="small" color="warning" sx={COMPACT_CHIP_SX} />
                     )}
                   </Box>
 
@@ -1027,7 +1042,7 @@ export default function LiveSession() {
                                 {pct}% ({count})
                               </Typography>
                               {isCorrect && (
-                                <CheckIcon color="success" fontSize="small" aria-label="Correct answer" />
+                                <CheckIcon color="success" fontSize="small" aria-label={t('professor.liveSession.correctAnswerAria')} />
                               )}
                             </Box>
                           </Paper>
@@ -1074,7 +1089,7 @@ export default function LiveSession() {
               <Paper
                 variant="outlined"
                 sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}
-                aria-label="Response statistics"
+                aria-label={t('professor.liveSession.responseStatisticsAria')}
               >
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
                   {t('professor.liveSession.responses')}
@@ -1082,7 +1097,7 @@ export default function LiveSession() {
 
                 {!currentQ ? (
                   <Typography variant="body2" color="text.secondary">
-                    Select a question to view responses.
+                    {t('professor.liveSession.selectQuestionToViewResponses')}
                   </Typography>
                 ) : responseStats?.type === 'distribution' ? (
                   <Typography variant="body2" color="text.secondary">
@@ -1147,16 +1162,16 @@ export default function LiveSession() {
                     </Avatar>
                     <Box sx={{ minWidth: 0 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                        {formatJoinedStudentName(student)}
-                      </Typography>
+                          {formatJoinedStudentName(student, t('professor.sessionReview.unknownStudent'))}
+                        </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
                         {student.email || student._id}
                       </Typography>
                     </Box>
                   </Box>
                   <Typography variant="caption" color="text.secondary">
-                    {formatJoinedTimestamp(student.joinedAt)}
-                  </Typography>
+                        {formatJoinedTimestamp(student.joinedAt, t('professor.liveSession.joinTimeUnavailable'))}
+                      </Typography>
                 </Paper>
               ))}
             </Box>
@@ -1224,7 +1239,7 @@ export default function LiveSession() {
             }}
             disabled={ending}
           >
-            {ending ? 'Ending…' : t('professor.liveSession.endSession')}
+            {ending ? t('professor.liveSession.ending') : t('professor.liveSession.endSession')}
           </Button>
         </DialogActions>
       </Dialog>

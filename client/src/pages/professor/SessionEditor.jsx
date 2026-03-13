@@ -21,6 +21,7 @@ import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
 
 const PAGE_SECTION_GAP = 1.5;
@@ -121,6 +122,7 @@ export default function SessionEditor() {
   const backLink = returnToReview ? sessionReviewLink : courseBackLink;
 
   const [session, setSession] = useState(null);
+  const [course, setCourse] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -220,9 +222,12 @@ export default function SessionEditor() {
 
       try {
         const { data: courseData } = await apiClient.get(`/courses/${courseId}`);
-        const students = (courseData?.course?.students || []).slice().sort(compareStudentsByLastName);
+        const loadedCourse = courseData?.course || courseData;
+        setCourse(loadedCourse);
+        const students = (loadedCourse?.students || []).slice().sort(compareStudentsByLastName);
         setCourseStudents(students);
       } catch {
+        setCourse(null);
         setCourseStudents([]);
       }
     } catch {
@@ -934,13 +939,21 @@ export default function SessionEditor() {
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">{t('professor.sessionEditor.sessionNotFound')}</Alert></Box>;
+  const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
 
   return (
     <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.25, pb: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: PAGE_SECTION_GAP }}>
         <IconButton onClick={() => navigate(backLink)}><BackIcon /></IconButton>
-        <Typography variant="h5" sx={{ flexGrow: 1, lineHeight: 1.15 }}>{session.name}</Typography>
+        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+          {courseTitle ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
+              {courseTitle}
+            </Typography>
+          ) : null}
+          <Typography variant="h5" sx={{ lineHeight: 1.15 }}>{session.name}</Typography>
+        </Box>
         <SessionStatusChip status={status} />
         {!session.quiz && status !== 'running' && status !== 'done' && (
           <Button

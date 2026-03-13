@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
+import User from '../../src/models/User.js';
 
 let app;
 
@@ -53,6 +54,22 @@ describe('POST /api/v1/courses', () => {
     expect(body.course.deptCode).toBe('CS');
     expect(body.course.owner).toBe(prof._id.toString());
     expect(body.course.instructors).toContain(prof._id.toString());
+  });
+
+  it('pure admin can create a course without being added as an instructor', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-course@example.com', roles: ['admin'] });
+    const token = await getAuthToken(app, admin);
+
+    const res = await createCourseAsProf(token, { name: 'Admin-owned Course' });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.course.owner).toBe(admin._id.toString());
+    expect(body.course.instructors || []).toEqual([]);
+
+    const persistedAdmin = await User.findById(admin._id).lean();
+    expect(persistedAdmin.profile.courses || []).toEqual([]);
   });
 
   it('student cannot create a course', async (ctx) => {

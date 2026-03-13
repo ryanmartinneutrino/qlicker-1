@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
+import { Box, Typography, Paper, Alert, Button, CircularProgress, Chip } from '@mui/material';
+import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
 
 // ---------------------------------------------------------------------------
@@ -133,9 +135,10 @@ function ShortAnswerList({ responses }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function SecondDesktop() {
+export default function PresentationWindow() {
   const { t } = useTranslation();
   const { courseId, sessionId } = useParams();
+  const navigate = useNavigate();
 
   const [liveData, setLiveData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +149,9 @@ export default function SecondDesktop() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/live`);
+      const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
+        params: { view: 'presentation' },
+      });
       setLiveData(data);
       setError(null);
       if (data?.session?.status === 'done') {
@@ -289,6 +294,10 @@ export default function SecondDesktop() {
   // ---- Derived state ----
 
   const session = liveData?.session;
+  const courseTitle = useMemo(
+    () => (liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''),
+    [liveData?.course]
+  );
   const currentQ = liveData?.currentQuestion;
   const responseStats = liveData?.responseStats;
   const allResponses = liveData?.allResponses || [];
@@ -324,7 +333,39 @@ export default function SecondDesktop() {
   useEffect(() => {
     const name = session?.name || t('professor.secondDesktop.presentation');
     document.title = `${name} — Qlicker`;
-  }, [session?.name]);
+  }, [session?.name, t]);
+
+  const renderHeader = (compact = false) => (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: compact ? 'center' : 'flex-start',
+        justifyContent: 'space-between',
+        gap: 2,
+        flexWrap: 'wrap',
+        width: '100%',
+        mb: compact ? 2 : 4,
+      }}
+    >
+      <Box sx={{ minWidth: 0 }}>
+        {courseTitle ? (
+          <Typography variant={compact ? 'body1' : 'h5'} sx={{ fontWeight: 700 }}>
+            {courseTitle}
+          </Typography>
+        ) : null}
+        <Typography variant={compact ? 'body2' : 'h6'} color="text.secondary">
+          {session?.name || t('professor.secondDesktop.presentation')}
+        </Typography>
+      </Box>
+      <Button
+        variant="outlined"
+        startIcon={<ArrowBackIcon />}
+        onClick={() => navigate(`/manage/course/${courseId}`)}
+      >
+        {t('professor.secondDesktop.backToCourse')}
+      </Button>
+    </Box>
+  );
 
   // ---- Render: loading ----
 
@@ -346,6 +387,7 @@ export default function SecondDesktop() {
   if (error) {
     return (
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', mt: 8 }}>
+        {renderHeader()}
         <Alert severity="error" sx={{ fontSize: '1.1rem' }}>{error}</Alert>
       </Box>
     );
@@ -359,8 +401,11 @@ export default function SecondDesktop() {
         sx={{
           display: 'flex', justifyContent: 'center', alignItems: 'center',
           minHeight: '100vh', bgcolor: 'background.default',
+          flexDirection: 'column',
+          p: 4,
         }}
       >
+        {renderHeader()}
         <Typography variant="h2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
           {t('professor.secondDesktop.sessionEnded')}
         </Typography>
@@ -380,6 +425,7 @@ export default function SecondDesktop() {
         }}
         aria-label={t('professor.secondDesktop.joinCodeDisplay')}
       >
+        {renderHeader()}
         <Typography variant="h5" sx={{ fontWeight: 600, color: 'text.secondary', mb: 2 }}>
           {t('professor.secondDesktop.joinCode')}
         </Typography>
@@ -422,6 +468,7 @@ export default function SecondDesktop() {
           p: 4, textAlign: 'center',
         }}
       >
+        {renderHeader()}
         <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
           {session?.name || t('professor.secondDesktop.liveSession')}
         </Typography>
@@ -441,6 +488,8 @@ export default function SecondDesktop() {
         display: 'flex', flexDirection: 'column', p: { xs: 2, sm: 4 },
       }}
     >
+      {renderHeader(true)}
+
       {/* Top info bar */}
       <Box
         sx={{

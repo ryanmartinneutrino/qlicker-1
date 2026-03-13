@@ -272,6 +272,77 @@ describe('Grading routes', () => {
     expect(clearedMark.feedbackUpdatedAt).toBeNull();
   });
 
+  it('recomputes aggregate grade and participation when a mark is edited', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'manual-mark-recompute',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Manual mark recompute session' });
+    const gradedQuestionId = new mongoose.Types.ObjectId().toString();
+    const zeroPointQuestionId = new mongoose.Types.ObjectId().toString();
+
+    const grade = await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      joined: true,
+      participation: 0,
+      value: 99,
+      automatic: false,
+      points: 0,
+      outOf: 2,
+      numAnswered: 0,
+      numQuestions: 0,
+      numAnsweredTotal: 0,
+      numQuestionsTotal: 0,
+      visibleToStudents: true,
+      needsGrading: true,
+      marks: [
+        {
+          questionId: gradedQuestionId,
+          points: 0,
+          outOf: 2,
+          automatic: false,
+          needsGrading: true,
+          attempt: 1,
+          responseId: new mongoose.Types.ObjectId().toString(),
+          feedback: '',
+        },
+        {
+          questionId: zeroPointQuestionId,
+          points: 0,
+          outOf: 0,
+          automatic: false,
+          needsGrading: false,
+          attempt: 1,
+          responseId: new mongoose.Types.ObjectId().toString(),
+          feedback: '',
+        },
+      ],
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/grades/${grade._id}/marks/${gradedQuestionId}`, {
+      token: profToken,
+      payload: { points: 1 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const updated = res.json().grade;
+    expect(updated.points).toBe(1);
+    expect(updated.value).toBe(50);
+    expect(updated.automatic).toBe(true);
+    expect(updated.participation).toBe(100);
+    expect(updated.numAnswered).toBe(1);
+    expect(updated.numQuestions).toBe(1);
+    expect(updated.numAnsweredTotal).toBe(2);
+    expect(updated.numQuestionsTotal).toBe(2);
+    expect(updated.needsGrading).toBe(false);
+  });
+
   it('recalculates grades, preserves manual overrides, and exposes grading conflicts/warnings', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
@@ -674,5 +745,63 @@ describe('Grading routes', () => {
     expect(hideReviewable.statusCode).toBe(200);
     const hiddenGrades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
     expect(hiddenGrades.every((grade) => grade.visibleToStudents === false)).toBe(true);
+  });
+
+  it('returns a non-mutating warning before making an ended session reviewable when manual grading is required', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'reviewable-warning',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Reviewable warning session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 3,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: false,
+        questions: [question._id],
+      },
+    });
+
+    const warningRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(warningRes.statusCode).toBe(200);
+    expect(warningRes.json().grading).toBeNull();
+    expect(warningRes.json().nonAutoGradeableWarning.questionCount).toBe(1);
+
+    const warnedSession = await Session.findById(session._id).lean();
+    expect(warnedSession.reviewable).toBe(false);
+    expect(await Grade.countDocuments({ sessionId: session._id, courseId: course._id })).toBe(0);
+
+    const confirmRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+      token: profToken,
+      payload: {
+        reviewable: true,
+        acknowledgeNonAutoGradeable: true,
+        zeroNonAutoGradeable: true,
+      },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    expect(confirmRes.json().session.reviewable).toBe(true);
+
+    const zeroedQuestion = await Question.findById(question._id).lean();
+    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+
+    const grades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(grades).toHaveLength(2);
+    expect(grades.every((grade) => grade.visibleToStudents === true)).toBe(true);
+    expect(grades.every((grade) => grade.marks[0]?.outOf === 0)).toBe(true);
   });
 });

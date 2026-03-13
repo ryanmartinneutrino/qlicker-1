@@ -766,6 +766,35 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(body).toHaveProperty('responseCount');
   });
 
+  it('presentation view omits joined student detail payloads while keeping course context', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live?view=presentation`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(String(body.course._id)).toBe(String(course._id));
+    expect(body.course.name).toBe(course.name);
+    expect(body.session.joinedCount).toBe(1);
+    expect(body.session).not.toHaveProperty('joined');
+    expect(body.session).not.toHaveProperty('joinRecords');
+    expect(body.session).not.toHaveProperty('joinedStudents');
+  });
+
   it('student short-answer stats do not include responder identifiers', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, student, studentToken } = await setupCourseWithStudent();
@@ -1101,6 +1130,77 @@ describe('POST /api/v1/sessions/:id/end', () => {
     const body = res.json();
     expect(body.session.status).toBe('done');
     expect(body.session.reviewable).toBe(true);
+  });
+
+  it('returns a non-mutating warning before ending with reviewable manual-grading questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await Question.create({
+      type: 2,
+      creator: prof._id,
+      owner: prof._id,
+      courseId: course._id,
+      sessionId: session._id,
+      plainText: 'Explain your answer',
+      content: '<p>Explain your answer</p>',
+      sessionOptions: {
+        points: 4,
+        maxAttempts: 1,
+        attempts: [{ number: 1, closed: false }],
+      },
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [question._id],
+      },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const warningRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(warningRes.statusCode).toBe(200);
+    const warningBody = warningRes.json();
+    expect(warningBody.grading).toBeNull();
+    expect(warningBody.nonAutoGradeableWarning.questionCount).toBe(1);
+
+    const warnedSession = await Session.findById(session._id).lean();
+    expect(warnedSession.status).toBe('running');
+    expect(warnedSession.reviewable).toBe(false);
+    expect(await Grade.countDocuments({ sessionId: session._id, courseId: course._id })).toBe(0);
+
+    const warnedQuestion = await Question.findById(question._id).lean();
+    expect(warnedQuestion.sessionOptions.points).toBe(4);
+
+    const confirmRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+      payload: {
+        reviewable: true,
+        acknowledgeNonAutoGradeable: true,
+        zeroNonAutoGradeable: true,
+      },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    expect(confirmRes.json().session.status).toBe('done');
+    expect(confirmRes.json().session.reviewable).toBe(true);
+
+    const zeroedQuestion = await Question.findById(question._id).lean();
+    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+
+    const grades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(grades).toHaveLength(1);
+    expect(grades[0].marks).toHaveLength(1);
+    expect(grades[0].marks[0].outOf).toBe(0);
   });
 });
 

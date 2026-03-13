@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
@@ -168,6 +168,45 @@ describe('Course-wide video chat', () => {
 
     const course = await Course.findById(courseId);
     expect(course.videoChatOptions.joined).toEqual([]);
+  });
+
+  it('broadcasts video:updated for course-wide toggle, api option updates, and clear', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-video-updated@example.com', roles: ['professor'] });
+    const token = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(token);
+    const courseId = courseRes.json().course._id;
+
+    const student = await createTestUser({ email: 'student-video-updated@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: courseRes.json().course.enrollmentCode },
+    });
+
+    const wsSpy = vi.spyOn(app, 'wsSendToUsers');
+
+    const toggleRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${courseId}/video/toggle`, { token });
+    expect(toggleRes.statusCode).toBe(200);
+
+    const optionsRes = await authenticatedRequest(app, 'PATCH', `/api/v1/courses/${courseId}/video/api-options`, {
+      token,
+      payload: { startAudioMuted: false },
+    });
+    expect(optionsRes.statusCode).toBe(200);
+
+    const clearRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${courseId}/video/clear`, { token });
+    expect(clearRes.statusCode).toBe(200);
+
+    const videoUpdateCalls = wsSpy.mock.calls.filter(([, event]) => event === 'video:updated');
+    expect(videoUpdateCalls).toHaveLength(3);
+
+    const expectedRecipients = [prof._id.toString(), student._id.toString()].sort();
+    videoUpdateCalls.forEach(([memberIds, event, data]) => {
+      expect(event).toBe('video:updated');
+      expect([...memberIds].map((id) => String(id)).sort()).toEqual(expectedRecipients);
+      expect(String(data.courseId)).toBe(String(courseId));
+    });
   });
 
   it('student cannot toggle video', async (ctx) => {
