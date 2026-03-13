@@ -10,7 +10,12 @@ import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
 import {
-  QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
+  QUESTION_TYPES,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
@@ -354,12 +359,11 @@ export default function LiveSession() {
   }, [questionNumber, currentQ?._id, session?.questions]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const isSlide = isSlideType(qType);
   const hasSubmitted = !!studentResponse;
   const responseClosed = !!currentAttempt?.closed;
   const isLocked = hasSubmitted || responseClosed;
-  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
-    || qType === QUESTION_TYPES.TRUE_FALSE
-    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const showInlineOptionStats = isOptionBasedQuestion
     && showStats
     && responseStats?.type === 'distribution';
@@ -372,7 +376,9 @@ export default function LiveSession() {
       ? t('student.liveSession.questionOf', { number: displayedQuestionNumber, total: displayedQuestionCount })
       : null,
     currentAttempt ? t('student.liveSession.attemptNumber', { number: currentAttempt.number ?? 1 }) : null,
-    hasSubmitted
+    isSlide
+      ? null
+      : hasSubmitted
       ? t('student.liveSession.responseSubmitted')
       : responseClosed
         ? t('student.liveSession.responsesCurrentlyClosed')
@@ -628,7 +634,7 @@ export default function LiveSession() {
             size="small"
             sx={COMPACT_CHIP_SX}
           />
-          {responseClosed && (
+          {!isSlide && responseClosed && (
             <Chip label={t('student.liveSession.responsesClosed')} size="small" color="warning" sx={COMPACT_CHIP_SX} />
           )}
         </Box>
@@ -895,41 +901,43 @@ export default function LiveSession() {
       {/* ============================================================ */}
       {/* Submit / status area                                         */}
       {/* ============================================================ */}
-      <Box sx={{ mb: 2 }}>
-        {submitError && (
-          <Alert severity="error" sx={{ mb: 1.5 }}>{submitError}</Alert>
-        )}
-        <Box role="status" aria-live="polite" aria-atomic="true">
-          {hasSubmitted ? (
-            <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
-              {t('student.liveSession.responseSubmittedCheck')}
-            </Alert>
-          ) : responseClosed ? (
-            <Alert severity="warning" sx={{ justifyContent: 'center' }}>
-              {t('student.liveSession.responsesCurrentlyClosedShort')}
-            </Alert>
-          ) : (
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={handleSubmit}
-              disabled={
-                submitting
-                || answer === null
-                || answer === ''
-                || (Array.isArray(answer) && answer.length === 0)
-              }
-              sx={{ py: 1.5, fontSize: '1.05rem' }}
-              aria-label={t('student.liveSession.submitResponse')}
-            >
-              {submitting ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.submitResponse')}
-            </Button>
+      {!isSlide && (
+        <Box sx={{ mb: 2 }}>
+          {submitError && (
+            <Alert severity="error" sx={{ mb: 1.5 }}>{submitError}</Alert>
           )}
+          <Box role="status" aria-live="polite" aria-atomic="true">
+            {hasSubmitted ? (
+              <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
+                {t('student.liveSession.responseSubmittedCheck')}
+              </Alert>
+            ) : responseClosed ? (
+              <Alert severity="warning" sx={{ justifyContent: 'center' }}>
+                {t('student.liveSession.responsesCurrentlyClosedShort')}
+              </Alert>
+            ) : (
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                onClick={handleSubmit}
+                disabled={
+                  submitting
+                  || answer === null
+                  || answer === ''
+                  || (Array.isArray(answer) && answer.length === 0)
+                }
+                sx={{ py: 1.5, fontSize: '1.05rem' }}
+                aria-label={t('student.liveSession.submitResponse')}
+              >
+                {submitting ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.submitResponse')}
+              </Button>
+            )}
+          </Box>
         </Box>
-      </Box>
+      )}
 
-      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && (
+      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && !isSlide && (
         <Box sx={{ mb: 2 }}>
           <MathPreview html={answerWysiwyg} />
         </Box>

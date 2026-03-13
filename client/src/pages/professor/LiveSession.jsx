@@ -15,7 +15,13 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import apiClient, { getAccessToken } from '../../api/client';
-import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
+import {
+  QUESTION_TYPES,
+  TYPE_LABELS,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
+} from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -569,14 +575,13 @@ export default function LiveSession() {
   const hasPrev = qIdx > 0;
   const hasNext = qIdx < totalQ - 1;
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const isSlide = isSlideType(qType);
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const responsesClosed = !!currentAttempt?.closed;
-  const attemptNum = currentAttempt?.number ?? 1;
-  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
-    || qType === QUESTION_TYPES.TRUE_FALSE
-    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const attemptNum = currentAttempt?.number ?? null;
+  const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'
     ? responseStats.distribution || []
     : [];
@@ -586,9 +591,9 @@ export default function LiveSession() {
   const liveStatusMessage = [
     totalQ > 0 && qIdx >= 0 ? t('professor.liveSession.questionOfTotal', { current: qIdx + 1, total: totalQ }) : null,
     t('professor.liveSession.studentsJoined', { count: joinedCount }),
-    t('professor.liveSession.studentsResponded', { responded: responseCount, total: joinedCount }),
-    t('professor.liveSession.attemptNumber', { number: attemptNum }),
-    responsesClosed ? t('professor.liveSession.responsesCurrentlyClosed') : t('professor.liveSession.responsesCurrentlyOpen'),
+    !isSlide ? t('professor.liveSession.studentsResponded', { responded: responseCount, total: joinedCount }) : null,
+    attemptNum != null ? t('professor.liveSession.attemptNumber', { number: attemptNum }) : null,
+    !isSlide ? (responsesClosed ? t('professor.liveSession.responsesCurrentlyClosed') : t('professor.liveSession.responsesCurrentlyOpen')) : null,
     isHidden ? t('professor.liveSession.questionHidden') : t('professor.liveSession.questionVisible'),
   ].filter(Boolean).join(' ');
 
@@ -740,12 +745,14 @@ export default function LiveSession() {
           />
 
           {activePanel === 'question' && (
-            <Chip
-              label={t('professor.liveSession.attemptChip', { number: attemptNum })}
-              size="small"
-              variant="outlined"
-              sx={COMPACT_CHIP_SX}
-            />
+            attemptNum != null ? (
+              <Chip
+                label={t('professor.liveSession.attemptChip', { number: attemptNum })}
+                size="small"
+                variant="outlined"
+                sx={COMPACT_CHIP_SX}
+              />
+            ) : null
           )}
         </Box>
       </Paper>
@@ -849,7 +856,7 @@ export default function LiveSession() {
                   <Switch
                     checked={showStats}
                     onChange={() => handleToggleVisibility('stats')}
-                    disabled={!currentQ || actionLoading}
+                    disabled={!currentQ || actionLoading || isSlide}
                     size="small"
                   />
                 }
@@ -861,7 +868,7 @@ export default function LiveSession() {
                   <Switch
                     checked={showCorrect}
                     onChange={() => handleToggleVisibility('correct')}
-                    disabled={!currentQ || actionLoading}
+                    disabled={!currentQ || actionLoading || isSlide}
                     size="small"
                   />
                 }
@@ -873,7 +880,7 @@ export default function LiveSession() {
                   <Switch
                     checked={!responsesClosed}
                     onChange={handleToggleResponses}
-                    disabled={!currentQ || actionLoading}
+                    disabled={!currentQ || actionLoading || isSlide}
                     size="small"
                   />
                 }
@@ -899,7 +906,7 @@ export default function LiveSession() {
                     variant="outlined"
                     startIcon={<AttemptIcon />}
                     onClick={handleNewAttempt}
-                    disabled={!currentQ || actionLoading}
+                    disabled={!currentQ || actionLoading || isSlide}
                     aria-label={t('professor.liveSession.newAttempt')}
                     sx={{
                       width: { xs: '100%', sm: 'auto' },
@@ -966,7 +973,7 @@ export default function LiveSession() {
           <Box
             sx={{
               display: 'flex',
-              flexDirection: { xs: 'column', md: isOptionBasedQuestion ? 'column' : 'row' },
+              flexDirection: { xs: 'column', md: isOptionBasedQuestion || isSlide ? 'column' : 'row' },
               gap: 2,
               mb: 2,
             }}
@@ -1104,7 +1111,7 @@ export default function LiveSession() {
             </Paper>
 
             {/* ---- Right panel: response statistics ---- */}
-            {!isOptionBasedQuestion && (
+            {!isOptionBasedQuestion && !isSlide && (
               <Paper
                 variant="outlined"
                 sx={{ flex: { md: 1 }, p: 2, minWidth: 0 }}

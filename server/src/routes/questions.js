@@ -9,8 +9,8 @@ const createQuestionSchema = {
     type: 'object',
     required: ['type'],
     properties: {
-      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4.
-      type: { type: 'integer', minimum: 0, maximum: 4 },
+      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4, Slide=6.
+      type: { type: 'integer', minimum: 0, maximum: 6 },
       content: { type: 'string' },
       plainText: { type: 'string' },
       options: {
@@ -34,6 +34,29 @@ const createQuestionSchema = {
       solution: { type: 'string' },
       solution_plainText: { type: 'string' },
       public: { type: 'boolean' },
+      sessionOptions: {
+        type: 'object',
+        properties: {
+          hidden: { type: 'boolean' },
+          stats: { type: 'boolean' },
+          correct: { type: 'boolean' },
+          points: { type: 'number' },
+          maxAttempts: { type: 'number' },
+          attemptWeights: { type: 'array', items: { type: 'number' } },
+          attempts: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                number: { type: 'number' },
+                closed: { type: 'boolean' },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
       tags: {
         type: 'array',
         items: {
@@ -72,8 +95,8 @@ const updateQuestionSchema = {
           additionalProperties: false,
         },
       },
-      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4.
-      type: { type: 'integer', minimum: 0, maximum: 4 },
+      // Canonical mapping: MC=0 (single correct), TF=1, SA=2, MS=3 (multi-correct), NU=4, Slide=6.
+      type: { type: 'integer', minimum: 0, maximum: 6 },
       toleranceNumerical: { type: 'number' },
       correctNumerical: { type: 'number' },
       solution: { type: 'string' },
@@ -235,7 +258,7 @@ export default async function questionRoutes(app) {
       const userId = request.user.userId;
       const {
         type, content, plainText, options, toleranceNumerical, correctNumerical,
-        sessionId, courseId, solution, solution_plainText, tags, imagePath,
+        sessionId, courseId, solution, solution_plainText, sessionOptions, tags, imagePath,
       } = request.body;
 
       const createValidationError = multipleChoiceValidationError(type, options);
@@ -254,6 +277,7 @@ export default async function questionRoutes(app) {
         courseId: courseId || '',
         solution: solution || '',
         solution_plainText: solution_plainText || '',
+        sessionOptions,
         public: request.body.public || false,
         tags: tags || [],
         imagePath: imagePath || '',

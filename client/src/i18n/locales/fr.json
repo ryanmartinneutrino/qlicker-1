@@ -830,6 +830,8 @@
       "questionType": "Type de question",
       "questionText": "Texte de la question",
       "questionPlaceholder": "Écrivez la question ici...",
+      "slideText": "Texte de la diapositive",
+      "slidePlaceholder": "Écrivez le contenu de la diapositive ici...",
       "points": "Points",
       "optionsSelectAll": "Options (sélectionner toutes les bonnes réponses)",
       "optionsSelectOne": "Options (sélectionner une bonne réponse)",

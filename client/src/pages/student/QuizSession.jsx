@@ -24,6 +24,8 @@ import {
   QUESTION_TYPES,
   TYPE_LABELS,
   TYPE_COLORS,
+  isResponseQuestionType,
+  isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
@@ -63,6 +65,9 @@ function parseMultiSelectAnswer(answer) {
 
 function hasAnswerForDraft(question, draft) {
   const qType = normalizeQuestionType(question);
+  if (!isResponseQuestionType(qType)) {
+    return true;
+  }
   if (qType === QUESTION_TYPES.MULTI_SELECT) {
     return Array.isArray(draft?.answer) && draft.answer.length > 0;
   }
@@ -74,6 +79,12 @@ function hasAnswerForDraft(question, draft) {
 
 function getDraftForQuestion(question, response) {
   const qType = normalizeQuestionType(question);
+  if (!isResponseQuestionType(qType)) {
+    return {
+      answer: '',
+      answerWysiwyg: '',
+    };
+  }
 
   if (qType === QUESTION_TYPES.MULTI_SELECT) {
     return {
@@ -265,6 +276,7 @@ export default function QuizSession() {
     try {
       await flushAutosaves();
       for (const question of questions) {
+        if (isSlideType(normalizeQuestionType(question))) continue;
         const questionId = String(question._id);
         const response = responsesByQuestion[questionId];
         const locked = !!response && response.editable === false;
@@ -289,6 +301,7 @@ export default function QuizSession() {
   const handleSubmitPracticeQuestion = useCallback(async (questionId) => {
     const question = questions.find((entry) => String(entry._id) === String(questionId));
     if (!question) return;
+    if (isSlideType(normalizeQuestionType(question))) return;
 
     setLockingQuestionId(questionId);
     setSubmitError('');
@@ -304,30 +317,34 @@ export default function QuizSession() {
   }, [draftByQuestion, fetchQuiz, questions, responsesByQuestion, saveDraftNow, sessionId]);
 
   const practiceQuiz = !!session?.practiceQuiz;
+  const answerableQuestions = useMemo(
+    () => questions.filter((question) => isResponseQuestionType(normalizeQuestionType(question))),
+    [questions]
+  );
+  const answerableQuestionCount = answerableQuestions.length;
 
   const answeredCount = useMemo(() => {
-    return questions.reduce((count, question) => {
+    return answerableQuestions.reduce((count, question) => {
       const qId = String(question._id);
       const response = responsesByQuestion[qId];
       const draft = draftByQuestion[qId] || getDraftForQuestion(question, response);
       return count + (hasAnswerForDraft(question, draft) ? 1 : 0);
     }, 0);
-  }, [draftByQuestion, questions, responsesByQuestion]);
+  }, [answerableQuestions, draftByQuestion, responsesByQuestion]);
 
   const canSubmitQuiz = useMemo(() => {
     if (practiceQuiz || submittingQuiz) return false;
-    if (!questions.length) return false;
-    return questions.every((question) => {
+    return answerableQuestions.every((question) => {
       const qId = String(question._id);
       const response = responsesByQuestion[qId];
       const draft = draftByQuestion[qId] || getDraftForQuestion(question, response);
       return hasAnswerForDraft(question, draft);
     });
-  }, [draftByQuestion, practiceQuiz, questions, responsesByQuestion, submittingQuiz]);
+  }, [answerableQuestions, draftByQuestion, practiceQuiz, responsesByQuestion, submittingQuiz]);
   const allQuestionsAnswered = useMemo(() => (
-    questions.length > 0 && answeredCount === questions.length
-  ), [answeredCount, questions.length]);
-  const showSubmitButton = allQuestionsAnswered && !submittingQuiz;
+    answerableQuestionCount === 0 || answeredCount === answerableQuestionCount
+  ), [answerableQuestionCount, answeredCount]);
+  const showSubmitButton = !submittingQuiz && allQuestionsAnswered;
 
   const questionsToRender = useMemo(() => {
     if (!singleQuestionMode) return questions;
@@ -385,7 +402,7 @@ export default function QuizSession() {
           {session.name || t('student.quiz.quizFallback')}
         </Typography>
         <Chip label={practiceQuiz ? t('student.quiz.practiceQuizLabel') : t('student.quiz.quizLabel')} color={practiceQuiz ? 'info' : 'primary'} size="small" />
-        <Chip label={t('student.quiz.answeredCount', { answered: answeredCount, total: questions.length })} variant="outlined" size="small" />
+        <Chip label={t('student.quiz.answeredCount', { answered: answeredCount, total: answerableQuestionCount })} variant="outlined" size="small" />
       </Box>
 
       <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
@@ -433,6 +450,7 @@ export default function QuizSession() {
         const autosaveState = autosaveStateByQuestion[qId] || 'idle';
         const showSolution = !!showSolutionByQuestion[qId] && locked;
         const showCorrectForQuestion = showSolution && practiceQuiz;
+        const isSlide = isSlideType(qType);
         const questionHasRevealableSolution = !!(
           question.solution
           || question.correctNumerical != null
@@ -449,10 +467,10 @@ export default function QuizSession() {
                 {t('student.quiz.questionNumber', { number: questions.findIndex((entry) => String(entry._id) === qId) + 1 })}
               </Typography>
               <Chip label={TYPE_LABELS[qType] || 'Question'} color={TYPE_COLORS[qType] || 'default'} size="small" />
-              {locked && <Chip label={t('student.quiz.submitted')} color="success" size="small" variant="outlined" />}
-              {!locked && autosaveState === 'saving' && <Chip label={t('student.quiz.saving')} size="small" variant="outlined" />}
-              {!locked && autosaveState === 'saved' && <Chip label={t('student.quiz.saved')} size="small" variant="outlined" />}
-              {!locked && autosaveState === 'error' && <Chip label={t('student.quiz.saveFailed')} color="error" size="small" variant="outlined" />}
+              {!isSlide && locked && <Chip label={t('student.quiz.submitted')} color="success" size="small" variant="outlined" />}
+              {!isSlide && !locked && autosaveState === 'saving' && <Chip label={t('student.quiz.saving')} size="small" variant="outlined" />}
+              {!isSlide && !locked && autosaveState === 'saved' && <Chip label={t('student.quiz.saved')} size="small" variant="outlined" />}
+              {!isSlide && !locked && autosaveState === 'error' && <Chip label={t('student.quiz.saveFailed')} color="error" size="small" variant="outlined" />}
             </Box>
 
             <Box sx={{ mb: 2 }}>
@@ -606,7 +624,7 @@ export default function QuizSession() {
               </Box>
             )}
 
-            {practiceQuiz && (
+            {practiceQuiz && !isSlide && (
               <Box sx={{ mt: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 {!locked && (
                   <Button

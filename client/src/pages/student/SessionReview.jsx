@@ -15,7 +15,12 @@ import {
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import {
-  TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  QUESTION_TYPES,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
 } from '../../components/questions/constants';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { useTranslation } from 'react-i18next';
@@ -267,16 +272,17 @@ function ReviewQuestionCard({
   const { t } = useTranslation();
   const [solutionVisible, setSolutionVisible] = useState(false);
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
+  const isSlide = isSlideType(normalizedType);
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
   const markChipLabel = useMemo(() => {
     if (!mark) {
-      if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
+      if (!isSlide && points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
       return null;
     }
     if (mark?.needsGrading) return t('student.sessionReview.pendingManualGrade');
     return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
-  }, [mark, points]);
+  }, [isSlide, mark, points, t]);
   const markChipColor = mark?.needsGrading ? 'warning' : 'success';
   const shouldLetter = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
   const hasWrittenSolution = Boolean(
@@ -289,7 +295,7 @@ function ReviewQuestionCard({
   const writtenSolutionHtml = question.solution || question.solutionHtml || '';
   const writtenSolutionPlain = question.solution_plainText || question.solutionPlainText || question.solutionText || '';
   const hasMarkedCorrectOption = opts.some((opt) => isCorrectOption(opt));
-  const optionType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
+  const optionType = isOptionBasedQuestionType(normalizedType) || normalizedType === QUESTION_TYPES.TRUE_FALSE;
   const selectedOptionIndices = useMemo(() => {
     if (!responseVisible || !response || !optionType || opts.length === 0) return [];
     const values = collectAnswerEntries(response.answer);
@@ -412,16 +418,18 @@ function ReviewQuestionCard({
       )}
 
       {/* Show / Hide Solution button */}
-      <Box sx={{ mt: 2 }}>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
-          onClick={() => setSolutionVisible((prev) => !prev)}
-        >
-          {solutionVisible ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
-        </Button>
-      </Box>
+      {!isSlide && (
+        <Box sx={{ mt: 2 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
+            onClick={() => setSolutionVisible((prev) => !prev)}
+          >
+            {solutionVisible ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
+          </Button>
+        </Box>
+      )}
 
       {/* Solution text (when visible) */}
       {solutionVisible && hasWrittenSolution && (
@@ -674,11 +682,7 @@ export default function SessionReview() {
     ? getResponsesForQuestion(responsesByQuestion, currentQ, questionIdx).sort((a, b) => a.attempt - b.attempt)
     : [];
   const currentQType = currentQ ? normalizeQuestionType(currentQ) : null;
-  const currentIsOptionType = [
-    QUESTION_TYPES.MULTIPLE_CHOICE,
-    QUESTION_TYPES.TRUE_FALSE,
-    QUESTION_TYPES.MULTI_SELECT,
-  ].includes(currentQType);
+  const currentIsOptionType = isOptionBasedQuestionType(currentQType) || currentQType === QUESTION_TYPES.TRUE_FALSE;
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
@@ -894,11 +898,7 @@ export default function SessionReview() {
                 const currentResponse = responses[attemptIdx];
                 const qType = normalizeQuestionType(q);
                 const mark = getMarkForQuestion(sessionGrade, q, i);
-                const isOptionType = [
-                  QUESTION_TYPES.MULTIPLE_CHOICE,
-                  QUESTION_TYPES.TRUE_FALSE,
-                  QUESTION_TYPES.MULTI_SELECT,
-                ].includes(qType);
+                const isOptionType = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
                 const isResponseVisible = !!responseVisible[stateKey];
 
                 return (

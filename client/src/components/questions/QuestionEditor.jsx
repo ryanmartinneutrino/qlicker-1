@@ -12,7 +12,13 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { TYPE_LABELS, QUESTION_TYPES, normalizeQuestionType } from './constants';
+import {
+  TYPE_LABELS,
+  QUESTION_TYPES,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
+} from './constants';
 import RichTextEditor from './RichTextEditor';
 import AutoSaveStatus from '../common/AutoSaveStatus';
 import {
@@ -96,22 +102,24 @@ const COMPACT_FIELD_SX = {
 
 function buildQuestionPayload(form) {
   const content = normalizeStoredHtml(form.content);
-  const solution = normalizeStoredHtml(form.solution);
+  const isSlide = isSlideType(form.type);
+  const solution = isSlide ? '' : normalizeStoredHtml(form.solution);
+  const points = isSlide ? 0 : Number(form.points) || 1;
   const payload = {
     type: form.type,
     content,
     plainText: extractPlainTextFromHtml(content),
     solution: solution || undefined,
     solution_plainText: solution ? extractPlainTextFromHtml(solution) : undefined,
-    sessionOptions: { points: Number(form.points) || 1 },
+    sessionOptions: { points },
   };
 
-  if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)) {
+  if (isOptionBasedQuestionType(form.type) || form.type === QUESTION_TYPES.TRUE_FALSE) {
     const optionSource = form.type === QUESTION_TYPES.TRUE_FALSE
       ? normalizeTrueFalseOptions(form.options)
       : form.type === QUESTION_TYPES.MULTIPLE_CHOICE
         ? enforceSingleCorrectOption(form.options)
-      : form.options;
+        : form.options;
     payload.options = optionSource.map((o) => {
       const optionHtml = normalizeStoredHtml(o.content);
       const optionPlainText = extractPlainTextFromHtml(optionHtml);
@@ -254,11 +262,13 @@ export default function QuestionEditor({
           content: prepareRichTextInput(question.content || '', question.plainText || ''),
           options: normalizedType === QUESTION_TYPES.TRUE_FALSE
             ? normalizeTrueFalseOptions(question.options)
-            : normalizeOptions(question.options),
+            : normalizedType === QUESTION_TYPES.SLIDE
+              ? []
+              : normalizeOptions(question.options),
           correctNumerical: question.correctNumerical ?? '',
           toleranceNumerical: question.toleranceNumerical ?? '',
           solution: prepareRichTextInput(question.solution || '', question.solution_plainText || ''),
-          points: question.sessionOptions?.points ?? 1,
+          points: normalizedType === QUESTION_TYPES.SLIDE ? 0 : (question.sessionOptions?.points ?? 1),
         }
         : emptyForm();
     };
@@ -322,8 +332,8 @@ export default function QuestionEditor({
     if (disableTypeSelection) return;
     if (type === form.type) return;
 
-    const switchingFromOptionBasedType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type);
-    const switchingToNonOptionBasedType = ![QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(type);
+    const switchingFromOptionBasedType = isOptionBasedQuestionType(form.type);
+    const switchingToNonOptionBasedType = !isOptionBasedQuestionType(type);
     if (switchingFromOptionBasedType && switchingToNonOptionBasedType && hasAnyOptionContent(form.options)) {
       const confirmReset = window.confirm(
         t('questions.editor.confirmTypeChange')
@@ -348,16 +358,25 @@ export default function QuestionEditor({
       update.options = normalizeTrueFalseOptions(form.options);
     } else if (type === QUESTION_TYPES.SHORT_ANSWER) {
       update.options = [];
+      update.solution = form.solution;
     } else if (type === QUESTION_TYPES.NUMERICAL) {
       update.options = [];
+    } else if (type === QUESTION_TYPES.SLIDE) {
+      update.options = [];
+      update.solution = '';
+      update.points = 0;
     } else if (
       form.type === QUESTION_TYPES.TRUE_FALSE
       || form.type === QUESTION_TYPES.SHORT_ANSWER
       || form.type === QUESTION_TYPES.NUMERICAL
+      || form.type === QUESTION_TYPES.SLIDE
     ) {
       update.options = [{ content: '', correct: false }, { content: '', correct: false }];
     } else if (nextOptions !== form.options) {
       update.options = nextOptions;
+    }
+    if (type !== QUESTION_TYPES.SLIDE && form.type === QUESTION_TYPES.SLIDE && Number(update.points) === 0) {
+      update.points = 1;
     }
     setForm(update);
   };
@@ -409,6 +428,13 @@ export default function QuestionEditor({
 
   const editorFields = (
     <>
+        {(() => {
+          const slideMode = isSlideType(form.type);
+          const questionTextLabel = slideMode ? t('questions.editor.slideText') : t('questions.editor.questionText');
+          const questionPlaceholder = slideMode ? t('questions.editor.slidePlaceholder') : t('questions.editor.questionPlaceholder');
+
+          return (
+            <>
         <Box
           sx={{
             display: 'flex',
@@ -447,20 +473,22 @@ export default function QuestionEditor({
             )}
           </Box>
 
-          <TextField
-            label={t('questions.editor.points')}
-            type="number"
-            size="small"
-            sx={{ width: 120, ...COMPACT_FIELD_SX }}
-            inputProps={{ min: 0 }}
-            value={form.points}
-            onChange={e => setForm({ ...form, points: e.target.value })}
-          />
+          {!slideMode && (
+            <TextField
+              label={t('questions.editor.points')}
+              type="number"
+              size="small"
+              sx={{ width: 120, ...COMPACT_FIELD_SX }}
+              inputProps={{ min: 0 }}
+              value={form.points}
+              onChange={e => setForm({ ...form, points: e.target.value })}
+            />
+          )}
         </Box>
 
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>
-            <Typography variant="subtitle2">{t('questions.editor.questionText')}</Typography>
+            <Typography variant="subtitle2">{questionTextLabel}</Typography>
             {hasChangesSinceOpen ? (
               <Button
                 size="small"
@@ -474,14 +502,14 @@ export default function QuestionEditor({
           <RichTextEditor
             value={form.content}
             onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
-            placeholder={t('questions.editor.questionPlaceholder')}
+            placeholder={questionPlaceholder}
             minHeight={26}
             resizable
             showTip
           />
         </Box>
 
-        {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(form.type) && (
+        {isOptionBasedQuestionType(form.type) && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               {form.type === QUESTION_TYPES.MULTI_SELECT ? t('questions.editor.optionsSelectAll') : t('questions.editor.optionsSelectOne')}
@@ -550,16 +578,20 @@ export default function QuestionEditor({
           </Box>
         )}
 
-        <Divider sx={{ my: 2 }} />
+        {!slideMode && (
+          <>
+            <Divider sx={{ my: 2 }} />
 
-        <RichTextEditor
-          label={t('questions.editor.solutionLabel')}
-          value={form.solution}
-          onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
-          placeholder={t('questions.editor.solutionPlaceholder')}
-          minHeight={26}
-          resizable
-        />
+            <RichTextEditor
+              label={t('questions.editor.solutionLabel')}
+              value={form.solution}
+              onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
+              placeholder={t('questions.editor.solutionPlaceholder')}
+              minHeight={26}
+              resizable
+            />
+          </>
+        )}
         <Divider sx={{ my: 2 }} />
         <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
           {t('questions.editor.livePreview')}
@@ -577,7 +609,7 @@ export default function QuestionEditor({
             emptyText="(no question text yet)"
           />
 
-          {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(form.type)
+          {(isOptionBasedQuestionType(form.type) || form.type === QUESTION_TYPES.TRUE_FALSE)
             && (previewPayload.options || []).length > 0 && (
               <Box sx={{ mt: 1 }}>
                 {(previewPayload.options || []).map((option, optionIdx) => (
@@ -618,7 +650,7 @@ export default function QuestionEditor({
             </Box>
           )}
 
-          {previewPayload.solution ? (
+          {!slideMode && previewPayload.solution ? (
             <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
               <Typography variant="caption" color="text.secondary">
                 {t('common.solution')}
@@ -631,6 +663,9 @@ export default function QuestionEditor({
             </Box>
           ) : null}
         </Paper>
+            </>
+          );
+        })()}
     </>
   );
 

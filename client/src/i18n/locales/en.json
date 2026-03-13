@@ -830,6 +830,8 @@
       "questionType": "Question Type",
       "questionText": "Question Text",
       "questionPlaceholder": "Write the question here...",
+      "slideText": "Slide Text",
+      "slidePlaceholder": "Write the slide content here...",
       "points": "Points",
       "optionsSelectAll": "Options (select all correct)",
       "optionsSelectOne": "Options (select one correct)",

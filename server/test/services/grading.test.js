@@ -87,6 +87,7 @@ describe('grading service helpers', () => {
   it('keeps legacy default points behavior by question type', () => {
     expect(getQuestionPoints({ type: 2, sessionOptions: {} })).toBe(0);
     expect(getQuestionPoints({ type: 0, sessionOptions: {} })).toBe(1);
+    expect(getQuestionPoints({ type: 6, sessionOptions: { points: 5 } })).toBe(0);
     expect(getQuestionPoints({ type: 2, sessionOptions: { points: 3 } })).toBe(3);
     expect(getQuestionPoints({ type: 0, sessionOptions: { points: 0 } })).toBe(0);
   });

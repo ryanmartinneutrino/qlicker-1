@@ -8,6 +8,8 @@ import User from '../models/User.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
+  isQuestionResponseCollectionEnabled,
+  isSlideQuestion,
   getQuestionPoints,
   getTimestampMs,
   isQuestionAutoGradeable,
@@ -134,6 +136,7 @@ function generateJoinCode() {
 }
 
 function getParticipationQuestionPoints(question) {
+  if (isSlideQuestion(question)) return 0;
   // Meteor behavior: default to 1 point per question, except SA defaults to 0 unless explicitly set.
   let points = Number(question?.type) === 2 ? 0 : 1;
   if (question?.sessionOptions && Object.prototype.hasOwnProperty.call(question.sessionOptions, 'points')) {
@@ -565,6 +568,7 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
 // Build response stats for a question's responses (for distribution display)
 function buildResponseStats(question, responses) {
   if (!question || !responses) return null;
+  if (isSlideQuestion(question)) return null;
   const type = Number(question.type);
   const options = question.options || [];
 
@@ -634,6 +638,37 @@ async function loadOrderedQuestions(questionIds = []) {
   const questions = await Question.find({ _id: { $in: questionIds } }).lean();
   const byId = new Map(questions.map((question) => [String(question._id), question]));
   return questionIds.map((questionId) => byId.get(String(questionId))).filter(Boolean);
+}
+
+async function loadAnswerableQuestionIdsBySession(sessionDocs = []) {
+  const allQuestionIds = [...new Set(
+    (sessionDocs || [])
+      .flatMap((session) => (Array.isArray(session?.questions) ? session.questions : []))
+      .map((questionId) => String(questionId))
+      .filter(Boolean)
+  )];
+
+  if (allQuestionIds.length === 0) return new Map();
+
+  const questions = await Question.find({ _id: { $in: allQuestionIds } })
+    .select('_id type')
+    .lean();
+  const questionById = new Map(questions.map((question) => [String(question._id), question]));
+
+  const answerableBySessionId = new Map();
+  (sessionDocs || []).forEach((session) => {
+    const sessionId = String(session?._id || '');
+    if (!sessionId) return;
+    const answerableIds = (session.questions || [])
+      .map((questionId) => String(questionId))
+      .filter((questionId) => {
+        const question = questionById.get(questionId);
+        return question && isQuestionResponseCollectionEnabled(question);
+      });
+    answerableBySessionId.set(sessionId, answerableIds);
+  });
+
+  return answerableBySessionId;
 }
 
 // Helper to check if user is instructor of course or admin
@@ -905,9 +940,14 @@ export default async function sessionRoutes(app) {
         ));
 
         if (runningQuizSessions.length > 0) {
+          const answerableQuestionIdsBySessionId = await loadAnswerableQuestionIdsBySession(runningQuizSessions);
           const questionToSessionId = new Map();
           runningQuizSessions.forEach((session) => {
-            (session.questions || []).forEach((questionId) => {
+            const answerableQuestionIds = answerableQuestionIdsBySessionId.get(String(session._id)) || [];
+            session.quizResponseCountByCurrentUser = 0;
+            session.quizHasResponsesByCurrentUser = false;
+            session.quizAllQuestionsAnsweredByCurrentUser = answerableQuestionIds.length === 0;
+            answerableQuestionIds.forEach((questionId) => {
               questionToSessionId.set(String(questionId), String(session._id));
             });
           });
@@ -933,11 +973,11 @@ export default async function sessionRoutes(app) {
 
             runningQuizSessions.forEach((session) => {
               const answeredSet = answeredBySessionId[String(session._id)] || new Set();
+              const answerableQuestionIds = answerableQuestionIdsBySessionId.get(String(session._id)) || [];
               session.quizResponseCountByCurrentUser = answeredSet.size;
               session.quizHasResponsesByCurrentUser = answeredSet.size > 0;
-              session.quizAllQuestionsAnsweredByCurrentUser = Array.isArray(session.questions)
-                && session.questions.length > 0
-                && answeredSet.size >= session.questions.length;
+              session.quizAllQuestionsAnsweredByCurrentUser = answerableQuestionIds.length === 0
+                || answeredSet.size >= answerableQuestionIds.length;
             });
           }
         }
@@ -1005,6 +1045,7 @@ export default async function sessionRoutes(app) {
 
       const feedbackBySessionId = {};
       const quizProgressBySessionId = {};
+      let answerableQuestionIdsBySessionId = new Map();
       if (!isInstrOrAdmin && normalizedSessions.length > 0) {
         const sessionIds = normalizedSessions
           .map((session) => String(session?._id || ''))
@@ -1034,12 +1075,11 @@ export default async function sessionRoutes(app) {
         });
 
         const quizSessions = normalizedSessions.filter((session) => isQuizLikeSession(session));
+        answerableQuestionIdsBySessionId = await loadAnswerableQuestionIdsBySession(quizSessions);
         const questionToSessionId = new Map();
         quizSessions.forEach((session) => {
           const sessionId = String(session?._id || '');
-          const questionIds = Array.isArray(session?.questions)
-            ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
-            : [];
+          const questionIds = answerableQuestionIdsBySessionId.get(sessionId) || [];
           questionIds.forEach((questionId) => {
             if (!questionToSessionId.has(questionId)) {
               questionToSessionId.set(questionId, sessionId);
@@ -1049,7 +1089,7 @@ export default async function sessionRoutes(app) {
             questionCount: questionIds.length,
             answeredQuestionCount: 0,
             hasResponses: false,
-            allQuestionsAnswered: false,
+            allQuestionsAnswered: questionIds.length === 0,
           };
         });
 
@@ -1078,7 +1118,7 @@ export default async function sessionRoutes(app) {
               questionCount: 0,
               answeredQuestionCount: 0,
               hasResponses: false,
-              allQuestionsAnswered: false,
+              allQuestionsAnswered: true,
             };
             progress.answeredQuestionCount = questionIdSet.size;
             progress.hasResponses = questionIdSet.size > 0;
@@ -1103,10 +1143,10 @@ export default async function sessionRoutes(app) {
 
           if (isQuizLikeSession(sessionForUser)) {
             const progress = quizProgressBySessionId[sessionId] || {
-              questionCount: Array.isArray(sessionForUser?.questions) ? sessionForUser.questions.length : 0,
+              questionCount: answerableQuestionIdsBySessionId.get(sessionId)?.length || 0,
               answeredQuestionCount: 0,
               hasResponses: false,
-              allQuestionsAnswered: false,
+              allQuestionsAnswered: (answerableQuestionIdsBySessionId.get(sessionId)?.length || 0) === 0,
             };
             sessionForUser.quizResponseCountByCurrentUser = progress.answeredQuestionCount;
             sessionForUser.quizHasResponsesByCurrentUser = progress.hasResponses;
@@ -1989,6 +2029,9 @@ export default async function sessionRoutes(app) {
 
       const questionIds = normalizedSession.questions || [];
       const orderedQuestions = await loadOrderedQuestions(questionIds);
+      const answerableQuestionIds = orderedQuestions
+        .filter((question) => isQuestionResponseCollectionEnabled(question))
+        .map((question) => String(question._id));
 
       const responses = questionIds.length > 0
         ? await Response.find({
@@ -2020,7 +2063,7 @@ export default async function sessionRoutes(app) {
       });
 
       const answeredQuestionIds = new Set(Object.keys(latestResponseByQuestionId));
-      const allAnswered = questionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
+      const allAnswered = answerableQuestionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
 
       return {
         session: buildSessionForUser(normalizedSession, request.user, { instructorView: false }),
@@ -2091,6 +2134,9 @@ export default async function sessionRoutes(app) {
       const question = await Question.findById(questionId).lean();
       if (!question || String(question.sessionId) !== String(normalizedSession._id)) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      if (!isQuestionResponseCollectionEnabled(question)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Slides do not accept quiz responses' });
       }
 
       const userId = request.user.userId;
@@ -2189,6 +2235,14 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Question not found in this quiz' });
       }
 
+      const question = await Question.findById(questionId).lean();
+      if (!question || String(question.sessionId) !== String(normalizedSession._id)) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      if (!isQuestionResponseCollectionEnabled(question)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Slides cannot be submitted as quiz answers' });
+      }
+
       const response = await Response.findOne({
         questionId,
         studentUserId: request.user.userId,
@@ -2260,17 +2314,20 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Quiz is closed' });
       }
 
-      const questionIds = normalizedSession.questions || [];
-      const responses = questionIds.length > 0
+      const orderedQuestions = await loadOrderedQuestions(normalizedSession.questions || []);
+      const answerableQuestionIds = orderedQuestions
+        .filter((question) => isQuestionResponseCollectionEnabled(question))
+        .map((question) => String(question._id));
+      const responses = answerableQuestionIds.length > 0
         ? await Response.find({
-          questionId: { $in: questionIds },
+          questionId: { $in: answerableQuestionIds },
           studentUserId: userId,
           attempt: 1,
         }).lean()
         : [];
 
       const answeredQuestionIds = new Set(responses.map((response) => String(response.questionId)));
-      const hasAllAnswers = questionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
+      const hasAllAnswers = answerableQuestionIds.every((questionId) => answeredQuestionIds.has(String(questionId)));
       if (!hasAllAnswers) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Must answer all questions to submit quiz' });
       }
@@ -2278,7 +2335,7 @@ export default async function sessionRoutes(app) {
       const now = new Date();
       await Response.updateMany(
         {
-          questionId: { $in: questionIds },
+          questionId: { $in: answerableQuestionIds },
           studentUserId: userId,
           attempt: 1,
           editable: true,
@@ -2460,20 +2517,23 @@ export default async function sessionRoutes(app) {
         ? (session.questions || []).findIndex((id) => String(id) === String(session.currentQuestion))
         : -1;
       const questionNumber = questionIndex >= 0 ? questionIndex + 1 : null;
+      const currentItemCollectsResponses = isQuestionResponseCollectionEnabled(currentQuestion);
 
       // For students: strip answer info and limit data
       const questionHidden = currentQuestion?.sessionOptions?.hidden ?? true;
-      const showStats = currentQuestion?.sessionOptions?.stats ?? false;
-      const showCorrect = currentQuestion?.sessionOptions?.correct ?? false;
+      const showStats = currentItemCollectsResponses ? (currentQuestion?.sessionOptions?.stats ?? false) : false;
+      const showCorrect = currentItemCollectsResponses ? (currentQuestion?.sessionOptions?.correct ?? false) : false;
       const attempts = currentQuestion?.sessionOptions?.attempts || [];
-      const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1, closed: false };
+      const currentAttempt = currentItemCollectsResponses
+        ? (attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1, closed: false })
+        : null;
 
       let responseStats = null;
       let studentResponse = null;
       let allResponses = null;
       const questionId = currentQuestion?._id;
 
-      if (questionId) {
+      if (questionId && currentItemCollectsResponses) {
         if (isInstrOrAdmin) {
           // Prof gets all responses for current question & attempt
           const responses = await Response.find({
@@ -2746,6 +2806,9 @@ export default async function sessionRoutes(app) {
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
+      if (!isQuestionResponseCollectionEnabled(question)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Slides do not accept live responses' });
+      }
 
       // Check if question is hidden
       if (question.sessionOptions?.hidden) {
@@ -2834,10 +2897,20 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
       }
 
+      const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
       const updates = {};
       if (request.body.hidden !== undefined) updates['sessionOptions.hidden'] = request.body.hidden;
-      if (request.body.stats !== undefined) updates['sessionOptions.stats'] = request.body.stats;
-      if (request.body.correct !== undefined) updates['sessionOptions.correct'] = request.body.correct;
+      if (isQuestionResponseCollectionEnabled(question)) {
+        if (request.body.stats !== undefined) updates['sessionOptions.stats'] = request.body.stats;
+        if (request.body.correct !== undefined) updates['sessionOptions.correct'] = request.body.correct;
+      } else {
+        updates['sessionOptions.stats'] = false;
+        updates['sessionOptions.correct'] = false;
+      }
 
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
@@ -2883,6 +2956,9 @@ export default async function sessionRoutes(app) {
       const question = await Question.findById(questionId);
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      if (!isQuestionResponseCollectionEnabled(question)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Slides do not support attempts' });
       }
 
       const attempts = question.sessionOptions?.attempts || [];
@@ -2946,6 +3022,9 @@ export default async function sessionRoutes(app) {
       const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      if (!isQuestionResponseCollectionEnabled(question)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Slides do not accept responses' });
       }
 
       const attempts = question.sessionOptions?.attempts || [];
