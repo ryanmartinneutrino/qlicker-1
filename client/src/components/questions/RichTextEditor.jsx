@@ -343,19 +343,24 @@ export default function RichTextEditor({
               {label}
             </Typography>
           ) : <Box />}
-          <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
-            <span>
-              <IconButton
-                size="small"
-                aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
-                onClick={() => setToolbarExpanded((current) => !current)}
-                disabled={disabled}
-                sx={{ p: 0.5 }}
-              >
-                {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
-              </IconButton>
-            </span>
-          </Tooltip>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+            <Typography variant="caption" color="text.secondary">
+              {toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+            </Typography>
+            <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
+              <span>
+                <IconButton
+                  size="small"
+                  aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+                  onClick={() => setToolbarExpanded((current) => !current)}
+                  disabled={disabled}
+                  sx={{ p: 0.5 }}
+                >
+                  {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
         </Box>
       ) : null}
 
