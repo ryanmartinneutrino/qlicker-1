@@ -17,6 +17,7 @@ import apiClient from '../../api/client';
 import {
   TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
 } from '../../components/questions/constants';
+import BackLinkButton from '../../components/common/BackLinkButton';
 import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 
@@ -123,6 +124,15 @@ function buildDefaultFeedbackSummary() {
     newFeedbackCount: 0,
     hasNewFeedback: false,
   };
+}
+
+function resolveAttemptIndex(responseAttemptIdx, stateKey, responses = []) {
+  if (!Array.isArray(responses) || responses.length === 0) return 0;
+  const currentIndex = responseAttemptIdx[stateKey];
+  if (Number.isInteger(currentIndex)) {
+    return Math.min(currentIndex, Math.max(responses.length - 1, 0));
+  }
+  return Math.max(responses.length - 1, 0);
 }
 
 function isCorrectOption(option) {
@@ -640,9 +650,11 @@ export default function SessionReview() {
     return (
       <Box sx={{ p: 3, maxWidth: 700 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button variant="outlined" onClick={() => navigate(fallbackCourseBackLink)}>
-          {t('student.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton
+          variant="outlined"
+          label={t('student.sessionReview.backToCourse')}
+          onClick={() => navigate(fallbackCourseBackLink)}
+        />
       </Box>
     );
   }
@@ -672,9 +684,11 @@ export default function SessionReview() {
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
-        <Button size="small" onClick={() => navigate(courseBackLink)} sx={{ mb: 1 }}>
-          ← {t('student.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton
+          label={t('student.sessionReview.backToCourse')}
+          onClick={() => navigate(courseBackLink)}
+          sx={{ mb: 1 }}
+        />
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           {session?.name || t('student.sessionReview.sessionReviewFallback')}
         </Typography>
@@ -790,10 +804,7 @@ export default function SessionReview() {
                 index={questionIdx}
                 total={total}
                 responseVisible={!!responseVisible[currentStateKey]}
-                response={currentResponses[Math.min(
-                  responseAttemptIdx[currentStateKey] || 0,
-                  Math.max(currentResponses.length - 1, 0)
-                )] || null}
+                response={currentResponses[resolveAttemptIndex(responseAttemptIdx, currentStateKey, currentResponses)] || null}
                 mark={currentQMark}
               />
 
@@ -801,10 +812,7 @@ export default function SessionReview() {
               {(() => {
                 const responses = currentResponses;
                 const hasResponses = responses.length > 0;
-                const attemptIdx = Math.min(
-                  responseAttemptIdx[currentStateKey] ?? Math.max(responses.length - 1, 0),
-                  Math.max(responses.length - 1, 0)
-                );
+                const attemptIdx = resolveAttemptIndex(responseAttemptIdx, currentStateKey, responses);
                 const currentResponse = responses[attemptIdx];
                 const isResponseVisible = !!responseVisible[currentStateKey];
 
@@ -882,10 +890,7 @@ export default function SessionReview() {
                 const stateKey = questionStateKey(i);
                 const responses = getResponsesForQuestion(responsesByQuestion, q, i).sort((a, b) => a.attempt - b.attempt);
                 const hasResponses = responses.length > 0;
-                const attemptIdx = Math.min(
-                  responseAttemptIdx[stateKey] ?? Math.max(responses.length - 1, 0),
-                  Math.max(responses.length - 1, 0)
-                );
+                const attemptIdx = resolveAttemptIndex(responseAttemptIdx, stateKey, responses);
                 const currentResponse = responses[attemptIdx];
                 const qType = normalizeQuestionType(q);
                 const mark = getMarkForQuestion(sessionGrade, q, i);

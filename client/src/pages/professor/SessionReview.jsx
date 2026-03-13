@@ -8,13 +8,14 @@ import {
 } from '@mui/material';
 import {
   Download as DownloadIcon,
-  ArrowBack as BackIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
+import BackLinkButton from '../../components/common/BackLinkButton';
+import { buildCourseTitle } from '../../utils/courseTitle';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -398,6 +399,7 @@ export default function SessionReview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
+  const [course, setCourse] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
@@ -425,8 +427,12 @@ export default function SessionReview() {
 
   const fetchResults = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/results`);
+      const [{ data }, courseResponse] = await Promise.all([
+        apiClient.get(`/sessions/${sessionId}/results`),
+        apiClient.get(`/courses/${courseId}`).catch(() => ({ data: null })),
+      ]);
       setSession(data.session);
+      setCourse(courseResponse?.data?.course || courseResponse?.data || null);
       setQuestions(data.questions || []);
       setStudentResults(data.studentResults || []);
 
@@ -445,7 +451,7 @@ export default function SessionReview() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, t]);
+  }, [courseId, sessionId, t]);
 
   useEffect(() => { fetchResults(); }, [fetchResults]);
 
@@ -478,6 +484,8 @@ export default function SessionReview() {
 
   const totalQuestions = questions.length;
   const totalStudents = studentResults.length;
+  const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
+  const courseSection = normalizeAnswerValue(course?.section);
   const joinedStudents = useMemo(() => {
     return studentResults.filter((student) => !!student?.inSession).length;
   }, [studentResults]);
@@ -800,30 +808,17 @@ export default function SessionReview() {
     return (
       <Box sx={{ p: 3, maxWidth: 800 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button
-          variant="outlined"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-        >
-          {t('professor.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} />
       </Box>
     );
   }
 
   // ---- Render: session still running ----
 
-  if (session?.status === 'running') {
+  if (session?.status === 'running' && !session?.quiz && !session?.practiceQuiz) {
     return (
       <Box sx={{ p: 3, maxWidth: 800 }}>
-        <Button
-          size="small"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-          sx={{ mb: 2 }}
-        >
-          {t('professor.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} sx={{ mb: 2 }} />
         <Alert severity="info">
           {t('professor.sessionReview.sessionStillRunning')}
         </Alert>
@@ -836,13 +831,7 @@ export default function SessionReview() {
       {/* Header */}
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-          <Button
-            size="small"
-            startIcon={<BackIcon />}
-            onClick={() => navigate(backToCoursePath)}
-          >
-            {t('professor.sessionReview.backToCourse')}
-          </Button>
+          <BackLinkButton label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} />
           <Button
             size="small"
             variant="outlined"
@@ -852,7 +841,17 @@ export default function SessionReview() {
             {t('professor.sessionReview.editSession')}
           </Button>
         </Box>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+        {courseTitle ? (
+          <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
+            {courseTitle}
+          </Typography>
+        ) : null}
+        {courseSection ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            {t('professor.course.sectionHeader', { section: courseSection })}
+          </Typography>
+        ) : null}
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {session?.name || t('professor.sessionReview.sessionReview')}
         </Typography>
         {session?.description && (

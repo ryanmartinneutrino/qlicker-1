@@ -19,6 +19,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
+import SessionListCard from '../../components/common/SessionListCard';
 import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
@@ -88,7 +89,7 @@ function parseCourseTab(value) {
 
 function getDefaultQuizWindowIso() {
   const start = new Date();
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  const end = new Date(start.getTime() + (12 * 60 * 60 * 1000));
   return {
     quizStart: start.toISOString(),
     quizEnd: end.toISOString(),
@@ -216,6 +217,7 @@ export default function CourseDetail() {
   const [editFields, setEditFields] = useState(EMPTY_COURSE_EDIT_FIELDS);
   const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
   const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
+  const [adminTimeFormat, setAdminTimeFormat] = useState('24h');
 
   // Sessions
   const [sessions, setSessions] = useState([]);
@@ -323,6 +325,22 @@ export default function CourseDetail() {
     setSettingsAutoSaveStatus('idle');
     setSettingsAutoSaveError('');
   }, [id]);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings/public')
+      .then(({ data }) => {
+        if (mounted) {
+          setAdminTimeFormat(data?.timeFormat === '12h' ? '12h' : '24h');
+        }
+      })
+      .catch(() => {
+        if (mounted) setAdminTimeFormat('24h');
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => { fetchCourse(); fetchSessions(); }, [fetchCourse, fetchSessions]);
 
@@ -579,6 +597,17 @@ export default function CourseDetail() {
     }
   };
 
+  const handleQuizTimeFormatChange = async (nextValue) => {
+    markSettingAutoSaveInProgress();
+    try {
+      await apiClient.patch(`/courses/${id}`, { quizTimeFormat: nextValue });
+      fetchCourse();
+      setSettingsAutoSaveStatus('success');
+    } catch (err) {
+      markSettingAutoSaveError(err, t('professor.course.failedUpdateSetting'));
+    }
+  };
+
   const handleRegenerateCode = async () => {
     try {
       await apiClient.post(`/courses/${id}/regenerate-code`);
@@ -744,150 +773,132 @@ export default function CourseDetail() {
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
     }
     return (
-      <Paper variant="outlined">
-        <List disablePadding>
-          {sessionItems.map((s, i) => (
-            <Box key={s._id}>
-              {i > 0 && <Divider />}
-              <ListItem
-                disablePadding
-                sx={{
-                  alignItems: 'stretch',
-                  flexWrap: { xs: 'wrap', md: 'nowrap' },
-                }}
-              >
-                <ListItemButton
-                  onClick={() => navigate(
-                    `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
-                    { state: { returnTab: tab } }
-                  )}
-                  sx={{ minWidth: 0 }}
-                >
-                  <ListItemText
-                    primary={(
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                        {s.name}
-                        <SessionStatusChip status={s.status} />
-                        {s.practiceQuiz && <Chip label={t('professor.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-                        {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
-                          <Chip
-                            label={t('professor.course.extensionsActive')}
-                            size="small"
-                            color="warning"
-                            variant="outlined"
-                            sx={COMPACT_CHIP_SX}
-                          />
-                        )}
-                      </Box>
-                    )}
-                    secondary={(
-                      <>
-                        {t('professor.course.questionCount', { count: (s.questions || []).length })}
-                        {getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}
-                      </>
-                    )}
-                  />
-                </ListItemButton>
-
-                <Box
-                  onClick={(event) => event.stopPropagation()}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: 1,
-                    px: 1,
-                    py: { xs: 0.5, md: 0 },
-                    width: { xs: '100%', md: 'auto' },
-                    justifyContent: { xs: 'flex-start', md: 'flex-end' },
-                    borderTop: { xs: '1px solid', md: 'none' },
-                    borderColor: { xs: 'divider', md: 'transparent' },
-                  }}
-                >
-                  {!s.quiz && s.status !== 'running' && s.status !== 'done' && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="primary"
-                      startIcon={<LaunchIcon />}
-                      onClick={() => handleLaunchSession(s._id)}
-                      disabled={!!sessionUpdatesInFlight[s._id]}
-                      aria-label={`Launch session ${s.name}`}
-                    >
-                      {t('professor.course.launch')}
-                    </Button>
-                  )}
-                  {!s.quiz && s.status === 'running' && (
-                    <Button
-                      size="small"
-                      variant="contained"
-                      color="success"
-                      startIcon={<JoinIcon />}
-                      onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
-                      aria-label={`Join live session ${s.name}`}
-                    >
-                      {t('professor.course.joinSession')}
-                    </Button>
-                  )}
-                  {s.status === 'done' && (
-                    <Button
-                      size="small"
-                      variant={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'contained' : 'outlined'}
-                      color={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'warning' : 'primary'}
-                      startIcon={<ReviewIcon />}
-                      onClick={() => navigate(
-                        `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
-                        { state: { returnTab: tab } }
-                      )}
-                      aria-label={`Review session ${s.name}`}
-                    >
-                      {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
-                        ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
-                        : t('professor.course.review')}
-                    </Button>
-                  )}
-                  <TextField
-                    select
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+        {sessionItems.map((s) => (
+          <SessionListCard
+            key={s._id}
+            highlighted={s.status === 'running'}
+            onClick={() => navigate(
+              `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
+              { state: { returnTab: tab } }
+            )}
+            title={s.name}
+            badges={(
+              <>
+                <SessionStatusChip status={s.status} />
+                {s.practiceQuiz && <Chip label={t('professor.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
+                  <Chip
+                    label={t('professor.course.extensionsActive')}
                     size="small"
-                    label={t('common.status')}
-                    value={s.status || 'hidden'}
-                    onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
-                    disabled={!!sessionUpdatesInFlight[s._id]}
-                    sx={{ minWidth: 122 }}
-                  >
-                    <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
-                    <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
-                    <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
-                    <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
-                  </TextField>
-                  <FormControlLabel
-                    sx={{ m: 0 }}
-                    control={(
-                      <Switch
-                        size="small"
-                        checked={!!s.reviewable}
-                        onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
-                        disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
-                      />
-                    )}
-                    label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
+                    color="warning"
+                    variant="outlined"
+                    sx={COMPACT_CHIP_SX}
                   />
-                  <Tooltip title={t('professor.course.copySession')}>
-                    <IconButton size="small" onClick={() => handleCopySession(s._id)} disabled={!!sessionUpdatesInFlight[s._id]}>
-                      <CopyIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title={t('professor.course.deleteSession')}>
-                    <IconButton size="small" color="error" onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </ListItem>
-            </Box>
-          ))}
-        </List>
-      </Paper>
+                )}
+              </>
+            )}
+            subtitle={`${t('professor.course.questionCount', { count: (s.questions || []).length })}${getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}`}
+            actions={(
+              <>
+                {!s.quiz && s.status !== 'running' && s.status !== 'done' && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    startIcon={<LaunchIcon />}
+                    onClick={() => handleLaunchSession(s._id)}
+                    disabled={!!sessionUpdatesInFlight[s._id]}
+                    aria-label={`Launch session ${s.name}`}
+                  >
+                    {t('professor.course.launch')}
+                  </Button>
+                )}
+                {!s.quiz && s.status === 'running' && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<JoinIcon />}
+                    onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
+                    aria-label={`Join live session ${s.name}`}
+                  >
+                    {t('professor.course.joinSession')}
+                  </Button>
+                )}
+                {(s.quiz || s.practiceQuiz) && s.status === 'running' && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<ReviewIcon />}
+                    onClick={() => navigate(
+                      `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                      { state: { returnTab: tab } }
+                    )}
+                    aria-label={`Review live quiz session ${s.name}`}
+                  >
+                    {t('professor.course.reviewLiveSessionResults')}
+                  </Button>
+                )}
+                {s.status === 'done' && (
+                  <Button
+                    size="small"
+                    variant={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'contained' : 'outlined'}
+                    color={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'warning' : 'primary'}
+                    startIcon={<ReviewIcon />}
+                    onClick={() => navigate(
+                      `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                      { state: { returnTab: tab } }
+                    )}
+                    aria-label={`Review session ${s.name}`}
+                  >
+                    {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
+                      ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
+                      : t('professor.course.review')}
+                  </Button>
+                )}
+                <TextField
+                  select
+                  size="small"
+                  label={t('common.status')}
+                  value={s.status || 'hidden'}
+                  onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
+                  disabled={!!sessionUpdatesInFlight[s._id]}
+                  sx={{ minWidth: 122 }}
+                >
+                  <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
+                  <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
+                  <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
+                  <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
+                </TextField>
+                <FormControlLabel
+                  sx={{ m: 0 }}
+                  control={(
+                    <Switch
+                      size="small"
+                      checked={!!s.reviewable}
+                      onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
+                      disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
+                    />
+                  )}
+                  label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
+                />
+                <Tooltip title={t('professor.course.copySession')}>
+                  <IconButton size="small" onClick={() => handleCopySession(s._id)} disabled={!!sessionUpdatesInFlight[s._id]}>
+                    <CopyIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t('professor.course.deleteSession')}>
+                  <IconButton size="small" color="error" onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          />
+        ))}
+      </Box>
     );
   };
 
@@ -913,7 +924,7 @@ export default function CourseDetail() {
         <TextField
           select
           size="small"
-          label="View"
+          label={t('common.view')}
           value={String(tab)}
           onChange={(event) => handleTabChange(Number(event.target.value))}
           sx={{ mb: 1.5, minWidth: 260, maxWidth: 420 }}
@@ -1120,6 +1131,21 @@ export default function CourseDetail() {
             }
             label={t('professor.course.allowStudentQuestions')}
           />
+          <TextField
+            select
+            size="small"
+            label={t('professor.course.quizTimeFormat')}
+            value={course.quizTimeFormat || 'inherit'}
+            onChange={(event) => handleQuizTimeFormatChange(event.target.value)}
+          >
+            <MenuItem value="inherit">
+              {t('professor.course.quizTimeFormatInherit', {
+                defaultFormat: t(`professor.course.quizTimeFormatOptions.${adminTimeFormat}`),
+              })}
+            </MenuItem>
+            <MenuItem value="24h">{t('professor.course.quizTimeFormatOptions.24h')}</MenuItem>
+            <MenuItem value="12h">{t('professor.course.quizTimeFormatOptions.12h')}</MenuItem>
+          </TextField>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2">{t('professor.course.enrollmentCode', { code: course.enrollmentCode })}</Typography>
             <Button size="small" startIcon={<CopyIcon />} onClick={copyCode}>
@@ -1185,42 +1211,58 @@ export default function CourseDetail() {
       {/* Add Student Dialog */}
       <Dialog open={addStudentOpen} onClose={() => setAddStudentOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('professor.course.addStudentTitle')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important' }}>
-          <TextField
-            label={t('professor.course.studentEmail')}
-            type="email"
-            value={studentEmail}
-            onChange={(e) => setStudentEmail(e.target.value)}
-            fullWidth
-            autoFocus
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddStudentOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleAddStudent} disabled={addingStudent || !studentEmail.trim()}>
-            {addingStudent ? t('professor.course.adding') : t('common.add')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleAddStudent();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important' }}>
+            <TextField
+              label={t('professor.course.studentEmail')}
+              type="email"
+              value={studentEmail}
+              onChange={(e) => setStudentEmail(e.target.value)}
+              fullWidth
+              autoFocus
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddStudentOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={addingStudent || !studentEmail.trim()}>
+              {addingStudent ? t('professor.course.adding') : t('common.add')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       {/* Add Instructor Dialog */}
       <Dialog open={addInstructorOpen} onClose={() => setAddInstructorOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('professor.course.addInstructorTitle')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important' }}>
-          <TextField
-            label={t('professor.course.userId')}
-            value={instructorUserId}
-            onChange={(e) => setInstructorUserId(e.target.value)}
-            fullWidth
-            autoFocus
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddInstructorOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleAddInstructor} disabled={addingInstructor || !instructorUserId.trim()}>
-            {addingInstructor ? t('professor.course.adding') : t('common.add')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleAddInstructor();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important' }}>
+            <TextField
+              label={t('professor.course.userId')}
+              value={instructorUserId}
+              onChange={(e) => setInstructorUserId(e.target.value)}
+              fullWidth
+              autoFocus
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddInstructorOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={addingInstructor || !instructorUserId.trim()}>
+              {addingInstructor ? t('professor.course.adding') : t('common.add')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       {/* Delete Confirmation */}
@@ -1259,7 +1301,7 @@ export default function CourseDetail() {
         <DialogActions>
           <Button onClick={() => setRemoveStudentTarget(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => handleRemoveStudent(removeStudentTarget?._id)}>
-            Remove
+            {t('common.remove')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1273,7 +1315,7 @@ export default function CourseDetail() {
         <DialogActions>
           <Button onClick={() => setRemoveInstructorTarget(null)}>{t('common.cancel')}</Button>
           <Button color="error" variant="contained" onClick={() => handleRemoveInstructor(removeInstructorTarget?._id)}>
-            Remove
+            {t('common.remove')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1300,31 +1342,39 @@ export default function CourseDetail() {
         fullWidth
       >
         <DialogTitle>{t('professor.course.createSession')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label={t('professor.course.sessionName')} inputRef={newSessionNameInputRef} fullWidth autoFocus />
-          <TextField label={t('professor.course.description')} inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => {
-              setCreateSessionOpen(false);
-              if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
-              if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
-            }}
-          >
-            {t('common.cancel')}
-          </Button>
-          <Button variant="contained" onClick={handleCreateSession} disabled={creatingSess}>
-            {creatingSess ? 'Creating…' : t('common.create')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCreateSession();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField label={t('professor.course.sessionName')} inputRef={newSessionNameInputRef} fullWidth autoFocus />
+            <TextField label={t('professor.course.description')} inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
+          </DialogContent>
+          <DialogActions>
+            <Button
+              onClick={() => {
+                setCreateSessionOpen(false);
+                if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+                if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" variant="contained" disabled={creatingSess}>
+              {creatingSess ? t('professor.dashboard.creating') : t('common.create')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       {/* Delete Session Confirmation */}
       <Dialog open={!!deleteSessionTarget} onClose={() => setDeleteSessionTarget(null)}>
         <DialogTitle>{t('professor.course.deleteSession')}</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete <strong>{deleteSessionTarget?.name}</strong>? This action cannot be undone.
+          {t('professor.course.deleteSessionConfirm', { name: deleteSessionTarget?.name || '' })}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteSessionTarget(null)}>{t('common.cancel')}</Button>

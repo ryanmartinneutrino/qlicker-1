@@ -14,6 +14,7 @@ i18n
       fr: { translation: fr },
     },
     fallbackLng: 'en',
+    showSupportNotice: false,
     interpolation: {
       escapeValue: false, // React already escapes
     },
@@ -43,6 +44,11 @@ export const DATE_FORMATS = [
   { key: 'DD-MMM-YYYY', example: '11-Jan-2026' },
   { key: 'MMM-DD-YYYY', example: 'Jan-11-2026' },
   { key: 'YYYY-MM-DD', example: '2026-01-11' },
+];
+
+export const TIME_FORMATS = [
+  { key: '24h', example: '14:30' },
+  { key: '12h', example: '2:30 PM' },
 ];
 
 /**

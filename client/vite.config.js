@@ -9,6 +9,31 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (id.includes('@mui/') || id.includes('@emotion/')) {
+              return 'vendor-mui';
+            }
+            if (id.includes('@tiptap/') || id.includes('katex')) {
+              return 'vendor-editor';
+            }
+            if (id.includes('i18next') || id.includes('react-i18next')) {
+              return 'vendor-i18n';
+            }
+            if (id.includes('react-router-dom')) {
+              return 'vendor-router';
+            }
+            if (id.includes('axios')) {
+              return 'vendor-network';
+            }
+            return 'vendor-core';
+          },
+        },
+      },
+    },
     server: {
       port: devPort,
       proxy: {

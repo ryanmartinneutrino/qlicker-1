@@ -46,6 +46,7 @@ const updateCourseSchema = {
       inactive: { type: 'boolean' },
       requireVerified: { type: 'boolean' },
       allowStudentQuestions: { type: 'boolean' },
+      quizTimeFormat: { type: 'string', enum: ['inherit', '24h', '12h'] },
     },
     additionalProperties: false,
   },
@@ -64,6 +65,8 @@ export default async function courseRoutes(app) {
     async (request, reply) => {
       const { name, deptCode, courseNumber, section, semester } = request.body;
       const userId = request.user.userId;
+      const roles = request.user.roles || [];
+      const addCreatorAsInstructor = roles.includes('professor') || !roles.includes('admin');
 
       const enrollmentCode = await generateUniqueEnrollmentCode();
 
@@ -75,12 +78,14 @@ export default async function courseRoutes(app) {
         semester,
         owner: userId,
         enrollmentCode,
-        instructors: [userId],
+        instructors: addCreatorAsInstructor ? [userId] : [],
       });
 
-      await User.findByIdAndUpdate(userId, {
-        $addToSet: { 'profile.courses': course._id },
-      });
+      if (addCreatorAsInstructor) {
+        await User.findByIdAndUpdate(userId, {
+          $addToSet: { 'profile.courses': course._id },
+        });
+      }
 
       return reply.code(201).send({ course });
     }
@@ -93,7 +98,7 @@ export default async function courseRoutes(app) {
     async (request, reply) => {
       const { search, page: pageParam, limit: limitParam } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
-      const limit = Math.min(100, Math.max(1, parseInt(limitParam, 10) || 20));
+      const limit = Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
 
       const roles = request.user.roles || [];
       const userId = request.user.userId;
@@ -115,6 +120,8 @@ export default async function courseRoutes(app) {
           { name: regex },
           { deptCode: regex },
           { courseNumber: regex },
+          { section: regex },
+          { semester: regex },
         ];
       }
 
@@ -223,7 +230,7 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions'];
+      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions', 'quizTimeFormat'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {

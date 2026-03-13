@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
+import User from '../../src/models/User.js';
 
 let app;
 
@@ -53,6 +54,22 @@ describe('POST /api/v1/courses', () => {
     expect(body.course.deptCode).toBe('CS');
     expect(body.course.owner).toBe(prof._id.toString());
     expect(body.course.instructors).toContain(prof._id.toString());
+  });
+
+  it('pure admin can create a course without being added as an instructor', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-course@example.com', roles: ['admin'] });
+    const token = await getAuthToken(app, admin);
+
+    const res = await createCourseAsProf(token, { name: 'Admin-owned Course' });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.course.owner).toBe(admin._id.toString());
+    expect(body.course.instructors || []).toEqual([]);
+
+    const persistedAdmin = await User.findById(admin._id).lean();
+    expect(persistedAdmin.profile.courses || []).toEqual([]);
   });
 
   it('student cannot create a course', async (ctx) => {
@@ -200,6 +217,28 @@ describe('GET /api/v1/courses/:id', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('PATCH /api/v1/courses/:id', () => {
+  it('allows instructors to override the course quiz time format', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const prof = await createTestUser({ email: 'prof-course-format@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const courseId = createRes.json().course._id;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/courses/${courseId}`, {
+      token: profToken,
+      payload: { quizTimeFormat: '12h' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().course.quizTimeFormat).toBe('12h');
+
+    const storedCourse = await Course.findById(courseId).lean();
+    expect(storedCourse.quizTimeFormat).toBe('12h');
   });
 });
 

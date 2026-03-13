@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest | Unit tests (208 server + 3 client) |
+| **Testing** | Vitest | Unit tests (219 server + 9 client) |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -101,19 +101,20 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ WebSocket delta messages — ~98% reduction in DB queries during live sessions
 - ✅ Course page WebSocket push — replaced polling for session status events
 - ✅ Legacy DB indexes — all models indexed
-- ✅ i18n — react-i18next with 879 translation keys (en/fr), all 30+ components wired
+- ✅ i18n — react-i18next with 1073 translation keys (en/fr), all 30+ components wired
 - ✅ CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
 - ✅ JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
 - ✅ SAML logout validation — node-saml crypto validation with XML fallback
 - ✅ File upload content validation — magic bytes via `file-type` library
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
+- ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 208 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
-- **Client:** 3 tests in 1 file (grading UI)
+- **Server:** 219 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
+- **Client:** 9 tests in 2 files (grading UI, student quiz CTA)
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 
@@ -168,7 +169,6 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 ### Priority 6: Additional Items
 
 - [ ] Copy sessions between courses (Agent 3 remaining task)
-- [ ] Client bundle optimization — main JS chunk is 1.6 MB (482 KB gzipped); apply code-splitting with dynamic imports
 - [ ] Extract WebSocket context from inline LiveSession pages to shared context
 - [ ] Add automated accessibility regression checks (axe-core in Playwright)
 - [ ] Question approval workflow (student submissions)
@@ -237,7 +237,7 @@ Work is divided into **8 parallel lanes**. Dependencies between agents are minim
 | 4 - Sessions | ✅ Phase 7 done | Question approval workflow |
 | 5 - Responses | ✅ Phase 7 done | WebSocket rate limiting |
 | 6 - Grading | ✅ Phase 6 done | — |
-| 7 - Frontend | ✅ Phase 7 done | Question library UI, WebSocket context extraction, code-splitting |
+| 7 - Frontend | ✅ Phase 7 done | Question library UI, WebSocket context extraction |
 | 8 - Testing | ✅ Phase 7 done | Playwright E2E, CI pipeline, component tests |
 
 ---
@@ -275,7 +275,6 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 |-------|----------|----------------|--------|
 | **N+1 grade/response query in review** | MEDIUM | Batch-load responses instead of per-grade loop queries in session review/results endpoints | Phase 7/8 |
 | **Sessions list no pagination** | MEDIUM | Add pagination to `GET /courses/:courseId/sessions` | Phase 8 |
-| **Client bundle 1.6 MB** | MEDIUM | Code-split with dynamic imports for heavy pages (SessionEditor, LiveSession) | Phase 7 |
 | **Missing field projections** | LOW | Add `.select()` to Question queries in live session endpoint | Phase 8 |
 
 ### Performance — Fixed (Previously)
@@ -283,6 +282,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 - ✅ Delta WebSocket events — ~98% query reduction in live sessions
 - ✅ Duplicate response queries merged
 - ✅ Course page WebSocket push replaces polling
+- ✅ Client bundle split into route/vendor chunks — production build no longer reports the `>500 kB` chunk warning
 - ✅ `.lean()` on all hot-path read-only queries
 - ✅ `wsSendToUsers()` single-serialize broadcast
 
@@ -297,7 +297,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 211 tests (208 server + 3 client) |
+| Unit tests | ✅ 228 tests (219 server + 9 client) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -317,13 +317,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (208 tests, 11 files)
+# Server tests (219 tests, 11 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (3 tests, 1 file)
+# Client tests (9 tests, 2 files)
 cd client && npx vitest run
 ```
 

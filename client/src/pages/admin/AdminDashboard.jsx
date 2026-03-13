@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Tabs, Tab, Typography, TextField, Button, Checkbox,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  CircularProgress, Tooltip, Autocomplete, Chip,
+  ButtonBase, CircularProgress, Tooltip, Chip,
   Avatar,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
@@ -13,8 +14,10 @@ import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDate } from '../../utils/date';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
-import { SUPPORTED_LOCALES, DATE_FORMATS } from '../../i18n';
+import SessionListCard from '../../components/common/SessionListCard';
+import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
 
 function TabPanel({ children, value, index }) {
@@ -41,6 +44,46 @@ const SSO_FIELDS = [
   { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
 ];
 
+function normalizeCourseField(value) {
+  return String(value || '').trim();
+}
+
+function buildCourseOptionLabel(course = {}) {
+  const code = [course.deptCode, course.courseNumber].map(normalizeCourseField).filter(Boolean).join(' ');
+  const section = normalizeCourseField(course.section);
+  const name = normalizeCourseField(course.name);
+  const semester = normalizeCourseField(course.semester);
+  return [code, section, name, semester].filter(Boolean).join(' - ') || normalizeCourseField(course._id);
+}
+
+function buildCourseSearchIndex(course = {}) {
+  return [
+    buildCourseTitle(course, 'long'),
+    buildCourseOptionLabel(course),
+    normalizeCourseField(course.deptCode),
+    normalizeCourseField(course.courseNumber),
+    normalizeCourseField(course.section),
+    normalizeCourseField(course.name),
+    normalizeCourseField(course.semester),
+  ].join(' ').toLowerCase();
+}
+
+function sortCoursesByRecent(courses = []) {
+  return [...courses].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
+function sortCoursesByTitle(courses = []) {
+  return [...courses].sort((a, b) => {
+    const titleCompare = buildCourseTitle(a, 'long').localeCompare(buildCourseTitle(b, 'long'));
+    if (titleCompare !== 0) return titleCompare;
+    return buildCourseOptionLabel(a).localeCompare(buildCourseOptionLabel(b));
+  });
+}
+
 // ── Settings Tab ────────────────────────────────────────────────────────────
 function SettingsTab() {
   const { t } = useTranslation();
@@ -52,6 +95,7 @@ function SettingsTab() {
     tokenExpiryMinutes: 120,
     locale: 'en',
     dateFormat: 'DD-MMM-YYYY',
+    timeFormat: '24h',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,6 +109,7 @@ function SettingsTab() {
       if (!mounted) return;
       const loadedLocale = data.locale ?? 'en';
       const loadedDateFormat = data.dateFormat ?? 'DD-MMM-YYYY';
+      const loadedTimeFormat = data.timeFormat ?? '24h';
       setSettings({
         restrictDomain: data.restrictDomain ?? false,
         allowedDomains: Array.isArray(data.allowedDomains)
@@ -75,10 +120,12 @@ function SettingsTab() {
         tokenExpiryMinutes: data.tokenExpiryMinutes ?? 120,
         locale: loadedLocale,
         dateFormat: loadedDateFormat,
+        timeFormat: loadedTimeFormat,
       });
       i18n.changeLanguage(loadedLocale);
       localStorage.setItem('qlicker_locale', loadedLocale);
       localStorage.setItem('qlicker_dateFormat', loadedDateFormat);
+      localStorage.setItem('qlicker_timeFormat', loadedTimeFormat);
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
@@ -115,6 +162,7 @@ function SettingsTab() {
           tokenExpiryMinutes: Math.max(5, parseInt(settings.tokenExpiryMinutes, 10) || 120),
           locale: settings.locale,
           dateFormat: settings.dateFormat,
+          timeFormat: settings.timeFormat,
         };
         await apiClient.patch('/settings', payload);
         setSaveStatus('success');
@@ -194,6 +242,24 @@ function SettingsTab() {
         >
           {DATE_FORMATS.map((fmt) => (
             <MenuItem key={fmt.key} value={fmt.key}>{fmt.example}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+        <InputLabel>{t('admin.settings.timeFormat')}</InputLabel>
+        <Select
+          value={settings.timeFormat}
+          label={t('admin.settings.timeFormat')}
+          onChange={(e) => {
+            const newFormat = e.target.value;
+            setSettings((s) => ({ ...s, timeFormat: newFormat }));
+            localStorage.setItem('qlicker_timeFormat', newFormat);
+          }}
+        >
+          {TIME_FORMATS.map((fmt) => (
+            <MenuItem key={fmt.key} value={fmt.key}>
+              {t(`admin.settings.timeFormatOptions.${fmt.key}`, { example: fmt.example })}
+            </MenuItem>
           ))}
         </Select>
       </FormControl>
@@ -446,24 +512,32 @@ function UsersTab({ currentUserId }) {
       {/* Create user dialog */}
       <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('admin.users.createUser')}</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          <TextField label={t('admin.users.email')} type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
-          <TextField label={t('admin.users.password')} type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
-          <TextField label={t('admin.users.firstName')} required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
-          <TextField label={t('admin.users.lastName')} required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
-          <FormControl>
-            <InputLabel>{t('admin.users.role')}</InputLabel>
-            <Select value={newUser.role} label={t('admin.users.role')} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
-              <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
-              <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
-              <MenuItem value="student">{t('admin.users.student')}</MenuItem>
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleCreate}>{t('common.create')}</Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleCreate();
+          }}
+        >
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+            <TextField label={t('admin.users.email')} type="email" required value={newUser.email} onChange={(e) => setNewUser((s) => ({ ...s, email: e.target.value }))} />
+            <TextField label={t('admin.users.password')} type="password" required value={newUser.password} onChange={(e) => setNewUser((s) => ({ ...s, password: e.target.value }))} />
+            <TextField label={t('admin.users.firstName')} required value={newUser.firstname} onChange={(e) => setNewUser((s) => ({ ...s, firstname: e.target.value }))} />
+            <TextField label={t('admin.users.lastName')} required value={newUser.lastname} onChange={(e) => setNewUser((s) => ({ ...s, lastname: e.target.value }))} />
+            <FormControl>
+              <InputLabel>{t('admin.users.role')}</InputLabel>
+              <Select value={newUser.role} label={t('admin.users.role')} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
+                <MenuItem value="admin">{t('admin.users.admin')}</MenuItem>
+                <MenuItem value="professor">{t('admin.users.professor')}</MenuItem>
+                <MenuItem value="student">{t('admin.users.student')}</MenuItem>
+              </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained">{t('common.create')}</Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Dialog open={!!imageViewUser} onClose={() => setImageViewUser(null)} maxWidth="sm" fullWidth>
@@ -727,13 +801,15 @@ function VideoTab() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
+  const [enabledSearch, setEnabledSearch] = useState('');
+  const [disabledSearch, setDisabledSearch] = useState('');
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     Promise.all([
       apiClient.get('/settings'),
-      apiClient.get('/courses', { params: { limit: 100 } }).catch(() => ({ data: { courses: [] } })),
+      apiClient.get('/courses', { params: { limit: 500 } }).catch(() => ({ data: { courses: [] } })),
     ]).then(([settingsRes, coursesRes]) => {
       if (!mounted) return;
       const data = settingsRes.data;
@@ -780,25 +856,100 @@ function VideoTab() {
     return () => clearTimeout(timer);
   }, [settings, loading]);
 
+  const sortedCourses = useMemo(() => sortCoursesByTitle(courses), [courses]);
+  const enabledCourseIds = useMemo(
+    () => new Set((settings.Jitsi_EnabledCourses || []).map((courseId) => String(courseId))),
+    [settings.Jitsi_EnabledCourses]
+  );
+  const coursesWithVideo = useMemo(
+    () => sortedCourses.filter((course) => enabledCourseIds.has(String(course._id))),
+    [enabledCourseIds, sortedCourses]
+  );
+  const coursesWithoutVideo = useMemo(
+    () => sortedCourses.filter((course) => !enabledCourseIds.has(String(course._id))),
+    [enabledCourseIds, sortedCourses]
+  );
+  const filterCourseList = useCallback((items, searchValue) => {
+    const searchTerm = String(searchValue || '').trim().toLowerCase();
+    if (!searchTerm) return items;
+    return items.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
+  }, []);
+  const visibleEnabledCourses = useMemo(
+    () => filterCourseList(coursesWithVideo, enabledSearch),
+    [coursesWithVideo, enabledSearch, filterCourseList]
+  );
+  const visibleDisabledCourses = useMemo(
+    () => filterCourseList(coursesWithoutVideo, disabledSearch),
+    [coursesWithoutVideo, disabledSearch, filterCourseList]
+  );
+
+  const toggleCourse = useCallback((courseId) => {
+    setSettings((current) => {
+      const currentIds = Array.isArray(current.Jitsi_EnabledCourses) ? current.Jitsi_EnabledCourses : [];
+      const normalizedCourseId = String(courseId);
+      const hasCourse = currentIds.some((value) => String(value) === normalizedCourseId);
+      return {
+        ...current,
+        Jitsi_EnabledCourses: hasCourse
+          ? currentIds.filter((value) => String(value) !== normalizedCourseId)
+          : [...currentIds, courseId],
+      };
+    });
+  }, []);
+
+  const renderCourseColumn = (title, searchValue, onSearchChange, items) => (
+    <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.25, minHeight: 420 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {title} ({items.length})
+      </Typography>
+      <TextField
+        size="small"
+        value={searchValue}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder={t('admin.video.searchCourses')}
+        fullWidth
+      />
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minHeight: 0, maxHeight: 440, overflowY: 'auto' }}>
+        {items.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.video.noCourses')}
+          </Typography>
+        ) : (
+          items.map((course) => (
+            <ButtonBase
+              key={course._id}
+              onClick={() => toggleCourse(course._id)}
+              sx={{ width: '100%', textAlign: 'left', borderRadius: 1.5 }}
+            >
+              <Paper
+                variant="outlined"
+                sx={{
+                  width: '100%',
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    bgcolor: 'action.hover',
+                    boxShadow: 1,
+                  },
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {buildCourseTitle(course, 'long')}
+                </Typography>
+              </Paper>
+            </ButtonBase>
+          ))
+        )}
+      </Box>
+    </Paper>
+  );
+
   if (loading) return <CircularProgress />;
 
-  const courseLabel = (c) => {
-    const parts = [c.deptCode, c.courseNumber, c.section, c.name, c.semester].filter(Boolean);
-    return parts.join(' – ') || c._id;
-  };
-
-  const sortedCourses = [...courses].sort((a, b) => {
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
-
-  const selectedCourseObjects = settings.Jitsi_EnabledCourses
-    .map((cid) => sortedCourses.find((c) => c._id === cid))
-    .filter(Boolean);
-
   return (
-    <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ maxWidth: 980, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControlLabel
         control={
@@ -818,39 +969,99 @@ function VideoTab() {
             placeholder={t('admin.video.jitsiDomainPlaceholder')}
             fullWidth
           />
-          <Autocomplete
-            multiple
-            options={sortedCourses}
-            value={selectedCourseObjects}
-            onChange={(_, newValue) => {
-              setSettings((s) => ({ ...s, Jitsi_EnabledCourses: newValue.map((c) => c._id) }));
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.video.enabledCoursesHelp')}
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
             }}
-            getOptionLabel={(option) => courseLabel(option)}
-            isOptionEqualToValue={(option, value) => option._id === value._id}
-            renderTags={(value, getTagProps) =>
-              value.map((option, index) => (
-                <Chip
-                  label={courseLabel(option)}
-                  size="small"
-                  {...getTagProps({ index })}
-                  key={option._id}
-                />
-              ))
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={t('admin.video.enabledCourses')}
-                placeholder={t('admin.video.searchCourses')}
-              />
-            )}
-            fullWidth
-          />
+          >
+            {renderCourseColumn(t('admin.video.enabledCourses'), enabledSearch, setEnabledSearch, visibleEnabledCourses)}
+            {renderCourseColumn(t('admin.video.coursesWithoutVideo'), disabledSearch, setDisabledSearch, visibleDisabledCourses)}
+          </Box>
         </>
       ) : (
         <Typography variant="body2" color="text.secondary">
           {t('admin.video.jitsiNotEnabled')}
         </Typography>
+      )}
+    </Box>
+  );
+}
+
+// ── Courses Tab ─────────────────────────────────────────────────────────────
+function CoursesTab() {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/courses', { params: { limit: 500 } }).then(({ data }) => {
+      if (mounted) {
+        setCourses(data.courses || []);
+      }
+    }).catch((error) => {
+      if (mounted) {
+        setMessage(error.response?.data?.message || t('admin.courses.failedLoadCourses'));
+      }
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [t]);
+
+  const visibleCourses = useMemo(() => {
+    const searchTerm = String(search || '').trim().toLowerCase();
+    const baseCourses = sortCoursesByRecent(courses);
+    if (!searchTerm) return baseCourses;
+    return baseCourses.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
+  }, [courses, search]);
+
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('admin.courses.searchPlaceholder')}
+          slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
+          sx={{ minWidth: 280 }}
+        />
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.courses.totalCount', { total: visibleCourses.length })}
+        </Typography>
+      </Box>
+
+      {loading ? (
+        <CircularProgress />
+      ) : message ? (
+        <Alert severity="error">{message}</Alert>
+      ) : visibleCourses.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.courses.noCoursesFound')}
+        </Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          {visibleCourses.map((course) => (
+            <SessionListCard
+              key={course._id}
+              onClick={() => navigate(`/manage/course/${course._id}`)}
+              title={buildCourseTitle(course, 'medium')}
+              badges={<Chip size="small" label={course.inactive ? t('admin.courses.inactive') : t('admin.courses.active')} color={course.inactive ? 'default' : 'success'} />}
+              subtitle={buildCourseOptionLabel(course)}
+            />
+          ))}
+        </Box>
       )}
     </Box>
   );
@@ -868,15 +1079,17 @@ export default function AdminDashboard() {
       <Tabs value={tab} onChange={(_, v) => setTab(v)}>
         <Tab label={t('admin.tabs.settings')} />
         <Tab label={t('admin.tabs.users')} />
+        <Tab label={t('admin.tabs.courses')} />
         <Tab label={t('admin.tabs.storage')} />
         <Tab label={t('admin.tabs.sso')} />
         <Tab label={t('admin.tabs.video')} />
       </Tabs>
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
-      <TabPanel value={tab} index={2}><StorageTab /></TabPanel>
-      <TabPanel value={tab} index={3}><SSOTab /></TabPanel>
-      <TabPanel value={tab} index={4}><VideoTab /></TabPanel>
+      <TabPanel value={tab} index={2}><CoursesTab /></TabPanel>
+      <TabPanel value={tab} index={3}><StorageTab /></TabPanel>
+      <TabPanel value={tab} index={4}><SSOTab /></TabPanel>
+      <TabPanel value={tab} index={5}><VideoTab /></TabPanel>
     </Box>
   );
 }

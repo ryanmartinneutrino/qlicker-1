@@ -18,7 +18,8 @@ import {
   Divider,
 } from '@mui/material';
 import apiClient from '../../api/client';
-import StudentRichTextEditor from '../../components/questions/StudentRichTextEditor';
+import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
+import BackLinkButton from '../../components/common/BackLinkButton';
 import {
   QUESTION_TYPES,
   TYPE_LABELS,
@@ -346,9 +347,7 @@ export default function QuizSession() {
     return (
       <Box sx={{ p: 3, maxWidth: 760, mx: 'auto' }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.quiz.quizNotFound')}</Alert>
-        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          {t('student.quiz.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.quiz.backToCourse')} onClick={() => navigate(courseQuizTabLink)} />
       </Box>
     );
   }
@@ -359,9 +358,7 @@ export default function QuizSession() {
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('student.quiz.quizClosed')}
         </Alert>
-        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          {t('student.quiz.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.quiz.backToCourse')} onClick={() => navigate(courseQuizTabLink)} />
       </Box>
     );
   }
@@ -372,9 +369,7 @@ export default function QuizSession() {
         <Alert severity="success" sx={{ mb: 2 }}>
           {t('student.quiz.alreadySubmitted')}
         </Alert>
-        <Button variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          {t('student.quiz.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.quiz.backToCourse')} onClick={() => navigate(courseQuizTabLink)} />
       </Box>
     );
   }
@@ -382,9 +377,7 @@ export default function QuizSession() {
   return (
     <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 860, mx: 'auto' }}>
       <Box sx={{ mb: 1.25 }}>
-        <Button size="small" variant="outlined" onClick={() => navigate(courseQuizTabLink)}>
-          {t('student.quiz.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.quiz.backToCourse')} onClick={() => navigate(courseQuizTabLink)} />
       </Box>
 
       <Box sx={{ mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
@@ -571,18 +564,21 @@ export default function QuizSession() {
                     )}
                   </Paper>
                 ) : (
-                  <StudentRichTextEditor
-                    value={draft.answerWysiwyg || ''}
-                    onChange={({ html, plainText }) => {
-                      updateDraft(question, (current) => ({
-                        ...current,
-                        answerWysiwyg: html,
-                        answer: plainText,
-                      }));
-                    }}
-                    placeholder={t('student.quiz.typeAnswer')}
-                    disabled={locked}
-                  />
+                  <>
+                    <StudentRichTextEditor
+                      value={draft.answerWysiwyg || ''}
+                      onChange={({ html, plainText }) => {
+                        updateDraft(question, (current) => ({
+                          ...current,
+                          answerWysiwyg: html,
+                          answer: plainText,
+                        }));
+                      }}
+                      placeholder={t('student.quiz.typeAnswer')}
+                      disabled={locked}
+                    />
+                    <MathPreview html={draft.answerWysiwyg || ''} />
+                  </>
                 )}
               </Box>
             )}

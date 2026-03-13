@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
@@ -9,6 +9,12 @@ import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@m
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import {
+  getStudentSessionAction,
+  isSubmittedLiveQuiz,
+  sortStudentSessions,
+} from '../../utils/studentSessions';
+import SessionListCard from '../../components/common/SessionListCard';
 
 export default function StudentDashboard() {
   const { t } = useTranslation();
@@ -65,6 +71,14 @@ export default function StudentDashboard() {
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bTime - aTime;
   });
+  const courseById = useMemo(
+    () => new Map(courses.map((course) => [String(course._id), course])),
+    [courses]
+  );
+  const visibleLiveSessions = useMemo(
+    () => sortStudentSessions(liveSessions).filter((session) => !isSubmittedLiveQuiz(session)),
+    [liveSessions]
+  );
 
   return (
     <Box sx={{ p: 3 }}>
@@ -75,23 +89,43 @@ export default function StudentDashboard() {
         </Button>
       </Box>
 
-      {liveSessions.length > 0 && (
+      {visibleLiveSessions.length > 0 && (
         <Box sx={{ mb: 3 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
             <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
             {t('dashboard.liveSessions')}
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {liveSessions.map((ls) => (
-              <Chip
-                key={ls._id}
-                label={`${ls.courseName} — ${ls.name}`}
-                color="success"
-                variant="outlined"
-                onClick={() => navigate(`/student/course/${ls.courseId}/session/${ls._id}/live`)}
-                sx={{ cursor: 'pointer' }}
-              />
-            ))}
+          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+            {visibleLiveSessions.map((ls) => {
+              const matchedCourse = courseById.get(String(ls.courseId));
+              const action = getStudentSessionAction(ls, ls.courseId, 0);
+              const subtitle = matchedCourse
+                ? `${buildCourseTitle(matchedCourse, 'long')}${matchedCourse.section ? ` · ${t('student.dashboard.section', { section: matchedCourse.section })}` : ''}`
+                : ls.courseName;
+
+              return (
+                <SessionListCard
+                  key={ls._id}
+                  highlighted
+                  onClick={action.clickable ? () => navigate(action.path) : undefined}
+                  title={ls.name}
+                  subtitle={subtitle}
+                  badges={(
+                    <>
+                      <Chip label={t('sessionStatus.live')} size="small" color="success" />
+                      {action.label ? (
+                        <Chip
+                          label={t(action.label)}
+                          size="small"
+                          color={action.chipColor}
+                          variant={action.chipVariant}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                />
+              );
+            })}
           </Box>
         </Box>
       )}
@@ -149,24 +183,32 @@ export default function StudentDashboard() {
       {/* Enroll Dialog */}
       <Dialog open={enrollOpen} onClose={() => setEnrollOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{t('student.dashboard.enrollInCourse')}</DialogTitle>
-        <DialogContent sx={{ pt: '8px !important' }}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {t('student.dashboard.enrollmentCodeMessage')}
-          </Typography>
-          <TextField
-            label={t('student.dashboard.enrollmentCode')}
-            value={enrollCode}
-            onChange={(e) => setEnrollCode(e.target.value)}
-            fullWidth
-            autoFocus
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEnrollOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleEnroll} disabled={enrolling || !enrollCode.trim()}>
-            {enrolling ? t('student.dashboard.enrolling') : t('student.dashboard.enroll')}
-          </Button>
-        </DialogActions>
+        <Box
+          component="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleEnroll();
+          }}
+        >
+          <DialogContent sx={{ pt: '8px !important' }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t('student.dashboard.enrollmentCodeMessage')}
+            </Typography>
+            <TextField
+              label={t('student.dashboard.enrollmentCode')}
+              value={enrollCode}
+              onChange={(e) => setEnrollCode(e.target.value)}
+              fullWidth
+              autoFocus
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEnrollOpen(false)}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="contained" disabled={enrolling || !enrollCode.trim()}>
+              {enrolling ? t('student.dashboard.enrolling') : t('student.dashboard.enroll')}
+            </Button>
+          </DialogActions>
+        </Box>
       </Dialog>
 
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>

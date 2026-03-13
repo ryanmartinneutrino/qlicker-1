@@ -527,14 +527,40 @@ export function recomputeGradeAggregates(grade) {
 
   let points = 0;
   let needsGrading = false;
+  let numAnswered = 0;
+  let numQuestions = 0;
+  let numAnsweredTotal = 0;
 
   marks.forEach((mark) => {
     points += toFiniteNumber(mark?.points, 0);
     if (mark?.needsGrading) needsGrading = true;
+
+    const outOf = toFiniteNumber(mark?.outOf, 0);
+    const hasResponse = Boolean(normalizeAnswerValue(mark?.responseId)) || toFiniteNumber(mark?.attempt, 0) > 0;
+    if (hasResponse) numAnsweredTotal += 1;
+    if (outOf > 0) {
+      numQuestions += 1;
+      if (hasResponse) numAnswered += 1;
+    }
   });
 
   mutable.points = roundToThousandths(points);
   mutable.needsGrading = needsGrading;
+  mutable.numAnswered = numAnswered;
+  mutable.numQuestions = numQuestions;
+  mutable.numAnsweredTotal = numAnsweredTotal;
+  mutable.numQuestionsTotal = marks.length;
+
+  let participation = 0;
+  if (numAnswered > 0) {
+    participation = numQuestions > 0
+      ? roundToTenths((100 * numAnswered) / numQuestions)
+      : 100;
+  }
+  if (numQuestions === 0 && mutable.joined) {
+    participation = 100;
+  }
+  mutable.participation = Math.min(100, participation);
 
   if (mutable.automatic) {
     mutable.value = computeGradeValueFromPoints({

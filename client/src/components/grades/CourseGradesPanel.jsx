@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
+import StudentIdentity from '../common/StudentIdentity';
 import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
 import QuestionDisplay from '../questions/QuestionDisplay';
 
@@ -386,6 +387,99 @@ function mergeUniqueConflicts(existingConflicts = [], incomingConflicts = []) {
   return merged;
 }
 
+function MarkQuestionDetailPanel({
+  loading = false,
+  error = '',
+  student = null,
+  summary = null,
+  question = null,
+  latestResponse = null,
+  manualPoints = '0',
+  onManualPointsChange = null,
+  feedbackHtml = '',
+  onFeedbackChange = null,
+  saving = false,
+  actionButtons = null,
+  showFeedbackEditor = false,
+}) {
+  const { t } = useTranslation();
+  const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
+  const correctAnswer = formatCorrectAnswerValue(question, t);
+
+  if (loading) {
+    return (
+      <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <>
+      {error ? <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert> : null}
+
+      <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+        <StudentIdentity
+          student={student || {}}
+          showEmail
+          avatarSize={40}
+          nameVariant="body1"
+          emailVariant="body2"
+          nameWeight={700}
+          sx={{ mb: summary ? 1 : 0 }}
+        />
+        {summary}
+      </Paper>
+
+      {question ? (
+        <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{t('grades.coursePanel.question')}</Typography>
+          <QuestionDisplay question={question} />
+        </Paper>
+      ) : (
+        <Alert severity="warning" sx={{ mb: 1.5 }}>
+          {t('grades.coursePanel.questionContentNotLoaded')}
+        </Alert>
+      )}
+
+      <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+        <Typography variant="body2" sx={{ mb: 0.5 }}>
+          <strong>{t('grades.coursePanel.studentAnswer')}</strong> {studentAnswer}
+        </Typography>
+        <Typography variant="body2">
+          <strong>{t('grades.coursePanel.correctAnswer')}</strong> {correctAnswer}
+        </Typography>
+      </Paper>
+
+      {onManualPointsChange ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          <TextField
+            size="small"
+            type="number"
+            label={t('grades.coursePanel.manualPoints')}
+            value={manualPoints}
+            onChange={(event) => onManualPointsChange(event.target.value)}
+            sx={{ width: 150 }}
+            disabled={saving}
+          />
+          {showFeedbackEditor ? (
+            <Box>
+              <Typography variant="caption" color="text.secondary">{t('grades.coursePanel.feedback')}</Typography>
+              <StudentRichTextEditor
+                value={feedbackHtml}
+                onChange={({ html }) => onFeedbackChange?.(html)}
+                placeholder={t('grades.coursePanel.addFeedback')}
+              />
+              <MathPreview html={feedbackHtml} />
+            </Box>
+          ) : null}
+          {actionButtons}
+        </Box>
+      ) : actionButtons}
+    </>
+  );
+}
+
 function StudentSearchField({
   value,
   onSearchChange,
@@ -429,30 +523,20 @@ function GradeDetailDialog({
   autoGradeableQuestionIdSet = null,
   instructorView,
   onGradeUpdated,
+  onOpenMarkDetail,
 }) {
   const { t } = useTranslation();
   const [workingGrade, setWorkingGrade] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [editingMarkIndex, setEditingMarkIndex] = useState(-1);
-  const [editingMarkPoints, setEditingMarkPoints] = useState('0');
-  const [editingFeedbackHtml, setEditingFeedbackHtml] = useState('');
   const [editingGradeValue, setEditingGradeValue] = useState('0');
 
   useEffect(() => {
     if (!open || !grade) return;
     setWorkingGrade({ ...grade, marks: [...(grade.marks || [])] });
-    setEditingMarkIndex(-1);
     setEditingGradeValue(String(grade.value ?? 0));
     setError('');
   }, [open, grade]);
-
-  const beginEditMark = useCallback((mark, index) => {
-    setEditingMarkIndex(index);
-    setEditingMarkPoints(String(mark?.points ?? 0));
-    setEditingFeedbackHtml(mark?.feedback || '');
-    setError('');
-  }, []);
 
   const persistGrade = useCallback(async (nextGrade) => {
     setWorkingGrade(nextGrade);
@@ -461,47 +545,6 @@ function GradeDetailDialog({
     }
   }, [onGradeUpdated]);
 
-  const handleSaveMark = useCallback(async () => {
-    if (!workingGrade || editingMarkIndex < 0) return;
-    const targetMark = workingGrade.marks?.[editingMarkIndex];
-    if (!targetMark) return;
-
-    setSaving(true);
-    setError('');
-    try {
-      const payload = {
-        points: Number(editingMarkPoints),
-        feedback: editingFeedbackHtml || '',
-      };
-      const { data } = await apiClient.patch(
-        `/grades/${workingGrade._id}/marks/${targetMark.questionId}`,
-        payload
-      );
-      await persistGrade(data.grade);
-      setEditingMarkIndex(-1);
-    } catch (err) {
-      setError(err.response?.data?.message || t('grades.coursePanel.failedUpdateMark'));
-    } finally {
-      setSaving(false);
-    }
-  }, [editingFeedbackHtml, editingMarkIndex, editingMarkPoints, persistGrade, workingGrade]);
-
-  const handleSetMarkAutomatic = useCallback(async (mark) => {
-    if (!workingGrade || !mark) return;
-    setSaving(true);
-    setError('');
-    try {
-      const { data } = await apiClient.post(
-        `/grades/${workingGrade._id}/marks/${mark.questionId}/set-automatic`
-      );
-      await persistGrade(data.grade);
-      setEditingMarkIndex(-1);
-    } catch (err) {
-      setError(err.response?.data?.message || t('grades.coursePanel.failedAutoGrade'));
-    } finally {
-      setSaving(false);
-    }
-  }, [persistGrade, workingGrade]);
 
   const handleSaveGradeValue = useCallback(async () => {
     if (!workingGrade) return;
@@ -539,17 +582,19 @@ function GradeDetailDialog({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <Box>
-            <Typography variant="h6">{student?.displayName || student?.email || t('grades.coursePanel.student')}</Typography>
+            <StudentIdentity
+              student={student || {}}
+              showEmail
+              avatarSize={40}
+              nameVariant="body1"
+              emailVariant="body2"
+              nameWeight={700}
+            />
             <Typography variant="body2" color="text.secondary">{sessionName || workingGrade.name}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Chip
-              size="small"
-              color={workingGrade.automatic ? 'default' : 'warning'}
-              label={workingGrade.automatic ? t('grades.coursePanel.autoGrade') : t('grades.coursePanel.manualOverride')}
-            />
             {workingGrade.needsGrading && <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />}
           </Box>
         </Box>
@@ -605,72 +650,57 @@ function GradeDetailDialog({
             </TableHead>
             <TableBody>
               {(workingGrade.marks || []).map((mark, index) => {
-                const editing = editingMarkIndex === index;
                 const markCanAutoGrade = isMarkAutoGradeable(mark, autoGradeableQuestionIdSet);
                 return (
-                  <Fragment key={`${mark.questionId}-${index}`}>
-                    <TableRow>
-                      <TableCell>{t('grades.coursePanel.questionShort', { index: index + 1 })}</TableCell>
-                      <TableCell>{formatPercent(mark.points)} / {formatPercent(mark.outOf)}</TableCell>
-                      <TableCell>{mark.attempt || 0}</TableCell>
-                      <TableCell>
-                        {mark.needsGrading ? (
-                          <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />
-                        ) : !markCanAutoGrade ? (
-                          <Chip size="small" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
-                        ) : (
-                          <Chip size="small" variant="outlined" color={mark.automatic ? 'default' : 'warning'} label={mark.automatic ? t('grades.coursePanel.auto') : t('grades.coursePanel.manual')} />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {instructorView ? (
-                          <Button size="small" onClick={() => beginEditMark(mark, index)}>{t('common.edit')}</Button>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">—</Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                    {editing && instructorView && (
-                      <TableRow>
-                        <TableCell colSpan={5} sx={{ bgcolor: 'background.default' }}>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mt: 1 }}>
-                            <TextField
-                              size="small"
-                              type="number"
-                              label={t('common.points')}
-                              value={editingMarkPoints}
-                              onChange={(event) => setEditingMarkPoints(event.target.value)}
-                              sx={{ maxWidth: 160 }}
-                            />
-                            <Box>
-                              <Typography variant="caption" color="text.secondary">{t('grades.coursePanel.feedback')}</Typography>
-                              <StudentRichTextEditor
-                                value={editingFeedbackHtml}
-                                onChange={({ html }) => setEditingFeedbackHtml(html)}
-                                placeholder={t('grades.coursePanel.addFeedback')}
-                              />
-                              <MathPreview html={editingFeedbackHtml} />
-                            </Box>
-                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                              <Button size="small" variant="outlined" onClick={handleSaveMark} disabled={saving}>{t('grades.coursePanel.saveMark')}</Button>
-                              {!mark.automatic && markCanAutoGrade && (
-                                <Button
-                                  size="small"
-                                  variant="text"
-                                  startIcon={<AutoFixHighIcon />}
-                                  onClick={() => handleSetMarkAutomatic(mark)}
-                                  disabled={saving}
-                                >
-                                  {t('grades.coursePanel.setAutomatic')}
-                                </Button>
-                              )}
-                              <Button size="small" variant="text" onClick={() => setEditingMarkIndex(-1)} disabled={saving}>{t('common.cancel')}</Button>
-                            </Box>
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
+                  <TableRow key={`${mark.questionId}-${index}`}>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => onOpenMarkDetail?.({
+                          grade: workingGrade,
+                          student,
+                          sessionName,
+                          mark,
+                          questionNumber: index + 1,
+                        })}
+                        sx={{ px: 0, textTransform: 'none' }}
+                      >
+                        {t('grades.coursePanel.questionShort', { index: index + 1 })}
+                      </Button>
+                    </TableCell>
+                    <TableCell>{formatPercent(mark.points)} / {formatPercent(mark.outOf)}</TableCell>
+                    <TableCell>{mark.attempt || 0}</TableCell>
+                    <TableCell>
+                      {mark.needsGrading ? (
+                        <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />
+                      ) : !markCanAutoGrade ? (
+                        <Chip size="small" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          {t('grades.coursePanel.graded')}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {instructorView ? (
+                        <Button
+                          size="small"
+                          onClick={() => onOpenMarkDetail?.({
+                            grade: workingGrade,
+                            student,
+                            sessionName,
+                            mark,
+                            questionNumber: index + 1,
+                          })}
+                        >
+                          {t('common.edit')}
+                        </Button>
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">—</Typography>
+                      )}
+                    </TableCell>
+                  </TableRow>
                 );
               })}
             </TableBody>
@@ -704,66 +734,36 @@ function ConflictMarkDialog({
   if (!open) return null;
 
   const questionLabel = buildConflictQuestionLabel(conflict, t);
-  const studentName = normalizeAnswerValue(student?.lastname) || normalizeAnswerValue(student?.firstname)
-    ? `${normalizeAnswerValue(student?.lastname)}, ${normalizeAnswerValue(student?.firstname)}`.replace(/^,\s*/, '')
-    : normalizeAnswerValue(conflict?.studentName) || normalizeAnswerValue(conflict?.studentId) || t('grades.coursePanel.student');
-  const studentEmail = normalizeAnswerValue(student?.email);
-  const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
-  const correctAnswer = formatCorrectAnswerValue(question, t);
+  const fallbackStudent = student || {
+    displayName: normalizeAnswerValue(conflict?.studentName) || normalizeAnswerValue(conflict?.studentId) || t('grades.coursePanel.student'),
+    email: normalizeAnswerValue(conflict?.studentEmail),
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{questionLabel}</DialogTitle>
       <DialogContent dividers>
-        {error ? <Alert severity="error" sx={{ mb: 1.5 }}>{error}</Alert> : null}
-        {loading ? (
-          <Box sx={{ py: 3, display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress size={24} />
-          </Box>
-        ) : (
-          <>
-            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-              <Typography variant="body2">
-                <strong>{t('grades.coursePanel.studentLabel')}</strong> {studentName}{studentEmail ? ` (${studentEmail})` : ''}
-              </Typography>
+        <MarkQuestionDetailPanel
+          loading={loading}
+          error={error}
+          student={fallbackStudent}
+          question={question}
+          latestResponse={latestResponse}
+          manualPoints={manualPoints}
+          onManualPointsChange={onManualPointsChange}
+          saving={saving}
+          summary={(
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               <Typography variant="body2">
                 <strong>{t('grades.coursePanel.currentManual')}</strong> {formatPercent(conflict?.existingPoints)} / {formatPercent(conflict?.outOf || question?.sessionOptions?.points || 0)}
               </Typography>
               <Typography variant="body2">
                 <strong>{t('grades.coursePanel.recalculatedAuto')}</strong> {formatPercent(conflict?.calculatedPoints)}
               </Typography>
-            </Paper>
-
-            {question ? (
-              <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{t('grades.coursePanel.question')}</Typography>
-                <QuestionDisplay question={question} />
-              </Paper>
-            ) : (
-              <Alert severity="warning" sx={{ mb: 1.5 }}>
-                {t('grades.coursePanel.questionContentNotLoaded')}
-              </Alert>
-            )}
-
-            <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
-              <Typography variant="body2" sx={{ mb: 0.5 }}>
-                <strong>{t('grades.coursePanel.studentAnswer')}</strong> {studentAnswer}
-              </Typography>
-              <Typography variant="body2">
-                <strong>{t('grades.coursePanel.correctAnswer')}</strong> {correctAnswer}
-              </Typography>
-            </Paper>
-
+            </Box>
+          )}
+          actionButtons={(
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-              <TextField
-                size="small"
-                type="number"
-                label={t('grades.coursePanel.manualPoints')}
-                value={manualPoints}
-                onChange={(event) => onManualPointsChange(event.target.value)}
-                sx={{ width: 150 }}
-                disabled={saving}
-              />
               <Button
                 size="small"
                 variant="outlined"
@@ -782,14 +782,114 @@ function ConflictMarkDialog({
                 {t('grades.coursePanel.acceptAutoGrade')}
               </Button>
             </Box>
-          </>
-        )}
+          )}
+        />
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>{t('common.close')}</Button>
       </DialogActions>
     </Dialog>
   );
+}
+
+function QuestionMarkDialog({
+  open,
+  onClose,
+  loading,
+  error,
+  sessionName,
+  questionNumber,
+  student,
+  mark,
+  question,
+  latestResponse,
+  manualPoints,
+  feedbackHtml,
+  onManualPointsChange,
+  onFeedbackChange,
+  saving,
+  canSetAutomatic,
+  onSetAutomatic,
+  onSave,
+}) {
+  const { t } = useTranslation();
+  if (!open) return null;
+
+  const titleParts = [
+    normalizeAnswerValue(sessionName),
+    Number.isInteger(questionNumber) ? t('grades.coursePanel.questionShort', { index: questionNumber }) : '',
+  ].filter(Boolean);
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{titleParts.join(' / ') || t('grades.coursePanel.question')}</DialogTitle>
+      <DialogContent dividers>
+        <MarkQuestionDetailPanel
+          loading={loading}
+          error={error}
+          student={student}
+          question={question}
+          latestResponse={latestResponse}
+          manualPoints={manualPoints}
+          onManualPointsChange={onManualPointsChange}
+          feedbackHtml={feedbackHtml}
+          onFeedbackChange={onFeedbackChange}
+          saving={saving}
+          showFeedbackEditor
+          summary={(
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              <Typography variant="body2">
+                <strong>{t('common.points')}</strong> {formatPercent(mark?.points)} / {formatPercent(mark?.outOf)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>{t('grades.coursePanel.attempt')}</strong> {mark?.attempt || 0}
+              </Typography>
+            </Box>
+          )}
+          actionButtons={(
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button size="small" variant="outlined" onClick={onSave} disabled={saving}>
+                {t('grades.coursePanel.saveMark')}
+              </Button>
+              {canSetAutomatic ? (
+                <Button
+                  size="small"
+                  variant="text"
+                  startIcon={<AutoFixHighIcon />}
+                  onClick={onSetAutomatic}
+                  disabled={saving}
+                >
+                  {t('grades.coursePanel.setAutomatic')}
+                </Button>
+              ) : null}
+            </Box>
+          )}
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>{t('common.close')}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function buildInitialQuestionDetailState() {
+  return {
+    open: false,
+    loading: false,
+    saving: false,
+    error: '',
+    grade: null,
+    student: null,
+    sessionName: '',
+    questionNumber: null,
+    mark: null,
+    question: null,
+    latestResponse: null,
+    manualPoints: '',
+    feedbackHtml: '',
+    canSetAutomatic: false,
+  };
 }
 
 export default function CourseGradesPanel({
@@ -842,6 +942,7 @@ export default function CourseGradesPanel({
     student: null,
     sessionName: '',
   });
+  const [questionDetailState, setQuestionDetailState] = useState(buildInitialQuestionDetailState);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [tableScrollWidth, setTableScrollWidth] = useState(0);
@@ -1645,6 +1746,20 @@ export default function CourseGradesPanel({
     }
   }, [conflictsDialog.conflicts, fetchGrades, handleAcceptConflict, selectedSessionIds]);
 
+  const getAutoGradeableQuestionIdSetForSession = useCallback((sessionId) => {
+    const normalizedSessionId = normalizeAnswerValue(sessionId);
+    if (!normalizedSessionId) return null;
+    const matchingSession = visibleSessions.find((session) => String(session._id) === normalizedSessionId);
+    if (!matchingSession || !Array.isArray(matchingSession.autoGradeableQuestionIds)) {
+      return null;
+    }
+    return new Set(
+      matchingSession.autoGradeableQuestionIds
+        .map((questionId) => String(questionId))
+        .filter(Boolean)
+    );
+  }, [visibleSessions]);
+
   const handleOpenGradeDialog = useCallback((grade, student) => {
     if (!grade?._id) return;
     const matchingSession = visibleSessions.find((session) => String(session._id) === String(grade?.sessionId));
@@ -1660,19 +1775,128 @@ export default function CourseGradesPanel({
     await fetchGrades(selectedSessionIds, { applyToState: true });
   }, [fetchGrades, selectedSessionIds]);
 
+  const handleCloseQuestionDetail = useCallback(() => {
+    setQuestionDetailState(buildInitialQuestionDetailState());
+  }, []);
+
+  const handleOpenGradeMarkDetail = useCallback(async ({ grade, student, sessionName, mark, questionNumber }) => {
+    const sessionId = normalizeAnswerValue(grade?.sessionId);
+    const questionId = normalizeAnswerValue(mark?.questionId);
+    const studentId = normalizeAnswerValue(student?.studentId || student?._id || student?.id);
+    const autoGradeableQuestionIdSet = getAutoGradeableQuestionIdSetForSession(sessionId);
+
+    setQuestionDetailState({
+      open: true,
+      loading: true,
+      saving: false,
+      error: '',
+      grade,
+      student,
+      sessionName,
+      questionNumber,
+      mark,
+      question: null,
+      latestResponse: null,
+      manualPoints: String(mark?.points ?? 0),
+      feedbackHtml: mark?.feedback || '',
+      canSetAutomatic: !mark?.automatic && isMarkAutoGradeable(mark, autoGradeableQuestionIdSet),
+    });
+
+    try {
+      const sessionResults = await loadConflictSessionResults(sessionId);
+      const question = sessionResults?.questionById?.get(questionId) || null;
+      const resolvedQuestionNumber = sessionResults?.questionNumberById?.get(questionId) || questionNumber;
+      const studentResult = sessionResults?.studentResultById?.get(studentId) || null;
+      const questionResult = (studentResult?.questionResults || [])
+        .find((entry) => String(entry?.questionId) === questionId);
+      const latestResponse = getLatestResponse(questionResult?.responses || []);
+
+      setQuestionDetailState((prev) => ({
+        ...prev,
+        loading: false,
+        question,
+        latestResponse,
+        questionNumber: resolvedQuestionNumber,
+      }));
+    } catch (err) {
+      setQuestionDetailState((prev) => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.message || t('grades.coursePanel.failedLoadConflicts'),
+      }));
+    }
+  }, [getAutoGradeableQuestionIdSetForSession, loadConflictSessionResults, t]);
+
+  const syncUpdatedGradeAcrossDialogs = useCallback((nextGrade) => {
+    setGradeDialogState((prev) => {
+      if (!prev.open || String(prev.grade?._id || '') !== String(nextGrade?._id || '')) {
+        return prev;
+      }
+      return { ...prev, grade: nextGrade };
+    });
+    setQuestionDetailState((prev) => {
+      if (!prev.open || String(prev.grade?._id || '') !== String(nextGrade?._id || '')) {
+        return prev;
+      }
+      const nextMark = (nextGrade?.marks || []).find((entry) => String(entry?.questionId) === String(prev.mark?.questionId)) || null;
+      return {
+        ...prev,
+        grade: nextGrade,
+        mark: nextMark,
+        manualPoints: String(nextMark?.points ?? 0),
+        feedbackHtml: nextMark?.feedback || '',
+        canSetAutomatic: Boolean(nextMark && !nextMark.automatic && prev.canSetAutomatic),
+      };
+    });
+  }, []);
+
+  const handleSaveQuestionDetail = useCallback(async () => {
+    const gradeId = normalizeAnswerValue(questionDetailState.grade?._id);
+    const questionId = normalizeAnswerValue(questionDetailState.mark?.questionId);
+    if (!gradeId || !questionId) return;
+
+    setQuestionDetailState((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      const { data } = await apiClient.patch(`/grades/${gradeId}/marks/${questionId}`, {
+        points: Number(questionDetailState.manualPoints),
+        feedback: questionDetailState.feedbackHtml || '',
+      });
+      syncUpdatedGradeAcrossDialogs(data.grade);
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+    } catch (err) {
+      setQuestionDetailState((prev) => ({
+        ...prev,
+        error: err.response?.data?.message || t('grades.coursePanel.failedUpdateMark'),
+      }));
+    } finally {
+      setQuestionDetailState((prev) => ({ ...prev, saving: false }));
+    }
+  }, [fetchGrades, questionDetailState.feedbackHtml, questionDetailState.grade?._id, questionDetailState.manualPoints, questionDetailState.mark?.questionId, selectedSessionIds, syncUpdatedGradeAcrossDialogs, t]);
+
+  const handleSetQuestionDetailAutomatic = useCallback(async () => {
+    const gradeId = normalizeAnswerValue(questionDetailState.grade?._id);
+    const questionId = normalizeAnswerValue(questionDetailState.mark?.questionId);
+    if (!gradeId || !questionId) return;
+
+    setQuestionDetailState((prev) => ({ ...prev, saving: true, error: '' }));
+    try {
+      const { data } = await apiClient.post(`/grades/${gradeId}/marks/${questionId}/set-automatic`);
+      syncUpdatedGradeAcrossDialogs(data.grade);
+      await fetchGrades(selectedSessionIds, { applyToState: true });
+    } catch (err) {
+      setQuestionDetailState((prev) => ({
+        ...prev,
+        error: err.response?.data?.message || t('grades.coursePanel.failedAutoGrade'),
+      }));
+    } finally {
+      setQuestionDetailState((prev) => ({ ...prev, saving: false }));
+    }
+  }, [fetchGrades, questionDetailState.grade?._id, questionDetailState.mark?.questionId, selectedSessionIds, syncUpdatedGradeAcrossDialogs, t]);
+
   const gradeDialogSessionId = normalizeAnswerValue(gradeDialogState.grade?.sessionId);
   const gradeDialogAutoGradeableQuestionIdSet = useMemo(() => {
-    if (!gradeDialogSessionId) return null;
-    const matchingSession = visibleSessions.find((session) => String(session._id) === gradeDialogSessionId);
-    if (!matchingSession || !Array.isArray(matchingSession.autoGradeableQuestionIds)) {
-      return null;
-    }
-    return new Set(
-      matchingSession.autoGradeableQuestionIds
-        .map((questionId) => String(questionId))
-        .filter(Boolean)
-    );
-  }, [gradeDialogSessionId, visibleSessions]);
+    return getAutoGradeableQuestionIdSetForSession(gradeDialogSessionId);
+  }, [getAutoGradeableQuestionIdSetForSession, gradeDialogSessionId]);
 
   if (loading && !instructorView) {
     return (
@@ -1911,7 +2135,7 @@ export default function CourseGradesPanel({
                 variant="outlined"
                 onScroll={handleTableScroll}
               >
-                <Table size="small" aria-label="Course grade table" sx={{ '& .MuiTableCell-root': { py: 0.55, px: 0.75 } }}>
+                <Table size="small" aria-label={t('grades.coursePanel.gradeTable')} sx={{ '& .MuiTableCell-root': { py: 0.55, px: 0.75 } }}>
                   <TableHead>
                     <TableRow>
                       <TableCell sx={{ fontWeight: 700, minWidth: 130 }}>
@@ -2007,7 +2231,7 @@ export default function CourseGradesPanel({
                                 direction={sort.field === participationSortKey ? sort.direction : 'desc'}
                                 onClick={() => handleSort(participationSortKey)}
                               >
-                                {session.name} part.
+                                {t('grades.coursePanel.sessionPartHeader', { name: session.name })}
                               </TableSortLabel>
                             </Box>
                           </TableCell>,
@@ -2019,7 +2243,14 @@ export default function CourseGradesPanel({
                     {paginatedRows.map((row) => (
                       <TableRow key={row.student.studentId} hover>
                         <TableCell>
-                          {row.student.lastname}, {row.student.firstname}
+                          <StudentIdentity
+                            student={row.student}
+                            showEmail={false}
+                            avatarSize={32}
+                            nameVariant="body2"
+                            emailVariant="caption"
+                            nameWeight={600}
+                          />
                         </TableCell>
                         <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.student.email}</TableCell>
                         <TableCell>{formatPercent(row.avgParticipation)}%</TableCell>
@@ -2040,7 +2271,7 @@ export default function CourseGradesPanel({
                                   {markLabel}
                                 </Button>
                                 {grade?.needsGrading && grade?.joined && (
-                                  <Chip size="small" color="error" label="Needs grading" sx={{ ml: 0.5 }} />
+                                  <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} sx={{ ml: 0.5 }} />
                                 )}
                               </TableCell>
                               <TableCell>
@@ -2134,6 +2365,28 @@ export default function CourseGradesPanel({
         autoGradeableQuestionIdSet={gradeDialogAutoGradeableQuestionIdSet}
         instructorView={instructorView}
         onGradeUpdated={handleGradeDialogUpdated}
+        onOpenMarkDetail={handleOpenGradeMarkDetail}
+      />
+
+      <QuestionMarkDialog
+        open={questionDetailState.open}
+        onClose={handleCloseQuestionDetail}
+        loading={questionDetailState.loading}
+        error={questionDetailState.error}
+        sessionName={questionDetailState.sessionName}
+        questionNumber={questionDetailState.questionNumber}
+        student={questionDetailState.student}
+        mark={questionDetailState.mark}
+        question={questionDetailState.question}
+        latestResponse={questionDetailState.latestResponse}
+        manualPoints={questionDetailState.manualPoints}
+        feedbackHtml={questionDetailState.feedbackHtml}
+        onManualPointsChange={(value) => setQuestionDetailState((prev) => ({ ...prev, manualPoints: value }))}
+        onFeedbackChange={(value) => setQuestionDetailState((prev) => ({ ...prev, feedbackHtml: value }))}
+        saving={questionDetailState.saving}
+        canSetAutomatic={questionDetailState.canSetAutomatic}
+        onSetAutomatic={handleSetQuestionDetailAutomatic}
+        onSave={handleSaveQuestionDetail}
       />
 
       <ConflictMarkDialog

@@ -83,6 +83,12 @@ export default async function videoRoutes(app) {
     return course;
   }
 
+  function broadcastVideoUpdated(course) {
+    if (!app.wsBroadcast || !course) return;
+    const courseMembers = [...(course.instructors || []), ...(course.students || [])];
+    app.wsSendToUsers(courseMembers, 'video:updated', { courseId: course._id });
+  }
+
   // ── POST /:id/video/toggle — Toggle course-wide video chat ──────────────
   app.post(
     '/:id/video/toggle',
@@ -95,6 +101,7 @@ export default async function videoRoutes(app) {
         // Disable — remove videoChatOptions
         course.videoChatOptions = undefined;
         await course.save();
+        broadcastVideoUpdated(course);
         return { enabled: false };
       }
 
@@ -105,6 +112,7 @@ export default async function videoRoutes(app) {
         apiOptions: { ...DEFAULT_VIDEO_API_OPTIONS },
       };
       await course.save();
+      broadcastVideoUpdated(course);
       return { enabled: true, videoChatOptions: course.videoChatOptions };
     }
   );
@@ -130,6 +138,7 @@ export default async function videoRoutes(app) {
       course.videoChatOptions.apiOptions = apiOptions;
       course.markModified('videoChatOptions');
       await course.save();
+      broadcastVideoUpdated(course);
       return { videoChatOptions: course.videoChatOptions };
     }
   );
@@ -155,10 +164,7 @@ export default async function videoRoutes(app) {
         await course.save();
       }
 
-      if (app.wsBroadcast) {
-        const courseMembers = [...(course.instructors || []), ...(course.students || [])];
-        app.wsSendToUsers(courseMembers, 'video:updated', { courseId: course._id });
-      }
+      broadcastVideoUpdated(course);
 
       return { success: true };
     }
@@ -181,10 +187,7 @@ export default async function videoRoutes(app) {
       course.markModified('videoChatOptions');
       await course.save();
 
-      if (app.wsBroadcast) {
-        const courseMembers = [...(course.instructors || []), ...(course.students || [])];
-        app.wsSendToUsers(courseMembers, 'video:updated', { courseId: course._id });
-      }
+      broadcastVideoUpdated(course);
 
       return { success: true };
     }
@@ -203,6 +206,8 @@ export default async function videoRoutes(app) {
         course.markModified('videoChatOptions');
         await course.save();
       }
+
+      broadcastVideoUpdated(course);
 
       return { success: true };
     }
@@ -242,6 +247,7 @@ export default async function videoRoutes(app) {
 
       course.markModified('groupCategories');
       await course.save();
+      broadcastVideoUpdated(course);
       return { success: true, groupCategories: course.groupCategories };
     }
   );
@@ -269,6 +275,7 @@ export default async function videoRoutes(app) {
       category.catVideoChatOptions.apiOptions = apiOptions;
       course.markModified('groupCategories');
       await course.save();
+      broadcastVideoUpdated(course);
       return { success: true };
     }
   );
@@ -295,10 +302,7 @@ export default async function videoRoutes(app) {
       course.markModified('groupCategories');
       await course.save();
 
-      if (app.wsBroadcast) {
-        const courseMembers = [...(course.instructors || []), ...(course.students || [])];
-        app.wsSendToUsers(courseMembers, 'video:updated', { courseId: course._id });
-      }
+      broadcastVideoUpdated(course);
 
       return { success: true };
     }

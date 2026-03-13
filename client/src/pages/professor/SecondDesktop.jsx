@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
@@ -6,6 +6,7 @@ import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
+import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
 
 // ---------------------------------------------------------------------------
@@ -133,9 +134,9 @@ function ShortAnswerList({ responses }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function SecondDesktop() {
+export default function PresentationWindow() {
   const { t } = useTranslation();
-  const { courseId, sessionId } = useParams();
+  const { sessionId } = useParams();
 
   const [liveData, setLiveData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +147,9 @@ export default function SecondDesktop() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/live`);
+      const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
+        params: { view: 'presentation' },
+      });
       setLiveData(data);
       setError(null);
       if (data?.session?.status === 'done') {
@@ -171,6 +174,10 @@ export default function SecondDesktop() {
   }, [fetchLive]);
 
   // ---- WebSocket + polling ----
+
+  useEffect(() => {
+    fetchLive();
+  }, [fetchLive]);
 
   useEffect(() => {
     let ws = null;
@@ -289,6 +296,10 @@ export default function SecondDesktop() {
   // ---- Derived state ----
 
   const session = liveData?.session;
+  const courseTitle = useMemo(
+    () => (liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''),
+    [liveData?.course]
+  );
   const currentQ = liveData?.currentQuestion;
   const responseStats = liveData?.responseStats;
   const allResponses = liveData?.allResponses || [];
@@ -324,7 +335,33 @@ export default function SecondDesktop() {
   useEffect(() => {
     const name = session?.name || t('professor.secondDesktop.presentation');
     document.title = `${name} — Qlicker`;
-  }, [session?.name]);
+  }, [session?.name, t]);
+
+  const renderHeader = ({ compact = false, showSessionName = true } = {}) => (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 0.5 : 1,
+        width: '100%',
+        mb: compact ? 2 : 4,
+        textAlign: 'center',
+      }}
+    >
+      {courseTitle ? (
+        <Typography variant={compact ? 'body1' : 'h5'} sx={{ fontWeight: 700 }}>
+          {courseTitle}
+        </Typography>
+      ) : null}
+      {showSessionName ? (
+        <Typography variant={compact ? 'body2' : 'h6'} color="text.secondary">
+          {session?.name || t('professor.secondDesktop.presentation')}
+        </Typography>
+      ) : null}
+    </Box>
+  );
 
   // ---- Render: loading ----
 
@@ -346,6 +383,7 @@ export default function SecondDesktop() {
   if (error) {
     return (
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', mt: 8 }}>
+        {renderHeader()}
         <Alert severity="error" sx={{ fontSize: '1.1rem' }}>{error}</Alert>
       </Box>
     );
@@ -359,8 +397,11 @@ export default function SecondDesktop() {
         sx={{
           display: 'flex', justifyContent: 'center', alignItems: 'center',
           minHeight: '100vh', bgcolor: 'background.default',
+          flexDirection: 'column',
+          p: 4,
         }}
       >
+        {renderHeader()}
         <Typography variant="h2" sx={{ fontWeight: 700, color: 'text.secondary' }}>
           {t('professor.secondDesktop.sessionEnded')}
         </Typography>
@@ -380,6 +421,7 @@ export default function SecondDesktop() {
         }}
         aria-label={t('professor.secondDesktop.joinCodeDisplay')}
       >
+        {renderHeader()}
         <Typography variant="h5" sx={{ fontWeight: 600, color: 'text.secondary', mb: 2 }}>
           {t('professor.secondDesktop.joinCode')}
         </Typography>
@@ -422,6 +464,7 @@ export default function SecondDesktop() {
           p: 4, textAlign: 'center',
         }}
       >
+        {renderHeader({ showSessionName: false })}
         <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
           {session?.name || t('professor.secondDesktop.liveSession')}
         </Typography>
@@ -441,6 +484,8 @@ export default function SecondDesktop() {
         display: 'flex', flexDirection: 'column', p: { xs: 2, sm: 4 },
       }}
     >
+      {renderHeader({ compact: true })}
+
       {/* Top info bar */}
       <Box
         sx={{
@@ -452,7 +497,7 @@ export default function SecondDesktop() {
           Q{qIdx + 1}/{totalQ}
         </Typography>
         <Chip
-          label={TYPE_LABELS[qType] || 'Question'}
+          label={TYPE_LABELS[qType] || t('professor.secondDesktop.question')}
           color={TYPE_COLORS[qType] || 'default'}
           size="small"
           sx={COMPACT_CHIP_SX}
@@ -463,7 +508,7 @@ export default function SecondDesktop() {
       <Paper
         variant="outlined"
         sx={{ p: { xs: 2, sm: 3 }, mb: 3, flex: '0 0 auto' }}
-        aria-label="Current question"
+        aria-label={t('professor.secondDesktop.currentQuestion')}
       >
         <RichContent html={currentQ.content} fallback={currentQ.plainText} />
       </Paper>
@@ -598,7 +643,7 @@ export default function SecondDesktop() {
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3, borderColor: 'success.main' }}
-          aria-label="Solution"
+          aria-label={t('common.solution')}
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
             {t('common.solution')}

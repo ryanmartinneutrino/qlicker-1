@@ -303,11 +303,13 @@ export default async function gradeRoutes(app) {
 
       const nextMark = { ...marks[markIndex] };
       let feedbackStateChanged = false;
+      let scoreStateChanged = false;
 
       if (request.body.points !== undefined) {
         nextMark.points = toFiniteNumber(request.body.points, 0);
         nextMark.automatic = false;
         nextMark.needsGrading = request.body.needsGrading !== undefined ? !!request.body.needsGrading : false;
+        scoreStateChanged = true;
       } else if (request.body.needsGrading !== undefined) {
         nextMark.needsGrading = !!request.body.needsGrading;
       }
@@ -337,6 +339,9 @@ export default async function gradeRoutes(app) {
         ...grade.toObject(),
         marks,
       };
+      if (scoreStateChanged) {
+        nextGrade.automatic = true;
+      }
       recomputeGradeAggregates(nextGrade);
 
       await Grade.updateOne(
@@ -348,6 +353,11 @@ export default async function gradeRoutes(app) {
             value: nextGrade.value,
             automatic: nextGrade.automatic,
             needsGrading: nextGrade.needsGrading,
+            participation: nextGrade.participation,
+            numAnswered: nextGrade.numAnswered,
+            numQuestions: nextGrade.numQuestions,
+            numAnsweredTotal: nextGrade.numAnsweredTotal,
+            numQuestionsTotal: nextGrade.numQuestionsTotal,
           },
         }
       );
@@ -433,6 +443,7 @@ export default async function gradeRoutes(app) {
       const nextGrade = {
         ...grade.toObject(),
         marks,
+        automatic: true,
       };
       recomputeGradeAggregates(nextGrade);
 
@@ -445,6 +456,11 @@ export default async function gradeRoutes(app) {
             value: nextGrade.value,
             automatic: nextGrade.automatic,
             needsGrading: nextGrade.needsGrading,
+            participation: nextGrade.participation,
+            numAnswered: nextGrade.numAnswered,
+            numQuestions: nextGrade.numQuestions,
+            numAnsweredTotal: nextGrade.numAnsweredTotal,
+            numQuestionsTotal: nextGrade.numQuestionsTotal,
           },
         }
       );
@@ -668,6 +684,8 @@ export default async function gradeRoutes(app) {
             lastname,
             email,
             displayName: formatUserDisplayName(student),
+            profileImage: normalizeAnswerValue(student?.profile?.profileImage),
+            profileThumbnail: normalizeAnswerValue(student?.profile?.profileThumbnail),
           },
           avgParticipation,
           grades: gradeEntries,
