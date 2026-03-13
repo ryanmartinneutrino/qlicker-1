@@ -231,23 +231,11 @@ export default function CourseDetail() {
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/settings/public').then(({ data }) => {
-      if (!mounted) return;
-      if (!data.Jitsi_Enabled) {
-        setVideoEnabled(false);
-        return;
-      }
-      // Check if this course has Jitsi enabled in admin settings
-      apiClient.get('/settings').then(({ data: adminData }) => {
-        if (!mounted) return;
-        const enabledCourses = adminData.Jitsi_EnabledCourses || [];
-        setVideoEnabled(enabledCourses.includes(id));
-      }).catch(() => {
-        // Non-admin professors might not have access to full settings;
-        // if Jitsi is globally enabled, show the tab anyway
-        if (mounted) setVideoEnabled(true);
-      });
-    }).catch(() => {});
+    apiClient.get(`/settings/jitsi-course/${id}`).then(({ data }) => {
+      if (mounted) setVideoEnabled(!!data.enabled);
+    }).catch(() => {
+      if (mounted) setVideoEnabled(false);
+    });
     return () => { mounted = false; };
   }, [id]);
 

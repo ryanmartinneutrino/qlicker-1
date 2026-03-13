@@ -179,13 +179,13 @@ export default function StudentCourseDetail() {
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/settings/public').then(({ data }) => {
-      if (mounted && data.Jitsi_Enabled) {
-        setVideoEnabled(true);
-      }
-    }).catch(() => {});
+    apiClient.get(`/settings/jitsi-course/${id}`).then(({ data }) => {
+      if (mounted) setVideoEnabled(!!data.enabled);
+    }).catch(() => {
+      if (mounted) setVideoEnabled(false);
+    });
     return () => { mounted = false; };
-  }, []);
+  }, [id]);
 
   const fetchCourse = useCallback(async () => {
     try {

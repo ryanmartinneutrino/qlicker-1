@@ -28,6 +28,63 @@ resolve_path() {
   fi
 }
 
+ensure_npm_available() {
+  if command -v npm &>/dev/null; then
+    return 0
+  fi
+
+  echo "  [ERROR] npm is required to install workspace dependencies."
+  exit 1
+}
+
+workspace_dependencies_need_install() {
+  local workspace_dir="$1"
+  local package_json="$workspace_dir/package.json"
+  local package_lock="$workspace_dir/package-lock.json"
+  local node_modules_dir="$workspace_dir/node_modules"
+  local hidden_lock="$node_modules_dir/.package-lock.json"
+
+  if [ ! -f "$package_json" ]; then
+    return 1
+  fi
+
+  if [ ! -d "$node_modules_dir" ]; then
+    return 0
+  fi
+
+  if [ -f "$package_lock" ] && [ ! -f "$hidden_lock" ]; then
+    return 0
+  fi
+
+  if [ -f "$hidden_lock" ] && [ "$hidden_lock" -ot "$package_json" ]; then
+    return 0
+  fi
+
+  if [ -f "$package_lock" ] && [ -f "$hidden_lock" ] && [ "$hidden_lock" -ot "$package_lock" ]; then
+    return 0
+  fi
+
+  if ! (cd "$workspace_dir" && npm ls --depth=0 >/dev/null 2>&1); then
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_workspace_dependencies() {
+  local workspace_dir="$1"
+  local workspace_name="$2"
+
+  if workspace_dependencies_need_install "$workspace_dir"; then
+    ensure_npm_available
+    echo "  Installing $workspace_name dependencies..."
+    (cd "$workspace_dir" && npm install --no-fund --no-audit)
+    echo "  [OK] $workspace_name dependencies installed"
+  else
+    echo "  [OK] $workspace_name dependencies are up to date"
+  fi
+}
+
 find_vite_binary() {
   local candidate
   for candidate in "$PROJECT_ROOT/client/node_modules/.bin/vite" "$PROJECT_ROOT/node_modules/.bin/vite"; do
@@ -187,6 +244,9 @@ start() {
 
   ensure_port_free "$API_PORT" "Server" || exit 1
   ensure_port_free "$APP_PORT" "Client" || exit 1
+
+  ensure_workspace_dependencies "$PROJECT_ROOT/server" "Server"
+  ensure_workspace_dependencies "$PROJECT_ROOT/client" "Client"
 
   # Start MongoDB if mongod is available and not already running
   if is_port_listening "$MONGO_PORT"; then
