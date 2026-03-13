@@ -12,11 +12,34 @@ export default async function settingsRoutes(app) {
     return settings.toObject();
   });
 
+  // Whitelist of fields that may be updated via the admin settings PATCH endpoint.
+  // Prevents injection of unexpected fields into the settings document.
+  const ALLOWED_SETTINGS_FIELDS = new Set([
+    'restrictDomain', 'allowedDomains', 'requireVerified', 'adminEmail', 'email',
+    'SSO_enabled', 'SSO_entrypoint', 'SSO_cert', 'SSO_privCert', 'SSO_privKey',
+    'SSO_EntityId', 'SSO_logoutUrl', 'SSO_identifierFormat', 'SSO_emailIdentifier',
+    'SSO_firstNameIdentifier', 'SSO_lastNameIdentifier', 'SSO_studentNumberIdentifier',
+    'SSO_institutionName', 'SSO_roleIdentifier', 'SSO_roleProfName',
+    'storageType', 'AWS_bucket', 'AWS_region', 'AWS_accessKeyId', 'AWS_secretAccessKey',
+    'AWS_endpoint', 'AWS_forcePathStyle', 'AWS_accessKey', 'AWS_secret',
+    'Azure_storageAccount', 'Azure_storageAccessKey', 'Azure_storageContainer',
+    'Azure_accountName', 'Azure_accountKey', 'Azure_containerName',
+    'tokenExpiryMinutes',
+    'Jitsi_Enabled', 'Jitsi_Domain', 'Jitsi_EtherpadDomain', 'Jitsi_EnabledCourses',
+    'locale', 'dateFormat',
+    'maxImageSize', 'maxImageWidth',
+  ]);
+
   // PATCH / (admin only)
   app.patch('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
-    const updates = request.body || {};
-    // Don't allow changing _id
-    delete updates._id;
+    const rawUpdates = request.body || {};
+    // Filter to allowed fields only
+    const updates = {};
+    for (const key of Object.keys(rawUpdates)) {
+      if (ALLOWED_SETTINGS_FIELDS.has(key)) {
+        updates[key] = rawUpdates[key];
+      }
+    }
 
     try {
       let settings = await Settings.findOne().select('_id');

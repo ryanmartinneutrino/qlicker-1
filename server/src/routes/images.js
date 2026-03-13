@@ -1,3 +1,4 @@
+import { fileTypeFromBuffer } from 'file-type';
 import Image from '../models/Image.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 
@@ -27,14 +28,23 @@ export default async function imageRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'File size exceeds 5MB limit' });
       }
 
-      const { url, key } = await app.uploadFile(buffer, data.filename, data.mimetype);
+      // Validate file content matches claimed MIME type (magic bytes check)
+      const detected = await fileTypeFromBuffer(buffer);
+      if (!detected || !ALLOWED_MIMETYPES.includes(detected.mime)) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: `File content does not match an allowed image type. Detected: ${detected?.mime || 'unknown'}`,
+        });
+      }
+
+      const { url, key } = await app.uploadFile(buffer, data.filename, detected.mime);
 
       const image = await Image.create({
         _id: generateMeteorId(),
         url,
         key,
         UID: request.user.userId,
-        type: data.mimetype,
+        type: detected.mime,
         size: buffer.length,
         createdAt: new Date(),
       });

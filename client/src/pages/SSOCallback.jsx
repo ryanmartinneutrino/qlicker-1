@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { setAccessToken, getAccessToken } from '../api/client';
 
 export default function SSOCallback() {
   const { t } = useTranslation();
@@ -18,10 +19,10 @@ export default function SSOCallback() {
       return;
     }
 
-    localStorage.setItem('token', token);
+    setAccessToken(token);
 
     loadUser().then(() => {
-      const stored = localStorage.getItem('token');
+      const stored = getAccessToken();
       if (!stored) {
         setError(t('ssoCallback.authFailed'));
       }

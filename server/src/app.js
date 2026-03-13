@@ -34,7 +34,11 @@ export async function buildApp(opts = {}) {
   app.decorate('config', { ...config, ...opts.config });
 
   // Plugins
-  await app.register(cors, { origin: app.config.rootUrl, credentials: true });
+  await app.register(cors, {
+    origin: app.config.rootUrl,
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  });
   await app.register(formbody);
   await app.register(cookie);
   await app.register(helmet, {
@@ -51,6 +55,23 @@ export async function buildApp(opts = {}) {
   // Auth decorators
   app.decorate('authenticate', authenticate);
   app.decorate('requireRole', requireRole);
+
+  // CSRF protection: Require X-Requested-With header on state-changing requests.
+  // CORS blocks cross-origin requests from setting custom headers, so this prevents
+  // cross-site request forgery. Exempt paths that receive external form posts
+  // (SAML callbacks, file uploads via multipart that may lack the header on preflight).
+  const CSRF_EXEMPT_PATHS = [
+    '/api/v1/auth/sso/callback',
+    '/api/v1/auth/sso/logout',
+  ];
+  app.addHook('onRequest', async (request, reply) => {
+    const method = request.method;
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return;
+    if (CSRF_EXEMPT_PATHS.some(p => request.url.startsWith(p))) return;
+    if (request.headers['x-requested-with'] !== 'XMLHttpRequest') {
+      return reply.code(403).send({ error: 'Forbidden', message: 'Missing CSRF header' });
+    }
+  });
 
   // Database (skip in test if opts.skipDb)
   if (!opts.skipDb) {

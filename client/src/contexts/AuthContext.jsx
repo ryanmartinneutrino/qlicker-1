@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import apiClient from '../api/client';
+import apiClient, { setAccessToken, getAccessToken, clearAccessToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -8,17 +8,21 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setLoading(false);
-      return;
+    // On initial load, try refreshing via httpOnly cookie (access token is memory-only)
+    if (!getAccessToken()) {
+      try {
+        const { data } = await apiClient.post('/auth/refresh');
+        setAccessToken(data.token);
+      } catch {
+        setLoading(false);
+        return;
+      }
     }
     try {
       const { data } = await apiClient.get('/users/me');
       setUser(data.user);
     } catch {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      clearAccessToken();
       setUser(null);
     } finally {
       setLoading(false);
@@ -29,16 +33,16 @@ export function AuthProvider({ children }) {
     loadUser();
   }, [loadUser]);
 
-  // Cross-tab login/logout sync via storage events
+  // Cross-tab auth sync: listen for a custom localStorage signal key.
+  // We don't store the token itself; we just use a flag to notify other tabs.
   useEffect(() => {
     const handleStorageChange = (e) => {
-      if (e.key === 'token') {
-        if (e.newValue) {
-          // Token was added/changed in another tab — reload user
-          loadUser();
-        } else {
-          // Token was removed in another tab — log out
+      if (e.key === 'qlicker_auth_event') {
+        if (e.newValue === 'logout') {
+          clearAccessToken();
           setUser(null);
+        } else if (e.newValue === 'login') {
+          loadUser();
         }
       }
     };
@@ -48,15 +52,20 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await apiClient.post('/auth/login', { email, password });
-    localStorage.setItem('token', data.token);
+    setAccessToken(data.token);
     setUser(data.user);
+    // Signal other tabs
+    localStorage.setItem('qlicker_auth_event', 'login');
+    localStorage.removeItem('qlicker_auth_event');
     return data.user;
   };
 
   const register = async (email, password, firstname, lastname) => {
     const { data } = await apiClient.post('/auth/register', { email, password, firstname, lastname });
-    localStorage.setItem('token', data.token);
+    setAccessToken(data.token);
     setUser(data.user);
+    localStorage.setItem('qlicker_auth_event', 'login');
+    localStorage.removeItem('qlicker_auth_event');
     return data.user;
   };
 
@@ -64,8 +73,11 @@ export function AuthProvider({ children }) {
     try {
       await apiClient.post('/auth/logout');
     } catch { /* ignore */ }
-    localStorage.removeItem('token');
+    clearAccessToken();
     setUser(null);
+    // Signal other tabs
+    localStorage.setItem('qlicker_auth_event', 'logout');
+    localStorage.removeItem('qlicker_auth_event');
   };
 
   const value = { user, loading, login, register, logout, loadUser };

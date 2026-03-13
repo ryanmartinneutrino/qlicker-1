@@ -693,9 +693,18 @@ const safeHtml = prepareRichTextInput(rawHtml);
 
 ### Authentication Token Handling
 
-- Access tokens stored in `localStorage` (short-lived, configurable expiry)
-- Refresh tokens stored in httpOnly cookies (not accessible to JS)
+- **Access tokens stored in memory only** (not localStorage) — use `setAccessToken()` / `getAccessToken()` / `clearAccessToken()` from `client/src/api/client.js`
+- On page reload, access token is lost; the first 401 triggers a refresh from the httpOnly cookie
+- Refresh tokens stored in httpOnly cookies with `SameSite: strict` (not accessible to JS)
 - Client Axios interceptor auto-refreshes on 401
+- Cross-tab auth sync uses a transient `localStorage` signal key (`qlicker_auth_event`), **not** the token itself
+
+### CSRF Protection
+
+All state-changing requests (POST, PATCH, PUT, DELETE) must include the `X-Requested-With: XMLHttpRequest` header. The server rejects requests without this header (403). CORS blocks cross-origin sites from sending custom headers, preventing CSRF.
+
+- The shared `apiClient` in `client/src/api/client.js` includes this header automatically
+- SAML callback/logout endpoints are exempt (they receive form posts from external IdPs)
 
 ### Security Headers
 
@@ -705,9 +714,25 @@ const safeHtml = prepareRichTextInput(rawHtml);
 
 Failed login attempts are logged with `request.log.warn()` including email and userId for audit trails.
 
+### File Upload Validation
+
+File uploads are validated in two layers:
+1. **MIME type whitelist:** Only `image/jpeg`, `image/png`, `image/gif`, `image/webp` accepted
+2. **Magic bytes validation:** `file-type` library verifies the actual file content matches the claimed MIME type
+
 ---
 
 ## 8. UI/UX Conventions
+
+### Visual Design
+
+- **Primary color:** Qlicker blue (#2196F3 family)
+- **Font:** Helvetica Neue, Helvetica, Arial sans-serif stack (configured in `client/src/theme/index.js`)
+- **Design system:** Material Design via MUI
+- **Spacing:** 8px grid system (MUI default)
+- **Responsive:** Mobile-friendly, especially for student quiz views
+- **Theme:** Plan for dark/light theme switching in the future
+- **Component inheritance:** Use MUI's `ThemeProvider` and `styled` components for consistent styling
 
 ### Component Library
 
