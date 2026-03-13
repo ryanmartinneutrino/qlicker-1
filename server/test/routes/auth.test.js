@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
-import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
+import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
 
 let app;
 
@@ -26,6 +26,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'new@example.com',
         password: 'password123',
@@ -48,6 +49,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'admin@example.com',
         password: 'password123',
@@ -68,6 +70,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'second@example.com',
         password: 'password123',
@@ -87,6 +90,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'jwt@example.com',
         password: 'password123',
@@ -110,6 +114,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'dup@example.com',
         password: 'password123',
@@ -128,6 +133,7 @@ describe('POST /api/v1/auth/register', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'missing@example.com',
       },
@@ -146,6 +152,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'login@example.com',
         password: 'password123',
@@ -165,6 +172,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'wrong@example.com',
         password: 'wrongpassword',
@@ -181,6 +189,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'nonexistent@example.com',
         password: 'password123',
@@ -199,6 +208,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'profile@example.com',
         password: 'password123',
@@ -227,6 +237,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'john.doe@university.edu',
         password: 'password123',
@@ -253,6 +264,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'legacy@example.com',
         password: 'anything',
@@ -280,6 +292,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'nopass@example.com',
         password: 'anything',
@@ -313,6 +326,7 @@ describe('POST /api/v1/auth/login', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: {
         email: 'dual@example.com',
         password: 'password123',
@@ -333,6 +347,7 @@ describe('POST /api/v1/auth/logout', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/logout',
+      headers: { ...csrfHeaders },
     });
 
     expect(res.statusCode).toBe(200);

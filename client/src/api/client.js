@@ -2,6 +2,9 @@ import axios from 'axios';
 
 const apiClient = axios.create({
   baseURL: '/api/v1',
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest',
+  },
 });
 
 // Attach JWT token to every request

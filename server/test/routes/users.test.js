@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import User from '../../src/models/User.js';
 import { generateMeteorId } from '../../src/utils/meteorId.js';
-import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
+import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
 
 let app;
 
@@ -169,6 +169,7 @@ describe('PATCH /api/v1/users/me/password', () => {
     const loginRes = await app.inject({
       method: 'POST',
       url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
       payload: { email: 'pwchange@example.com', password: 'newpassword456' },
     });
     expect(loginRes.statusCode).toBe(200);

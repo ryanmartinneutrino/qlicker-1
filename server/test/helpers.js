@@ -47,12 +47,16 @@ export async function getAuthToken(app, user) {
   return token;
 }
 
+export const csrfHeaders = { 'x-requested-with': 'XMLHttpRequest' };
+
 export async function authenticatedRequest(app, method, url, opts = {}) {
   const { token, payload } = opts;
   const reqOpts = {
     method,
     url,
-    headers: {},
+    headers: {
+      ...csrfHeaders,
+    },
   };
   if (token) {
     reqOpts.headers.authorization = `Bearer ${token}`;
