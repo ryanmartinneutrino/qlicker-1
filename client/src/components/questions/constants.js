@@ -54,6 +54,28 @@ export function isResponseQuestionType(type) {
   return !isSlideType(type);
 }
 
+export function buildQuestionProgressList(questions = []) {
+  const totalPages = Array.isArray(questions) ? questions.length : 0;
+  const totalQuestions = (questions || []).reduce(
+    (count, question) => count + (isSlideType(normalizeQuestionType(question)) ? 0 : 1),
+    0
+  );
+
+  let questionsSeen = 0;
+  return (questions || []).map((question, index) => {
+    if (!isSlideType(normalizeQuestionType(question))) {
+      questionsSeen += 1;
+    }
+
+    return {
+      pageCurrent: index + 1,
+      pageTotal: totalPages,
+      questionCurrent: questionsSeen,
+      questionTotal: totalQuestions,
+    };
+  });
+}
+
 function isTrueFalseOptions(options = []) {
   if (!Array.isArray(options) || options.length !== 2) return false;
   const labels = options.map((o) => (o?.answer || o?.plainText || o?.content || '').replace(/<[^>]*>/g, '').trim().toUpperCase());

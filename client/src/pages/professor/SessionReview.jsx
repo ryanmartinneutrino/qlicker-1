@@ -15,6 +15,7 @@ import {
   QUESTION_TYPES,
   TYPE_LABELS,
   TYPE_COLORS,
+  buildQuestionProgressList,
   isOptionBasedQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -490,6 +491,7 @@ export default function SessionReview() {
   // ---- Summary stats ----
 
   const totalQuestions = questions.length;
+  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
   const totalStudents = studentResults.length;
   const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
   const courseSection = normalizeAnswerValue(course?.section);
@@ -579,6 +581,7 @@ export default function SessionReview() {
         key: `${String(q._id || qi)}-attempt-${attemptNumber}`,
         question: q,
         questionNumber: qi + 1,
+        progress: progressList[qi] || null,
         attemptNumber,
         attemptIndex: attemptIndex + 1,
         attemptTotal: sortedAttempts.length,
@@ -589,7 +592,7 @@ export default function SessionReview() {
         responseCount: attemptResponses.length,
       };
     });
-  }), [questions, studentResults]);
+  }), [progressList, questions, studentResults]);
 
   const csvQuestionAttempts = useMemo(() => questions.map((question, questionIndex) => ({
     question,
@@ -963,9 +966,28 @@ export default function SessionReview() {
                 <Paper key={row.key} variant="outlined" sx={{ p: 2.5 }}>
                   {/* Question header */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                      Q{row.questionNumber}
-                    </Typography>
+                    {row.progress && (
+                      <>
+                        <Chip
+                          label={t('professor.sessionReview.pageProgress', {
+                            current: row.progress.pageCurrent,
+                            total: row.progress.pageTotal,
+                          })}
+                          size="small"
+                          variant="outlined"
+                          sx={COMPACT_CHIP_SX}
+                        />
+                        <Chip
+                          label={t('professor.sessionReview.questionProgress', {
+                            current: row.progress.questionCurrent,
+                            total: row.progress.questionTotal,
+                          })}
+                          size="small"
+                          variant="outlined"
+                          sx={COMPACT_CHIP_SX}
+                        />
+                      </>
+                    )}
                     {row.attemptTotal > 1 && (
                       <Chip
                         label={t('professor.sessionReview.attemptProgress', { current: row.attemptIndex, total: row.attemptTotal })}

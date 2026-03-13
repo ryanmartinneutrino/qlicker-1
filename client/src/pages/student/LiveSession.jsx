@@ -343,20 +343,14 @@ export default function LiveSession() {
   const responseStats = liveData?.responseStats;
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
+  const pageProgress = liveData?.pageProgress || (
+    questionCount > 0 && questionNumber != null
+      ? { current: questionNumber, total: questionCount }
+      : null
+  );
+  const questionProgress = liveData?.questionProgress || null;
   const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
   const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
-
-  const displayedQuestionCount = questionCount > 0
-    ? questionCount
-    : Array.isArray(session?.questions)
-      ? session.questions.length
-      : 0;
-  const displayedQuestionNumber = useMemo(() => {
-    if (questionNumber != null) return questionNumber;
-    if (!currentQ?._id || !Array.isArray(session?.questions)) return null;
-    const idx = session.questions.findIndex((id) => String(id) === String(currentQ._id));
-    return idx >= 0 ? idx + 1 : null;
-  }, [questionNumber, currentQ?._id, session?.questions]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
@@ -372,9 +366,8 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    displayedQuestionCount > 0 && displayedQuestionNumber != null
-      ? t('student.liveSession.questionOf', { number: displayedQuestionNumber, total: displayedQuestionCount })
-      : null,
+    pageProgress ? t('student.liveSession.pageProgress', pageProgress) : null,
+    questionProgress ? t('student.liveSession.questionProgress', questionProgress) : null,
     currentAttempt ? t('student.liveSession.attemptNumber', { number: currentAttempt.number ?? 1 }) : null,
     isSlide
       ? null
@@ -602,13 +595,22 @@ export default function LiveSession() {
           {session.name || t('student.liveSession.liveSessionFallback')}
         </Typography>
         <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
+          {pageProgress && (
             <Chip
-              label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
+              label={t('student.liveSession.pageProgress', pageProgress)}
               size="small"
               variant="outlined"
               sx={COMPACT_CHIP_SX}
-              aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
+              aria-label={t('student.liveSession.pageProgress', pageProgress)}
+            />
+          )}
+          {questionProgress && (
+            <Chip
+              label={t('student.liveSession.questionProgress', questionProgress)}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+              aria-label={t('student.liveSession.questionProgress', questionProgress)}
             />
           )}
           {currentAttempt && (

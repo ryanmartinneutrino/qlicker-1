@@ -18,6 +18,7 @@ import {
   TYPE_LABELS,
   TYPE_COLORS,
   QUESTION_TYPES,
+  buildQuestionProgressList,
   isOptionBasedQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -263,8 +264,7 @@ function RichHtml({
 /* ------------------------------------------------------------------ */
 function ReviewQuestionCard({
   question,
-  index,
-  total,
+  progress,
   responseVisible = false,
   response = null,
   mark = null,
@@ -309,9 +309,28 @@ function ReviewQuestionCard({
     <Paper variant="outlined" sx={{ p: 2.5, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       {/* Header row */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-          Q{index + 1}{total > 1 ? `/${total}` : ''}
-        </Typography>
+        {progress && (
+          <>
+            <Chip
+              label={t('student.sessionReview.pageProgress', {
+                current: progress.pageCurrent,
+                total: progress.pageTotal,
+              })}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+            <Chip
+              label={t('student.sessionReview.questionProgress', {
+                current: progress.questionCurrent,
+                total: progress.questionTotal,
+              })}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+          </>
+        )}
         <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
         {markChipLabel && (
           <Chip
@@ -668,6 +687,7 @@ export default function SessionReview() {
   }
 
   const total = questions.length;
+  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
   const resolvedReturnTab = session && (session.quiz || session.practiceQuiz)
     ? 1
     : requestedReturnTab;
@@ -675,6 +695,7 @@ export default function SessionReview() {
     ? `/student/course/${courseId}`
     : `/student/course/${courseId}?tab=${resolvedReturnTab}`;
   const currentQ = questions[questionIdx];
+  const currentProgress = progressList[questionIdx] || null;
   const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
   const currentQMark = currentQ ? getMarkForQuestion(sessionGrade, currentQ, questionIdx) : null;
   const currentStateKey = questionStateKey(questionIdx);
@@ -768,9 +789,26 @@ export default function SessionReview() {
 
             {viewMode === 'one' && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="body2" color="text.secondary">
-                  {t('student.sessionReview.questionProgress', { current: questionIdx + 1, total })}
-                </Typography>
+                {currentProgress && (
+                  <>
+                    <Chip
+                      label={t('student.sessionReview.pageProgress', {
+                        current: currentProgress.pageCurrent,
+                        total: currentProgress.pageTotal,
+                      })}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={t('student.sessionReview.questionProgress', {
+                        current: currentProgress.questionCurrent,
+                        total: currentProgress.questionTotal,
+                      })}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </>
+                )}
                 {total > 1 && (
                   <>
                     <Button
@@ -805,8 +843,7 @@ export default function SessionReview() {
               <ReviewQuestionCard
                 key={currentQKey}
                 question={currentQ}
-                index={questionIdx}
-                total={total}
+                progress={currentProgress}
                 responseVisible={!!responseVisible[currentStateKey]}
                 response={currentResponses[resolveAttemptIndex(responseAttemptIdx, currentStateKey, currentResponses)] || null}
                 mark={currentQMark}
@@ -905,8 +942,7 @@ export default function SessionReview() {
                   <Box key={qKey}>
                     <ReviewQuestionCard
                       question={q}
-                      index={i}
-                      total={total}
+                      progress={progressList[i] || null}
                       responseVisible={isResponseVisible}
                       response={currentResponse || null}
                       mark={mark}

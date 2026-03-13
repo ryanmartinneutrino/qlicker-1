@@ -807,6 +807,17 @@ describe('GET /api/v1/sessions/:id/live', () => {
       courseId: course._id,
       sessionOptions: { points: 0 },
     });
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>First graded question</p>',
+      plainText: 'First graded question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
 
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
       token: profToken,
@@ -834,6 +845,8 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(instructorLiveRes.json().currentAttempt).toBeNull();
     expect(instructorLiveRes.json().responseStats).toBeNull();
     expect(instructorLiveRes.json().responseCount).toBe(0);
+    expect(instructorLiveRes.json().pageProgress).toEqual({ current: 1, total: 2 });
+    expect(instructorLiveRes.json().questionProgress).toEqual({ current: 0, total: 1 });
 
     const studentLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
       token: studentToken,
@@ -841,6 +854,8 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(studentLiveRes.statusCode).toBe(200);
     expect(studentLiveRes.json().showStats).toBe(false);
     expect(studentLiveRes.json().showCorrect).toBe(false);
+    expect(studentLiveRes.json().pageProgress).toEqual({ current: 1, total: 2 });
+    expect(studentLiveRes.json().questionProgress).toEqual({ current: 0, total: 1 });
 
     const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
       token: studentToken,

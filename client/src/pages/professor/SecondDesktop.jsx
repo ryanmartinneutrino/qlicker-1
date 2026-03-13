@@ -317,6 +317,10 @@ export default function PresentationWindow() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;
+  const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
+    ? { current: qIdx + 1, total: totalQ }
+    : null);
+  const questionProgress = liveData?.questionProgress || null;
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const showInlineOptionStats = isOptionBasedQuestion
     && showStats
@@ -499,9 +503,22 @@ export default function PresentationWindow() {
           mb: 3, flexWrap: 'wrap',
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Q{qIdx + 1}/{totalQ}
-        </Typography>
+        {pageProgress && (
+          <Chip
+            label={t('professor.secondDesktop.pageProgress', pageProgress)}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+          />
+        )}
+        {questionProgress && (
+          <Chip
+            label={t('professor.secondDesktop.questionProgress', questionProgress)}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+          />
+        )}
         <Chip
           label={TYPE_LABELS[qType] || t('professor.secondDesktop.question')}
           color={TYPE_COLORS[qType] || 'default'}

@@ -640,6 +640,46 @@ async function loadOrderedQuestions(questionIds = []) {
   return questionIds.map((questionId) => byId.get(String(questionId))).filter(Boolean);
 }
 
+async function loadSessionProgress(questionIds = [], currentQuestionId = null) {
+  const orderedIds = Array.isArray(questionIds)
+    ? questionIds.map((questionId) => String(questionId)).filter(Boolean)
+    : [];
+  if (orderedIds.length === 0) {
+    return {
+      pageProgress: null,
+      questionProgress: null,
+    };
+  }
+
+  const currentId = currentQuestionId ? String(currentQuestionId) : '';
+  const currentIndex = currentId ? orderedIds.findIndex((questionId) => questionId === currentId) : -1;
+  const questions = await Question.find({ _id: { $in: orderedIds } })
+    .select('_id type')
+    .lean();
+  const questionById = new Map(questions.map((question) => [String(question._id), question]));
+
+  let questionsSeen = 0;
+  const totalQuestions = orderedIds.reduce((count, questionId) => {
+    const question = questionById.get(questionId);
+    return count + (question && isQuestionResponseCollectionEnabled(question) ? 1 : 0);
+  }, 0);
+
+  orderedIds.forEach((questionId, index) => {
+    if (currentIndex >= 0 && index > currentIndex) return;
+    const question = questionById.get(questionId);
+    if (question && isQuestionResponseCollectionEnabled(question)) {
+      questionsSeen += 1;
+    }
+  });
+
+  return {
+    pageProgress: currentIndex >= 0
+      ? { current: currentIndex + 1, total: orderedIds.length }
+      : null,
+    questionProgress: { current: questionsSeen, total: totalQuestions },
+  };
+}
+
 async function loadAnswerableQuestionIdsBySession(sessionDocs = []) {
   const allQuestionIds = [...new Set(
     (sessionDocs || [])
@@ -2517,6 +2557,10 @@ export default async function sessionRoutes(app) {
         ? (session.questions || []).findIndex((id) => String(id) === String(session.currentQuestion))
         : -1;
       const questionNumber = questionIndex >= 0 ? questionIndex + 1 : null;
+      const { pageProgress, questionProgress } = await loadSessionProgress(
+        session.questions || [],
+        session.currentQuestion,
+      );
       const currentItemCollectsResponses = isQuestionResponseCollectionEnabled(currentQuestion);
 
       // For students: strip answer info and limit data
@@ -2705,6 +2749,8 @@ export default async function sessionRoutes(app) {
         responseStats,
         questionNumber,
         questionCount,
+        pageProgress,
+        questionProgress,
       };
 
       if (isInstrOrAdmin) {

@@ -576,6 +576,10 @@ export default function LiveSession() {
   const hasNext = qIdx < totalQ - 1;
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
+  const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
+    ? { current: qIdx + 1, total: totalQ }
+    : null);
+  const questionProgress = liveData?.questionProgress || null;
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
@@ -589,7 +593,8 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    totalQ > 0 && qIdx >= 0 ? t('professor.liveSession.questionOfTotal', { current: qIdx + 1, total: totalQ }) : null,
+    pageProgress ? t('professor.liveSession.pageProgress', pageProgress) : null,
+    questionProgress ? t('professor.liveSession.questionProgress', questionProgress) : null,
     t('professor.liveSession.studentsJoined', { count: joinedCount }),
     !isSlide ? t('professor.liveSession.studentsResponded', { responded: responseCount, total: joinedCount }) : null,
     attemptNum != null ? t('professor.liveSession.attemptNumber', { number: attemptNum }) : null,
@@ -713,13 +718,13 @@ export default function LiveSession() {
             size="medium"
             variant={activePanel === 'question' ? 'contained' : 'outlined'}
             onClick={() => setActivePanel('question')}
-            aria-label={totalQ > 0 && qIdx >= 0
-              ? t('professor.liveSession.questionControlsProgress', { current: qIdx + 1, total: totalQ })
+            aria-label={pageProgress
+              ? t('professor.liveSession.pageControlsProgress', pageProgress)
               : t('professor.liveSession.questionControls')}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
-            {totalQ > 0 && qIdx >= 0
-              ? t('professor.liveSession.questionControlsLabel', { current: qIdx + 1, total: totalQ })
+            {pageProgress
+              ? t('professor.liveSession.pageControlsLabel', pageProgress)
               : t('professor.liveSession.questionControls')}
           </Button>
           <Button
@@ -893,14 +898,29 @@ export default function LiveSession() {
             <Box
               sx={{
                 display: 'flex',
-                flexDirection: { xs: 'column', sm: 'row' },
-                justifyContent: 'center',
+                flexWrap: 'wrap',
                 alignItems: 'stretch',
                 gap: 1,
               }}
             >
+              <Tooltip title={t('professor.liveSession.previousQuestion')}>
+                <Box component="span" sx={{ display: 'flex', order: { xs: 2, sm: 1 }, flex: '1 1 0', minWidth: { xs: 'calc(50% - 4px)', sm: 0 } }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<PrevIcon />}
+                    onClick={handlePrev}
+                    disabled={!hasPrev || actionLoading}
+                    aria-label={t('professor.liveSession.previousQuestion')}
+                    sx={{ width: '100%' }}
+                  >
+                    {t('professor.liveSession.prev')}
+                  </Button>
+                </Box>
+              </Tooltip>
+
               <Tooltip title={t('professor.liveSession.startNewAttempt')}>
-                <span>
+                <Box component="span" sx={{ display: 'flex', order: { xs: 1, sm: 2 }, flex: { xs: '1 0 100%', sm: '0 0 auto' }, width: { xs: '100%', sm: 'auto' } }}>
                   <Button
                     size="small"
                     variant="outlined"
@@ -908,62 +928,28 @@ export default function LiveSession() {
                     onClick={handleNewAttempt}
                     disabled={!currentQ || actionLoading || isSlide}
                     aria-label={t('professor.liveSession.newAttempt')}
-                    sx={{
-                      width: { xs: '100%', sm: 'auto' },
-                    }}
+                    sx={{ width: '100%' }}
                   >
                     {t('professor.liveSession.newAttempt')}
                   </Button>
-                </span>
+                </Box>
               </Tooltip>
 
-              <Box
-                sx={{
-                  display: 'flex',
-                  width: '100%',
-                  justifyContent: 'center',
-                  alignItems: 'stretch',
-                  gap: 1,
-                }}
-              >
-                <Tooltip title={t('professor.liveSession.previousQuestion')}>
-                  <span style={{ display: 'flex', flex: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<PrevIcon />}
-                      onClick={handlePrev}
-                      disabled={!hasPrev || actionLoading}
-                      aria-label={t('professor.liveSession.previousQuestion')}
-                      sx={{
-                        flex: { xs: 1, sm: '0 0 auto' },
-                        width: { xs: '100%', sm: 'auto' },
-                      }}
-                    >
-                      {t('professor.liveSession.prev')}
-                    </Button>
-                  </span>
-                </Tooltip>
-
-                <Tooltip title={t('professor.liveSession.nextQuestion')}>
-                  <span style={{ display: 'flex', flex: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      endIcon={<NextIcon />}
-                      onClick={handleNext}
-                      disabled={!hasNext || actionLoading}
-                      aria-label={t('professor.liveSession.nextQuestion')}
-                      sx={{
-                        flex: { xs: 1, sm: '0 0 auto' },
-                        width: { xs: '100%', sm: 'auto' },
-                      }}
-                    >
-                      {t('common.next')}
-                    </Button>
-                  </span>
-                </Tooltip>
-              </Box>
+              <Tooltip title={t('professor.liveSession.nextQuestion')}>
+                <Box component="span" sx={{ display: 'flex', order: 3, flex: '1 1 0', minWidth: { xs: 'calc(50% - 4px)', sm: 0 } }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    endIcon={<NextIcon />}
+                    onClick={handleNext}
+                    disabled={!hasNext || actionLoading}
+                    aria-label={t('professor.liveSession.nextQuestion')}
+                    sx={{ width: '100%' }}
+                  >
+                    {t('common.next')}
+                  </Button>
+                </Box>
+              </Tooltip>
             </Box>
           </Paper>
 
@@ -987,9 +973,22 @@ export default function LiveSession() {
               {currentQ ? (
                 <>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                      {t('professor.liveSession.questionIndex', { index: qIdx + 1 })}
-                    </Typography>
+                    {pageProgress && (
+                      <Chip
+                        label={t('professor.liveSession.pageProgress', pageProgress)}
+                        size="small"
+                        variant="outlined"
+                        sx={COMPACT_CHIP_SX}
+                      />
+                    )}
+                    {questionProgress && (
+                      <Chip
+                        label={t('professor.liveSession.questionProgress', questionProgress)}
+                        size="small"
+                        variant="outlined"
+                        sx={COMPACT_CHIP_SX}
+                      />
+                    )}
                     <Chip
                       label={TYPE_LABELS[qType] || t('sessionStatus.unknown')}
                       size="small"

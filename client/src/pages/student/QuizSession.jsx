@@ -24,6 +24,7 @@ import {
   QUESTION_TYPES,
   TYPE_LABELS,
   TYPE_COLORS,
+  buildQuestionProgressList,
   isResponseQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -351,6 +352,11 @@ export default function QuizSession() {
     if (!questions.length) return [];
     return [questions[currentQuestionIndex]];
   }, [currentQuestionIndex, questions, singleQuestionMode]);
+  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
+  const progressByQuestionId = useMemo(() => new Map(
+    questions.map((question, index) => [String(question._id), progressList[index] || null])
+  ), [progressList, questions]);
+  const currentProgress = progressList[currentQuestionIndex] || null;
 
   if (loading) {
     return (
@@ -426,7 +432,26 @@ export default function QuizSession() {
             >
               {t('common.previous')}
             </Button>
-            <Chip label={`${t('student.quiz.questionNumber', { number: currentQuestionIndex + 1 })}/${questions.length}`} size="small" variant="outlined" />
+            {currentProgress && (
+              <>
+                <Chip
+                  label={t('student.quiz.pageProgress', {
+                    current: currentProgress.pageCurrent,
+                    total: currentProgress.pageTotal,
+                  })}
+                  size="small"
+                  variant="outlined"
+                />
+                <Chip
+                  label={t('student.quiz.questionProgress', {
+                    current: currentProgress.questionCurrent,
+                    total: currentProgress.questionTotal,
+                  })}
+                  size="small"
+                  variant="outlined"
+                />
+              </>
+            )}
             <Button
               size="small"
               variant="outlined"
@@ -444,6 +469,7 @@ export default function QuizSession() {
       {questionsToRender.map((question) => {
         const qId = String(question._id);
         const qType = normalizeQuestionType(question);
+        const progress = progressByQuestionId.get(qId);
         const response = responsesByQuestion[qId];
         const draft = draftByQuestion[qId] || getDraftForQuestion(question, response);
         const locked = !!response && response.editable === false;
@@ -463,9 +489,26 @@ export default function QuizSession() {
         return (
           <Paper key={qId} variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                {t('student.quiz.questionNumber', { number: questions.findIndex((entry) => String(entry._id) === qId) + 1 })}
-              </Typography>
+              {progress && (
+                <>
+                  <Chip
+                    label={t('student.quiz.pageProgress', {
+                      current: progress.pageCurrent,
+                      total: progress.pageTotal,
+                    })}
+                    size="small"
+                    variant="outlined"
+                  />
+                  <Chip
+                    label={t('student.quiz.questionProgress', {
+                      current: progress.questionCurrent,
+                      total: progress.questionTotal,
+                    })}
+                    size="small"
+                    variant="outlined"
+                  />
+                </>
+              )}
               <Chip label={TYPE_LABELS[qType] || 'Question'} color={TYPE_COLORS[qType] || 'default'} size="small" />
               {!isSlide && locked && <Chip label={t('student.quiz.submitted')} color="success" size="small" variant="outlined" />}
               {!isSlide && !locked && autosaveState === 'saving' && <Chip label={t('student.quiz.saving')} size="small" variant="outlined" />}
