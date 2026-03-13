@@ -1247,54 +1247,54 @@ export default function SessionReview() {
 
       {/* Grading tab */}
       <TabPanel value={tab} index={3}>
-        {/* Group filter for grading */}
-        {groupCategories.length > 0 && (
-          <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{t('professor.sessionReview.filterByGroup')}:</Typography>
-            <TextField
-              select
-              size="small"
-              label={t('professor.sessionReview.selectCategoryFilter')}
-              value={selectedCatIdx >= 0 ? String(selectedCatIdx) : ''}
-              onChange={(e) => {
-                const idx = e.target.value === '' ? -1 : Number(e.target.value);
-                setSelectedCatIdx(idx);
-                const cat = idx >= 0 ? groupCategories[idx] : null;
-                setSelectedGroupIdx(cat && cat.groups && cat.groups.length > 0 ? 0 : -1);
-              }}
-              SelectProps={{ native: true }}
-              sx={{ minWidth: 180 }}
-            >
-              <option value="">{t('professor.sessionReview.allStudentsFilter')}</option>
-              {groupCategories.map((cat, idx) => (
-                <option key={cat.categoryNumber} value={String(idx)}>{cat.categoryName}</option>
-              ))}
-            </TextField>
-            {selectedGroupCat && (
-              <TextField
-                select
-                size="small"
-                label={t('professor.sessionReview.selectGroupFilter')}
-                value={selectedGroupIdx >= 0 ? String(selectedGroupIdx) : ''}
-                onChange={(e) => setSelectedGroupIdx(Number(e.target.value))}
-                SelectProps={{ native: true }}
-                sx={{ minWidth: 180 }}
-              >
-                {(selectedGroupCat.groups || []).map((g, idx) => (
-                  <option key={idx} value={String(idx)}>
-                    {g.name} ({(g.members || []).length})
-                  </option>
-                ))}
-              </TextField>
-            )}
-          </Box>
-        )}
         <SessionQuestionGradingPanel
           sessionId={sessionId}
           session={session}
           questions={questions}
           studentResults={groupFilteredStudentResults}
           onUngradedSummaryChange={handleUngradedSummaryChange}
+          filterSlot={groupCategories.length > 0 ? (
+            <>
+              <TextField
+                select
+                size="small"
+                label={t('professor.sessionReview.selectCategoryFilter')}
+                value={selectedCatIdx >= 0 ? String(selectedCatIdx) : ''}
+                onChange={(e) => {
+                  const idx = e.target.value === '' ? -1 : Number(e.target.value);
+                  setSelectedCatIdx(idx);
+                  const cat = idx >= 0 ? groupCategories[idx] : null;
+                  setSelectedGroupIdx(cat && cat.groups && cat.groups.length > 0 ? 0 : -1);
+                }}
+                SelectProps={{ native: true }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 180 }}
+              >
+                <option value="">{t('professor.sessionReview.allStudentsFilter')}</option>
+                {groupCategories.map((cat, idx) => (
+                  <option key={cat.categoryNumber} value={String(idx)}>{cat.categoryName}</option>
+                ))}
+              </TextField>
+              {selectedGroupCat && (
+                <TextField
+                  select
+                  size="small"
+                  label={t('professor.sessionReview.selectGroupFilter')}
+                  value={selectedGroupIdx >= 0 ? String(selectedGroupIdx) : ''}
+                  onChange={(e) => setSelectedGroupIdx(Number(e.target.value))}
+                  SelectProps={{ native: true }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ minWidth: 180 }}
+                >
+                  {(selectedGroupCat.groups || []).map((g, idx) => (
+                    <option key={idx} value={String(idx)}>
+                      {g.name} ({(g.members || []).length})
+                    </option>
+                  ))}
+                </TextField>
+              )}
+            </>
+          ) : null}
         />
       </TabPanel>
     </Box>

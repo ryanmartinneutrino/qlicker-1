@@ -397,6 +397,7 @@ export default function GroupManagementPanel({ courseId, students = [] }) {
               setRenamingGroup(false);
             }}
             SelectProps={{ native: true }}
+            InputLabelProps={{ shrink: true }}
             sx={{ mb: 1 }}
           >
             <option value="" disabled>{t('groups.chooseCategory')}</option>
@@ -417,6 +418,7 @@ export default function GroupManagementPanel({ courseId, students = [] }) {
             value={selectedGroupIdx >= 0 ? String(selectedGroupIdx) : ''}
             onChange={(e) => { setSelectedGroupIdx(Number(e.target.value)); setRenamingGroup(false); }}
             SelectProps={{ native: true }}
+            InputLabelProps={{ shrink: true }}
             sx={{ mb: 1 }}
           >
             {(selectedCat.groups || []).map((g, idx) => (

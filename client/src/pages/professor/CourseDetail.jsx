@@ -182,7 +182,7 @@ export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
-  const compactTabNav = useMediaQuery(theme.breakpoints.down('md'));
+  const compactTabNav = useMediaQuery('(max-width:799px)');
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState(null);
