@@ -486,10 +486,9 @@ export default async function authRoutes(app) {
   });
 
   // POST /sso/logout — Handle IdP-initiated logout (POST with SAMLRequest)
-  // NOTE: passport-saml could not validate encrypted POST logout requests.
-  // This is a workaround that manually extracts the sessionIndex from the
-  // SAMLRequest XML. See the original MeteorJS implementation for context.
-  // WARNING: This does not cryptographically validate that the POST came from the IdP.
+  // Attempts cryptographic validation via node-saml's validatePostRequestAsync first.
+  // Falls back to manual XML session index extraction if validation fails (e.g.
+  // encrypted or non-standard logout requests, matching the original MeteorJS behavior).
   app.post('/sso/logout', async (request, reply) => {
     try {
       const samlRequest = request.body?.SAMLRequest;
@@ -497,30 +496,47 @@ export default async function authRoutes(app) {
         return reply.redirect(`${app.config.rootUrl}/login`);
       }
 
-      // Log for audit since we cannot cryptographically validate the source
       request.log.info('SSO logout POST received from %s', request.ip);
 
-      // Decode the base64 SAMLRequest and extract sessionIndex
-      const xml = Buffer.from(samlRequest, 'base64').toString('utf8');
-
-      // Try multiple namespace prefixes for SessionIndex element
-      // (different IdPs use different prefixes: saml2p:, samlp:, or no prefix)
       let sessionIndex = null;
-      const sessionIndexPatterns = [
-        /<saml2p:SessionIndex[^>]*>([^<]+)<\/saml2p:SessionIndex>/,
-        /<samlp:SessionIndex[^>]*>([^<]+)<\/samlp:SessionIndex>/,
-        /<SessionIndex[^>]*>([^<]+)<\/SessionIndex>/,
-      ];
-      for (const pattern of sessionIndexPatterns) {
-        const match = xml.match(pattern);
-        if (match) {
-          sessionIndex = match[1];
-          break;
+
+      // Attempt cryptographic validation via node-saml
+      const saml = await app.getSamlProvider();
+      if (saml) {
+        try {
+          const result = await saml.validatePostRequestAsync(request.body);
+          const profile = result?.profile;
+          if (profile?.sessionIndex) {
+            sessionIndex = profile.sessionIndex;
+            request.log.info('SSO logout validated cryptographically, sessionIndex=%s', sessionIndex);
+          }
+        } catch (validationErr) {
+          request.log.warn(
+            { err: validationErr },
+            'SSO logout crypto validation failed, falling back to manual XML extraction'
+          );
+        }
+      }
+
+      // Fallback: manually extract sessionIndex from base64 XML
+      if (!sessionIndex) {
+        const xml = Buffer.from(samlRequest, 'base64').toString('utf8');
+        const sessionIndexPatterns = [
+          /<saml2p:SessionIndex[^>]*>([^<]+)<\/saml2p:SessionIndex>/,
+          /<samlp:SessionIndex[^>]*>([^<]+)<\/samlp:SessionIndex>/,
+          /<SessionIndex[^>]*>([^<]+)<\/SessionIndex>/,
+        ];
+        for (const pattern of sessionIndexPatterns) {
+          const match = xml.match(pattern);
+          if (match) {
+            sessionIndex = match[1];
+            request.log.warn('SSO logout using unvalidated session index from XML fallback');
+            break;
+          }
         }
       }
 
       if (sessionIndex) {
-        // Find user with this SSO session and remove it
         const user = await User.findOne({ 'services.sso.sessions.sessionIndex': sessionIndex });
         if (user && user.services?.sso?.sessions) {
           user.services.sso.sessions = user.services.sso.sessions.filter(
