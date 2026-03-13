@@ -241,6 +241,7 @@
       "etherpadDomain": "Etherpad Domain",
       "etherpadDomainPlaceholder": "e.g. etherpad.wikimedia.org",
       "enabledCourses": "Courses with video enabled",
+      "coursesWithoutVideo": "Courses without video",
       "enabledCoursesHelp": "Select courses for which video chat is available",
       "searchCourses": "Search courses…",
       "noCourses": "No courses found",

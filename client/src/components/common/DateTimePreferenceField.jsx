@@ -9,6 +9,12 @@ function normalizeDatePart(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? value : '';
 }
 
+function buildLocalDatePart(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 function parseLocalDateTime(value) {
   const raw = String(value || '');
   const match = raw.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/);
@@ -60,7 +66,7 @@ function resolveBaseParts(value, min) {
 
   const now = new Date();
   return {
-    date: now.toISOString().slice(0, 10),
+    date: buildLocalDatePart(now),
     hours24: now.getHours(),
     minutes: now.getMinutes(),
   };

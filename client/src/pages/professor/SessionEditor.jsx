@@ -42,11 +42,15 @@ function parseCourseTab(value) {
   return parsed;
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
 function toDateTimeLocalString(value) {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
-  return parsed.toISOString().slice(0, 16);
+  return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}T${pad2(parsed.getHours())}:${pad2(parsed.getMinutes())}`;
 }
 
 function floorDateToNearestHalfHour(value = new Date()) {
@@ -187,12 +191,12 @@ export default function SessionEditor() {
       setEditFields({ name: s.name || '', description: s.description || '' });
       setQuiz(!!s.quiz);
       setPracticeQuiz(!!s.practiceQuiz);
-      setQuizStart(s.quizStart ? new Date(s.quizStart).toISOString().slice(0, 16) : '');
-      setQuizEnd(s.quizEnd ? new Date(s.quizEnd).toISOString().slice(0, 16) : '');
+      setQuizStart(toDateTimeLocalString(s.quizStart));
+      setQuizEnd(toDateTimeLocalString(s.quizEnd));
       setMsScoringMethod(s.msScoringMethod || DEFAULT_MS_SCORING_METHOD);
       setReviewable(!!s.reviewable);
       setStatus(s.status || 'hidden');
-      setSessionDate(s.date ? new Date(s.date).toISOString().slice(0, 16) : '');
+      setSessionDate(toDateTimeLocalString(s.date));
       setJoinCodeEnabled(!!s.joinCodeEnabled);
       setJoinCodeInterval(s.joinCodeInterval || 10);
       setExtensionDrafts((s.quizExtensions || []).map((extension) => ({
@@ -954,6 +958,7 @@ export default function SessionEditor() {
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">{t('professor.sessionEditor.sessionNotFound')}</Alert></Box>;
   const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
+  const courseSection = String(course?.section || '').trim();
   const canReviewRunningQuiz = (session.quiz || session.practiceQuiz) && status === 'running';
   const canReviewEndedSession = status === 'done';
 
@@ -967,11 +972,16 @@ export default function SessionEditor() {
         />
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           {courseTitle ? (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
               {courseTitle}
             </Typography>
           ) : null}
-          <Typography variant="h5" sx={{ lineHeight: 1.15 }}>{session.name}</Typography>
+          {courseSection ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+              {t('professor.course.sectionHeader', { section: courseSection })}
+            </Typography>
+          ) : null}
+          <Typography variant="h6" sx={{ lineHeight: 1.15 }}>{session.name}</Typography>
         </Box>
         <SessionStatusChip status={status} />
         {!session.quiz && status !== 'running' && status !== 'done' && (

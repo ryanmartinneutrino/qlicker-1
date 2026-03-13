@@ -6,7 +6,7 @@ import {
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  CircularProgress, Tooltip, Autocomplete, Chip,
+  ButtonBase, CircularProgress, Tooltip, Chip,
   Avatar,
 } from '@mui/material';
 import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
@@ -73,6 +73,14 @@ function sortCoursesByRecent(courses = []) {
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bTime - aTime;
+  });
+}
+
+function sortCoursesByTitle(courses = []) {
+  return [...courses].sort((a, b) => {
+    const titleCompare = buildCourseTitle(a, 'long').localeCompare(buildCourseTitle(b, 'long'));
+    if (titleCompare !== 0) return titleCompare;
+    return buildCourseOptionLabel(a).localeCompare(buildCourseOptionLabel(b));
   });
 }
 
@@ -793,6 +801,8 @@ function VideoTab() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
+  const [enabledSearch, setEnabledSearch] = useState('');
+  const [disabledSearch, setDisabledSearch] = useState('');
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -846,17 +856,100 @@ function VideoTab() {
     return () => clearTimeout(timer);
   }, [settings, loading]);
 
-  const sortedCourses = useMemo(() => sortCoursesByRecent(courses), [courses]);
-  const selectedCourseObjects = useMemo(() => (
-    settings.Jitsi_EnabledCourses
-      .map((cid) => sortedCourses.find((course) => course._id === cid))
-      .filter(Boolean)
-  ), [settings.Jitsi_EnabledCourses, sortedCourses]);
+  const sortedCourses = useMemo(() => sortCoursesByTitle(courses), [courses]);
+  const enabledCourseIds = useMemo(
+    () => new Set((settings.Jitsi_EnabledCourses || []).map((courseId) => String(courseId))),
+    [settings.Jitsi_EnabledCourses]
+  );
+  const coursesWithVideo = useMemo(
+    () => sortedCourses.filter((course) => enabledCourseIds.has(String(course._id))),
+    [enabledCourseIds, sortedCourses]
+  );
+  const coursesWithoutVideo = useMemo(
+    () => sortedCourses.filter((course) => !enabledCourseIds.has(String(course._id))),
+    [enabledCourseIds, sortedCourses]
+  );
+  const filterCourseList = useCallback((items, searchValue) => {
+    const searchTerm = String(searchValue || '').trim().toLowerCase();
+    if (!searchTerm) return items;
+    return items.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
+  }, []);
+  const visibleEnabledCourses = useMemo(
+    () => filterCourseList(coursesWithVideo, enabledSearch),
+    [coursesWithVideo, enabledSearch, filterCourseList]
+  );
+  const visibleDisabledCourses = useMemo(
+    () => filterCourseList(coursesWithoutVideo, disabledSearch),
+    [coursesWithoutVideo, disabledSearch, filterCourseList]
+  );
+
+  const toggleCourse = useCallback((courseId) => {
+    setSettings((current) => {
+      const currentIds = Array.isArray(current.Jitsi_EnabledCourses) ? current.Jitsi_EnabledCourses : [];
+      const normalizedCourseId = String(courseId);
+      const hasCourse = currentIds.some((value) => String(value) === normalizedCourseId);
+      return {
+        ...current,
+        Jitsi_EnabledCourses: hasCourse
+          ? currentIds.filter((value) => String(value) !== normalizedCourseId)
+          : [...currentIds, courseId],
+      };
+    });
+  }, []);
+
+  const renderCourseColumn = (title, searchValue, onSearchChange, items) => (
+    <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.25, minHeight: 420 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {title} ({items.length})
+      </Typography>
+      <TextField
+        size="small"
+        value={searchValue}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder={t('admin.video.searchCourses')}
+        fullWidth
+      />
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, minHeight: 0, maxHeight: 440, overflowY: 'auto' }}>
+        {items.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.video.noCourses')}
+          </Typography>
+        ) : (
+          items.map((course) => (
+            <ButtonBase
+              key={course._id}
+              onClick={() => toggleCourse(course._id)}
+              sx={{ width: '100%', textAlign: 'left', borderRadius: 1.5 }}
+            >
+              <Paper
+                variant="outlined"
+                sx={{
+                  width: '100%',
+                  p: 1.25,
+                  borderRadius: 1.5,
+                  transition: 'border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    bgcolor: 'action.hover',
+                    boxShadow: 1,
+                  },
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {buildCourseTitle(course, 'long')}
+                </Typography>
+              </Paper>
+            </ButtonBase>
+          ))
+        )}
+      </Box>
+    </Paper>
+  );
 
   if (loading) return <CircularProgress />;
 
   return (
-    <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ maxWidth: 980, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
       <FormControlLabel
         control={
@@ -876,50 +969,19 @@ function VideoTab() {
             placeholder={t('admin.video.jitsiDomainPlaceholder')}
             fullWidth
           />
-          <Autocomplete
-            multiple
-            options={sortedCourses}
-            value={selectedCourseObjects}
-            onChange={(_, newValue) => {
-              setSettings((s) => ({ ...s, Jitsi_EnabledCourses: newValue.map((c) => c._id) }));
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.video.enabledCoursesHelp')}
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
             }}
-            filterOptions={(options, state) => {
-              const searchTerm = String(state.inputValue || '').trim().toLowerCase();
-              if (!searchTerm) return options;
-              return options.filter((option) => buildCourseSearchIndex(option).includes(searchTerm));
-            }}
-            getOptionLabel={(option) => buildCourseOptionLabel(option)}
-            isOptionEqualToValue={(option, value) => option._id === value._id}
-            renderOption={(props, option) => (
-              <Box component="li" {...props} key={option._id} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {buildCourseOptionLabel(option)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {buildCourseTitle(option, 'long')}
-                </Typography>
-              </Box>
-            )}
-            renderTags={(value, getTagProps) =>
-              value.map((option, index) => (
-                <Chip
-                  label={buildCourseOptionLabel(option)}
-                  size="small"
-                  {...getTagProps({ index })}
-                  key={option._id}
-                />
-              ))
-            }
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={t('admin.video.enabledCourses')}
-                placeholder={t('admin.video.searchCourses')}
-                helperText={t('admin.video.enabledCoursesHelp')}
-              />
-            )}
-            fullWidth
-          />
+          >
+            {renderCourseColumn(t('admin.video.enabledCourses'), enabledSearch, setEnabledSearch, visibleEnabledCourses)}
+            {renderCourseColumn(t('admin.video.coursesWithoutVideo'), disabledSearch, setDisabledSearch, visibleDisabledCourses)}
+          </Box>
         </>
       ) : (
         <Typography variant="body2" color="text.secondary">

@@ -176,6 +176,10 @@ export default function PresentationWindow() {
   // ---- WebSocket + polling ----
 
   useEffect(() => {
+    fetchLive();
+  }, [fetchLive]);
+
+  useEffect(() => {
     let ws = null;
     let reconnectTimer = null;
     let pollingTimer = null;

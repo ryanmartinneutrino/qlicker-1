@@ -15,6 +15,7 @@ import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from 
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import { buildCourseTitle } from '../../utils/courseTitle';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -398,6 +399,7 @@ export default function SessionReview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null);
+  const [course, setCourse] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [studentResults, setStudentResults] = useState([]);
   const [tab, setTab] = useState(0);
@@ -425,8 +427,12 @@ export default function SessionReview() {
 
   const fetchResults = useCallback(async () => {
     try {
-      const { data } = await apiClient.get(`/sessions/${sessionId}/results`);
+      const [{ data }, courseResponse] = await Promise.all([
+        apiClient.get(`/sessions/${sessionId}/results`),
+        apiClient.get(`/courses/${courseId}`).catch(() => ({ data: null })),
+      ]);
       setSession(data.session);
+      setCourse(courseResponse?.data?.course || courseResponse?.data || null);
       setQuestions(data.questions || []);
       setStudentResults(data.studentResults || []);
 
@@ -445,7 +451,7 @@ export default function SessionReview() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, t]);
+  }, [courseId, sessionId, t]);
 
   useEffect(() => { fetchResults(); }, [fetchResults]);
 
@@ -478,6 +484,8 @@ export default function SessionReview() {
 
   const totalQuestions = questions.length;
   const totalStudents = studentResults.length;
+  const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
+  const courseSection = normalizeAnswerValue(course?.section);
   const joinedStudents = useMemo(() => {
     return studentResults.filter((student) => !!student?.inSession).length;
   }, [studentResults]);
@@ -833,7 +841,17 @@ export default function SessionReview() {
             {t('professor.sessionReview.editSession')}
           </Button>
         </Box>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+        {courseTitle ? (
+          <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
+            {courseTitle}
+          </Typography>
+        ) : null}
+        {courseSection ? (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            {t('professor.course.sectionHeader', { section: courseSection })}
+          </Typography>
+        ) : null}
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
           {session?.name || t('professor.sessionReview.sessionReview')}
         </Typography>
         {session?.description && (

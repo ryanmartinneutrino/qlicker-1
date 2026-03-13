@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip, Avatar,
+  Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
   Switch, FormControlLabel, TextField, Divider, useMediaQuery,
   Radio, RadioGroup, FormControl, FormLabel,
@@ -22,6 +22,7 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import StudentIdentity from '../../components/common/StudentIdentity';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -74,24 +75,6 @@ function formatJoinedTimestamp(value, fallbackLabel) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(parsed);
-}
-
-function formatJoinedStudentName(student, fallbackLabel) {
-  const first = normalizeValue(student?.firstname);
-  const last = normalizeValue(student?.lastname);
-  const full = `${first} ${last}`.trim();
-  if (full) return full;
-  return normalizeValue(student?.displayName) || normalizeValue(student?.email) || fallbackLabel;
-}
-
-function joinedStudentInitials(student) {
-  const first = normalizeValue(student?.firstname);
-  const last = normalizeValue(student?.lastname);
-  if (first || last) {
-    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
-  }
-  const fallback = normalizeValue(student?.email) || normalizeValue(student?.displayName);
-  return fallback ? fallback.charAt(0).toUpperCase() : '?';
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +545,10 @@ export default function LiveSession() {
   const courseTitle = useMemo(() => (
     liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
   ), [liveData?.course]);
+  const courseSection = useMemo(
+    () => normalizeValue(liveData?.course?.section),
+    [liveData?.course?.section]
+  );
   const currentQ = liveData?.currentQuestion;
   const currentAttempt = liveData?.currentAttempt;
   const responseStats = liveData?.responseStats;
@@ -660,8 +647,13 @@ export default function LiveSession() {
           />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             {courseTitle ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
                 {courseTitle}
+              </Typography>
+            ) : null}
+            {courseSection ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                {t('professor.course.sectionHeader', { section: courseSection })}
               </Typography>
             ) : null}
             <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
@@ -1157,25 +1149,17 @@ export default function LiveSession() {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.1, minWidth: 0 }}>
-                    <Avatar
-                      src={student.profileThumbnail || student.profileImage || ''}
-                      sx={{ width: 34, height: 34 }}
-                    >
-                      {joinedStudentInitials(student)}
-                    </Avatar>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                          {formatJoinedStudentName(student, t('professor.sessionReview.unknownStudent'))}
-                        </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }} noWrap>
-                        {student.email || student._id}
-                      </Typography>
-                    </Box>
-                  </Box>
+                  <StudentIdentity
+                    student={student}
+                    avatarSize={34}
+                    nameVariant="body2"
+                    emailVariant="caption"
+                    nameWeight={600}
+                    sx={{ flex: '1 1 220px', minWidth: 0 }}
+                  />
                   <Typography variant="caption" color="text.secondary">
-                        {formatJoinedTimestamp(student.joinedAt, t('professor.liveSession.joinTimeUnavailable'))}
-                      </Typography>
+                    {formatJoinedTimestamp(student.joinedAt, t('professor.liveSession.joinTimeUnavailable'))}
+                  </Typography>
                 </Paper>
               ))}
             </Box>

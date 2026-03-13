@@ -10,7 +10,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import {
   Alert, Box, Button, CircularProgress, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Paper,
-  TextField, Typography,
+  TextField, Tooltip, Typography,
 } from '@mui/material';
 import {
   FormatBold as BoldIcon,
@@ -143,10 +143,8 @@ export default function RichTextEditor({
   const lastEditorHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const fileInputRef = useRef(null);
-  const [toolbarExpanded, setToolbarExpanded] = useState(!compact);
+  const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
-  const preparedPlainText = useMemo(() => extractPlainTextFromHtml(preparedValue), [preparedValue]);
-  const effectivePlaceholder = preparedPlainText.trim() ? '' : placeholder;
   const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
 
   const uploadImage = async (file, maxEditorImageWidth) => {
@@ -212,7 +210,7 @@ export default function RichTextEditor({
         Underline,
         ResizableImage.configure({ allowBase64: false }),
         Placeholder.configure({
-          placeholder: effectivePlaceholder,
+          placeholder: placeholder || '',
           showOnlyWhenEditable: true,
           emptyEditorClass: 'is-editor-empty',
           emptyNodeClass: 'is-empty',
@@ -263,7 +261,7 @@ export default function RichTextEditor({
         onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
       },
     },
-    [ariaDescribedBy, disabled, editorAriaLabel, effectivePlaceholder, onBlur, t]
+    [ariaDescribedBy, disabled, editorAriaLabel, onBlur, placeholder, t]
   );
 
   useEffect(() => {
@@ -340,7 +338,7 @@ export default function RichTextEditor({
         sx={{
           borderRadius: 1.5,
           p: 1.25,
-          minHeight: minHeight + (toolbarExpanded ? 96 : 48),
+          minHeight: minHeight + (toolbarExpanded ? 92 : 0),
           borderColor: 'divider',
           '&:focus-within': { borderColor: 'primary.main', boxShadow: theme => `0 0 0 1px ${theme.palette.primary.main}` },
           '& .editor-toolbar': {
@@ -349,13 +347,21 @@ export default function RichTextEditor({
             zIndex: 1,
             display: 'flex',
             alignItems: 'center',
-            gap: 0.75,
+            justifyContent: toolbarExpanded ? 'space-between' : 'flex-end',
+            gap: toolbarExpanded ? 0.75 : 0,
             flexWrap: 'wrap',
-            pb: 1,
-            mb: 1,
-            borderBottom: 1,
-            borderColor: 'divider',
+            pb: toolbarExpanded ? 1 : 0,
+            mb: toolbarExpanded ? 1 : 0,
+            borderBottom: toolbarExpanded ? 1 : 0,
+            borderColor: toolbarExpanded ? 'divider' : 'transparent',
             bgcolor: 'background.paper',
+          },
+          '& .editor-toolbar-controls': {
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 0.75,
+            minWidth: 0,
           },
           '& .question-rich-text-editor': {
             minHeight,
@@ -450,17 +456,8 @@ export default function RichTextEditor({
 
         {editor ? (
           <Box className="editor-toolbar">
-            <Button
-              size="small"
-              variant="text"
-              startIcon={toolbarExpanded ? <CollapseToolbarIcon /> : <ExpandToolbarIcon />}
-              onClick={() => setToolbarExpanded((current) => !current)}
-              disabled={disabled}
-            >
-              {toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
-            </Button>
             {toolbarExpanded ? (
-              <>
+              <Box className="editor-toolbar-controls">
                 <IconButton
                   size="small"
                   aria-label={t('questions.richText.bold')}
@@ -579,8 +576,21 @@ export default function RichTextEditor({
                 >
                   {t('questions.richText.source')}
                 </Button>
-              </>
+              </Box>
             ) : null}
+            <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
+              <span>
+                <IconButton
+                  size="small"
+                  aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+                  onClick={() => setToolbarExpanded((current) => !current)}
+                  disabled={disabled}
+                  sx={{ ml: 'auto' }}
+                >
+                  {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
           </Box>
         ) : null}
 

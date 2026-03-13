@@ -415,6 +415,77 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
   });
 });
 
+// ---------- GET /api/v1/sessions/live ----------
+describe('GET /api/v1/sessions/live', () => {
+  it('student sees running interactive sessions and active unsubmitted quizzes, but not submitted live quizzes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const now = Date.now();
+
+    const liveSessionRes = await createSessionInCourse(profToken, course._id, { name: 'Live Poll' });
+    const liveSession = liveSessionRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${liveSession._id}`, {
+      token: profToken,
+      payload: { status: 'running' },
+    });
+
+    const openQuizRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Open Quiz',
+      quiz: true,
+      quizStart: new Date(now - (15 * 60 * 1000)).toISOString(),
+      quizEnd: new Date(now + (15 * 60 * 1000)).toISOString(),
+    });
+    const openQuiz = openQuizRes.json().session;
+    const openQuestion = await Question.create({
+      type: 1,
+      creator: prof._id,
+      owner: prof._id,
+      sessionId: openQuiz._id,
+      courseId: course._id,
+      content: '<p>Open quiz question</p>',
+      plainText: 'Open quiz question',
+      sessionOptions: { points: 1, maxAttempts: 1, attempts: [{ number: 1, closed: false }] },
+    });
+    await Session.updateOne(
+      { _id: openQuiz._id },
+      { $set: { questions: [openQuestion._id], status: 'visible' } }
+    );
+    await Response.create({
+      attempt: 1,
+      questionId: openQuestion._id,
+      studentUserId: student._id,
+      answer: 'A',
+    });
+
+    const submittedQuizRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Submitted Quiz',
+      quiz: true,
+      quizStart: new Date(now - (15 * 60 * 1000)).toISOString(),
+      quizEnd: new Date(now + (15 * 60 * 1000)).toISOString(),
+    });
+    const submittedQuiz = submittedQuizRes.json().session;
+    await Session.updateOne(
+      { _id: submittedQuiz._id },
+      { $set: { status: 'visible', submittedQuiz: [student._id] } }
+    );
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live', {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const rows = res.json().liveSessions || [];
+    expect(rows.map((row) => row._id)).toContain(liveSession._id);
+    expect(rows.map((row) => row._id)).toContain(openQuiz._id);
+    expect(rows.map((row) => row._id)).not.toContain(submittedQuiz._id);
+
+    const listedQuiz = rows.find((row) => row._id === openQuiz._id);
+    expect(listedQuiz.quiz).toBe(true);
+    expect(listedQuiz.quizHasResponsesByCurrentUser).toBe(true);
+    expect(listedQuiz.quizAllQuestionsAnsweredByCurrentUser).toBe(true);
+  });
+});
+
 // ---------- GET /api/v1/sessions/:id ----------
 describe('GET /api/v1/sessions/:id', () => {
   it('instructor can get session details', async (ctx) => {

@@ -872,6 +872,7 @@ export default async function sessionRoutes(app) {
       const roles = request.user.roles || [];
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
+      const isInstructorView = isAdmin || roles.includes('professor');
 
       const courseFilter = {};
       if (!isAdmin) {
@@ -891,11 +892,66 @@ export default async function sessionRoutes(app) {
 
       const sessions = await Session.find({
         courseId: { $in: courseIds },
-        status: 'running',
-        quiz: { $ne: true },
+        status: { $in: ['running', 'visible'] },
       }).lean();
 
-      const liveSessions = sessions.map((s) => {
+      const normalizedSessions = sessions.map((session) => buildSessionForUser(session, request.user, {
+        instructorView: isInstructorView,
+      }));
+
+      if (!isInstructorView) {
+        const runningQuizSessions = normalizedSessions.filter((session) => (
+          isQuizLikeSession(session) && session.status === 'running'
+        ));
+
+        if (runningQuizSessions.length > 0) {
+          const questionToSessionId = new Map();
+          runningQuizSessions.forEach((session) => {
+            (session.questions || []).forEach((questionId) => {
+              questionToSessionId.set(String(questionId), String(session._id));
+            });
+          });
+
+          if (questionToSessionId.size > 0) {
+            const responses = await Response.find({
+              studentUserId: userId,
+              questionId: { $in: [...questionToSessionId.keys()] },
+            })
+              .select('questionId')
+              .lean();
+
+            const answeredBySessionId = {};
+            responses.forEach((response) => {
+              const questionId = String(response?.questionId || '');
+              const sessionId = questionToSessionId.get(questionId);
+              if (!sessionId) return;
+              if (!answeredBySessionId[sessionId]) {
+                answeredBySessionId[sessionId] = new Set();
+              }
+              answeredBySessionId[sessionId].add(questionId);
+            });
+
+            runningQuizSessions.forEach((session) => {
+              const answeredSet = answeredBySessionId[String(session._id)] || new Set();
+              session.quizResponseCountByCurrentUser = answeredSet.size;
+              session.quizHasResponsesByCurrentUser = answeredSet.size > 0;
+              session.quizAllQuestionsAnsweredByCurrentUser = Array.isArray(session.questions)
+                && session.questions.length > 0
+                && answeredSet.size >= session.questions.length;
+            });
+          }
+        }
+      }
+
+      const liveSessions = normalizedSessions
+        .filter((session) => session.status === 'running')
+        .filter((session) => (
+          isInstructorView
+            || !isQuizLikeSession(session)
+            || session.practiceQuiz
+            || !session.quizSubmittedByCurrentUser
+        ))
+        .map((s) => {
         const c = courseById.get(String(s.courseId));
         return {
           _id: s._id,
@@ -903,8 +959,13 @@ export default async function sessionRoutes(app) {
           courseId: s.courseId,
           courseName: c ? [c.deptCode, c.courseNumber, c.name].filter(Boolean).join(' – ') : '',
           status: s.status,
+          quiz: !!s.quiz,
+          practiceQuiz: !!s.practiceQuiz,
+          quizSubmittedByCurrentUser: !!s.quizSubmittedByCurrentUser,
+          quizHasResponsesByCurrentUser: !!s.quizHasResponsesByCurrentUser,
+          quizAllQuestionsAnsweredByCurrentUser: !!s.quizAllQuestionsAnsweredByCurrentUser,
         };
-      });
+        });
 
       return { liveSessions };
     }

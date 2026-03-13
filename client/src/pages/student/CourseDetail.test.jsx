@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStudentSessionAction, sortSessions } from './CourseDetail';
+import { getStudentSessionAction, sortSessions } from '../../utils/studentSessions';
 
 describe('getStudentSessionAction', () => {
   it('shows start quiz when a running quiz has no saved responses', () => {

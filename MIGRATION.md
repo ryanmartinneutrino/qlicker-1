@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest | Unit tests (216 server + 7 client) |
+| **Testing** | Vitest | Unit tests (219 server + 9 client) |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -113,7 +113,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 218 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
+- **Server:** 219 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
 - **Client:** 9 tests in 2 files (grading UI, student quiz CTA)
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
@@ -297,7 +297,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 227 tests (218 server + 9 client) |
+| Unit tests | ✅ 228 tests (219 server + 9 client) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -317,7 +317,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (218 tests, 11 files)
+# Server tests (219 tests, 11 files)
 cd server && npm install && npx vitest run
 
 # Client build
