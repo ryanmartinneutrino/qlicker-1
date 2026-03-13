@@ -60,6 +60,9 @@
     "courses": "Courses",
     "logout": "Logout"
   },
+  "dashboard": {
+    "liveSessions": "Live Sessions"
+  },
   "home": {
     "tagline": "An open-source in-class response system, and so much more.",
     "subtitle": "Learning by answering questions.",
@@ -223,6 +226,7 @@
       "etherpadDomainPlaceholder": "e.g. etherpad.wikimedia.org",
       "enabledCourses": "Courses with video enabled",
       "enabledCoursesHelp": "Select courses for which video chat is available",
+      "searchCourses": "Search courses…",
       "noCourses": "No courses found",
       "failedLoadCourses": "Failed to load courses",
       "jitsiNotEnabled": "Jitsi video chat is disabled. Enable the checkbox above to configure.",

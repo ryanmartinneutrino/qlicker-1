@@ -9,7 +9,7 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon, ContentCopy as CopyIcon,
-  School as SchoolIcon,
+  School as SchoolIcon, PlayCircle as LiveIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import {
@@ -46,6 +46,7 @@ export default function ProfDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
+  const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [msg, setMsg] = useState(null);
@@ -62,8 +63,12 @@ export default function ProfDashboard() {
   const fetchCourses = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await apiClient.get('/courses');
-      setCourses(data.courses || []);
+      const [coursesRes, liveRes] = await Promise.all([
+        apiClient.get('/courses'),
+        apiClient.get('/sessions/live').catch(() => ({ data: { liveSessions: [] } })),
+      ]);
+      setCourses(coursesRes.data.courses || []);
+      setLiveSessions(liveRes.data.liveSessions || []);
     } catch {
       setMsg({ severity: 'error', text: t('professor.dashboard.failedLoadCourses') });
     } finally {
@@ -139,6 +144,27 @@ export default function ProfDashboard() {
         slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> } }}
         sx={{ mb: 3, minWidth: 300 }}
       />
+
+      {liveSessions.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+            <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
+            {t('dashboard.liveSessions')}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {liveSessions.map((ls) => (
+              <Chip
+                key={ls._id}
+                label={`${ls.courseName} — ${ls.name}`}
+                color="success"
+                variant="outlined"
+                onClick={() => navigate(`/manage/course/${ls.courseId}/session/${ls._id}/live`)}
+                sx={{ cursor: 'pointer' }}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>

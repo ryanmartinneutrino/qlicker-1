@@ -232,18 +232,21 @@ export default function CourseDetail() {
   useEffect(() => {
     let mounted = true;
     apiClient.get('/settings/public').then(({ data }) => {
-      if (mounted && data.Jitsi_Enabled) {
-        // Check if this course has Jitsi enabled in admin settings
-        apiClient.get('/settings').then(({ data: adminData }) => {
-          if (!mounted) return;
-          const enabledCourses = adminData.Jitsi_EnabledCourses || [];
-          setVideoEnabled(enabledCourses.includes(id));
-        }).catch(() => {
-          // Non-admin professors might not have access to full settings;
-          // if Jitsi is globally enabled, show the tab anyway
-          if (mounted) setVideoEnabled(true);
-        });
+      if (!mounted) return;
+      if (!data.Jitsi_Enabled) {
+        setVideoEnabled(false);
+        return;
       }
+      // Check if this course has Jitsi enabled in admin settings
+      apiClient.get('/settings').then(({ data: adminData }) => {
+        if (!mounted) return;
+        const enabledCourses = adminData.Jitsi_EnabledCourses || [];
+        setVideoEnabled(enabledCourses.includes(id));
+      }).catch(() => {
+        // Non-admin professors might not have access to full settings;
+        // if Jitsi is globally enabled, show the tab anyway
+        if (mounted) setVideoEnabled(true);
+      });
     }).catch(() => {});
     return () => { mounted = false; };
   }, [id]);
@@ -370,6 +373,9 @@ export default function CourseDetail() {
             || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
             fetchSessions();
           }
+          if (evt === 'video:updated') {
+            fetchCourse();
+          }
         } catch {
           // Ignore malformed payloads
         }
@@ -397,7 +403,7 @@ export default function CourseDetail() {
         ws.close();
       }
     };
-  }, [fetchSessions, id]);
+  }, [fetchSessions, fetchCourse, id]);
 
   useEffect(() => {
     const urlTab = parseCourseTab(searchParams.get('tab'));

@@ -60,6 +60,9 @@
     "courses": "Cours",
     "logout": "Déconnexion"
   },
+  "dashboard": {
+    "liveSessions": "Séances en direct"
+  },
   "home": {
     "tagline": "Un système de réponse en classe à code source ouvert, et bien plus encore.",
     "subtitle": "Apprendre en répondant aux questions.",
@@ -223,6 +226,7 @@
       "etherpadDomainPlaceholder": "ex. etherpad.wikimedia.org",
       "enabledCourses": "Cours avec vidéo activé",
       "enabledCoursesHelp": "Sélectionnez les cours pour lesquels le chat vidéo est disponible",
+      "searchCourses": "Rechercher des cours…",
       "noCourses": "Aucun cours trouvé",
       "failedLoadCourses": "Échec du chargement des cours",
       "jitsiNotEnabled": "Le chat vidéo Jitsi est désactivé. Cochez la case ci-dessus pour configurer.",

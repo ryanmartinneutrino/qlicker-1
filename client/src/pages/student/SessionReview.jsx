@@ -801,7 +801,10 @@ export default function SessionReview() {
               {(() => {
                 const responses = currentResponses;
                 const hasResponses = responses.length > 0;
-                const attemptIdx = Math.min(responseAttemptIdx[currentStateKey] || 0, Math.max(responses.length - 1, 0));
+                const attemptIdx = Math.min(
+                  responseAttemptIdx[currentStateKey] ?? Math.max(responses.length - 1, 0),
+                  Math.max(responses.length - 1, 0)
+                );
                 const currentResponse = responses[attemptIdx];
                 const isResponseVisible = !!responseVisible[currentStateKey];
 
@@ -879,7 +882,10 @@ export default function SessionReview() {
                 const stateKey = questionStateKey(i);
                 const responses = getResponsesForQuestion(responsesByQuestion, q, i).sort((a, b) => a.attempt - b.attempt);
                 const hasResponses = responses.length > 0;
-                const attemptIdx = Math.min(responseAttemptIdx[stateKey] || 0, Math.max(responses.length - 1, 0));
+                const attemptIdx = Math.min(
+                  responseAttemptIdx[stateKey] ?? Math.max(responses.length - 1, 0),
+                  Math.max(responses.length - 1, 0)
+                );
                 const currentResponse = responses[attemptIdx];
                 const qType = normalizeQuestionType(q);
                 const mark = getMarkForQuestion(sessionGrade, q, i);
