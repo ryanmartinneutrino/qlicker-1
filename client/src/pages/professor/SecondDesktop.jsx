@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
@@ -196,7 +196,7 @@ export default function SecondDesktop() {
 
     const connect = () => {
       if (closed) return;
-      const latestToken = localStorage.getItem('token');
+      const latestToken = getAccessToken();
       if (!latestToken) return;
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));

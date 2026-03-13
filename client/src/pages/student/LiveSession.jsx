@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
 } from '@mui/material';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
@@ -158,7 +158,7 @@ export default function LiveSession() {
 
     const connect = () => {
       if (closed) return;
-      const latestToken = localStorage.getItem('token');
+      const latestToken = getAccessToken();
       if (!latestToken) return;
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));

@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
@@ -351,7 +351,7 @@ export default function CourseDetail() {
 
     const connect = () => {
       if (closed) return;
-      const latestToken = localStorage.getItem('token');
+      const latestToken = getAccessToken();
       if (!latestToken) return;
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));

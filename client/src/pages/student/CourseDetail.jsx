@@ -6,7 +6,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
@@ -242,7 +242,7 @@ export default function StudentCourseDetail() {
 
     const connect = () => {
       if (closed) return;
-      const latestToken = localStorage.getItem('token');
+      const latestToken = getAccessToken();
       if (!latestToken) return;
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));

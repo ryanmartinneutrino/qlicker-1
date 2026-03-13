@@ -13,7 +13,7 @@ import {
   People as PeopleIcon, Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
@@ -269,7 +269,7 @@ export default function LiveSession() {
 
     const connect = () => {
       if (closed) return;
-      const latestToken = localStorage.getItem('token');
+      const latestToken = getAccessToken();
       if (!latestToken) return;
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));
