@@ -965,71 +965,73 @@ export default function SessionEditor() {
   return (
     <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.25, pb: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: PAGE_SECTION_GAP }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: PAGE_SECTION_GAP }}>
         <BackLinkButton
           label={returnToReview ? t('professor.sessionEditor.backToReview') : t('professor.sessionEditor.backToCourse')}
           onClick={() => navigate(backLink)}
         />
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          {courseTitle ? (
-            <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
-              {courseTitle}
-            </Typography>
-          ) : null}
-          {courseSection ? (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-              {t('professor.course.sectionHeader', { section: courseSection })}
-            </Typography>
-          ) : null}
-          <Typography variant="h6" sx={{ lineHeight: 1.15 }}>{session.name}</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            {courseTitle ? (
+              <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
+                {courseTitle}
+              </Typography>
+            ) : null}
+            {courseSection ? (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                {t('professor.course.sectionHeader', { section: courseSection })}
+              </Typography>
+            ) : null}
+            <Typography variant="h6" sx={{ lineHeight: 1.15 }}>{session.name}</Typography>
+          </Box>
+          <SessionStatusChip status={status} />
+          {!session.quiz && status !== 'running' && status !== 'done' && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<LaunchIcon />}
+              onClick={() => setConfirmGoLiveOpen(true)}
+              size="small"
+              aria-label={t('professor.sessionEditor.joinLiveSession')}
+            >
+              {t('professor.course.launch')}
+            </Button>
+          )}
+          {!session.quiz && status === 'running' && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<JoinIcon />}
+              onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}/live`)}
+              size="small"
+              aria-label={t('professor.sessionEditor.joinLiveSession')}
+            >
+              {t('professor.course.joinSession')}
+            </Button>
+          )}
+          {canReviewRunningQuiz && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<ReviewIcon />}
+              size="small"
+              onClick={() => navigate(sessionReviewLink)}
+            >
+              {t('professor.sessionEditor.reviewLiveResults')}
+            </Button>
+          )}
+          {canReviewEndedSession && (
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<ReviewIcon />}
+              size="small"
+              onClick={() => navigate(sessionReviewLink)}
+            >
+              {t('professor.sessionEditor.reviewResults')}
+            </Button>
+          )}
         </Box>
-        <SessionStatusChip status={status} />
-        {!session.quiz && status !== 'running' && status !== 'done' && (
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<LaunchIcon />}
-            onClick={() => setConfirmGoLiveOpen(true)}
-            size="small"
-            aria-label={t('professor.sessionEditor.joinLiveSession')}
-          >
-            {t('professor.course.launch')}
-          </Button>
-        )}
-        {!session.quiz && status === 'running' && (
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<JoinIcon />}
-            onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}/live`)}
-            size="small"
-            aria-label={t('professor.sessionEditor.joinLiveSession')}
-          >
-            {t('professor.course.joinSession')}
-          </Button>
-        )}
-        {canReviewRunningQuiz && (
-          <Button
-            variant="contained"
-            color="success"
-            startIcon={<ReviewIcon />}
-            size="small"
-            onClick={() => navigate(sessionReviewLink)}
-          >
-            {t('professor.sessionEditor.reviewLiveResults')}
-          </Button>
-        )}
-        {canReviewEndedSession && (
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<ReviewIcon />}
-            size="small"
-            onClick={() => navigate(sessionReviewLink)}
-          >
-            {t('professor.sessionEditor.reviewResults')}
-          </Button>
-        )}
       </Box>
 
       {/* Session Properties */}

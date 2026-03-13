@@ -640,18 +640,20 @@ export default function LiveSession() {
           gap: 1.25,
         }}
       >
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25, width: '100%' }}>
+        <Box sx={{ width: '100%' }}>
           <BackLinkButton
             label={t('professor.liveSession.backToCourse')}
             onClick={() => navigate(`/manage/course/${courseId}`)}
           />
+        </Box>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 1.25, width: '100%' }}>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            {courseTitle ? (
+            {!isMobile && courseTitle ? (
               <Typography variant="h5" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
                 {courseTitle}
               </Typography>
             ) : null}
-            {courseSection ? (
+            {!isMobile && courseSection ? (
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                 {t('professor.course.sectionHeader', { section: courseSection })}
               </Typography>

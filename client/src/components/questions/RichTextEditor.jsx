@@ -327,41 +327,60 @@ export default function RichTextEditor({
 
   return (
     <Box>
-      {label ? (
-        <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
-          {label}
-        </Typography>
+      {(label || editor) ? (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: label ? 'space-between' : 'flex-end',
+            gap: 1,
+            mb: 0.35,
+            minHeight: 28,
+          }}
+        >
+          {label ? (
+            <Typography variant="subtitle2">
+              {label}
+            </Typography>
+          ) : <Box />}
+          <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
+            <span>
+              <IconButton
+                size="small"
+                aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+                onClick={() => setToolbarExpanded((current) => !current)}
+                disabled={disabled}
+                sx={{ p: 0.5 }}
+              >
+                {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Box>
       ) : null}
 
       <Paper
         variant="outlined"
         sx={{
           borderRadius: 1.5,
-          p: 1.25,
-          minHeight: minHeight + (toolbarExpanded ? 92 : 0),
+          px: 1.25,
+          py: toolbarExpanded ? 1.25 : 0.85,
+          minHeight: minHeight + (toolbarExpanded ? 84 : 0),
           borderColor: 'divider',
           '&:focus-within': { borderColor: 'primary.main', boxShadow: theme => `0 0 0 1px ${theme.palette.primary.main}` },
-          '& .editor-toolbar': {
+          '& .editor-toolbar-controls': {
             position: 'sticky',
             top: 0,
             zIndex: 1,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: toolbarExpanded ? 'space-between' : 'flex-end',
-            gap: toolbarExpanded ? 0.75 : 0,
-            flexWrap: 'wrap',
-            pb: toolbarExpanded ? 1 : 0,
-            mb: toolbarExpanded ? 1 : 0,
-            borderBottom: toolbarExpanded ? 1 : 0,
-            borderColor: toolbarExpanded ? 'divider' : 'transparent',
-            bgcolor: 'background.paper',
-          },
-          '& .editor-toolbar-controls': {
-            display: 'flex',
-            alignItems: 'center',
-            flexWrap: 'wrap',
             gap: 0.75,
-            minWidth: 0,
+            flexWrap: 'wrap',
+            pb: 1,
+            mb: 1,
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
           },
           '& .question-rich-text-editor': {
             minHeight,
@@ -454,10 +473,8 @@ export default function RichTextEditor({
           </BubbleMenu>
         )}
 
-        {editor ? (
-          <Box className="editor-toolbar">
-            {toolbarExpanded ? (
-              <Box className="editor-toolbar-controls">
+        {editor && toolbarExpanded ? (
+          <Box className="editor-toolbar-controls">
                 <IconButton
                   size="small"
                   aria-label={t('questions.richText.bold')}
@@ -576,21 +593,6 @@ export default function RichTextEditor({
                 >
                   {t('questions.richText.source')}
                 </Button>
-              </Box>
-            ) : null}
-            <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
-              <span>
-                <IconButton
-                  size="small"
-                  aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
-                  onClick={() => setToolbarExpanded((current) => !current)}
-                  disabled={disabled}
-                  sx={{ ml: 'auto' }}
-                >
-                  {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
-                </IconButton>
-              </span>
-            </Tooltip>
           </Box>
         ) : null}
 

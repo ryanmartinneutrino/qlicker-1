@@ -157,7 +157,11 @@ export default function ProfDashboard() {
               <SessionListCard
                 key={ls._id}
                 highlighted
-                onClick={() => navigate(`/manage/course/${ls.courseId}/session/${ls._id}/live`)}
+                onClick={() => navigate(
+                  ls.quiz || ls.practiceQuiz
+                    ? `/manage/course/${ls.courseId}/session/${ls._id}/review`
+                    : `/manage/course/${ls.courseId}/session/${ls._id}/live`
+                )}
                 title={ls.name}
                 subtitle={ls.courseName}
                 badges={<Chip label={t('sessionStatus.live')} size="small" color="success" sx={COMPACT_CHIP_SX} />}
