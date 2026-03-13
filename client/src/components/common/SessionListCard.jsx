@@ -81,10 +81,6 @@ export default function SessionListCard({
               px: 1.25,
               py: { xs: 1.25, md: 1 },
               width: { xs: '100%', md: 'auto' },
-              borderTop: { xs: '1px solid', md: 'none' },
-              borderLeft: { xs: 'none', md: '1px solid' },
-              borderColor: highlighted ? 'success.light' : 'divider',
-              bgcolor: highlighted ? 'rgba(232, 245, 233, 0.6)' : 'transparent',
             }}
           >
             {actions}
