@@ -11,6 +11,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
   getStudentSessionAction,
+  isQuizSession,
   isSubmittedLiveQuiz,
   sortStudentSessions,
 } from '../../utils/studentSessions';
