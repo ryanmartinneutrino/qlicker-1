@@ -109,7 +109,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
 - ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
-- ✅ Session slides — slide items can be inserted anywhere in session order, render in quiz/live/review flows without affecting grading or quiz completion checks, and show separate page/question counters in live-facing UIs only when slides exist, with the question counter hidden on slide pages
+- ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
