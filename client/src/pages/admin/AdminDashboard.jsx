@@ -17,7 +17,7 @@ import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionListCard from '../../components/common/SessionListCard';
-import { SUPPORTED_LOCALES, DATE_FORMATS } from '../../i18n';
+import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
 
 function TabPanel({ children, value, index }) {
@@ -87,6 +87,7 @@ function SettingsTab() {
     tokenExpiryMinutes: 120,
     locale: 'en',
     dateFormat: 'DD-MMM-YYYY',
+    timeFormat: '24h',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -100,6 +101,7 @@ function SettingsTab() {
       if (!mounted) return;
       const loadedLocale = data.locale ?? 'en';
       const loadedDateFormat = data.dateFormat ?? 'DD-MMM-YYYY';
+      const loadedTimeFormat = data.timeFormat ?? '24h';
       setSettings({
         restrictDomain: data.restrictDomain ?? false,
         allowedDomains: Array.isArray(data.allowedDomains)
@@ -110,10 +112,12 @@ function SettingsTab() {
         tokenExpiryMinutes: data.tokenExpiryMinutes ?? 120,
         locale: loadedLocale,
         dateFormat: loadedDateFormat,
+        timeFormat: loadedTimeFormat,
       });
       i18n.changeLanguage(loadedLocale);
       localStorage.setItem('qlicker_locale', loadedLocale);
       localStorage.setItem('qlicker_dateFormat', loadedDateFormat);
+      localStorage.setItem('qlicker_timeFormat', loadedTimeFormat);
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
@@ -150,6 +154,7 @@ function SettingsTab() {
           tokenExpiryMinutes: Math.max(5, parseInt(settings.tokenExpiryMinutes, 10) || 120),
           locale: settings.locale,
           dateFormat: settings.dateFormat,
+          timeFormat: settings.timeFormat,
         };
         await apiClient.patch('/settings', payload);
         setSaveStatus('success');
@@ -229,6 +234,24 @@ function SettingsTab() {
         >
           {DATE_FORMATS.map((fmt) => (
             <MenuItem key={fmt.key} value={fmt.key}>{fmt.example}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+      <FormControl fullWidth>
+        <InputLabel>{t('admin.settings.timeFormat')}</InputLabel>
+        <Select
+          value={settings.timeFormat}
+          label={t('admin.settings.timeFormat')}
+          onChange={(e) => {
+            const newFormat = e.target.value;
+            setSettings((s) => ({ ...s, timeFormat: newFormat }));
+            localStorage.setItem('qlicker_timeFormat', newFormat);
+          }}
+        >
+          {TIME_FORMATS.map((fmt) => (
+            <MenuItem key={fmt.key} value={fmt.key}>
+              {t(`admin.settings.timeFormatOptions.${fmt.key}`, { example: fmt.example })}
+            </MenuItem>
           ))}
         </Select>
       </FormControl>
@@ -823,14 +846,14 @@ function VideoTab() {
     return () => clearTimeout(timer);
   }, [settings, loading]);
 
-  if (loading) return <CircularProgress />;
-
   const sortedCourses = useMemo(() => sortCoursesByRecent(courses), [courses]);
   const selectedCourseObjects = useMemo(() => (
     settings.Jitsi_EnabledCourses
       .map((cid) => sortedCourses.find((course) => course._id === cid))
       .filter(Boolean)
   ), [settings.Jitsi_EnabledCourses, sortedCourses]);
+
+  if (loading) return <CircularProgress />;
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>

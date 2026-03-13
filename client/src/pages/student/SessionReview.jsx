@@ -17,6 +17,7 @@ import apiClient from '../../api/client';
 import {
   TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
 } from '../../components/questions/constants';
+import BackLinkButton from '../../components/common/BackLinkButton';
 import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 
@@ -649,9 +650,11 @@ export default function SessionReview() {
     return (
       <Box sx={{ p: 3, maxWidth: 700 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button variant="outlined" onClick={() => navigate(fallbackCourseBackLink)}>
-          {t('student.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton
+          variant="outlined"
+          label={t('student.sessionReview.backToCourse')}
+          onClick={() => navigate(fallbackCourseBackLink)}
+        />
       </Box>
     );
   }
@@ -681,9 +684,11 @@ export default function SessionReview() {
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
-        <Button size="small" onClick={() => navigate(courseBackLink)} sx={{ mb: 1 }}>
-          ← {t('student.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton
+          label={t('student.sessionReview.backToCourse')}
+          onClick={() => navigate(courseBackLink)}
+          sx={{ mb: 1 }}
+        />
         <Typography variant="h5" sx={{ fontWeight: 700 }}>
           {session?.name || t('student.sessionReview.sessionReviewFallback')}
         </Typography>

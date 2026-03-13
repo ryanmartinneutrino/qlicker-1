@@ -23,6 +23,8 @@ import {
   InsertLink as LinkIcon,
   FormatSize as FontSizeIcon,
   FormatUnderlined as UnderlineIcon,
+  ExpandLess as CollapseToolbarIcon,
+  ExpandMore as ExpandToolbarIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
@@ -127,6 +129,9 @@ export default function RichTextEditor({
   label,
   showTip = false,
   compact = false,
+  ariaLabel,
+  ariaDescribedBy,
+  onBlur,
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -138,10 +143,11 @@ export default function RichTextEditor({
   const lastEditorHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const fileInputRef = useRef(null);
+  const [toolbarExpanded, setToolbarExpanded] = useState(!compact);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
   const preparedPlainText = useMemo(() => extractPlainTextFromHtml(preparedValue), [preparedValue]);
   const effectivePlaceholder = preparedPlainText.trim() ? '' : placeholder;
-  const editorAriaLabel = label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel');
+  const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
 
   const uploadImage = async (file, maxEditorImageWidth) => {
     const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
@@ -192,6 +198,7 @@ export default function RichTextEditor({
           codeBlock: false,
           blockquote: false,
           horizontalRule: false,
+          link: false,
           underline: false,
         }),
         Link.configure({
@@ -218,6 +225,13 @@ export default function RichTextEditor({
           'aria-multiline': 'true',
           'aria-label': editorAriaLabel,
           'aria-disabled': disabled ? 'true' : 'false',
+          ...(ariaDescribedBy ? { 'aria-describedby': ariaDescribedBy } : {}),
+        },
+        handleDOMEvents: {
+          blur: () => {
+            onBlur?.();
+            return false;
+          },
         },
         handleDrop(view, event) {
           const droppedFiles = Array.from(event.dataTransfer?.files || []).filter(isImageFile);
@@ -249,7 +263,7 @@ export default function RichTextEditor({
         onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
       },
     },
-    [disabled, editorAriaLabel, effectivePlaceholder, t]
+    [ariaDescribedBy, disabled, editorAriaLabel, effectivePlaceholder, onBlur, t]
   );
 
   useEffect(() => {
@@ -326,13 +340,13 @@ export default function RichTextEditor({
         sx={{
           borderRadius: 1.5,
           p: 1.25,
-          minHeight: minHeight + 96,
+          minHeight: minHeight + (toolbarExpanded ? 96 : 48),
           borderColor: 'divider',
           '&:focus-within': { borderColor: 'primary.main', boxShadow: theme => `0 0 0 1px ${theme.palette.primary.main}` },
           '& .editor-toolbar': {
             position: 'sticky',
             top: 0,
-            zIndex: 2,
+            zIndex: 1,
             display: 'flex',
             alignItems: 'center',
             gap: 0.75,
@@ -359,7 +373,7 @@ export default function RichTextEditor({
               my: 0.8,
             },
             '& img': { maxWidth: '100%', height: 'auto', borderRadius: 0 },
-            '& p.is-empty:first-of-type::before, & .is-editor-empty:first-child::before': {
+            '& p.is-empty:first-of-type::before, & .is-editor-empty:first-of-type::before': {
               color: 'text.disabled',
               content: 'attr(data-placeholder)',
               float: 'left',
@@ -374,7 +388,12 @@ export default function RichTextEditor({
             editor={editor}
             pluginKey={bubbleMenuKey.current}
             shouldShow={({ editor: menuEditor, from, to }) => menuEditor.isEditable && from < to}
-            options={{ placement: 'top', offset: 8 }}
+            options={{
+              placement: 'top',
+              offset: 16,
+              strategy: 'fixed',
+              appendTo: () => document.body,
+            }}
           >
             <Paper
               elevation={3}
@@ -431,123 +450,137 @@ export default function RichTextEditor({
 
         {editor ? (
           <Box className="editor-toolbar">
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.bold')}
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              color={editor.isActive('bold') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <BoldIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.italic')}
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              color={editor.isActive('italic') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <ItalicIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.underline')}
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              color={editor.isActive('underline') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <UnderlineIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.bulletList')}
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
-              color={editor.isActive('bulletList') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <BulletListIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.inlineCode')}
-              onClick={() => editor.chain().focus().toggleCode().run()}
-              color={editor.isActive('code') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <CodeIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label={t('questions.richText.link')}
-              onClick={openLinkEditor}
-              color={editor.isActive('link') ? 'primary' : 'default'}
-              disabled={disabled}
-            >
-              <LinkIcon fontSize="small" />
-            </IconButton>
-            <Button
-              component="label"
-              size="small"
-              variant="outlined"
-              startIcon={<ImageIcon />}
-              disabled={disabled || uploading}
-            >
-              {t('questions.richText.image')}
-              <input
-                ref={fileInputRef}
-                hidden
-                type="file"
-                accept="image/*"
-                onChange={handleToolbarImageInput}
-              />
-            </Button>
-            <TextField
-              size="small"
-              select
-              label={t('questions.richText.fontSize')}
-              value={currentFontSize}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                if (!nextValue) {
-                  editor.chain().focus().unsetFontSize().run();
-                  return;
-                }
-                editor.chain().focus().setFontSize(nextValue).run();
-              }}
-              sx={{ width: 120 }}
-              disabled={disabled}
-              InputProps={{ startAdornment: <FontSizeIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> }}
-            >
-              {FONT_SIZE_OPTIONS.map((option) => (
-                <MenuItem key={option || 'default'} value={option}>
-                  {option || t('questions.richText.defaultSize')}
-                </MenuItem>
-              ))}
-            </TextField>
             <Button
               size="small"
-              variant="outlined"
-              startIcon={<ColorIcon />}
-              component="label"
+              variant="text"
+              startIcon={toolbarExpanded ? <CollapseToolbarIcon /> : <ExpandToolbarIcon />}
+              onClick={() => setToolbarExpanded((current) => !current)}
               disabled={disabled}
             >
-              {t('questions.richText.color')}
-              <input
-                type="color"
-                value={currentColor}
-                onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
-                style={{ width: 28, height: 28, border: 0, background: 'transparent', marginLeft: 8 }}
-              />
+              {toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
             </Button>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<SourceIcon />}
-              onClick={openSourceEditor}
-              disabled={disabled}
-            >
-              {t('questions.richText.source')}
-            </Button>
+            {toolbarExpanded ? (
+              <>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.bold')}
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                  color={editor.isActive('bold') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <BoldIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.italic')}
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                  color={editor.isActive('italic') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <ItalicIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.underline')}
+                  onClick={() => editor.chain().focus().toggleUnderline().run()}
+                  color={editor.isActive('underline') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <UnderlineIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.bulletList')}
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                  color={editor.isActive('bulletList') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <BulletListIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.inlineCode')}
+                  onClick={() => editor.chain().focus().toggleCode().run()}
+                  color={editor.isActive('code') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <CodeIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t('questions.richText.link')}
+                  onClick={openLinkEditor}
+                  color={editor.isActive('link') ? 'primary' : 'default'}
+                  disabled={disabled}
+                >
+                  <LinkIcon fontSize="small" />
+                </IconButton>
+                <Button
+                  component="label"
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ImageIcon />}
+                  disabled={disabled || uploading}
+                >
+                  {t('questions.richText.image')}
+                  <input
+                    ref={fileInputRef}
+                    hidden
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleToolbarImageInput}
+                  />
+                </Button>
+                <TextField
+                  size="small"
+                  select
+                  label={t('questions.richText.fontSize')}
+                  value={currentFontSize}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    if (!nextValue) {
+                      editor.chain().focus().unsetFontSize().run();
+                      return;
+                    }
+                    editor.chain().focus().setFontSize(nextValue).run();
+                  }}
+                  sx={{ width: 120 }}
+                  disabled={disabled}
+                  InputProps={{ startAdornment: <FontSizeIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> }}
+                >
+                  {FONT_SIZE_OPTIONS.map((option) => (
+                    <MenuItem key={option || 'default'} value={option}>
+                      {option || t('questions.richText.defaultSize')}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<ColorIcon />}
+                  component="label"
+                  disabled={disabled}
+                >
+                  {t('questions.richText.color')}
+                  <input
+                    type="color"
+                    value={currentColor}
+                    onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
+                    style={{ width: 28, height: 28, border: 0, background: 'transparent', marginLeft: 8 }}
+                  />
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<SourceIcon />}
+                  onClick={openSourceEditor}
+                  disabled={disabled}
+                >
+                  {t('questions.richText.source')}
+                </Button>
+              </>
+            ) : null}
           </Box>
         ) : null}
 

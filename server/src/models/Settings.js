@@ -64,6 +64,7 @@ const SettingsSchema = new mongoose.Schema(
     // i18n / locale settings
     locale: { type: String, default: 'en' },
     dateFormat: { type: String, default: 'DD-MMM-YYYY' },
+    timeFormat: { type: String, enum: ['24h', '12h'], default: '24h' },
 
     // Legacy extra fields (preserved so they aren't stripped on save)
     maxImageSize: { type: Number, default: 0 },

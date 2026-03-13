@@ -46,17 +46,28 @@ function getSessionSortTime(session) {
   return getTimestamp(session?.date || session?.createdAt || session?.quizStart || session?.quizEnd);
 }
 
-function sortSessions(items) {
+export function sortSessions(items) {
   return [...items].sort((a, b) => {
     const aBucket = getSessionSortBucket(a);
     const bBucket = getSessionSortBucket(b);
     if (aBucket !== bBucket) return aBucket - bBucket;
+    const submittedDiff = Number(isSubmittedLiveQuiz(a)) - Number(isSubmittedLiveQuiz(b));
+    if (submittedDiff !== 0) return submittedDiff;
     return getSessionSortTime(b) - getSessionSortTime(a);
   });
 }
 
 function isQuizSession(session) {
   return !!(session.quiz || session.practiceQuiz);
+}
+
+function isSubmittedLiveQuiz(session) {
+  return !!(
+    isQuizSession(session)
+    && session?.status === 'running'
+    && session?.quizSubmittedByCurrentUser
+    && !session?.practiceQuiz
+  );
 }
 
 const MAX_STUDENT_TAB_INDEX = 4;
@@ -105,7 +116,7 @@ export function getStudentSessionAction(session, courseId, listTabIndex) {
       clickable: false,
       path: '',
       label: 'student.course.quizSubmitted',
-      chipColor: 'success',
+      chipColor: 'default',
       chipVariant: 'outlined',
     };
   }
@@ -345,12 +356,21 @@ export default function StudentCourseDetail() {
         {sessionItems.map((s) => {
           const action = getStudentSessionAction(s, id, listTabIndex);
           const clickable = action.clickable && !!action.path;
+          const submittedLiveQuiz = isSubmittedLiveQuiz(s);
           return (
             <SessionListCard
               key={s._id}
-              highlighted={s.status === 'running'}
+              highlighted={s.status === 'running' && !submittedLiveQuiz}
               onClick={clickable ? () => navigate(action.path) : undefined}
               disabled={!clickable}
+              sx={submittedLiveQuiz ? {
+                bgcolor: 'action.disabledBackground',
+                borderColor: 'divider',
+                opacity: 0.76,
+                '&:hover': {
+                  bgcolor: 'action.disabledBackground',
+                },
+              } : undefined}
               title={s.name}
               badges={(
                 <>

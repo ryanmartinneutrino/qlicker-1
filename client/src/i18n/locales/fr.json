@@ -29,6 +29,12 @@
     "email": "Courriel",
     "count": "Nombre",
     "points": "Points",
+    "date": "Date",
+    "hour": "Heure",
+    "minute": "Minute",
+    "period": "Période",
+    "am": "AM",
+    "pm": "PM",
     "solution": "Solution",
     "noContent": "(aucun contenu)",
     "noAnswer": "(pas de réponse)"
@@ -167,7 +173,12 @@
       "locale": "Langue / Paramètres régionaux",
       "localeHelp": "Choisir la langue d'affichage de l'application",
       "dateFormat": "Format de date",
-      "dateFormatHelp": "Choisir le format d'affichage des dates dans l'application"
+      "dateFormatHelp": "Choisir le format d'affichage des dates dans l'application",
+      "timeFormat": "Format d'heure par défaut",
+      "timeFormatOptions": {
+        "24h": "24 heures ({{example}})",
+        "12h": "12 heures ({{example}})"
+      }
     },
     "users": {
       "searchPlaceholder": "Rechercher par nom ou courriel",
@@ -317,6 +328,12 @@
       "regenerate": "Régénérer",
       "requireVerifiedEnroll": "Exiger un courriel vérifié pour l'inscription",
       "allowStudentQuestions": "Permettre aux étudiants de soumettre des questions",
+      "quizTimeFormat": "Format d'heure des questionnaires",
+      "quizTimeFormatInherit": "Utiliser le format administrateur ({{defaultFormat}})",
+      "quizTimeFormatOptions": {
+        "24h": "24 heures",
+        "12h": "12 heures"
+      },
       "courseActive": "Le cours est actif",
       "courseInactive": "Le cours est inactif",
       "allFieldsRequired": "Tous les champs de propriétés du cours sont obligatoires. L'enregistrement automatique reprend une fois que tous les champs sont remplis.",
@@ -345,6 +362,7 @@
       "joinSession": "Rejoindre la séance",
       "grade": "Évaluer",
       "review": "Réviser",
+      "reviewLiveSessionResults": "Réviser les résultats de la séance en direct",
       "practice": "Pratique",
       "extensionsActive": "Prolongations actives",
       "noInstructors": "Aucun enseignant assigné.",
@@ -398,7 +416,8 @@
       "quizEnd": "Fin du questionnaire",
       "today": "Aujourd'hui",
       "set24hWindow": "Définir une fenêtre de 24 h",
-      "defaultQuizWindows": "Les fenêtres de questionnaire par défaut sont de 24 heures.",
+      "add12hToEndDate": "Ajouter 12 h à la fin",
+      "defaultQuizWindows": "Les fenêtres de questionnaire par défaut sont de 12 heures.",
       "quizExtensions": "Prolongations de questionnaire : {{count}} étudiant(s)",
       "manageExtensions": "Gérer les prolongations",
       "sessionDate": "Date de la séance",
@@ -456,6 +475,9 @@
       "failedLaunch": "Échec du lancement de la séance",
       "joinLiveSession": "Rejoindre la séance en direct",
       "backToCourse": "Retour au cours",
+      "backToReview": "Retour à la révision",
+      "reviewLiveResults": "Réviser les résultats de la séance en direct",
+      "reviewResults": "Réviser les résultats",
       "sessionNotFound": "Séance non trouvée",
       "quizEndAfterStart": "La fin du quiz doit être postérieure au début du quiz.",
       "failedLoadSession": "Échec du chargement de la session",
@@ -852,7 +874,9 @@
       "editorTip": "Astuce : sélectionnez du texte pour le formater. Tapez les mathématiques comme `$...$`, `\\(...\\)` ou `$$...$$`. Glissez-déposez ou collez une image pour la téléverser.",
       "uploadFailed": "Échec du téléversement de l'image. Réessayez.",
       "readFailed": "Échec de la lecture du fichier image",
-      "decodeFailed": "Échec du décodage de l'image"
+      "decodeFailed": "Échec du décodage de l'image",
+      "showToolbar": "Afficher la barre d'outils",
+      "hideToolbar": "Masquer la barre d'outils"
     },
     "studentRichText": {
       "editorLabel": "Éditeur de réponse courte",

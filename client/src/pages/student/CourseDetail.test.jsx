@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStudentSessionAction } from './CourseDetail';
+import { getStudentSessionAction, sortSessions } from './CourseDetail';
 
 describe('getStudentSessionAction', () => {
   it('shows start quiz when a running quiz has no saved responses', () => {
@@ -54,5 +54,46 @@ describe('getStudentSessionAction', () => {
       chipColor: 'error',
       chipVariant: 'filled',
     });
+  });
+
+  it('greys out a submitted live quiz', () => {
+    const action = getStudentSessionAction({
+      _id: 'session-1',
+      quiz: true,
+      status: 'running',
+      quizSubmittedByCurrentUser: true,
+      practiceQuiz: false,
+    }, 'course-1', 1);
+
+    expect(action).toEqual({
+      clickable: false,
+      path: '',
+      label: 'student.course.quizSubmitted',
+      chipColor: 'default',
+      chipVariant: 'outlined',
+    });
+  });
+});
+
+describe('sortSessions', () => {
+  it('keeps unsubmitted live quizzes ahead of submitted live quizzes', () => {
+    const sorted = sortSessions([
+      {
+        _id: 'submitted',
+        quiz: true,
+        status: 'running',
+        quizSubmittedByCurrentUser: true,
+        quizStart: '2026-03-13T11:00:00.000Z',
+      },
+      {
+        _id: 'open',
+        quiz: true,
+        status: 'running',
+        quizSubmittedByCurrentUser: false,
+        quizStart: '2026-03-13T10:00:00.000Z',
+      },
+    ]);
+
+    expect(sorted.map((session) => session._id)).toEqual(['open', 'submitted']);
   });
 });

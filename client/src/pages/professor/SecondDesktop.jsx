@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Box, Typography, Paper, Alert, Button, CircularProgress, Chip } from '@mui/material';
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
 import apiClient, { getAccessToken } from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
@@ -137,8 +136,7 @@ function ShortAnswerList({ responses }) {
 
 export default function PresentationWindow() {
   const { t } = useTranslation();
-  const { courseId, sessionId } = useParams();
-  const navigate = useNavigate();
+  const { sessionId } = useParams();
 
   const [liveData, setLiveData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -335,35 +333,29 @@ export default function PresentationWindow() {
     document.title = `${name} — Qlicker`;
   }, [session?.name, t]);
 
-  const renderHeader = (compact = false) => (
+  const renderHeader = ({ compact = false, showSessionName = true } = {}) => (
     <Box
       sx={{
         display: 'flex',
-        alignItems: compact ? 'center' : 'flex-start',
-        justifyContent: 'space-between',
-        gap: 2,
-        flexWrap: 'wrap',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 0.5 : 1,
         width: '100%',
         mb: compact ? 2 : 4,
+        textAlign: 'center',
       }}
     >
-      <Box sx={{ minWidth: 0 }}>
-        {courseTitle ? (
-          <Typography variant={compact ? 'body1' : 'h5'} sx={{ fontWeight: 700 }}>
-            {courseTitle}
-          </Typography>
-        ) : null}
+      {courseTitle ? (
+        <Typography variant={compact ? 'body1' : 'h5'} sx={{ fontWeight: 700 }}>
+          {courseTitle}
+        </Typography>
+      ) : null}
+      {showSessionName ? (
         <Typography variant={compact ? 'body2' : 'h6'} color="text.secondary">
           {session?.name || t('professor.secondDesktop.presentation')}
         </Typography>
-      </Box>
-      <Button
-        variant="outlined"
-        startIcon={<ArrowBackIcon />}
-        onClick={() => navigate(`/manage/course/${courseId}`)}
-      >
-        {t('professor.secondDesktop.backToCourse')}
-      </Button>
+      ) : null}
     </Box>
   );
 
@@ -468,7 +460,7 @@ export default function PresentationWindow() {
           p: 4, textAlign: 'center',
         }}
       >
-        {renderHeader()}
+        {renderHeader({ showSessionName: false })}
         <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
           {session?.name || t('professor.secondDesktop.liveSession')}
         </Typography>
@@ -488,7 +480,7 @@ export default function PresentationWindow() {
         display: 'flex', flexDirection: 'column', p: { xs: 2, sm: 4 },
       }}
     >
-      {renderHeader(true)}
+      {renderHeader({ compact: true })}
 
       {/* Top info bar */}
       <Box

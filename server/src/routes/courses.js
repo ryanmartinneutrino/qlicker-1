@@ -46,6 +46,7 @@ const updateCourseSchema = {
       inactive: { type: 'boolean' },
       requireVerified: { type: 'boolean' },
       allowStudentQuestions: { type: 'boolean' },
+      quizTimeFormat: { type: 'string', enum: ['inherit', '24h', '12h'] },
     },
     additionalProperties: false,
   },
@@ -229,7 +230,7 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions'];
+      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions', 'quizTimeFormat'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {

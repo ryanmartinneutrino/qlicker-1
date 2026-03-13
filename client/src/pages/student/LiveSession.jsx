@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import apiClient, { getAccessToken } from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
+import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
 import {
@@ -400,9 +401,7 @@ export default function LiveSession() {
     return (
       <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.liveSession.sessionNotFound')}</Alert>
-        <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
-          {t('student.liveSession.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
       </Box>
     );
   }
@@ -417,9 +416,7 @@ export default function LiveSession() {
         <Alert severity="info" sx={{ mb: 3, justifyContent: 'center' }}>
           {t('student.liveSession.sessionEnded')}
         </Alert>
-        <Button variant="contained" onClick={() => navigate(`/student/course/${courseId}`)}>
-          {t('student.liveSession.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
       </Box>
     );
   }
@@ -513,9 +510,7 @@ export default function LiveSession() {
         {joinError ? (
           <>
             <Alert severity="error" sx={{ mb: 2 }}>{joinError}</Alert>
-            <Button variant="outlined" onClick={() => navigate(`/student/course/${courseId}`)}>
-              {t('student.liveSession.backToCourse')}
-            </Button>
+            <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
           </>
         ) : (
           <>

@@ -684,6 +684,8 @@ export default async function gradeRoutes(app) {
             lastname,
             email,
             displayName: formatUserDisplayName(student),
+            profileImage: normalizeAnswerValue(student?.profile?.profileImage),
+            profileThumbnail: normalizeAnswerValue(student?.profile?.profileThumbnail),
           },
           avgParticipation,
           grades: gradeEntries,

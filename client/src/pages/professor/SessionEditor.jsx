@@ -8,18 +8,21 @@ import {
   Menu, Autocomplete,
 } from '@mui/material';
 import {
-  ArrowBack as BackIcon, ContentCopy as CopyIcon, Delete as DeleteIcon,
+  ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Edit as EditIcon,
   Close as CloseIcon,
   KeyboardArrowUp as UpIcon, KeyboardArrowDown as DownIcon,
   ExpandMore as ExpandMoreIcon,
   MoreVert as MoreIcon,
   PlayArrow as LaunchIcon, Login as JoinIcon,
+  RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import BackLinkButton from '../../components/common/BackLinkButton';
+import DateTimePreferenceField from '../../components/common/DateTimePreferenceField';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +31,7 @@ const PAGE_SECTION_GAP = 1.5;
 const SETTINGS_STACK_GAP = 1.5;
 const QUIZ_WINDOW_VALIDATION_MESSAGE = 'professor.sessionEditor.quizEndAfterStart';
 const DEFAULT_MS_SCORING_METHOD = 'right-minus-wrong';
+const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
 
 const MAX_COURSE_TAB_INDEX = 4;
 
@@ -45,10 +49,17 @@ function toDateTimeLocalString(value) {
   return parsed.toISOString().slice(0, 16);
 }
 
+function floorDateToNearestHalfHour(value = new Date()) {
+  const nextDate = new Date(value);
+  nextDate.setSeconds(0, 0);
+  const minutes = nextDate.getMinutes();
+  nextDate.setMinutes(minutes < 30 ? 0 : 30, 0, 0);
+  return nextDate;
+}
+
 function buildDefaultQuizWindow() {
-  const start = new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  const start = floorDateToNearestHalfHour(new Date());
+  const end = new Date(start.getTime() + TWELVE_HOURS_MS);
   return {
     quizStart: toDateTimeLocalString(start),
     quizEnd: toDateTimeLocalString(end),
@@ -56,28 +67,25 @@ function buildDefaultQuizWindow() {
 }
 
 function buildTodayQuizWindow() {
-  const start = new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start);
-  end.setHours(23, 59, 0, 0);
-  if (end.getTime() <= start.getTime()) {
-    end.setDate(end.getDate() + 1);
-  }
+  const start = floorDateToNearestHalfHour(new Date());
+  const end = new Date(start.getTime() + TWELVE_HOURS_MS);
   return {
     quizStart: toDateTimeLocalString(start),
     quizEnd: toDateTimeLocalString(end),
   };
 }
 
-function buildTwentyFourHourQuizWindow(startValue = '') {
+function buildExtendedQuizEnd(endValue = '', startValue = '') {
+  const parsedEnd = endValue ? new Date(endValue) : null;
   const parsedStart = startValue ? new Date(startValue) : null;
-  const start = parsedStart && !Number.isNaN(parsedStart.getTime())
-    ? parsedStart
-    : new Date();
-  start.setSeconds(0, 0);
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  const endBase = parsedEnd && !Number.isNaN(parsedEnd.getTime())
+    ? parsedEnd
+    : parsedStart && !Number.isNaN(parsedStart.getTime())
+      ? parsedStart
+      : floorDateToNearestHalfHour(new Date());
+  endBase.setSeconds(0, 0);
+  const end = new Date(endBase.getTime() + TWELVE_HOURS_MS);
   return {
-    quizStart: toDateTimeLocalString(start),
     quizEnd: toDateTimeLocalString(end),
   };
 }
@@ -142,6 +150,7 @@ export default function SessionEditor() {
   const [reviewable, setReviewable] = useState(false);
   const [status, setStatus] = useState('hidden');
   const [sessionDate, setSessionDate] = useState('');
+  const [use24HourTime, setUse24HourTime] = useState(true);
 
   // Join code settings
   const [joinCodeEnabled, setJoinCodeEnabled] = useState(false);
@@ -221,14 +230,20 @@ export default function SessionEditor() {
       }
 
       try {
+        const { data: publicSettings } = await apiClient.get('/settings/public').catch(() => ({ data: { timeFormat: '24h' } }));
         const { data: courseData } = await apiClient.get(`/courses/${courseId}`);
         const loadedCourse = courseData?.course || courseData;
         setCourse(loadedCourse);
+        const resolvedTimeFormat = loadedCourse?.quizTimeFormat && loadedCourse.quizTimeFormat !== 'inherit'
+          ? loadedCourse.quizTimeFormat
+          : publicSettings?.timeFormat || '24h';
+        setUse24HourTime(resolvedTimeFormat !== '12h');
         const students = (loadedCourse?.students || []).slice().sort(compareStudentsByLastName);
         setCourseStudents(students);
       } catch {
         setCourse(null);
         setCourseStudents([]);
+        setUse24HourTime(true);
       }
     } catch {
       setMsg({ severity: 'error', text: t('professor.sessionEditor.failedLoadSession') });
@@ -317,12 +332,11 @@ export default function SessionEditor() {
     persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
   }, [persistQuizWindow]);
 
-  const applyTwentyFourHourQuizWindow = useCallback(() => {
-    const nextWindow = buildTwentyFourHourQuizWindow(quizStart);
-    setQuizStart(nextWindow.quizStart);
+  const applyQuizEndExtension = useCallback(() => {
+    const nextWindow = buildExtendedQuizEnd(quizEnd, quizStart);
     setQuizEnd(nextWindow.quizEnd);
-    persistQuizWindow(nextWindow.quizStart, nextWindow.quizEnd);
-  }, [persistQuizWindow, quizStart]);
+    persistQuizWindow(quizStart, nextWindow.quizEnd);
+  }, [persistQuizWindow, quizEnd, quizStart]);
 
   const handleStatusChange = (nextStatus) => {
     if (nextStatus === status) return;
@@ -940,12 +954,17 @@ export default function SessionEditor() {
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!session) return <Box sx={{ p: 3 }}><Alert severity="error">{t('professor.sessionEditor.sessionNotFound')}</Alert></Box>;
   const courseTitle = course?._id ? buildCourseTitle(course, 'long') : '';
+  const canReviewRunningQuiz = (session.quiz || session.practiceQuiz) && status === 'running';
+  const canReviewEndedSession = status === 'done';
 
   return (
     <Box sx={{ px: { xs: 1.5, sm: 2 }, pt: 1.25, pb: 2, maxWidth: 980, mx: 'auto' }}>
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: PAGE_SECTION_GAP }}>
-        <IconButton onClick={() => navigate(backLink)}><BackIcon /></IconButton>
+        <BackLinkButton
+          label={returnToReview ? t('professor.sessionEditor.backToReview') : t('professor.sessionEditor.backToCourse')}
+          onClick={() => navigate(backLink)}
+        />
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           {courseTitle ? (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
@@ -977,6 +996,28 @@ export default function SessionEditor() {
             aria-label={t('professor.sessionEditor.joinLiveSession')}
           >
             {t('professor.course.joinSession')}
+          </Button>
+        )}
+        {canReviewRunningQuiz && (
+          <Button
+            variant="contained"
+            color="success"
+            startIcon={<ReviewIcon />}
+            size="small"
+            onClick={() => navigate(sessionReviewLink)}
+          >
+            {t('professor.sessionEditor.reviewLiveResults')}
+          </Button>
+        )}
+        {canReviewEndedSession && (
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<ReviewIcon />}
+            size="small"
+            onClick={() => navigate(sessionReviewLink)}
+          >
+            {t('professor.sessionEditor.reviewResults')}
           </Button>
         )}
       </Box>
@@ -1191,47 +1232,45 @@ export default function SessionEditor() {
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
               <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: SETTINGS_STACK_GAP }}>
-                <TextField
-                  label={t('professor.sessionEditor.quizStart')}
-                  size="small"
-                  type="datetime-local"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={quizStart}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setQuizStart(val);
-                    const validationMessage = validateQuizWindow(val, quizEnd);
-                    if (validationMessage) {
-                      setMsg({ severity: 'error', text: t(validationMessage) });
-                      return;
-                    }
-                    const iso = toIsoIfValid(val);
-                    if (iso) saveSessionPatch({ quizStart: iso });
-                  }}
-                  disabled={savingSession}
-                />
-                <TextField
-                  label={t('professor.sessionEditor.quizEnd')}
-                  size="small"
-                  type="datetime-local"
-                  fullWidth
-                  InputLabelProps={{ shrink: true }}
-                  value={quizEnd}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setQuizEnd(val);
-                    const validationMessage = validateQuizWindow(quizStart, val);
-                    if (validationMessage) {
-                      setMsg({ severity: 'error', text: t(validationMessage) });
-                      return;
-                    }
-                    const iso = toIsoIfValid(val);
-                    if (iso) saveSessionPatch({ quizEnd: iso });
-                  }}
-                  inputProps={quizStart ? { min: quizStart } : undefined}
-                  disabled={savingSession}
-                />
+                <Box sx={{ flex: 1 }}>
+                  <DateTimePreferenceField
+                    label={t('professor.sessionEditor.quizStart')}
+                    value={quizStart}
+                    onChange={(val) => {
+                      setQuizStart(val);
+                      const validationMessage = validateQuizWindow(val, quizEnd);
+                      if (validationMessage) {
+                        setMsg({ severity: 'error', text: t(validationMessage) });
+                        return;
+                      }
+                      const iso = toIsoIfValid(val);
+                      if (iso) saveSessionPatch({ quizStart: iso });
+                    }}
+                    disabled={savingSession}
+                    fullWidth
+                    use24Hour={use24HourTime}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <DateTimePreferenceField
+                    label={t('professor.sessionEditor.quizEnd')}
+                    value={quizEnd}
+                    onChange={(val) => {
+                      setQuizEnd(val);
+                      const validationMessage = validateQuizWindow(quizStart, val);
+                      if (validationMessage) {
+                        setMsg({ severity: 'error', text: t(validationMessage) });
+                        return;
+                      }
+                      const iso = toIsoIfValid(val);
+                      if (iso) saveSessionPatch({ quizEnd: iso });
+                    }}
+                    min={quizStart}
+                    disabled={savingSession}
+                    fullWidth
+                    use24Hour={use24HourTime}
+                  />
+                </Box>
               </Box>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Button
@@ -1245,10 +1284,10 @@ export default function SessionEditor() {
                 <Button
                   size="small"
                   variant="text"
-                  onClick={applyTwentyFourHourQuizWindow}
+                  onClick={applyQuizEndExtension}
                   disabled={savingSession}
                 >
-                  {t('professor.sessionEditor.set24hWindow')}
+                  {t('professor.sessionEditor.add12hToEndDate')}
                 </Button>
                 <Typography variant="caption" color="text.secondary">
                   {t('professor.sessionEditor.defaultQuizWindows')}
@@ -1271,21 +1310,20 @@ export default function SessionEditor() {
           )}
 
           {!(quiz || practiceQuiz) && (
-            <TextField
-              label={t('professor.sessionEditor.sessionDate')}
-              size="small"
-              type="datetime-local"
-              InputLabelProps={{ shrink: true }}
-              value={sessionDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSessionDate(val);
-                const iso = toIsoIfValid(val);
-                if (iso) saveSessionPatch({ date: iso });
-              }}
-              sx={{ maxWidth: { xs: '100%', sm: 360 } }}
-              disabled={savingSession}
-            />
+            <Box sx={{ maxWidth: { xs: '100%', sm: 420 } }}>
+              <DateTimePreferenceField
+                label={t('professor.sessionEditor.sessionDate')}
+                value={sessionDate}
+                onChange={(val) => {
+                  setSessionDate(val);
+                  const iso = toIsoIfValid(val);
+                  if (iso) saveSessionPatch({ date: iso });
+                }}
+                disabled={savingSession}
+                fullWidth
+                use24Hour={use24HourTime}
+              />
+            </Box>
           )}
 
           <Box sx={{ display: 'flex', gap: 1 }}>
@@ -1737,24 +1775,24 @@ export default function SessionEditor() {
                     </IconButton>
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1, flexDirection: { xs: 'column', sm: 'row' } }}>
-                    <TextField
-                      size="small"
-                      label={t('professor.sessionEditor.start')}
-                      type="datetime-local"
-                      InputLabelProps={{ shrink: true }}
-                      value={extension.quizStart || ''}
-                      onChange={(event) => updateExtensionDraft(extension.userId, 'quizStart', event.target.value)}
-                      fullWidth
-                    />
-                    <TextField
-                      size="small"
-                      label={t('professor.sessionEditor.end')}
-                      type="datetime-local"
-                      InputLabelProps={{ shrink: true }}
-                      value={extension.quizEnd || ''}
-                      onChange={(event) => updateExtensionDraft(extension.userId, 'quizEnd', event.target.value)}
-                      fullWidth
-                    />
+                    <Box sx={{ flex: 1 }}>
+                      <DateTimePreferenceField
+                        label={t('professor.sessionEditor.start')}
+                        value={extension.quizStart || ''}
+                        onChange={(value) => updateExtensionDraft(extension.userId, 'quizStart', value)}
+                        fullWidth
+                        use24Hour={use24HourTime}
+                      />
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <DateTimePreferenceField
+                        label={t('professor.sessionEditor.end')}
+                        value={extension.quizEnd || ''}
+                        onChange={(value) => updateExtensionDraft(extension.userId, 'quizEnd', value)}
+                        fullWidth
+                        use24Hour={use24HourTime}
+                      />
+                    </Box>
                   </Box>
                 </Paper>
               );

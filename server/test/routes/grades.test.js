@@ -578,6 +578,8 @@ describe('Grading routes', () => {
     expect(courseGradesPayload.sessions[0].autoGradeableQuestionIds).toContain(reviewableQuestion._id);
     expect(courseGradesPayload.rows).toHaveLength(1);
     expect(courseGradesPayload.rows[0].student.studentId).toBe(students[0]._id);
+    expect(courseGradesPayload.rows[0].student).toHaveProperty('profileImage');
+    expect(courseGradesPayload.rows[0].student).toHaveProperty('profileThumbnail');
 
     const courseGradesForStudentB = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/grades`, {
       token: studentBToken,

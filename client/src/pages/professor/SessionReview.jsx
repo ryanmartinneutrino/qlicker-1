@@ -8,13 +8,13 @@ import {
 } from '@mui/material';
 import {
   Download as DownloadIcon,
-  ArrowBack as BackIcon,
   Edit as EditIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
+import BackLinkButton from '../../components/common/BackLinkButton';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -800,30 +800,17 @@ export default function SessionReview() {
     return (
       <Box sx={{ p: 3, maxWidth: 800 }}>
         <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>
-        <Button
-          variant="outlined"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-        >
-          {t('professor.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton variant="outlined" label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} />
       </Box>
     );
   }
 
   // ---- Render: session still running ----
 
-  if (session?.status === 'running') {
+  if (session?.status === 'running' && !session?.quiz && !session?.practiceQuiz) {
     return (
       <Box sx={{ p: 3, maxWidth: 800 }}>
-        <Button
-          size="small"
-          startIcon={<BackIcon />}
-          onClick={() => navigate(backToCoursePath)}
-          sx={{ mb: 2 }}
-        >
-          {t('professor.sessionReview.backToCourse')}
-        </Button>
+        <BackLinkButton label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} sx={{ mb: 2 }} />
         <Alert severity="info">
           {t('professor.sessionReview.sessionStillRunning')}
         </Alert>
@@ -836,13 +823,7 @@ export default function SessionReview() {
       {/* Header */}
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
-          <Button
-            size="small"
-            startIcon={<BackIcon />}
-            onClick={() => navigate(backToCoursePath)}
-          >
-            {t('professor.sessionReview.backToCourse')}
-          </Button>
+          <BackLinkButton label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} />
           <Button
             size="small"
             variant="outlined"

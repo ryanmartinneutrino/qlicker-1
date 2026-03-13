@@ -89,7 +89,7 @@ function parseCourseTab(value) {
 
 function getDefaultQuizWindowIso() {
   const start = new Date();
-  const end = new Date(start.getTime() + (24 * 60 * 60 * 1000));
+  const end = new Date(start.getTime() + (12 * 60 * 60 * 1000));
   return {
     quizStart: start.toISOString(),
     quizEnd: end.toISOString(),
@@ -217,6 +217,7 @@ export default function CourseDetail() {
   const [editFields, setEditFields] = useState(EMPTY_COURSE_EDIT_FIELDS);
   const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
   const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
+  const [adminTimeFormat, setAdminTimeFormat] = useState('24h');
 
   // Sessions
   const [sessions, setSessions] = useState([]);
@@ -324,6 +325,22 @@ export default function CourseDetail() {
     setSettingsAutoSaveStatus('idle');
     setSettingsAutoSaveError('');
   }, [id]);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings/public')
+      .then(({ data }) => {
+        if (mounted) {
+          setAdminTimeFormat(data?.timeFormat === '12h' ? '12h' : '24h');
+        }
+      })
+      .catch(() => {
+        if (mounted) setAdminTimeFormat('24h');
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => { fetchCourse(); fetchSessions(); }, [fetchCourse, fetchSessions]);
 
@@ -580,6 +597,17 @@ export default function CourseDetail() {
     }
   };
 
+  const handleQuizTimeFormatChange = async (nextValue) => {
+    markSettingAutoSaveInProgress();
+    try {
+      await apiClient.patch(`/courses/${id}`, { quizTimeFormat: nextValue });
+      fetchCourse();
+      setSettingsAutoSaveStatus('success');
+    } catch (err) {
+      markSettingAutoSaveError(err, t('professor.course.failedUpdateSetting'));
+    }
+  };
+
   const handleRegenerateCode = async () => {
     try {
       await apiClient.post(`/courses/${id}/regenerate-code`);
@@ -796,6 +824,21 @@ export default function CourseDetail() {
                     aria-label={`Join live session ${s.name}`}
                   >
                     {t('professor.course.joinSession')}
+                  </Button>
+                )}
+                {(s.quiz || s.practiceQuiz) && s.status === 'running' && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="success"
+                    startIcon={<ReviewIcon />}
+                    onClick={() => navigate(
+                      `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                      { state: { returnTab: tab } }
+                    )}
+                    aria-label={`Review live quiz session ${s.name}`}
+                  >
+                    {t('professor.course.reviewLiveSessionResults')}
                   </Button>
                 )}
                 {s.status === 'done' && (
@@ -1088,6 +1131,21 @@ export default function CourseDetail() {
             }
             label={t('professor.course.allowStudentQuestions')}
           />
+          <TextField
+            select
+            size="small"
+            label={t('professor.course.quizTimeFormat')}
+            value={course.quizTimeFormat || 'inherit'}
+            onChange={(event) => handleQuizTimeFormatChange(event.target.value)}
+          >
+            <MenuItem value="inherit">
+              {t('professor.course.quizTimeFormatInherit', {
+                defaultFormat: t(`professor.course.quizTimeFormatOptions.${adminTimeFormat}`),
+              })}
+            </MenuItem>
+            <MenuItem value="24h">{t('professor.course.quizTimeFormatOptions.24h')}</MenuItem>
+            <MenuItem value="12h">{t('professor.course.quizTimeFormatOptions.12h')}</MenuItem>
+          </TextField>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="body2">{t('professor.course.enrollmentCode', { code: course.enrollmentCode })}</Typography>
             <Button size="small" startIcon={<CopyIcon />} onClick={copyCode}>

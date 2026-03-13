@@ -109,11 +109,11 @@ export default function App() {
                 <Route path="/manage/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
                 <Route path="/manage/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor"><ProfLiveSession /></RequireRole>} />
                 <Route path="/manage/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
-                <Route path="/student" element={<StudentDashboard />} />
-                <Route path="/student/course/:id" element={<StudentCourseDetail />} />
-                <Route path="/student/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
-                <Route path="/student/course/:courseId/session/:sessionId/live" element={<StudentLiveSession />} />
-                <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<StudentQuizSession />} />
+                <Route path="/student" element={<RequireRole role="student" allowAdmin={false}><StudentDashboard /></RequireRole>} />
+                <Route path="/student/course/:id" element={<RequireRole role="student" allowAdmin={false}><StudentCourseDetail /></RequireRole>} />
+                <Route path="/student/course/:courseId/session/:sessionId/review" element={<RequireRole role="student" allowAdmin={false}><SessionReview /></RequireRole>} />
+                <Route path="/student/course/:courseId/session/:sessionId/live" element={<RequireRole role="student" allowAdmin={false}><StudentLiveSession /></RequireRole>} />
+                <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<RequireRole role="student" allowAdmin={false}><StudentQuizSession /></RequireRole>} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

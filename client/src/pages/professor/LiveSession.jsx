@@ -21,6 +21,7 @@ import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
+import BackLinkButton from '../../components/common/BackLinkButton';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -472,8 +473,9 @@ export default function LiveSession() {
   const handleEndSession = useCallback(async () => {
     setEnding(true);
     try {
-      const payload = { reviewable: makeReviewable };
-      if (makeReviewable && nonAutoGradeableWarning) {
+      const shouldMakeReviewable = makeReviewable && (!nonAutoGradeableWarning || reviewableOption !== 'cancel');
+      const payload = { reviewable: shouldMakeReviewable };
+      if (shouldMakeReviewable && nonAutoGradeableWarning) {
         payload.acknowledgeNonAutoGradeable = true;
         if (reviewableOption === 'zero') {
           payload.zeroNonAutoGradeable = true;
@@ -619,9 +621,7 @@ export default function LiveSession() {
     return (
       <Box sx={{ p: 4 }}>
         <Alert severity="error">{error || t('professor.liveSession.sessionNotFound')}</Alert>
-        <Button sx={{ mt: 2 }} onClick={() => navigate(`/manage/course/${courseId}`)}>
-          {t('professor.liveSession.backToCourse')}
-        </Button>
+        <BackLinkButton sx={{ mt: 2 }} label={t('professor.liveSession.backToCourse')} onClick={() => navigate(`/manage/course/${courseId}`)} />
       </Box>
     );
   }
@@ -654,6 +654,10 @@ export default function LiveSession() {
         }}
       >
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.25, width: '100%' }}>
+          <BackLinkButton
+            label={t('professor.liveSession.backToCourse')}
+            onClick={() => navigate(`/manage/course/${courseId}`)}
+          />
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             {courseTitle ? (
               <Typography variant="body2" color="text.secondary" sx={{ mb: 0.25 }}>
@@ -1229,14 +1233,7 @@ export default function LiveSession() {
           <Button
             variant="contained"
             color="error"
-            onClick={() => {
-              if (nonAutoGradeableWarning && reviewableOption === 'cancel') {
-                setMakeReviewable(false);
-                setNonAutoGradeableWarning(null);
-                return;
-              }
-              handleEndSession();
-            }}
+            onClick={handleEndSession}
             disabled={ending}
           >
             {ending ? t('professor.liveSession.ending') : t('professor.liveSession.endSession')}

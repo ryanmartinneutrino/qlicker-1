@@ -220,6 +220,28 @@ describe('GET /api/v1/courses/:id', () => {
   });
 });
 
+describe('PATCH /api/v1/courses/:id', () => {
+  it('allows instructors to override the course quiz time format', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const prof = await createTestUser({ email: 'prof-course-format@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const courseId = createRes.json().course._id;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/courses/${courseId}`, {
+      token: profToken,
+      payload: { quizTimeFormat: '12h' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().course.quizTimeFormat).toBe('12h');
+
+    const storedCourse = await Course.findById(courseId).lean();
+    expect(storedCourse.quizTimeFormat).toBe('12h');
+  });
+});
+
 // ---------- PATCH /api/v1/courses/:id ----------
 describe('PATCH /api/v1/courses/:id', () => {
   it('instructor can update', async (ctx) => {

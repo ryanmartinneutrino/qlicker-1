@@ -137,3 +137,23 @@ describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('GET /api/v1/settings/public', () => {
+  it('includes the default quiz time format', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { timeFormat: '12h' } },
+      { upsert: true, new: true }
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/settings/public',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().timeFormat).toBe('12h');
+  });
+});

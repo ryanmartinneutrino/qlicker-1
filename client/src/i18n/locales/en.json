@@ -29,6 +29,12 @@
     "email": "Email",
     "count": "Count",
     "points": "Points",
+    "date": "Date",
+    "hour": "Hour",
+    "minute": "Minute",
+    "period": "Period",
+    "am": "AM",
+    "pm": "PM",
     "solution": "Solution",
     "noContent": "(no content)",
     "noAnswer": "(no answer)"
@@ -167,7 +173,12 @@
       "locale": "Language / Locale",
       "localeHelp": "Choose the display language for the application",
       "dateFormat": "Date Format",
-      "dateFormatHelp": "Choose how dates are displayed throughout the application"
+      "dateFormatHelp": "Choose how dates are displayed throughout the application",
+      "timeFormat": "Default Time Format",
+      "timeFormatOptions": {
+        "24h": "24-hour ({{example}})",
+        "12h": "12-hour ({{example}})"
+      }
     },
     "users": {
       "searchPlaceholder": "Search by name or email",
@@ -317,6 +328,12 @@
       "regenerate": "Regenerate",
       "requireVerifiedEnroll": "Require verified email to enroll",
       "allowStudentQuestions": "Allow students to submit questions",
+      "quizTimeFormat": "Quiz time format",
+      "quizTimeFormatInherit": "Use admin default ({{defaultFormat}})",
+      "quizTimeFormatOptions": {
+        "24h": "24-hour",
+        "12h": "12-hour"
+      },
       "courseActive": "Course is active",
       "courseInactive": "Course is inactive",
       "allFieldsRequired": "All course property fields are required. Autosave resumes once all fields are filled.",
@@ -345,6 +362,7 @@
       "joinSession": "Join Session",
       "grade": "Grade",
       "review": "Review",
+      "reviewLiveSessionResults": "Review Live Session Results",
       "practice": "Practice",
       "extensionsActive": "Extensions Active",
       "noInstructors": "No instructors assigned.",
@@ -398,7 +416,8 @@
       "quizEnd": "Quiz End",
       "today": "Today",
       "set24hWindow": "Set 24h Window",
-      "defaultQuizWindows": "Default quiz windows are 24 hours.",
+      "add12hToEndDate": "Add 12h to end date",
+      "defaultQuizWindows": "Default quiz windows are 12 hours.",
       "quizExtensions": "Quiz extensions: {{count}} student(s)",
       "manageExtensions": "Manage Extensions",
       "sessionDate": "Session Date",
@@ -456,6 +475,9 @@
       "failedLaunch": "Failed to launch session",
       "joinLiveSession": "Join live session",
       "backToCourse": "Back to Course",
+      "backToReview": "Back to review",
+      "reviewLiveResults": "Review Live Session Results",
+      "reviewResults": "Review results",
       "sessionNotFound": "Session not found",
       "quizEndAfterStart": "Quiz end must be later than quiz start.",
       "failedLoadSession": "Failed to load session",
@@ -852,7 +874,9 @@
       "editorTip": "Tip: select text for formatting. Type math as `$...$`, `\\(...\\)` or `$$...$$`. Drag/drop or paste an image to upload.",
       "uploadFailed": "Image upload failed. Try again.",
       "readFailed": "Failed to read image file",
-      "decodeFailed": "Failed to decode image"
+      "decodeFailed": "Failed to decode image",
+      "showToolbar": "Show toolbar",
+      "hideToolbar": "Hide toolbar"
     },
     "studentRichText": {
       "editorLabel": "Short answer response editor",

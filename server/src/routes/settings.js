@@ -32,7 +32,7 @@ export default async function settingsRoutes(app) {
     'Azure_accountName', 'Azure_accountKey', 'Azure_containerName',
     'tokenExpiryMinutes',
     'Jitsi_Enabled', 'Jitsi_Domain', 'Jitsi_EtherpadDomain', 'Jitsi_EnabledCourses',
-    'locale', 'dateFormat',
+    'locale', 'dateFormat', 'timeFormat',
     'maxImageSize', 'maxImageWidth',
   ]);
 
@@ -81,6 +81,7 @@ export default async function settingsRoutes(app) {
       restrictDomain: settings.restrictDomain || false,
       requireVerified: settings.requireVerified || false,
       Jitsi_Enabled: settings.Jitsi_Enabled || false,
+      timeFormat: settings.timeFormat || '24h',
     };
   });
 

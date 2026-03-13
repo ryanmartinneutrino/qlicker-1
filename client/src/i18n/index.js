@@ -46,6 +46,11 @@ export const DATE_FORMATS = [
   { key: 'YYYY-MM-DD', example: '2026-01-11' },
 ];
 
+export const TIME_FORMATS = [
+  { key: '24h', example: '14:30' },
+  { key: '12h', example: '2:30 PM' },
+];
+
 /**
  * Default date format key. DD-MMM-YYYY gives "11-Jan-2026".
  */
