@@ -45,6 +45,11 @@ export default function SessionListCard({
         bgcolor: highlighted ? 'success.50' : 'background.paper',
         boxShadow: highlighted ? '0 0 0 1px rgba(46, 125, 50, 0.1)' : 'none',
         transition: 'box-shadow 0.18s ease, border-color 0.18s ease, transform 0.18s ease',
+        ...(clickable ? {
+          '&:hover': {
+            bgcolor: highlighted ? 'rgba(232, 245, 233, 0.95)' : 'action.hover',
+          },
+        } : {}),
         ...sx,
       }}
     >
@@ -56,9 +61,6 @@ export default function SessionListCard({
               flex: 1,
               alignItems: 'stretch',
               justifyContent: 'flex-start',
-              '&:hover': {
-                bgcolor: highlighted ? 'rgba(46, 125, 50, 0.08)' : 'action.hover',
-              },
             }}
           >
             {content}
