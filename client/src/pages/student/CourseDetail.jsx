@@ -10,6 +10,7 @@ import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
+  getSessionSortTime,
   getStudentSessionAction,
   isQuizSession,
   isSubmittedLiveQuiz,

@@ -12,7 +12,7 @@ function getSessionSortBucket(session) {
   return 4;
 }
 
-function getSessionSortTime(session) {
+export function getSessionSortTime(session) {
   const status = String(session?.status || '');
   const isQuiz = isQuizSession(session);
 
