@@ -10,7 +10,12 @@ import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
 import {
-  QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType,
+  QUESTION_TYPES,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
@@ -338,28 +343,22 @@ export default function LiveSession() {
   const responseStats = liveData?.responseStats;
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
+  const pageProgress = liveData?.pageProgress || (
+    questionCount > 0 && questionNumber != null
+      ? { current: questionNumber, total: questionCount }
+      : null
+  );
+  const questionProgress = liveData?.questionProgress || null;
+  const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
   const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
   const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
 
-  const displayedQuestionCount = questionCount > 0
-    ? questionCount
-    : Array.isArray(session?.questions)
-      ? session.questions.length
-      : 0;
-  const displayedQuestionNumber = useMemo(() => {
-    if (questionNumber != null) return questionNumber;
-    if (!currentQ?._id || !Array.isArray(session?.questions)) return null;
-    const idx = session.questions.findIndex((id) => String(id) === String(currentQ._id));
-    return idx >= 0 ? idx + 1 : null;
-  }, [questionNumber, currentQ?._id, session?.questions]);
-
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const isSlide = isSlideType(qType);
   const hasSubmitted = !!studentResponse;
   const responseClosed = !!currentAttempt?.closed;
   const isLocked = hasSubmitted || responseClosed;
-  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
-    || qType === QUESTION_TYPES.TRUE_FALSE
-    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const showInlineOptionStats = isOptionBasedQuestion
     && showStats
     && responseStats?.type === 'distribution';
@@ -368,11 +367,12 @@ export default function LiveSession() {
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
   const liveStatusMessage = [
-    displayedQuestionCount > 0 && displayedQuestionNumber != null
-      ? t('student.liveSession.questionOf', { number: displayedQuestionNumber, total: displayedQuestionCount })
-      : null,
+    hasSlidesInSession && pageProgress ? t('student.liveSession.pageProgress', pageProgress) : null,
+    !isSlide && questionProgress ? t('student.liveSession.questionProgress', questionProgress) : null,
     currentAttempt ? t('student.liveSession.attemptNumber', { number: currentAttempt.number ?? 1 }) : null,
-    hasSubmitted
+    isSlide
+      ? null
+      : hasSubmitted
       ? t('student.liveSession.responseSubmitted')
       : responseClosed
         ? t('student.liveSession.responsesCurrentlyClosed')
@@ -596,13 +596,22 @@ export default function LiveSession() {
           {session.name || t('student.liveSession.liveSessionFallback')}
         </Typography>
         <Box role="status" aria-live="polite" aria-atomic="true" sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {displayedQuestionCount > 0 && displayedQuestionNumber != null && (
+          {hasSlidesInSession && pageProgress && (
             <Chip
-              label={`Q${displayedQuestionNumber}/${displayedQuestionCount}`}
+              label={t('student.liveSession.pageProgress', pageProgress)}
               size="small"
               variant="outlined"
               sx={COMPACT_CHIP_SX}
-              aria-label={`Question ${displayedQuestionNumber} of ${displayedQuestionCount}`}
+              aria-label={t('student.liveSession.pageProgress', pageProgress)}
+            />
+          )}
+          {!isSlide && questionProgress && (
+            <Chip
+              label={t('student.liveSession.questionProgress', questionProgress)}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+              aria-label={t('student.liveSession.questionProgress', questionProgress)}
             />
           )}
           {currentAttempt && (
@@ -628,7 +637,7 @@ export default function LiveSession() {
             size="small"
             sx={COMPACT_CHIP_SX}
           />
-          {responseClosed && (
+          {!isSlide && responseClosed && (
             <Chip label={t('student.liveSession.responsesClosed')} size="small" color="warning" sx={COMPACT_CHIP_SX} />
           )}
         </Box>
@@ -895,41 +904,43 @@ export default function LiveSession() {
       {/* ============================================================ */}
       {/* Submit / status area                                         */}
       {/* ============================================================ */}
-      <Box sx={{ mb: 2 }}>
-        {submitError && (
-          <Alert severity="error" sx={{ mb: 1.5 }}>{submitError}</Alert>
-        )}
-        <Box role="status" aria-live="polite" aria-atomic="true">
-          {hasSubmitted ? (
-            <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
-              {t('student.liveSession.responseSubmittedCheck')}
-            </Alert>
-          ) : responseClosed ? (
-            <Alert severity="warning" sx={{ justifyContent: 'center' }}>
-              {t('student.liveSession.responsesCurrentlyClosedShort')}
-            </Alert>
-          ) : (
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              onClick={handleSubmit}
-              disabled={
-                submitting
-                || answer === null
-                || answer === ''
-                || (Array.isArray(answer) && answer.length === 0)
-              }
-              sx={{ py: 1.5, fontSize: '1.05rem' }}
-              aria-label={t('student.liveSession.submitResponse')}
-            >
-              {submitting ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.submitResponse')}
-            </Button>
+      {!isSlide && (
+        <Box sx={{ mb: 2 }}>
+          {submitError && (
+            <Alert severity="error" sx={{ mb: 1.5 }}>{submitError}</Alert>
           )}
+          <Box role="status" aria-live="polite" aria-atomic="true">
+            {hasSubmitted ? (
+              <Alert severity="success" icon={false} sx={{ justifyContent: 'center' }}>
+                {t('student.liveSession.responseSubmittedCheck')}
+              </Alert>
+            ) : responseClosed ? (
+              <Alert severity="warning" sx={{ justifyContent: 'center' }}>
+                {t('student.liveSession.responsesCurrentlyClosedShort')}
+              </Alert>
+            ) : (
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                onClick={handleSubmit}
+                disabled={
+                  submitting
+                  || answer === null
+                  || answer === ''
+                  || (Array.isArray(answer) && answer.length === 0)
+                }
+                sx={{ py: 1.5, fontSize: '1.05rem' }}
+                aria-label={t('student.liveSession.submitResponse')}
+              >
+                {submitting ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.submitResponse')}
+              </Button>
+            )}
+          </Box>
         </Box>
-      </Box>
+      )}
 
-      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && (
+      {qType === QUESTION_TYPES.SHORT_ANSWER && !isLocked && !isSlide && (
         <Box sx={{ mb: 2 }}>
           <MathPreview html={answerWysiwyg} />
         </Box>

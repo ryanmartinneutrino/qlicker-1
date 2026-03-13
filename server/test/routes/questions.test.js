@@ -137,6 +137,29 @@ describe('POST /api/v1/questions', () => {
     expect(body.question.sessionId).toBe(session._id);
     expect(body.question.courseId).toBe(course._id);
   });
+
+  it('accepts slide questions with session options during creation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    const res = await createQuestionAsProf(profToken, {
+      type: 6,
+      content: '<p>Slide content</p>',
+      plainText: 'Slide content',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: {
+        points: 0,
+        hidden: false,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.question.type).toBe(6);
+    expect(body.question.sessionOptions.points).toBe(0);
+    expect(body.question.sessionOptions.hidden).toBe(false);
+  });
 });
 
 // ---------- GET /api/v1/questions/:id ----------

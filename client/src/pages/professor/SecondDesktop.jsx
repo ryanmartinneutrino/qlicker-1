@@ -3,7 +3,14 @@ import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
 import apiClient, { getAccessToken } from '../../api/client';
-import { QUESTION_TYPES, TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from '../../components/questions/constants';
+import {
+  QUESTION_TYPES,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
+} from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -304,14 +311,18 @@ export default function PresentationWindow() {
   const responseStats = liveData?.responseStats;
   const allResponses = liveData?.allResponses || [];
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
+  const isSlide = isSlideType(qType);
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
   const totalQ = session?.questions?.length || 0;
-  const isOptionBasedQuestion = qType === QUESTION_TYPES.MULTIPLE_CHOICE
-    || qType === QUESTION_TYPES.TRUE_FALSE
-    || qType === QUESTION_TYPES.MULTI_SELECT;
+  const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
+    ? { current: qIdx + 1, total: totalQ }
+    : null);
+  const questionProgress = liveData?.questionProgress || null;
+  const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
+  const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const showInlineOptionStats = isOptionBasedQuestion
     && showStats
     && responseStats?.type === 'distribution';
@@ -493,9 +504,22 @@ export default function PresentationWindow() {
           mb: 3, flexWrap: 'wrap',
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          Q{qIdx + 1}/{totalQ}
-        </Typography>
+        {hasSlidesInSession && pageProgress && (
+          <Chip
+            label={t('professor.secondDesktop.pageProgress', pageProgress)}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+          />
+        )}
+        {!isSlide && questionProgress && (
+          <Chip
+            label={t('professor.secondDesktop.questionProgress', questionProgress)}
+            size="small"
+            variant="outlined"
+            sx={COMPACT_CHIP_SX}
+          />
+        )}
         <Chip
           label={TYPE_LABELS[qType] || t('professor.secondDesktop.question')}
           color={TYPE_COLORS[qType] || 'default'}
@@ -615,7 +639,7 @@ export default function PresentationWindow() {
       )}
 
       {/* Response statistics */}
-      {showStats && (!isOptionBasedQuestion || responseStats?.type !== 'distribution') && (
+      {showStats && !isSlide && (!isOptionBasedQuestion || responseStats?.type !== 'distribution') && (
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}
@@ -639,7 +663,7 @@ export default function PresentationWindow() {
       )}
 
       {/* Solution (shown when showCorrect is enabled) */}
-      {showCorrect && currentQ.solution && (
+      {showCorrect && !isSlide && currentQ.solution && (
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3, borderColor: 'success.main' }}

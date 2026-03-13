@@ -7,7 +7,12 @@ import {
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  QUESTION_TYPES,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
 } from './constants';
 import { prepareRichTextInput, renderKatexInElement } from './richTextUtils';
 
@@ -69,6 +74,7 @@ export default function QuestionDisplay({ question }) {
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
+  const isSlide = isSlideType(normalizedType);
 
   const shouldLetterOptions = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
 
@@ -76,12 +82,12 @@ export default function QuestionDisplay({ question }) {
     <Paper variant="outlined" sx={{ p: 2, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Chip label={TYPE_LABELS[normalizedType] || t('common.unknown')} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
-        {points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+        {!isSlide && points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
       <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} />
 
-      {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType) && opts.length > 0 && (
+      {isOptionBasedQuestionType(normalizedType) && opts.length > 0 && (
         <Box sx={{ pl: 2 }}>
           {opts.map((opt, i) => (
             <Box
@@ -131,7 +137,7 @@ export default function QuestionDisplay({ question }) {
         </Box>
       )}
 
-      {(question.solution || question.solution_plainText) && (
+      {!isSlide && (question.solution || question.solution_plainText) && (
         <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             {t('common.solution')}

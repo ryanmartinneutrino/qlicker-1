@@ -15,7 +15,13 @@ import {
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import {
-  TYPE_LABELS, TYPE_COLORS, QUESTION_TYPES, normalizeQuestionType,
+  TYPE_LABELS,
+  TYPE_COLORS,
+  QUESTION_TYPES,
+  buildQuestionProgressList,
+  isOptionBasedQuestionType,
+  isSlideType,
+  normalizeQuestionType,
 } from '../../components/questions/constants';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { useTranslation } from 'react-i18next';
@@ -258,8 +264,7 @@ function RichHtml({
 /* ------------------------------------------------------------------ */
 function ReviewQuestionCard({
   question,
-  index,
-  total,
+  progress,
   responseVisible = false,
   response = null,
   mark = null,
@@ -267,16 +272,17 @@ function ReviewQuestionCard({
   const { t } = useTranslation();
   const [solutionVisible, setSolutionVisible] = useState(false);
   const normalizedType = useMemo(() => normalizeQuestionType(question), [question]);
+  const isSlide = isSlideType(normalizedType);
   const opts = question.options || [];
   const points = question.sessionOptions?.points;
   const markChipLabel = useMemo(() => {
     if (!mark) {
-      if (points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
+      if (!isSlide && points != null) return `${points} pt${points !== 1 ? 's' : ''}`;
       return null;
     }
     if (mark?.needsGrading) return t('student.sessionReview.pendingManualGrade');
     return `${formatNumeric(mark?.points)} / ${formatNumeric(mark?.outOf)}`;
-  }, [mark, points]);
+  }, [isSlide, mark, points, t]);
   const markChipColor = mark?.needsGrading ? 'warning' : 'success';
   const shouldLetter = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
   const hasWrittenSolution = Boolean(
@@ -289,7 +295,7 @@ function ReviewQuestionCard({
   const writtenSolutionHtml = question.solution || question.solutionHtml || '';
   const writtenSolutionPlain = question.solution_plainText || question.solutionPlainText || question.solutionText || '';
   const hasMarkedCorrectOption = opts.some((opt) => isCorrectOption(opt));
-  const optionType = [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType);
+  const optionType = isOptionBasedQuestionType(normalizedType) || normalizedType === QUESTION_TYPES.TRUE_FALSE;
   const selectedOptionIndices = useMemo(() => {
     if (!responseVisible || !response || !optionType || opts.length === 0) return [];
     const values = collectAnswerEntries(response.answer);
@@ -303,9 +309,28 @@ function ReviewQuestionCard({
     <Paper variant="outlined" sx={{ p: 2.5, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       {/* Header row */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-          Q{index + 1}{total > 1 ? `/${total}` : ''}
-        </Typography>
+        {progress && (
+          <>
+            <Chip
+              label={t('student.sessionReview.pageProgress', {
+                current: progress.pageCurrent,
+                total: progress.pageTotal,
+              })}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+            <Chip
+              label={t('student.sessionReview.questionProgress', {
+                current: progress.questionCurrent,
+                total: progress.questionTotal,
+              })}
+              size="small"
+              variant="outlined"
+              sx={COMPACT_CHIP_SX}
+            />
+          </>
+        )}
         <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
         {markChipLabel && (
           <Chip
@@ -412,16 +437,18 @@ function ReviewQuestionCard({
       )}
 
       {/* Show / Hide Solution button */}
-      <Box sx={{ mt: 2 }}>
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
-          onClick={() => setSolutionVisible((prev) => !prev)}
-        >
-          {solutionVisible ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
-        </Button>
-      </Box>
+      {!isSlide && (
+        <Box sx={{ mt: 2 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={solutionVisible ? <HideIcon /> : <ShowIcon />}
+            onClick={() => setSolutionVisible((prev) => !prev)}
+          >
+            {solutionVisible ? t('student.quiz.hideSolution') : t('student.quiz.showSolution')}
+          </Button>
+        </Box>
+      )}
 
       {/* Solution text (when visible) */}
       {solutionVisible && hasWrittenSolution && (
@@ -660,6 +687,7 @@ export default function SessionReview() {
   }
 
   const total = questions.length;
+  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
   const resolvedReturnTab = session && (session.quiz || session.practiceQuiz)
     ? 1
     : requestedReturnTab;
@@ -667,6 +695,7 @@ export default function SessionReview() {
     ? `/student/course/${courseId}`
     : `/student/course/${courseId}?tab=${resolvedReturnTab}`;
   const currentQ = questions[questionIdx];
+  const currentProgress = progressList[questionIdx] || null;
   const currentQKey = currentQ ? questionKey(currentQ, questionIdx) : '';
   const currentQMark = currentQ ? getMarkForQuestion(sessionGrade, currentQ, questionIdx) : null;
   const currentStateKey = questionStateKey(questionIdx);
@@ -674,11 +703,7 @@ export default function SessionReview() {
     ? getResponsesForQuestion(responsesByQuestion, currentQ, questionIdx).sort((a, b) => a.attempt - b.attempt)
     : [];
   const currentQType = currentQ ? normalizeQuestionType(currentQ) : null;
-  const currentIsOptionType = [
-    QUESTION_TYPES.MULTIPLE_CHOICE,
-    QUESTION_TYPES.TRUE_FALSE,
-    QUESTION_TYPES.MULTI_SELECT,
-  ].includes(currentQType);
+  const currentIsOptionType = isOptionBasedQuestionType(currentQType) || currentQType === QUESTION_TYPES.TRUE_FALSE;
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 860 }}>
@@ -764,9 +789,26 @@ export default function SessionReview() {
 
             {viewMode === 'one' && (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="body2" color="text.secondary">
-                  {t('student.sessionReview.questionProgress', { current: questionIdx + 1, total })}
-                </Typography>
+                {currentProgress && (
+                  <>
+                    <Chip
+                      label={t('student.sessionReview.pageProgress', {
+                        current: currentProgress.pageCurrent,
+                        total: currentProgress.pageTotal,
+                      })}
+                      size="small"
+                      variant="outlined"
+                    />
+                    <Chip
+                      label={t('student.sessionReview.questionProgress', {
+                        current: currentProgress.questionCurrent,
+                        total: currentProgress.questionTotal,
+                      })}
+                      size="small"
+                      variant="outlined"
+                    />
+                  </>
+                )}
                 {total > 1 && (
                   <>
                     <Button
@@ -801,8 +843,7 @@ export default function SessionReview() {
               <ReviewQuestionCard
                 key={currentQKey}
                 question={currentQ}
-                index={questionIdx}
-                total={total}
+                progress={currentProgress}
                 responseVisible={!!responseVisible[currentStateKey]}
                 response={currentResponses[resolveAttemptIndex(responseAttemptIdx, currentStateKey, currentResponses)] || null}
                 mark={currentQMark}
@@ -894,19 +935,14 @@ export default function SessionReview() {
                 const currentResponse = responses[attemptIdx];
                 const qType = normalizeQuestionType(q);
                 const mark = getMarkForQuestion(sessionGrade, q, i);
-                const isOptionType = [
-                  QUESTION_TYPES.MULTIPLE_CHOICE,
-                  QUESTION_TYPES.TRUE_FALSE,
-                  QUESTION_TYPES.MULTI_SELECT,
-                ].includes(qType);
+                const isOptionType = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
                 const isResponseVisible = !!responseVisible[stateKey];
 
                 return (
                   <Box key={qKey}>
                     <ReviewQuestionCard
                       question={q}
-                      index={i}
-                      total={total}
+                      progress={progressList[i] || null}
                       responseVisible={isResponseVisible}
                       response={currentResponse || null}
                       mark={mark}

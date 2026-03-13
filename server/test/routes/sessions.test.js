@@ -72,6 +72,31 @@ async function setupCourseWithStudent() {
   return { prof, profToken, course, student, studentToken };
 }
 
+async function createQuestionInSession(profToken, {
+  sessionId,
+  courseId,
+  ...payload
+}) {
+  const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+    token: profToken,
+    payload: {
+      sessionId,
+      courseId,
+      ...payload,
+    },
+  });
+  expect(qRes.statusCode).toBe(201);
+
+  const question = qRes.json().question;
+  const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${sessionId}/questions`, {
+    token: profToken,
+    payload: { questionId: question._id },
+  });
+  expect(addRes.statusCode).toBe(200);
+
+  return question;
+}
+
 // ---------- POST /api/v1/courses/:courseId/sessions ----------
 describe('POST /api/v1/courses/:courseId/sessions', () => {
   it('professor can create a session', async (ctx) => {
@@ -768,6 +793,78 @@ describe('POST /api/v1/sessions/:id/start', () => {
 
 // ---------- GET /api/v1/sessions/:id/live ----------
 describe('GET /api/v1/sessions/:id/live', () => {
+  it('treats slides as non-response items in live sessions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const slide = await createQuestionInSession(profToken, {
+      type: 6,
+      content: '<p>Slide content</p>',
+      plainText: 'Slide content',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>First graded question</p>',
+      plainText: 'First graded question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const visibilityRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true, correct: true },
+    });
+    expect(visibilityRes.statusCode).toBe(200);
+    expect(visibilityRes.json().question.sessionOptions.hidden).toBe(false);
+    expect(visibilityRes.json().question.sessionOptions.stats).toBe(false);
+    expect(visibilityRes.json().question.sessionOptions.correct).toBe(false);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const instructorLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+    expect(instructorLiveRes.statusCode).toBe(200);
+    expect(instructorLiveRes.json().currentQuestion._id).toBe(slide._id);
+    expect(instructorLiveRes.json().currentAttempt).toBeNull();
+    expect(instructorLiveRes.json().responseStats).toBeNull();
+    expect(instructorLiveRes.json().responseCount).toBe(0);
+    expect(instructorLiveRes.json().pageProgress).toEqual({ current: 1, total: 2 });
+    expect(instructorLiveRes.json().questionProgress).toEqual({ current: 0, total: 1 });
+
+    const studentLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(studentLiveRes.statusCode).toBe(200);
+    expect(studentLiveRes.json().showStats).toBe(false);
+    expect(studentLiveRes.json().showCorrect).toBe(false);
+    expect(studentLiveRes.json().pageProgress).toEqual({ current: 1, total: 2 });
+    expect(studentLiveRes.json().questionProgress).toEqual({ current: 0, total: 1 });
+
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: 'ignored' },
+    });
+    expect(respondRes.statusCode).toBe(400);
+    expect(respondRes.json().message).toContain('Slides do not accept live responses');
+  });
+
   it('student payload is limited to live-participation fields', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent();
@@ -1295,29 +1392,30 @@ describe('Student quiz routes', () => {
   }
 
   async function addMcQuestion({ profToken, sessionId, courseId, content = 'Question?' }) {
-    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
-      token: profToken,
-      payload: {
-        type: 0,
-        content: `<p>${content}</p>`,
-        plainText: content,
-        sessionId,
-        courseId,
-        options: [
-          { content: 'A', correct: true },
-          { content: 'B', correct: false },
-        ],
-        solution: '<p>Because A is correct.</p>',
-        solution_plainText: 'Because A is correct.',
-      },
+    return createQuestionInSession(profToken, {
+      type: 0,
+      content: `<p>${content}</p>`,
+      plainText: content,
+      sessionId,
+      courseId,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+      solution: '<p>Because A is correct.</p>',
+      solution_plainText: 'Because A is correct.',
     });
-    const question = qRes.json().question;
-    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${sessionId}/questions`, {
-      token: profToken,
-      payload: { questionId: question._id },
+  }
+
+  async function addSlideQuestion({ profToken, sessionId, courseId, content = 'Slide' }) {
+    return createQuestionInSession(profToken, {
+      type: 6,
+      content: `<p>${content}</p>`,
+      plainText: content,
+      sessionId,
+      courseId,
+      sessionOptions: { points: 0 },
     });
-    expect(addRes.statusCode).toBe(200);
-    return question;
   }
 
   it('non-practice quiz supports autosave + final submit and blocks re-entry after submission', async (ctx) => {
@@ -1382,6 +1480,65 @@ describe('Student quiz routes', () => {
     });
     expect(reenterRes.statusCode).toBe(403);
     expect(reenterRes.json().message).toContain('already submitted');
+  });
+
+  it('ignores slides when checking quiz completion and rejects slide autosaves', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const session = await createOpenQuiz({ profToken, courseId: course._id, practiceQuiz: false });
+    const slide = await addSlideQuestion({
+      profToken,
+      sessionId: session._id,
+      courseId: course._id,
+      content: 'Read this before answering',
+    });
+    const question = await addMcQuestion({
+      profToken,
+      sessionId: session._id,
+      courseId: course._id,
+      content: 'Only graded question',
+    });
+
+    const initialQuizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(initialQuizRes.statusCode).toBe(200);
+    expect(initialQuizRes.json().questions).toHaveLength(2);
+    expect(initialQuizRes.json().questions[0]._id).toBe(slide._id);
+    expect(initialQuizRes.json().allAnswered).toBe(false);
+
+    const slideAutosaveRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: slide._id, answer: 'ignored' },
+    });
+    expect(slideAutosaveRes.statusCode).toBe(400);
+    expect(slideAutosaveRes.json().message).toContain('Slides do not accept quiz responses');
+
+    const answerRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: question._id, answer: '0' },
+    });
+    expect(answerRes.statusCode).toBe(200);
+
+    const readyQuizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(readyQuizRes.statusCode).toBe(200);
+    expect(readyQuizRes.json().allAnswered).toBe(true);
+
+    const submitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/submit`, {
+      token: studentToken,
+    });
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().success).toBe(true);
+
+    const lockedResponses = await Response.find({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+    }).lean();
+    expect(lockedResponses).toHaveLength(1);
+    expect(lockedResponses[0].editable).toBe(false);
   });
 
   it('practice quizzes lock answers per-question and only reveal solutions after question submission', async (ctx) => {

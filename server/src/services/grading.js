@@ -11,6 +11,7 @@ export const QUESTION_TYPES = {
   SHORT_ANSWER: 2,
   MULTI_SELECT: 3,
   NUMERICAL: 4,
+  SLIDE: 6,
 };
 
 export const MS_SCORING_METHODS = {
@@ -252,6 +253,20 @@ function getQuestionType(question) {
   return Number(question?.type);
 }
 
+export function isSlideQuestionType(type) {
+  return Number(type) === QUESTION_TYPES.SLIDE;
+}
+
+export function isSlideQuestion(question) {
+  if (!question) return false;
+  return isSlideQuestionType(getQuestionType(question));
+}
+
+export function isQuestionResponseCollectionEnabled(question) {
+  if (!question) return false;
+  return !isSlideQuestion(question);
+}
+
 export function isQuestionAutoGradeable(type) {
   const numericType = Number(type);
   return [
@@ -317,6 +332,7 @@ export async function ensureSessionMsScoringMethod(session, { persist = true } =
 }
 
 export function getQuestionPoints(question) {
+  if (isSlideQuestion(question)) return 0;
   // Meteor behavior for backward compatibility:
   // SA defaults to 0 unless explicitly configured, others default to 1.
   let points = getQuestionType(question) === QUESTION_TYPES.SHORT_ANSWER ? 0 : 1;
@@ -672,6 +688,7 @@ export async function recalculateSessionGrades({
   const orderedQuestions = sessionQuestionIds
     .map((questionId) => questionById.get(questionId))
     .filter(Boolean);
+  const answerableQuestions = orderedQuestions.filter((question) => isQuestionResponseCollectionEnabled(question));
 
   const responsesByQuestionId = new Map();
   const latestResponseByStudentQuestion = new Map();
@@ -715,7 +732,7 @@ export async function recalculateSessionGrades({
   const ungradableQuestionIds = new Set();
   const lowResponseExcludedQuestionIds = new Set();
 
-  const questionMeta = orderedQuestions.map((question) => {
+  const questionMeta = answerableQuestions.map((question) => {
     const questionId = String(question._id);
     const questionResponses = responsesByQuestionId.get(questionId) || [];
     const uniqueResponders = new Set(
@@ -879,7 +896,7 @@ export async function recalculateSessionGrades({
     gradeSource.numAnswered = numAnswered;
     gradeSource.numQuestions = numQuestions;
     gradeSource.numAnsweredTotal = numAnsweredTotal;
-    gradeSource.numQuestionsTotal = orderedQuestions.length;
+    gradeSource.numQuestionsTotal = questionMeta.length;
     gradeSource.visibleToStudents = visibleFlag;
     gradeSource.needsGrading = needsGrading;
     gradeSource.marks = marks;

@@ -108,12 +108,14 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ File upload content validation — magic bytes via `file-type` library
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
+- ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
+- ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 219 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
+- **Server:** 222 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
 - **Client:** 9 tests in 2 files (grading UI, student quiz CTA)
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`

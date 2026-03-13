@@ -4,6 +4,7 @@ export const QUESTION_TYPES = {
   SHORT_ANSWER: 2,
   MULTI_SELECT: 3,
   NUMERICAL: 4,
+  SLIDE: 6,
 };
 
 export const TYPE_LABELS = {
@@ -12,6 +13,7 @@ export const TYPE_LABELS = {
   [QUESTION_TYPES.TRUE_FALSE]: 'True/False',
   [QUESTION_TYPES.MULTI_SELECT]: 'Multi-Select',
   [QUESTION_TYPES.NUMERICAL]: 'Numerical',
+  [QUESTION_TYPES.SLIDE]: 'Slide',
 };
 
 export const TYPE_COLORS = {
@@ -20,7 +22,59 @@ export const TYPE_COLORS = {
   [QUESTION_TYPES.TRUE_FALSE]: 'secondary',
   [QUESTION_TYPES.MULTI_SELECT]: 'info',
   [QUESTION_TYPES.NUMERICAL]: 'warning',
+  [QUESTION_TYPES.SLIDE]: 'default',
 };
+
+export function isSlideType(type) {
+  return Number(type) === QUESTION_TYPES.SLIDE;
+}
+
+export function isSlideQuestion(question = {}) {
+  return isSlideType(question?.type);
+}
+
+export function isOptionBasedQuestionType(type) {
+  return [
+    QUESTION_TYPES.MULTIPLE_CHOICE,
+    QUESTION_TYPES.TRUE_FALSE,
+    QUESTION_TYPES.MULTI_SELECT,
+  ].includes(Number(type));
+}
+
+export function isAutoGradeableQuestionType(type) {
+  return [
+    QUESTION_TYPES.MULTIPLE_CHOICE,
+    QUESTION_TYPES.TRUE_FALSE,
+    QUESTION_TYPES.MULTI_SELECT,
+    QUESTION_TYPES.NUMERICAL,
+  ].includes(Number(type));
+}
+
+export function isResponseQuestionType(type) {
+  return !isSlideType(type);
+}
+
+export function buildQuestionProgressList(questions = []) {
+  const totalPages = Array.isArray(questions) ? questions.length : 0;
+  const totalQuestions = (questions || []).reduce(
+    (count, question) => count + (isSlideType(normalizeQuestionType(question)) ? 0 : 1),
+    0
+  );
+
+  let questionsSeen = 0;
+  return (questions || []).map((question, index) => {
+    if (!isSlideType(normalizeQuestionType(question))) {
+      questionsSeen += 1;
+    }
+
+    return {
+      pageCurrent: index + 1,
+      pageTotal: totalPages,
+      questionCurrent: questionsSeen,
+      questionTotal: totalQuestions,
+    };
+  });
+}
 
 function isTrueFalseOptions(options = []) {
   if (!Array.isArray(options) || options.length !== 2) return false;
@@ -44,6 +98,7 @@ export function normalizeQuestionType(question = {}) {
   if (rawType === QUESTION_TYPES.TRUE_FALSE) return QUESTION_TYPES.TRUE_FALSE;
   if (rawType === QUESTION_TYPES.SHORT_ANSWER) return QUESTION_TYPES.SHORT_ANSWER;
   if (rawType === QUESTION_TYPES.MULTI_SELECT) return QUESTION_TYPES.MULTI_SELECT;
+  if (rawType === QUESTION_TYPES.SLIDE) return QUESTION_TYPES.SLIDE;
   if (rawType === QUESTION_TYPES.NUMERICAL) {
     // Guard for malformed restored rows: numerical type with multiple options.
     // These should be option-based questions, not numerical.
