@@ -4,6 +4,7 @@ import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, Tooltip,
   Switch, FormControlLabel, TextField, Divider, useMediaQuery,
+  Radio, RadioGroup, FormControl, FormLabel,
 } from '@mui/material';
 import {
   ArrowBack as PrevIcon, ArrowForward as NextIcon,
@@ -199,6 +200,8 @@ export default function LiveSession() {
   const [endDialogOpen, setEndDialogOpen] = useState(false);
   const [makeReviewable, setMakeReviewable] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [nonAutoGradeableWarning, setNonAutoGradeableWarning] = useState(null);
+  const [reviewableOption, setReviewableOption] = useState('proceed'); // 'proceed', 'zero', 'cancel'
 
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
   const [activePanel, setActivePanel] = useState('question');
@@ -468,15 +471,28 @@ export default function LiveSession() {
   const handleEndSession = useCallback(async () => {
     setEnding(true);
     try {
-      await apiClient.post(`/sessions/${sessionId}/end`, { reviewable: makeReviewable });
+      const payload = { reviewable: makeReviewable };
+      if (makeReviewable && nonAutoGradeableWarning) {
+        payload.acknowledgeNonAutoGradeable = true;
+        if (reviewableOption === 'zero') {
+          payload.zeroNonAutoGradeable = true;
+        }
+      }
+      const { data } = await apiClient.post(`/sessions/${sessionId}/end`, payload);
+      if (data?.nonAutoGradeableWarning && !nonAutoGradeableWarning) {
+        setNonAutoGradeableWarning(data.nonAutoGradeableWarning);
+        setEnding(false);
+        return;
+      }
       setEndDialogOpen(false);
+      setNonAutoGradeableWarning(null);
       navigate(`/manage/course/${courseId}`, { replace: true });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.liveSession.failedEndSession') });
     } finally {
       setEnding(false);
     }
-  }, [sessionId, makeReviewable, navigate, courseId]);
+  }, [sessionId, makeReviewable, navigate, courseId, nonAutoGradeableWarning, reviewableOption]);
 
   // Join code controls
   const handleTogglePasscodeRequired = useCallback((enabled) => {
@@ -1153,7 +1169,7 @@ export default function LiveSession() {
       {/* ============================================================ */}
       <Dialog
         open={endDialogOpen}
-        onClose={() => !ending && setEndDialogOpen(false)}
+        onClose={() => { if (!ending) { setEndDialogOpen(false); setNonAutoGradeableWarning(null); } }}
         aria-labelledby="end-session-dialog-title"
       >
         <DialogTitle id="end-session-dialog-title">{t('professor.liveSession.endSession')}</DialogTitle>
@@ -1165,20 +1181,47 @@ export default function LiveSession() {
             control={
               <Switch
                 checked={makeReviewable}
-                onChange={(e) => setMakeReviewable(e.target.checked)}
+                onChange={(e) => { setMakeReviewable(e.target.checked); setNonAutoGradeableWarning(null); }}
               />
             }
             label={t('professor.liveSession.makeReviewable')}
           />
+          {nonAutoGradeableWarning && makeReviewable && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                {t('professor.liveSession.nonAutoGradeableWarning', {
+                  count: nonAutoGradeableWarning.questionCount,
+                })}
+              </Typography>
+              <FormControl sx={{ mt: 1 }}>
+                <FormLabel>{t('professor.liveSession.nonAutoGradeableChoose')}</FormLabel>
+                <RadioGroup
+                  value={reviewableOption}
+                  onChange={(e) => setReviewableOption(e.target.value)}
+                >
+                  <FormControlLabel value="proceed" control={<Radio size="small" />} label={t('professor.liveSession.nonAutoGradeableProceed')} />
+                  <FormControlLabel value="zero" control={<Radio size="small" />} label={t('professor.liveSession.nonAutoGradeableZero')} />
+                  <FormControlLabel value="cancel" control={<Radio size="small" />} label={t('professor.liveSession.nonAutoGradeableCancel')} />
+                </RadioGroup>
+              </FormControl>
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setEndDialogOpen(false)} disabled={ending}>
+          <Button onClick={() => { setEndDialogOpen(false); setNonAutoGradeableWarning(null); }} disabled={ending}>
             {t('common.cancel')}
           </Button>
           <Button
             variant="contained"
             color="error"
-            onClick={handleEndSession}
+            onClick={() => {
+              if (nonAutoGradeableWarning && reviewableOption === 'cancel') {
+                setMakeReviewable(false);
+                setNonAutoGradeableWarning(null);
+                return;
+              }
+              handleEndSession();
+            }}
             disabled={ending}
           >
             {ending ? 'Ending…' : t('professor.liveSession.endSession')}

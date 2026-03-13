@@ -9,6 +9,7 @@ import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   ensureSessionMsScoringMethod,
   getTimestampMs,
+  isQuestionAutoGradeable,
   recalculateSessionGrades,
   summarizeGradeFeedback,
   setSessionGradesVisibility,
@@ -1252,13 +1253,31 @@ export default async function sessionRoutes(app) {
       );
 
       let grading = null;
+      let nonAutoGradeableWarning = null;
       if (request.body?.reviewable === true && !session.reviewable) {
+        // Check for non-autogradable questions and warn the professor
+        const questionIds = updated.questions || [];
+        const questionDocs = questionIds.length > 0
+          ? await Question.find({ _id: { $in: questionIds } }).lean()
+          : [];
+        const nonAutoGradeable = questionDocs.filter((q) => !isQuestionAutoGradeable(q.type));
+        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+          nonAutoGradeableWarning = {
+            questionCount: nonAutoGradeable.length,
+            questionNames: nonAutoGradeable.map((q) => q.plainText || q.question || 'Untitled'),
+          };
+        }
+
+        // If zeroNonAutoGradeable is set, zero out the points for those questions
+        const zeroNonAutoGradeable = !!request.body.zeroNonAutoGradeable;
+
         const gradingResult = await recalculateSessionGrades({
           sessionId: updated._id,
           sessionDoc: updated,
           courseDoc: course,
           missingOnly: true,
           visibleToStudents: true,
+          zeroNonAutoGradeable,
         });
         grading = gradingResult.summary;
       } else if (request.body?.reviewable === false && session.reviewable) {
@@ -1270,10 +1289,9 @@ export default async function sessionRoutes(app) {
 
       notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'done' });
 
-      return { session: updated.toObject(), grading };
+      return { session: updated.toObject(), grading, nonAutoGradeableWarning };
     }
   );
-
   // PATCH /sessions/:id/current - Set current question in a live session
   app.patch(
     '/sessions/:id/current',
@@ -2688,7 +2706,11 @@ export default async function sessionRoutes(app) {
 
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
-        { $set: { 'sessionOptions.attempts': closedAttempts } },
+        { $set: {
+          'sessionOptions.attempts': closedAttempts,
+          'sessionOptions.stats': false,
+          'sessionOptions.correct': false,
+        } },
         { new: true }
       );
 

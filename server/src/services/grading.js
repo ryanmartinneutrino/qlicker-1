@@ -601,6 +601,7 @@ export async function recalculateSessionGrades({
   courseDoc = null,
   missingOnly = false,
   visibleToStudents = null,
+  zeroNonAutoGradeable = false,
 } = {}) {
   let session = sessionDoc
     ? (typeof sessionDoc.toObject === 'function' ? sessionDoc.toObject() : { ...sessionDoc })
@@ -708,9 +709,11 @@ export async function recalculateSessionGrades({
       lowResponseExcludedQuestionIds.add(questionId);
     }
 
-    const outOf = excludedForLowResponse ? 0 : defaultOutOf;
+    const autoGradeable = isQuestionAutoGradeable(getQuestionType(question));
+    const zeroedForNonAutoGradeable = zeroNonAutoGradeable && !autoGradeable && defaultOutOf > 0;
+    const outOf = excludedForLowResponse || zeroedForNonAutoGradeable ? 0 : defaultOutOf;
 
-    if (!isQuestionAutoGradeable(getQuestionType(question)) && outOf > 0) {
+    if (!autoGradeable && outOf > 0) {
       ungradableQuestionIds.add(questionId);
     }
 
@@ -719,7 +722,7 @@ export async function recalculateSessionGrades({
       questionId,
       outOf,
       excludedForLowResponse,
-      isAutoGradeable: isQuestionAutoGradeable(getQuestionType(question)),
+      isAutoGradeable: autoGradeable,
     };
   });
 
