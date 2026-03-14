@@ -22,6 +22,7 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
+import { getSessionActivities, getActivityIds, findActivityIndex, isSlideActivity } from '../../utils/activities';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -59,9 +60,13 @@ function buildWebsocketUrl(token) {
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
 }
 
-function questionIndex(session, questionId) {
+function activityIndex(session, activityId) {
+  const activities = session?.activities;
+  if (Array.isArray(activities) && activities.length > 0) {
+    return findActivityIndex(activities, activityId);
+  }
   const ids = session?.questions || [];
-  return ids.indexOf(questionId);
+  return ids.indexOf(activityId);
 }
 
 function optionDisplayHtml(option) {
@@ -71,6 +76,160 @@ function optionDisplayHtml(option) {
 function normalizeValue(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !payload?.question) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: payload.question,
+  };
+}
+
+function getCurrentAttemptFromQuestion(question) {
+  const attempts = Array.isArray(question?.sessionOptions?.attempts)
+    ? question.sessionOptions.attempts
+    : [];
+  if (attempts.length === 0) return null;
+  const latestAttempt = attempts[attempts.length - 1];
+  return {
+    number: Number(latestAttempt?.number) || 1,
+    closed: !!latestAttempt?.closed,
+  };
+}
+
+function replaceCurrentQuestion(prev, question) {
+  if (!prev || !question?._id) return prev;
+
+  const nextQuestionId = String(question._id || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) {
+    return prev;
+  }
+
+  const nextAttempt = getCurrentAttemptFromQuestion(question);
+
+  return {
+    ...prev,
+    currentQuestion: question,
+    currentAttempt: nextAttempt ?? prev.currentAttempt,
+  };
+}
+
+function applyVisibilityChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !prev.currentQuestion) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: {
+      ...prev.currentQuestion,
+      sessionOptions: {
+        ...(prev.currentQuestion.sessionOptions || {}),
+        hidden: payload?.hidden ?? prev.currentQuestion?.sessionOptions?.hidden,
+        stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+        correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+      },
+    },
+  };
+}
+
+function applyParticipantJoined(prev, payload) {
+  if (!prev?.session) return prev;
+
+  const joinedStudent = payload?.joinedStudent;
+  const joinedStudentId = String(joinedStudent?._id || '');
+  const previousJoinedStudents = Array.isArray(prev.session.joinedStudents) ? prev.session.joinedStudents : [];
+  const nextJoinedStudents = joinedStudentId
+    ? [
+      ...previousJoinedStudents.filter((student) => String(student?._id || '') !== joinedStudentId),
+      joinedStudent,
+    ]
+    : previousJoinedStudents;
+  const previousJoined = Array.isArray(prev.session.joined) ? prev.session.joined : [];
+  const nextJoined = joinedStudentId && !previousJoined.some((id) => String(id) === joinedStudentId)
+    ? [...previousJoined, joinedStudentId]
+    : previousJoined;
+
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinedCount: payload?.joinedCount ?? prev.session.joinedCount,
+      joined: nextJoined,
+      joinedStudents: nextJoinedStudents,
+    },
+  };
+}
+
+function applyAttemptChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) {
+    return prev;
+  }
+
+  const previousAttemptNumber = prev?.currentAttempt?.number ?? null;
+  const nextAttemptNumber = payload?.currentAttempt?.number ?? previousAttemptNumber;
+  const resetResponses = !!payload?.resetResponses || nextAttemptNumber !== previousAttemptNumber;
+
+  return {
+    ...prev,
+    currentAttempt: payload?.currentAttempt ?? prev.currentAttempt,
+    currentQuestion: prev.currentQuestion
+      ? {
+        ...prev.currentQuestion,
+        sessionOptions: {
+          ...(prev.currentQuestion.sessionOptions || {}),
+          stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+          correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+        },
+      }
+      : prev.currentQuestion,
+    responseCount: resetResponses ? 0 : prev.responseCount,
+    responseStats: resetResponses ? null : prev.responseStats,
+    allResponses: resetResponses ? [] : prev.allResponses,
+  };
+}
+
+function applyJoinCodeChanged(prev, payload) {
+  if (!prev?.session) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinCodeEnabled: payload?.joinCodeEnabled ?? prev.session.joinCodeEnabled,
+      joinCodeActive: payload?.joinCodeActive ?? prev.session.joinCodeActive,
+      joinCodeInterval: payload?.joinCodeInterval ?? prev.session.joinCodeInterval,
+      currentJoinCode: payload?.currentJoinCode ?? prev.session.currentJoinCode,
+    },
+  };
+}
+
+function mergeSessionUpdate(prev, sessionPatch) {
+  if (!prev?.session || !sessionPatch?._id) return prev;
+  if (String(prev.session._id || '') !== String(sessionPatch._id || '')) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      ...sessionPatch,
+    },
+  };
 }
 
 function formatJoinedTimestamp(value, fallbackLabel) {
@@ -185,7 +344,7 @@ export default function LiveSession() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [msg, setMsg] = useState(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [pendingActionKey, setPendingActionKey] = useState(null);
 
   // End session dialog
   const [endDialogOpen, setEndDialogOpen] = useState(false);
@@ -298,11 +457,23 @@ export default function LiveSession() {
               });
               scheduleFetchLive();
               break;
+            case 'session:participant-joined':
+              setLiveData((prev) => applyParticipantJoined(prev, d));
+              break;
             case 'session:question-changed':
               fetchLive();
               break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              break;
+            case 'session:attempt-changed':
+              setLiveData((prev) => applyAttemptChanged(prev, d));
+              break;
+            case 'session:join-code-changed':
+              setLiveData((prev) => applyJoinCodeChanged(prev, d));
+              break;
             case 'session:visibility-changed':
-              fetchLive();
+              setLiveData((prev) => applyVisibilityChanged(prev, d));
               break;
             case 'session:status-changed':
               if (d.status === 'done') {
@@ -374,7 +545,6 @@ export default function LiveSession() {
     joinCodeTimerRef.current = setInterval(async () => {
       try {
         await apiClient.post(`/sessions/${sessionId}/refresh-join-code`);
-        fetchLive();
       } catch { /* ignore */ }
     }, interval);
 
@@ -389,7 +559,6 @@ export default function LiveSession() {
     liveData?.session?.joinCodeActive,
     liveData?.session?.joinCodeInterval,
     sessionId,
-    fetchLive,
   ]);
 
   useEffect(() => {
@@ -402,47 +571,78 @@ export default function LiveSession() {
   // Action helpers
   // --------------------------------------------------
 
-  const doAction = useCallback(async (requestFn, successMsg) => {
-    setActionLoading(true);
+  const doAction = useCallback(async (requestFn, successMsg, options = {}) => {
+    if (pendingActionKey) return null;
+
+    const {
+      pendingKey = 'global:action',
+      refresh = true,
+      onSuccess,
+    } = options;
+
+    setPendingActionKey(pendingKey);
     try {
-      await requestFn();
+      const result = await requestFn();
+      onSuccess?.(result);
       if (successMsg) setMsg({ severity: 'success', text: successMsg });
-      await fetchLive();
+      if (refresh) {
+        await fetchLive();
+      }
+      return result;
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.liveSession.actionFailed') });
+      return null;
     } finally {
-      setActionLoading(false);
+      setPendingActionKey(null);
     }
-  }, [fetchLive]);
+  }, [fetchLive, pendingActionKey, t]);
 
   // Navigation
   const handleSetQuestion = useCallback((qId) => {
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/current`, { questionId: qId }));
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/current`, { questionId: qId }),
+      null,
+      { pendingKey: 'question:navigate' }
+    );
   }, [doAction, sessionId]);
 
   const handlePrev = useCallback(() => {
     const session = liveData?.session;
     if (!session) return;
-    const idx = questionIndex(session, session.currentQuestion);
-    if (idx > 0) handleSetQuestion(session.questions[idx - 1]);
+    const ids = getActivityIds(getSessionActivities(session));
+    const idx = ids.indexOf(session.currentQuestion);
+    if (idx > 0) handleSetQuestion(ids[idx - 1]);
   }, [liveData, handleSetQuestion]);
 
   const handleNext = useCallback(() => {
     const session = liveData?.session;
     if (!session) return;
-    const idx = questionIndex(session, session.currentQuestion);
-    if (idx < session.questions.length - 1) handleSetQuestion(session.questions[idx + 1]);
+    const ids = getActivityIds(getSessionActivities(session));
+    const idx = ids.indexOf(session.currentQuestion);
+    if (idx < ids.length - 1) handleSetQuestion(ids[idx + 1]);
   }, [liveData, handleSetQuestion]);
 
   // Visibility toggles
   const handleToggleVisibility = useCallback((field) => {
     const opts = liveData?.currentQuestion?.sessionOptions || {};
     const newVal = !opts[field];
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/question-visibility`, {
-      hidden: field === 'hidden' ? newVal : !!opts.hidden,
-      stats: field === 'stats' ? newVal : !!opts.stats,
-      correct: field === 'correct' ? newVal : !!opts.correct,
-    }));
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/question-visibility`, {
+        hidden: field === 'hidden' ? newVal : !!opts.hidden,
+        stats: field === 'stats' ? newVal : !!opts.stats,
+        correct: field === 'correct' ? newVal : !!opts.correct,
+      }),
+      null,
+      {
+        pendingKey: `question-toggle:${field}`,
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.question) {
+            setLiveData((prev) => replaceCurrentQuestion(prev, response.data.question));
+          }
+        },
+      }
+    );
   }, [doAction, sessionId, liveData]);
 
   // Attempts & responses
@@ -450,12 +650,25 @@ export default function LiveSession() {
     doAction(
       () => apiClient.post(`/sessions/${sessionId}/new-attempt`),
       t('professor.liveSession.newAttemptStarted'),
+      { pendingKey: 'question:new-attempt' }
     );
   }, [doAction, sessionId, t]);
 
   const handleToggleResponses = useCallback(() => {
     const closed = liveData?.currentAttempt?.closed;
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/toggle-responses`, { closed: !closed }));
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/toggle-responses`, { closed: !closed }),
+      null,
+      {
+        pendingKey: 'question-responses:toggle',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.question) {
+            setLiveData((prev) => replaceCurrentQuestion(prev, response.data.question));
+          }
+        },
+      }
+    );
   }, [doAction, sessionId, liveData]);
 
   // End session
@@ -491,6 +704,15 @@ export default function LiveSession() {
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeEnabled: enabled }),
       enabled ? t('professor.liveSession.passcodeEnabled') : t('professor.liveSession.passcodeDisabled'),
+      {
+        pendingKey: 'join-code:enabled',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
     );
   }, [doAction, sessionId, t]);
 
@@ -498,6 +720,15 @@ export default function LiveSession() {
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeActive: active }),
       active ? t('professor.liveSession.joinPeriodStarted') : t('professor.liveSession.joinPeriodClosed'),
+      {
+        pendingKey: 'join-code:active',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
     );
   }, [doAction, sessionId, t]);
 
@@ -505,6 +736,7 @@ export default function LiveSession() {
     doAction(
       () => apiClient.post(`/sessions/${sessionId}/refresh-join-code`),
       t('professor.liveSession.joinCodeRefreshed'),
+      { pendingKey: 'join-code:refresh' }
     );
   }, [doAction, sessionId, t]);
 
@@ -526,6 +758,15 @@ export default function LiveSession() {
     doAction(
       () => apiClient.patch(`/sessions/${sessionId}/join-code-settings`, { joinCodeInterval: rounded }),
       t('professor.liveSession.joinCodeIntervalUpdated'),
+      {
+        pendingKey: 'join-code:interval',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
     );
   }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
@@ -570,8 +811,8 @@ export default function LiveSession() {
     return normalizeValue(a?.email).localeCompare(normalizeValue(b?.email));
   }), [joinedStudents]);
 
-  const qIdx = session ? questionIndex(session, session.currentQuestion) : -1;
-  const totalQ = session?.questions?.length || 0;
+  const qIdx = session ? activityIndex(session, session.currentQuestion) : -1;
+  const totalQ = getActivityIds(getSessionActivities(session || {})).length || 0;
   const hasPrev = qIdx > 0;
   const hasNext = qIdx < totalQ - 1;
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
@@ -586,6 +827,17 @@ export default function LiveSession() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const responsesClosed = !!currentAttempt?.closed;
   const attemptNum = currentAttempt?.number ?? null;
+  const globalActionLoading = pendingActionKey?.startsWith('global:');
+  const navigationBusy = pendingActionKey === 'question:navigate';
+  const newAttemptBusy = pendingActionKey === 'question:new-attempt';
+  const joinCodeEnabledBusy = pendingActionKey === 'join-code:enabled';
+  const joinCodeActiveBusy = pendingActionKey === 'join-code:active';
+  const joinCodeRefreshBusy = pendingActionKey === 'join-code:refresh';
+  const joinCodeIntervalBusy = pendingActionKey === 'join-code:interval';
+  const visibleToggleBusy = pendingActionKey === 'question-toggle:hidden';
+  const statsToggleBusy = pendingActionKey === 'question-toggle:stats';
+  const correctToggleBusy = pendingActionKey === 'question-toggle:correct';
+  const responsesToggleBusy = pendingActionKey === 'question-responses:toggle';
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'
     ? responseStats.distribution || []
@@ -784,7 +1036,7 @@ export default function LiveSession() {
                   <Switch
                     checked={!!session.joinCodeEnabled}
                     onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
-                    disabled={actionLoading}
+                    disabled={globalActionLoading || joinCodeEnabledBusy}
                     size="small"
                   />
                 }
@@ -798,7 +1050,7 @@ export default function LiveSession() {
                       <Switch
                         checked={!!session.joinCodeActive}
                         onChange={(e) => handleToggleJoinCode(e.target.checked)}
-                        disabled={actionLoading}
+                        disabled={globalActionLoading || joinCodeActiveBusy}
                         size="small"
                       />
                     }
@@ -815,7 +1067,7 @@ export default function LiveSession() {
                       if (e.key === 'Enter') e.currentTarget.blur();
                     }}
                     inputProps={{ min: 5, max: 120 }}
-                    disabled={actionLoading}
+                    disabled={globalActionLoading || joinCodeIntervalBusy}
                     sx={{ width: 130 }}
                   />
                   {session.joinCodeActive && session.currentJoinCode && (
@@ -830,7 +1082,7 @@ export default function LiveSession() {
                         <IconButton
                           size="small"
                           onClick={handleRefreshJoinCode}
-                          disabled={actionLoading}
+                          disabled={globalActionLoading || joinCodeRefreshBusy}
                           aria-label={t('professor.liveSession.refreshJoinCode')}
                         >
                           <RefreshIcon />
@@ -850,7 +1102,7 @@ export default function LiveSession() {
                   <Switch
                     checked={!isHidden}
                     onChange={() => handleToggleVisibility('hidden')}
-                    disabled={!currentQ || actionLoading}
+                    disabled={!currentQ || globalActionLoading || visibleToggleBusy}
                     size="small"
                   />
                 }
@@ -862,7 +1114,7 @@ export default function LiveSession() {
                   <Switch
                     checked={showStats}
                     onChange={() => handleToggleVisibility('stats')}
-                    disabled={!currentQ || actionLoading || isSlide}
+                    disabled={!currentQ || globalActionLoading || statsToggleBusy || isSlide}
                     size="small"
                   />
                 }
@@ -874,7 +1126,7 @@ export default function LiveSession() {
                   <Switch
                     checked={showCorrect}
                     onChange={() => handleToggleVisibility('correct')}
-                    disabled={!currentQ || actionLoading || isSlide}
+                    disabled={!currentQ || globalActionLoading || correctToggleBusy || isSlide}
                     size="small"
                   />
                 }
@@ -886,7 +1138,7 @@ export default function LiveSession() {
                   <Switch
                     checked={!responsesClosed}
                     onChange={handleToggleResponses}
-                    disabled={!currentQ || actionLoading || isSlide}
+                    disabled={!currentQ || globalActionLoading || responsesToggleBusy || isSlide}
                     size="small"
                   />
                 }
@@ -911,7 +1163,7 @@ export default function LiveSession() {
                     variant="outlined"
                     startIcon={<PrevIcon />}
                     onClick={handlePrev}
-                    disabled={!hasPrev || actionLoading}
+                    disabled={!hasPrev || navigationBusy}
                     aria-label={t('professor.liveSession.previousQuestion')}
                     sx={{ width: '100%' }}
                   >
@@ -927,7 +1179,7 @@ export default function LiveSession() {
                     variant="outlined"
                     startIcon={<AttemptIcon />}
                     onClick={handleNewAttempt}
-                    disabled={!currentQ || actionLoading || isSlide}
+                    disabled={!currentQ || newAttemptBusy || isSlide}
                     aria-label={t('professor.liveSession.newAttempt')}
                     sx={{ width: '100%' }}
                   >
@@ -943,7 +1195,7 @@ export default function LiveSession() {
                     variant="outlined"
                     endIcon={<NextIcon />}
                     onClick={handleNext}
-                    disabled={!hasNext || actionLoading}
+                    disabled={!hasNext || navigationBusy}
                     aria-label={t('professor.liveSession.nextQuestion')}
                     sx={{ width: '100%' }}
                   >

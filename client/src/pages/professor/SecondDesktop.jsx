@@ -11,6 +11,7 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
+import { getSessionActivities, getActivityIds, findActivityIndex } from '../../utils/activities';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -47,6 +48,86 @@ function buildWebsocketUrl(token) {
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
+}
+
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !payload?.question) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: payload.question,
+  };
+}
+
+function applyVisibilityChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !prev.currentQuestion) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: {
+      ...prev.currentQuestion,
+      sessionOptions: {
+        ...(prev.currentQuestion.sessionOptions || {}),
+        hidden: payload?.hidden ?? prev.currentQuestion?.sessionOptions?.hidden,
+        stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+        correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+      },
+    },
+  };
+}
+
+function applyAttemptChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) {
+    return prev;
+  }
+
+  const nextQuestion = prev.currentQuestion
+    ? {
+      ...prev.currentQuestion,
+      sessionOptions: {
+        ...(prev.currentQuestion.sessionOptions || {}),
+        stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+        correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+      },
+    }
+    : prev.currentQuestion;
+
+  return {
+    ...prev,
+    currentQuestion: nextQuestion,
+    responseStats: payload?.resetResponses ? null : prev.responseStats,
+    allResponses: payload?.resetResponses ? [] : prev.allResponses,
+  };
+}
+
+function applyJoinCodeChanged(prev, payload) {
+  if (!prev?.session) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinCodeEnabled: payload?.joinCodeEnabled ?? prev.session.joinCodeEnabled,
+      joinCodeActive: payload?.joinCodeActive ?? prev.session.joinCodeActive,
+      joinCodeInterval: payload?.joinCodeInterval ?? prev.session.joinCodeInterval,
+      currentJoinCode: payload?.currentJoinCode ?? prev.session.currentJoinCode,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -247,8 +328,17 @@ export default function PresentationWindow() {
             case 'session:question-changed':
               fetchLive();
               break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              break;
+            case 'session:attempt-changed':
+              setLiveData((prev) => applyAttemptChanged(prev, d));
+              break;
+            case 'session:join-code-changed':
+              setLiveData((prev) => applyJoinCodeChanged(prev, d));
+              break;
             case 'session:visibility-changed':
-              fetchLive();
+              setLiveData((prev) => applyVisibilityChanged(prev, d));
               break;
             case 'session:status-changed':
               if (d.status === 'done') { setSessionEnded(true); }
@@ -315,8 +405,8 @@ export default function PresentationWindow() {
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
-  const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
-  const totalQ = session?.questions?.length || 0;
+  const qIdx = session ? findActivityIndex(getSessionActivities(session), session.currentQuestion) : -1;
+  const totalQ = getActivityIds(getSessionActivities(session || {})).length || 0;
   const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
     ? { current: qIdx + 1, total: totalQ }
     : null);

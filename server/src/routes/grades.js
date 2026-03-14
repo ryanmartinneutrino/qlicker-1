@@ -68,18 +68,22 @@ function isCourseMember(course, user) {
     || (course.students || []).includes(user.userId);
 }
 
-function notifySessionUpdated(app, course, sessionId) {
-  if (typeof app.wsSendToUsers !== 'function') return;
-  if (!course || !sessionId) return;
-  const memberIds = [...new Set([
-    ...(course.instructors || []),
-    ...(course.students || []),
-  ].map((userId) => String(userId)).filter(Boolean))];
-  if (memberIds.length === 0) return;
-  app.wsSendToUsers(memberIds, 'session:updated', {
-    courseId: String(course._id),
-    sessionId: String(sessionId),
-  });
+function notifySessionUpdatedForUser(app, userId, course, sessionId) {
+  const normalizedUserId = normalizeAnswerValue(userId);
+  if (!normalizedUserId || !course || !sessionId) return;
+  if (typeof app.wsSendToUser === 'function') {
+    app.wsSendToUser(normalizedUserId, 'session:updated', {
+      courseId: String(course._id),
+      sessionId: String(sessionId),
+    });
+    return;
+  }
+  if (typeof app.wsSendToUsers === 'function') {
+    app.wsSendToUsers([normalizedUserId], 'session:updated', {
+      courseId: String(course._id),
+      sessionId: String(sessionId),
+    });
+  }
 }
 
 function parseSessionIds(queryValue) {
@@ -364,7 +368,7 @@ export default async function gradeRoutes(app) {
 
       const updated = await Grade.findById(grade._id).lean();
       if (feedbackStateChanged) {
-        notifySessionUpdated(app, course, grade.sessionId);
+        notifySessionUpdatedForUser(app, grade.userId, course, grade.sessionId);
       }
       return { grade: updated };
     }

@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
 import Session from '../../src/models/Session.js';
 import Question from '../../src/models/Question.js';
+import Response from '../../src/models/Response.js';
 
 let app;
 
@@ -251,6 +252,86 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.json().question.content).toBe('Admin edit');
   });
 
+  it('course instructors can update a session question when legacy question.courseId is missing', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, session } = await setupCourseAndSession();
+
+    const legacyCreator = await createTestUser({ email: 'legacy-owner@example.com', roles: ['professor'] });
+    const legacyCreatorToken = await getAuthToken(app, legacyCreator);
+    const prof = await createTestUser({ email: 'course-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    await Course.findByIdAndUpdate(course._id, {
+      $addToSet: { instructors: prof._id.toString() },
+    });
+
+    const qRes = await createQuestionAsProf(legacyCreatorToken, {
+      type: 6,
+      content: '<p>Legacy slide</p>',
+      plainText: 'Legacy slide',
+      sessionId: session._id,
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated slide</p>',
+        plainText: 'Updated slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('<p>Updated slide</p>');
+  });
+
+  it('course instructors can update a slide linked to their session even when question session metadata is blank', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, session } = await setupCourseAndSession();
+
+    const legacyCreator = await createTestUser({ email: 'session-linked-owner@example.com', roles: ['professor'] });
+    const legacyCreatorToken = await getAuthToken(app, legacyCreator);
+    const prof = await createTestUser({ email: 'linked-course-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    await Course.findByIdAndUpdate(course._id, {
+      $addToSet: { instructors: prof._id.toString() },
+    });
+
+    const qRes = await createQuestionAsProf(legacyCreatorToken, {
+      type: 6,
+      content: '<p>Linked slide</p>',
+      plainText: 'Linked slide',
+      sessionId: '',
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated linked slide</p>',
+        plainText: 'Updated linked slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('<p>Updated linked slide</p>');
+  });
+
   it('rejects switching multi-select to multiple-choice when multiple correct options exist', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -271,6 +352,183 @@ describe('PATCH /api/v1/questions/:id', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
+  });
+
+  it('rejects changing the number of options when the question already has responses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Choose one',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const question = qRes.json().question;
+
+    await Response.create({
+      attempt: 1,
+      questionId: question._id,
+      studentUserId: 'student-1',
+      answer: '0',
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: 'Choose one',
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+          { answer: 'C', correct: false },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toBe('Question options cannot be added or removed because this question has response data');
+  });
+
+  it('broadcasts a granular question update when a linked session question changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: '',
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated slide</p>',
+        plainText: 'Updated slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenLastCalledWith(
+      expect.arrayContaining([String(course.instructors[0])]),
+      'session:question-updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+      })
+    );
+  });
+
+  it('sanitizes current-question updates for students in a live session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: '<p>Current question</p>',
+      plainText: 'Current question',
+      options: [
+        { answer: 'A', correct: false },
+        { answer: 'B', correct: true },
+      ],
+      sessionOptions: {
+        hidden: false,
+        correct: false,
+        stats: true,
+        points: 1,
+      },
+    });
+    const question = qRes.json().question;
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        currentQuestion: question._id,
+        status: 'running',
+      },
+      $addToSet: {
+        questions: question._id,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>Updated current question</p>',
+        plainText: 'Updated current question',
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+        ],
+        sessionOptions: {
+          hidden: false,
+          correct: false,
+          stats: true,
+          points: 1,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      [String(course.instructors[0])],
+      'session:question-updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        question: expect.objectContaining({
+          content: '<p>Updated current question</p>',
+          options: expect.arrayContaining([
+            expect.objectContaining({ answer: 'A', correct: true }),
+            expect.objectContaining({ answer: 'B', correct: false }),
+          ]),
+        }),
+      })
+    );
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      [String(student._id)],
+      'session:question-updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        questionHidden: false,
+        showStats: true,
+        showCorrect: false,
+        question: expect.objectContaining({
+          content: '<p>Updated current question</p>',
+          options: expect.arrayContaining([
+            expect.objectContaining({ answer: 'A', correct: undefined }),
+            expect.objectContaining({ answer: 'B', correct: undefined }),
+          ]),
+        }),
+      })
+    );
   });
 });
 
@@ -406,6 +664,59 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     const body = res.json();
     const count = body.session.questions.filter((q) => q === question._id).length;
     expect(count).toBe(1);
+  });
+
+  it('repairs legacy partial activities when adding a question to session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    const q1Res = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Q1',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const slideRes = await createQuestionAsProf(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+    const libraryRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Library question',
+    });
+
+    const q1 = q1Res.json().question;
+    const slide = slideRes.json().question;
+    const libraryQuestion = libraryRes.json().question;
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [q1._id, slide._id],
+        activities: [{ activityType: 'question', activityId: q1._id }],
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: libraryQuestion._id },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session.questions).toEqual([q1._id, slide._id, libraryQuestion._id]);
+    expect(body.session.activities).toEqual([
+      { activityType: 'question', activityId: q1._id },
+      { activityType: 'slide', activityId: slide._id },
+      { activityType: 'question', activityId: libraryQuestion._id },
+    ]);
   });
 
   it('non-instructor gets 403', async (ctx) => {

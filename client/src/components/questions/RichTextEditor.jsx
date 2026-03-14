@@ -141,11 +141,20 @@ export default function RichTextEditor({
   const [sourceDraft, setSourceDraft] = useState('');
   const { t } = useTranslation();
   const lastEditorHtmlRef = useRef('');
+  const lastPropHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const fileInputRef = useRef(null);
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
   const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
+
+  const emitEditorChange = (nextEditor) => {
+    if (!nextEditor) return;
+    const html = normalizeStoredHtml(nextEditor.getHTML());
+    if (html === lastEditorHtmlRef.current) return;
+    lastEditorHtmlRef.current = html;
+    onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
+  };
 
   const uploadImage = async (file, maxEditorImageWidth) => {
     const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
@@ -253,12 +262,15 @@ export default function RichTextEditor({
       onCreate: ({ editor: createdEditor }) => {
         const html = normalizeStoredHtml(createdEditor.getHTML());
         lastEditorHtmlRef.current = html;
+        lastPropHtmlRef.current = preparedValue || '';
         onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
       },
       onUpdate: ({ editor: updatedEditor }) => {
-        const html = normalizeStoredHtml(updatedEditor.getHTML());
-        lastEditorHtmlRef.current = html;
-        onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
+        emitEditorChange(updatedEditor);
+      },
+      onTransaction: ({ editor: transactionEditor, transaction }) => {
+        if (!transaction?.docChanged) return;
+        emitEditorChange(transactionEditor);
       },
     },
     [ariaDescribedBy, disabled, editorAriaLabel, onBlur, placeholder, t]
@@ -275,6 +287,10 @@ export default function RichTextEditor({
     if (!editor) return;
 
     const targetHtml = preparedValue || '';
+    const propChanged = targetHtml !== lastPropHtmlRef.current;
+    lastPropHtmlRef.current = targetHtml;
+    if (!propChanged) return;
+
     const currentHtml = normalizeStoredHtml(editor.getHTML());
     if (targetHtml === currentHtml || targetHtml === lastEditorHtmlRef.current) return;
 

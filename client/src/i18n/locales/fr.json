@@ -471,6 +471,7 @@
       "questionDeleted": "Question supprimée",
       "failedDeleteQuestion": "Échec de la suppression de la question",
       "questionTypeLocked": "Le type de question est verrouillé car cette question a des données de réponse.",
+      "questionOptionsLocked": "Le nombre d'options est verrouillé car cette question a des données de réponse.",
       "sessionCopied": "Séance copiée",
       "failedCopySession": "Échec de la copie de la séance",
       "failedLaunch": "Échec du lancement de la séance",

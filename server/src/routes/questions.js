@@ -3,6 +3,8 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
+import { buildActivitiesFromQuestions } from '../services/activities.js';
+import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 
 const createQuestionSchema = {
   body: {
@@ -244,6 +246,209 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
+function sendToCourseMembers(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const memberIds = [...new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean))];
+  if (memberIds.length === 0) return;
+  app.wsSendToUsers(memberIds, event, payload);
+}
+
+function sendToInstructors(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const instructorIds = [...new Set(
+    (course.instructors || []).map((userId) => String(userId)).filter(Boolean)
+  )];
+  if (instructorIds.length === 0) return;
+  app.wsSendToUsers(instructorIds, event, payload);
+}
+
+function sendToStudents(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const studentIds = [...new Set(
+    (course.students || []).map((userId) => String(userId)).filter(Boolean)
+  )];
+  if (studentIds.length === 0) return;
+  app.wsSendToUsers(studentIds, event, payload);
+}
+
+function toQuestionPayload(question) {
+  if (!question) return null;
+  return typeof question.toObject === 'function'
+    ? question.toObject()
+    : { ...question };
+}
+
+function stripAnswerRevealFields(questionPayload, { revealCorrectAnswers = false } = {}) {
+  if (!questionPayload) return null;
+  if (revealCorrectAnswers) return questionPayload;
+
+  const sanitized = { ...questionPayload };
+  if (Array.isArray(sanitized.options)) {
+    sanitized.options = sanitized.options.map((option) => ({
+      ...option,
+      correct: undefined,
+    }));
+  }
+  delete sanitized.correctNumerical;
+  delete sanitized.solution;
+  delete sanitized.solution_plainText;
+  delete sanitized.solutionText;
+  delete sanitized.solutionPlainText;
+  delete sanitized.solutionHtml;
+  return sanitized;
+}
+
+function buildStudentQuestionUpdate(question) {
+  const questionPayload = toQuestionPayload(question);
+  if (!questionPayload) {
+    return {
+      question: null,
+      questionHidden: false,
+      showStats: false,
+      showCorrect: false,
+    };
+  }
+
+  const questionHidden = !!questionPayload?.sessionOptions?.hidden;
+  const collectsResponses = isQuestionResponseCollectionEnabled(questionPayload);
+  const showStats = collectsResponses ? !!questionPayload?.sessionOptions?.stats : false;
+  const showCorrect = collectsResponses ? !!questionPayload?.sessionOptions?.correct : false;
+
+  return {
+    question: questionHidden
+      ? null
+      : stripAnswerRevealFields(questionPayload, { revealCorrectAnswers: showCorrect }),
+    questionHidden,
+    showStats,
+    showCorrect,
+  };
+}
+
+async function getLinkedSessionsForQuestion(question) {
+  const linkedSessions = [];
+  const seenSessionIds = new Set();
+
+  const addSession = (session) => {
+    const sessionId = String(session?._id || '').trim();
+    if (!sessionId || seenSessionIds.has(sessionId)) return;
+    seenSessionIds.add(sessionId);
+    linkedSessions.push({
+      _id: sessionId,
+      courseId: String(session?.courseId || '').trim(),
+      currentQuestion: String(session?.currentQuestion || '').trim(),
+    });
+  };
+
+  if (question?.sessionId) {
+    const session = await Session.findById(question.sessionId)
+      .select('_id courseId currentQuestion')
+      .lean();
+    if (session) addSession(session);
+  }
+
+  const normalizedQuestionId = String(question?._id || '').trim();
+  if (normalizedQuestionId) {
+    const sessions = await Session.find({ questions: normalizedQuestionId })
+      .select('_id courseId currentQuestion')
+      .lean();
+    sessions.forEach(addSession);
+  }
+
+  return linkedSessions;
+}
+
+async function userCanManageQuestion(question, user) {
+  if (!question || !user) return false;
+  const roles = user.roles || [];
+  if (roles.includes('admin')) return true;
+  if (question.creator === user.userId || question.owner === user.userId) return true;
+
+  const candidateCourseIds = [
+    question.courseId,
+  ]
+    .map((courseId) => String(courseId || '').trim())
+    .filter(Boolean);
+
+  for (const courseId of candidateCourseIds) {
+    const course = await Course.findById(courseId);
+    if (course && course.instructors.includes(user.userId)) {
+      return true;
+    }
+  }
+
+  const linkedSessionCourseIds = new Set(
+    (await getLinkedSessionsForQuestion(question))
+      .map((session) => String(session?.courseId || '').trim())
+      .filter(Boolean)
+  );
+
+  for (const sessionCourseId of linkedSessionCourseIds) {
+    if (!candidateCourseIds.includes(sessionCourseId)) {
+      const sessionCourse = await Course.findById(sessionCourseId);
+      if (sessionCourse && sessionCourse.instructors.includes(user.userId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+async function notifyLinkedSessionQuestionUpdated(app, question) {
+  const linkedSessions = await getLinkedSessionsForQuestion(question);
+  if (linkedSessions.length === 0) return;
+
+  const courseIds = [...new Set(
+    linkedSessions
+      .map((session) => String(session.courseId || '').trim())
+      .filter(Boolean)
+  )];
+  if (courseIds.length === 0) return;
+
+  const courses = await Course.find({ _id: { $in: courseIds } }).lean();
+  const courseById = new Map(
+    courses.map((course) => [String(course._id), course])
+  );
+  const questionId = String(question?._id || '').trim();
+  const instructorQuestionPayload = toQuestionPayload(question);
+  const studentQuestionUpdate = buildStudentQuestionUpdate(question);
+
+  linkedSessions.forEach((session) => {
+    const course = courseById.get(String(session.courseId || ''));
+    if (!course) return;
+
+    const payload = {
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      questionId,
+    };
+    const includeQuestionPayload = String(session.currentQuestion || '') === questionId;
+
+    sendToInstructors(
+      app,
+      course,
+      'session:question-updated',
+      includeQuestionPayload
+        ? { ...payload, question: instructorQuestionPayload }
+        : payload
+    );
+    sendToStudents(
+      app,
+      course,
+      'session:question-updated',
+      includeQuestionPayload
+        ? { ...payload, ...studentQuestionUpdate }
+        : payload
+    );
+  });
+}
+
 export default async function questionRoutes(app) {
   const { authenticate, requireRole } = app;
 
@@ -314,25 +519,12 @@ export default async function questionRoutes(app) {
       schema: updateQuestionSchema,
     },
     async (request, reply) => {
-      const roles = request.user.roles || [];
-      const userId = request.user.userId;
-      const isAdmin = roles.includes('admin');
-
       const question = await Question.findById(request.params.id);
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      // Check permissions: must be creator/owner, instructor of course, or admin
-      let hasPermission = isAdmin || question.creator === userId || question.owner === userId;
-
-      if (!hasPermission && question.courseId) {
-        const course = await Course.findById(question.courseId);
-        if (course && course.instructors.includes(userId)) {
-          hasPermission = true;
-        }
-      }
-
+      const hasPermission = await userCanManageQuestion(question, request.user);
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
@@ -344,6 +536,18 @@ export default async function questionRoutes(app) {
           return reply.code(409).send({
             error: 'Conflict',
             message: 'Question type cannot be changed because this question has response data',
+          });
+        }
+      }
+
+      const hasResponses = await Response.exists({ questionId: String(question._id) });
+      if (hasResponses && request.body.options !== undefined) {
+        const currentOptionCount = Array.isArray(question.options) ? question.options.length : 0;
+        const nextOptionCount = Array.isArray(request.body.options) ? request.body.options.length : 0;
+        if (nextOptionCount !== currentOptionCount) {
+          return reply.code(409).send({
+            error: 'Conflict',
+            message: 'Question options cannot be added or removed because this question has response data',
           });
         }
       }
@@ -371,6 +575,8 @@ export default async function questionRoutes(app) {
         { $set: updates },
         { new: true }
       );
+
+      await notifyLinkedSessionQuestionUpdated(app, updated || question);
 
       return { question: updated.toObject() };
     }
@@ -405,7 +611,7 @@ export default async function questionRoutes(app) {
       // Remove from session if linked
       if (question.sessionId) {
         await Session.findByIdAndUpdate(question.sessionId, {
-          $pull: { questions: question._id },
+          $pull: { questions: question._id, activities: { activityId: String(question._id) } },
         });
       }
 
@@ -514,9 +720,22 @@ export default async function questionRoutes(app) {
         return { session: session.toObject() };
       }
 
+      const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      const nextQuestionIds = [...(session.questions || []), String(questionId)];
+      const sessionQuestionDocs = await Question.find({ _id: { $in: nextQuestionIds } })
+        .select('_id type')
+        .lean();
+      const sessionQuestionMap = new Map(
+        sessionQuestionDocs.map((sessionQuestion) => [String(sessionQuestion._id), sessionQuestion])
+      );
+      const nextActivities = buildActivitiesFromQuestions(nextQuestionIds, sessionQuestionMap);
+
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $addToSet: { questions: questionId } },
+        { $set: { questions: nextQuestionIds, activities: nextActivities } },
         { new: true }
       );
 
@@ -553,7 +772,7 @@ export default async function questionRoutes(app) {
 
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $pull: { questions: request.params.questionId } },
+        { $pull: { questions: request.params.questionId, activities: { activityId: request.params.questionId } } },
         { new: true }
       );
 
@@ -583,9 +802,19 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const newOrder = request.body.questions;
+
+      // Rebuild activities from the authoritative ordered question list so we
+      // also repair legacy/partial activity arrays as part of a reorder.
+      const questions = await Question.find({ _id: { $in: newOrder } })
+        .select('_id type')
+        .lean();
+      const questionMap = new Map(questions.map((question) => [String(question._id), question]));
+      const newActivities = buildActivitiesFromQuestions(newOrder, questionMap);
+
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $set: { questions: request.body.questions } },
+        { $set: { questions: newOrder, activities: newActivities } },
         { new: true }
       );
 

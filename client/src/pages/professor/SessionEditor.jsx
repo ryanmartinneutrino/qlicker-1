@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Paper,
@@ -175,6 +175,7 @@ export default function SessionEditor() {
 
   // Question editor
   const [inlineEditor, setInlineEditor] = useState(null);
+  const inlineQuestionEditorRef = useRef(null);
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
@@ -502,7 +503,16 @@ export default function SessionEditor() {
     }
   };
 
-  const handleAutoSaveQuestion = async (payload, questionId) => {
+  const requestInlineEditorClose = () => {
+    const requestClose = inlineQuestionEditorRef.current?.requestClose;
+    if (typeof requestClose === 'function') {
+      requestClose();
+      return;
+    }
+    closeInlineEditor();
+  };
+
+  const handleAutoSaveQuestion = useCallback(async (payload, questionId) => {
     try {
       if (questionId) {
         const { data } = await apiClient.patch(`/questions/${questionId}`, payload);
@@ -539,7 +549,7 @@ export default function SessionEditor() {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedAutoSave') });
       throw err;
     }
-  };
+  }, [courseId, inlineEditor, questions, session, sessionId, t, upsertQuestionLocally]);
 
   // Delete question
   const handleDeleteQuestion = async (qId) => {
@@ -856,7 +866,7 @@ export default function SessionEditor() {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <Tooltip title={t('professor.sessionEditor.closeEditor')}>
-              <IconButton size="small" onClick={() => closeInlineEditor()}>
+              <IconButton size="small" aria-label={t('professor.sessionEditor.closeEditor')} onClick={requestInlineEditorClose}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -883,7 +893,7 @@ export default function SessionEditor() {
           }}
         >
           <Tooltip title={t('professor.sessionEditor.closeEditor')}>
-            <IconButton size="small" onClick={() => closeInlineEditor()}>
+            <IconButton size="small" aria-label={t('professor.sessionEditor.closeEditor')} onClick={requestInlineEditorClose}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -938,6 +948,7 @@ export default function SessionEditor() {
 
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <QuestionEditor
+            ref={inlineQuestionEditorRef}
             key={`inline-editor-${inlineEditor?.key}`}
             inline
             open
@@ -946,6 +957,8 @@ export default function SessionEditor() {
             initial={initialQuestion}
             initialBaseline={baselineQuestion}
             disableTypeSelection={questionHasResponses}
+            disableOptionCountChanges={questionHasResponses}
+            optionCountLockReason={t('professor.sessionEditor.questionOptionsLocked')}
             typeSelectionLockReason={t('professor.sessionEditor.questionTypeLocked')}
           />
         </Box>
@@ -1525,6 +1538,7 @@ export default function SessionEditor() {
                           <span>
                             <IconButton
                               size="small"
+                              aria-label={t('common.edit')}
                               disabled={questionsEditingLocked}
                               onClick={() => openEditEditor(currentQuestion._id)}
                             >

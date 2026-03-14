@@ -471,6 +471,7 @@
       "questionDeleted": "Question deleted",
       "failedDeleteQuestion": "Failed to delete question",
       "questionTypeLocked": "Question type is locked because this question has response data.",
+      "questionOptionsLocked": "Option count is locked because this question has response data.",
       "sessionCopied": "Session copied",
       "failedCopySession": "Failed to copy session",
       "failedLaunch": "Failed to launch session",

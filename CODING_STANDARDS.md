@@ -299,9 +299,13 @@ WebSocket endpoint: `/ws?token=<JWT>`
 
 | Event | Direction | Audience | Payload | Purpose |
 |-------|-----------|----------|---------|---------|
-| `session:updated` | Server→Client | All members | `{ sessionId }` | Generic notification for non-live mutations (CRUD, join, quiz close) |
+| `session:updated` | Server→Client | All members or a single affected user | `{ sessionId }` | Generic fallback for non-live mutations or targeted refetches when no finer delta exists |
 | `session:question-changed` | Server→Client | All members | `{ sessionId, questionId, questionIndex, questionNumber, questionCount }` | Professor navigated to a new question |
-| `session:response-added` | Server→Instructors | Instructors only | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted (students don't need this) |
+| `session:question-updated` | Server→Client | All members | `{ sessionId, questionId, question? }` | Current question content edited; include only the minimal per-audience question delta clients need |
+| `session:response-added` | Server→Client | Instructors always; joined students when stats are visible | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted; clients that show live stats should throttle-refetch |
+| `session:attempt-changed` | Server→Client | All members | `{ sessionId, questionId, currentAttempt, stats, correct, resetResponses }` | Current attempt opened/closed/reset for the live question |
+| `session:participant-joined` | Server→Instructors | Instructors only | `{ sessionId, joinedCount, joinedStudent }` | A student joined the live session; update instructor roster/count locally |
+| `session:join-code-changed` | Server→Client | All members | `{ sessionId, joinCodeEnabled, joinCodeActive, ... }` | Passcode requirement/join period changed; omit the actual code from student payloads |
 | `session:visibility-changed` | Server→Client | All members | `{ sessionId, questionId, hidden, stats, correct }` | Question visibility/stats/correct toggled |
 | `session:status-changed` | Server→Client | All members | `{ sessionId, status }` | Session started/ended |
 
@@ -381,6 +385,27 @@ const joined = session.joined || [];
 
 // ❌ Wrong — will crash on legacy docs
 course.students.forEach(/* ... */);  // TypeError if undefined
+```
+
+#### Session Activity Sequence
+
+Sessions use an `activities` array to track the typed, ordered sequence of items (questions, slides, and potentially future types). The legacy `questions` array is kept in sync for backward compatibility.
+
+```javascript
+// ✅ Use the activity abstraction for navigation and type-awareness
+import { getSessionActivities, getActivityIds, ACTIVITY_TYPES } from '../services/activities.js';
+
+const activities = getSessionActivities(session, questionsMap);
+const orderedIds = getActivityIds(activities);
+const isSlide = activities[i]?.activityType === ACTIVITY_TYPES.SLIDE;
+
+// ✅ When modifying session items, always update both arrays
+await Session.findByIdAndUpdate(sessionId, {
+  $addToSet: { questions: qId, activities: { activityType, activityId: qId } },
+});
+
+// Legacy sessions (activities empty/absent) are handled transparently:
+// getSessionActivities() builds activities on the fly from questions + loaded docs.
 ```
 
 #### Password Hash Compatibility
@@ -477,14 +502,16 @@ app.wsSendToUsers(memberIds, 'session:question-changed', payload);
 memberIds.forEach((id) => app.wsSendToUser(id, 'session:question-changed', payload));
 ```
 
-### Instructor-Only Events
+### Audience-Scoped Events
 
-Events that students don't need (like response counts) should only be sent to instructors:
+Send deltas only to the audience that can act on them. Live response counts are the main exception: students need them for visible histograms, but only while they are joined and stats are on.
 
 ```javascript
-// Only instructors get response count updates
-const instructorIds = (course.instructors || []).map(String).filter(Boolean);
-app.wsSendToUsers(instructorIds, 'session:response-added', {
+// Instructors always get response deltas; joined students only when stats are visible
+sendToInstructors(app, course, 'session:response-added', {
+  sessionId, questionId, attempt, responseCount, joinedCount,
+});
+sendToUsersById(app, session.joined || [], 'session:response-added', {
   sessionId, questionId, attempt, responseCount, joinedCount,
 });
 ```
@@ -852,7 +879,13 @@ ws.onmessage = (event) => {
 
   switch (evt) {
     case 'session:question-changed':
-      // Update local state from delta payload
+      // Re-fetch only when navigation changes require a new live payload
+      fetchLive();
+      break;
+    case 'session:question-updated':
+    case 'session:visibility-changed':
+      // Patch local state directly when the event already carries the needed delta
+      setLiveData((prev) => applyDelta(prev, d));
       break;
     case 'session:response-added':
       // Throttled re-fetch
@@ -882,6 +915,11 @@ ws.onmessage = (event) => {
 | `verifyPasswordArgon2id(pw, hash)` | `server/src/utils/password.js` | Verify password against argon2id hash |
 | `isLegacyBcryptHash(value)` | `server/src/utils/password.js` | Check if hash is legacy bcrypt format |
 | `sanitizeUser(user)` | Local function in `auth.js` and `users.js` | Remove `services` field from user object before responding |
+| `ACTIVITY_TYPES` | `server/src/services/activities.js` | Canonical activity-type constants: `QUESTION`, `SLIDE` |
+| `classifyQuestionAsActivity(q)` | `server/src/services/activities.js` | Map a question document to its activity type |
+| `buildActivitiesFromQuestions(ids, map)` | `server/src/services/activities.js` | Build an ordered activities array from question IDs + docs |
+| `getSessionActivities(session, map)` | `server/src/services/activities.js` | Return authoritative activities, with legacy fallback |
+| `getActivityIds(activities)` | `server/src/services/activities.js` | Extract flat ID list from activities array |
 | `sendVerificationEmail(...)` | `server/src/services/email.js` | Send email verification link |
 | `sendPasswordResetEmail(...)` | `server/src/services/email.js` | Send password reset link |
 
@@ -900,6 +938,13 @@ ws.onmessage = (event) => {
 | `extractPlainTextFromHtml(html)` | `client/src/components/questions/richTextUtils.js` | Strip HTML tags to plain text |
 | `SUPPORTED_LOCALES`, `DATE_FORMATS` | `client/src/i18n/index.js` | Available locales and date format options |
 | `AutoSaveStatus` | `client/src/components/common/AutoSaveStatus.jsx` | Autosave notification component |
+| `ACTIVITY_TYPES` | `client/src/utils/activities.js` | Canonical activity-type constants (mirrors server) |
+| `classifyQuestionAsActivity(q)` | `client/src/utils/activities.js` | Map a question to its activity type |
+| `getSessionActivities(session, qs)` | `client/src/utils/activities.js` | Return authoritative activities, with legacy fallback |
+| `getActivityIds(activities)` | `client/src/utils/activities.js` | Extract flat ID list from activities array |
+| `isQuestionActivity(a)` | `client/src/utils/activities.js` | Check if activity is a question |
+| `isSlideActivity(a)` | `client/src/utils/activities.js` | Check if activity is a slide |
+| `findActivityIndex(activities, id)` | `client/src/utils/activities.js` | Find activity index by ID |
 
 ---
 

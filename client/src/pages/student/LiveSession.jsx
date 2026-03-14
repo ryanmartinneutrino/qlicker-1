@@ -65,6 +65,65 @@ function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
 }
 
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) return prev;
+
+  return {
+    ...prev,
+    currentQuestion: payload?.question ?? null,
+    questionHidden: payload?.questionHidden ?? prev.questionHidden,
+    showStats: payload?.showStats ?? prev.showStats,
+    showCorrect: payload?.showCorrect ?? prev.showCorrect,
+  };
+}
+
+function applyAttemptChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) return prev;
+
+  const previousAttemptNumber = prev?.currentAttempt?.number ?? null;
+  const nextAttemptNumber = payload?.currentAttempt?.number ?? previousAttemptNumber;
+  const resetResponses = !!payload?.resetResponses || nextAttemptNumber !== previousAttemptNumber;
+
+  return {
+    ...prev,
+    currentAttempt: payload?.currentAttempt ?? prev.currentAttempt,
+    showStats: payload?.stats ?? prev.showStats,
+    showCorrect: payload?.correct ?? prev.showCorrect,
+    currentQuestion: prev.currentQuestion
+      ? {
+        ...prev.currentQuestion,
+        sessionOptions: {
+          ...(prev.currentQuestion.sessionOptions || {}),
+          stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+          correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+        },
+      }
+      : prev.currentQuestion,
+    responseStats: resetResponses ? null : prev.responseStats,
+    studentResponse: resetResponses ? null : prev.studentResponse,
+  };
+}
+
+function applyJoinCodeChanged(prev, payload) {
+  if (!prev?.session) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinCodeEnabled: payload?.joinCodeEnabled ?? prev.session.joinCodeEnabled,
+      joinCodeActive: payload?.joinCodeActive ?? prev.session.joinCodeActive,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -136,6 +195,15 @@ export default function LiveSession() {
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
 
+  const fetchThrottleRef = useRef(null);
+  const scheduleFetchLive = useCallback(() => {
+    if (fetchThrottleRef.current) return;
+    fetchThrottleRef.current = setTimeout(() => {
+      fetchThrottleRef.current = null;
+      fetchLive();
+    }, 2000);
+  }, [fetchLive]);
+
   // --------------------------------------------------
   // WebSocket real-time updates (with polling fallback)
   // --------------------------------------------------
@@ -184,12 +252,21 @@ export default function LiveSession() {
           if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
 
           switch (evt) {
-            // session:response-added is only sent to instructors; students
-            // will not receive it, but handle gracefully in case.
+            // Students receive this only while joined and live stats are visible.
             case 'session:response-added':
+              scheduleFetchLive();
               break;
             case 'session:question-changed':
               fetchLive();
+              break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              break;
+            case 'session:attempt-changed':
+              setLiveData((prev) => applyAttemptChanged(prev, d));
+              break;
+            case 'session:join-code-changed':
+              setLiveData((prev) => applyJoinCodeChanged(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();
@@ -232,6 +309,8 @@ export default function LiveSession() {
     return () => {
       closed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
+      fetchThrottleRef.current = null;
       stopPolling();
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         ws.close();
@@ -239,7 +318,7 @@ export default function LiveSession() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchLive, sessionId]);
+  }, [fetchLive, scheduleFetchLive, sessionId]);
 
   // --------------------------------------------------
   // Reset answer when question or attempt changes

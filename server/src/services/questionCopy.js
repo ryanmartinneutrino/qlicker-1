@@ -1,5 +1,6 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
+import { buildActivitiesFromQuestions } from './activities.js';
 
 export async function copyQuestionToSession({
   sourceQuestion,
@@ -30,8 +31,21 @@ export async function copyQuestionToSession({
   });
 
   if (addToSession) {
+    const session = await Session.findById(targetSessionId).lean();
+    const nextQuestionIds = [...new Set([
+      ...((session?.questions || []).map((questionId) => String(questionId))),
+      String(copy._id),
+    ])];
+    const sessionQuestionDocs = await Question.find({ _id: { $in: nextQuestionIds } })
+      .select('_id type')
+      .lean();
+    const sessionQuestionMap = new Map(
+      sessionQuestionDocs.map((question) => [String(question._id), question])
+    );
+    const nextActivities = buildActivitiesFromQuestions(nextQuestionIds, sessionQuestionMap);
+
     await Session.findByIdAndUpdate(targetSessionId, {
-      $addToSet: { questions: copy._id },
+      $set: { questions: nextQuestionIds, activities: nextActivities },
     });
   }
 

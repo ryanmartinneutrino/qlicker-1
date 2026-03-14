@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
@@ -270,6 +270,64 @@ describe('Grading routes', () => {
     expect(clearedFeedback.statusCode).toBe(200);
     const clearedMark = clearedFeedback.json().grade.marks.find((mark) => mark.questionId === question._id);
     expect(clearedMark.feedbackUpdatedAt).toBeNull();
+  });
+
+  it('notifies only the affected student when feedback changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'feedback-websocket',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Feedback websocket session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    const grade = await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      visibleToStudents: true,
+      marks: [
+        {
+          questionId: question._id,
+          points: 0,
+          outOf: 1,
+          automatic: false,
+          needsGrading: false,
+          feedback: '',
+          feedbackUpdatedAt: null,
+        },
+      ],
+    });
+
+    const wsSendToUserSpy = vi.spyOn(app, 'wsSendToUser');
+    const res = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${grade._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { feedback: '<p>Targeted feedback</p>' },
+      }
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(wsSendToUserSpy).toHaveBeenCalledTimes(1);
+    expect(wsSendToUserSpy).toHaveBeenCalledWith(
+      String(students[0]._id),
+      'session:updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+      })
+    );
   });
 
   it('recomputes aggregate grade and participation when a mark is edited', async (ctx) => {
