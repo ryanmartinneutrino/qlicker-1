@@ -264,10 +264,30 @@ async function userCanManageQuestion(question, user) {
     }
   }
 
+  const linkedSessionCourseIds = new Set();
   if (question.sessionId) {
     const session = await Session.findById(question.sessionId).select('courseId').lean();
     const sessionCourseId = String(session?.courseId || '').trim();
-    if (sessionCourseId && !candidateCourseIds.includes(sessionCourseId)) {
+    if (sessionCourseId) {
+      linkedSessionCourseIds.add(sessionCourseId);
+    }
+  }
+
+  const normalizedQuestionId = String(question._id || '').trim();
+  if (normalizedQuestionId) {
+    const linkedSessions = await Session.find({ questions: normalizedQuestionId })
+      .select('courseId')
+      .lean();
+    linkedSessions.forEach((session) => {
+      const sessionCourseId = String(session?.courseId || '').trim();
+      if (sessionCourseId) {
+        linkedSessionCourseIds.add(sessionCourseId);
+      }
+    });
+  }
+
+  for (const sessionCourseId of linkedSessionCourseIds) {
+    if (!candidateCourseIds.includes(sessionCourseId)) {
       const sessionCourse = await Course.findById(sessionCourseId);
       if (sessionCourse && sessionCourse.instructors.includes(user.userId)) {
         return true;

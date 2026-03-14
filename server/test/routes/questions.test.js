@@ -288,6 +288,49 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.json().question.content).toBe('<p>Updated slide</p>');
   });
 
+  it('course instructors can update a slide linked to their session even when question session metadata is blank', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, session } = await setupCourseAndSession();
+
+    const legacyCreator = await createTestUser({ email: 'session-linked-owner@example.com', roles: ['professor'] });
+    const legacyCreatorToken = await getAuthToken(app, legacyCreator);
+    const prof = await createTestUser({ email: 'linked-course-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    await Course.findByIdAndUpdate(course._id, {
+      $addToSet: { instructors: prof._id.toString() },
+    });
+
+    const qRes = await createQuestionAsProf(legacyCreatorToken, {
+      type: 6,
+      content: '<p>Linked slide</p>',
+      plainText: 'Linked slide',
+      sessionId: '',
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated linked slide</p>',
+        plainText: 'Updated linked slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('<p>Updated linked slide</p>');
+  });
+
   it('rejects switching multi-select to multiple-choice when multiple correct options exist', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
