@@ -251,6 +251,43 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.json().question.content).toBe('Admin edit');
   });
 
+  it('course instructors can update a session question when legacy question.courseId is missing', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, session } = await setupCourseAndSession();
+
+    const legacyCreator = await createTestUser({ email: 'legacy-owner@example.com', roles: ['professor'] });
+    const legacyCreatorToken = await getAuthToken(app, legacyCreator);
+    const prof = await createTestUser({ email: 'course-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    await Course.findByIdAndUpdate(course._id, {
+      $addToSet: { instructors: prof._id.toString() },
+    });
+
+    const qRes = await createQuestionAsProf(legacyCreatorToken, {
+      type: 6,
+      content: '<p>Legacy slide</p>',
+      plainText: 'Legacy slide',
+      sessionId: session._id,
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated slide</p>',
+        plainText: 'Updated slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('<p>Updated slide</p>');
+  });
+
   it('rejects switching multi-select to multiple-choice when multiple correct options exist', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });

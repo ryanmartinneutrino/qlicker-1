@@ -245,6 +245,39 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
+async function userCanManageQuestion(question, user) {
+  if (!question || !user) return false;
+  const roles = user.roles || [];
+  if (roles.includes('admin')) return true;
+  if (question.creator === user.userId || question.owner === user.userId) return true;
+
+  const candidateCourseIds = [
+    question.courseId,
+  ]
+    .map((courseId) => String(courseId || '').trim())
+    .filter(Boolean);
+
+  for (const courseId of candidateCourseIds) {
+    const course = await Course.findById(courseId);
+    if (course && course.instructors.includes(user.userId)) {
+      return true;
+    }
+  }
+
+  if (question.sessionId) {
+    const session = await Session.findById(question.sessionId).select('courseId').lean();
+    const sessionCourseId = String(session?.courseId || '').trim();
+    if (sessionCourseId && !candidateCourseIds.includes(sessionCourseId)) {
+      const sessionCourse = await Course.findById(sessionCourseId);
+      if (sessionCourse && sessionCourse.instructors.includes(user.userId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export default async function questionRoutes(app) {
   const { authenticate, requireRole } = app;
 
@@ -315,25 +348,12 @@ export default async function questionRoutes(app) {
       schema: updateQuestionSchema,
     },
     async (request, reply) => {
-      const roles = request.user.roles || [];
-      const userId = request.user.userId;
-      const isAdmin = roles.includes('admin');
-
       const question = await Question.findById(request.params.id);
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      // Check permissions: must be creator/owner, instructor of course, or admin
-      let hasPermission = isAdmin || question.creator === userId || question.owner === userId;
-
-      if (!hasPermission && question.courseId) {
-        const course = await Course.findById(question.courseId);
-        if (course && course.instructors.includes(userId)) {
-          hasPermission = true;
-        }
-      }
-
+      const hasPermission = await userCanManageQuestion(question, request.user);
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
