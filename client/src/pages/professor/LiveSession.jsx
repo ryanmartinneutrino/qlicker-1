@@ -599,7 +599,11 @@ export default function LiveSession() {
 
   // Navigation
   const handleSetQuestion = useCallback((qId) => {
-    doAction(() => apiClient.patch(`/sessions/${sessionId}/current`, { questionId: qId }));
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/current`, { questionId: qId }),
+      null,
+      { pendingKey: 'question:navigate' }
+    );
   }, [doAction, sessionId]);
 
   const handlePrev = useCallback(() => {
@@ -646,6 +650,7 @@ export default function LiveSession() {
     doAction(
       () => apiClient.post(`/sessions/${sessionId}/new-attempt`),
       t('professor.liveSession.newAttemptStarted'),
+      { pendingKey: 'question:new-attempt' }
     );
   }, [doAction, sessionId, t]);
 
@@ -822,8 +827,9 @@ export default function LiveSession() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const responsesClosed = !!currentAttempt?.closed;
   const attemptNum = currentAttempt?.number ?? null;
-  const actionLoading = pendingActionKey !== null;
   const globalActionLoading = pendingActionKey?.startsWith('global:');
+  const navigationBusy = pendingActionKey === 'question:navigate';
+  const newAttemptBusy = pendingActionKey === 'question:new-attempt';
   const joinCodeEnabledBusy = pendingActionKey === 'join-code:enabled';
   const joinCodeActiveBusy = pendingActionKey === 'join-code:active';
   const joinCodeRefreshBusy = pendingActionKey === 'join-code:refresh';
@@ -1157,7 +1163,7 @@ export default function LiveSession() {
                     variant="outlined"
                     startIcon={<PrevIcon />}
                     onClick={handlePrev}
-                    disabled={!hasPrev || actionLoading}
+                    disabled={!hasPrev || navigationBusy}
                     aria-label={t('professor.liveSession.previousQuestion')}
                     sx={{ width: '100%' }}
                   >
@@ -1173,7 +1179,7 @@ export default function LiveSession() {
                     variant="outlined"
                     startIcon={<AttemptIcon />}
                     onClick={handleNewAttempt}
-                    disabled={!currentQ || actionLoading || isSlide}
+                    disabled={!currentQ || newAttemptBusy || isSlide}
                     aria-label={t('professor.liveSession.newAttempt')}
                     sx={{ width: '100%' }}
                   >
@@ -1189,7 +1195,7 @@ export default function LiveSession() {
                     variant="outlined"
                     endIcon={<NextIcon />}
                     onClick={handleNext}
-                    disabled={!hasNext || actionLoading}
+                    disabled={!hasNext || navigationBusy}
                     aria-label={t('professor.liveSession.nextQuestion')}
                     sx={{ width: '100%' }}
                   >
