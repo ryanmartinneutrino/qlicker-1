@@ -96,6 +96,23 @@ describe('activities service helpers', () => {
     ]);
   });
 
+  it('rebuilds activities when stored activities are incomplete', () => {
+    const questionsMap = new Map([
+      ['q1', { _id: 'q1', type: 0 }],
+      ['q2', { _id: 'q2', type: 6 }],
+    ]);
+    const session = {
+      questions: ['q1', 'q2'],
+      activities: [{ activityType: 'question', activityId: 'q1' }],
+    };
+
+    const result = getSessionActivities(session, questionsMap);
+    expect(result).toEqual([
+      { activityType: 'question', activityId: 'q1' },
+      { activityType: 'slide', activityId: 'q2' },
+    ]);
+  });
+
   it('builds activities from questions for legacy sessions without activities field', () => {
     const questionsMap = new Map([
       ['q1', { _id: 'q1', type: 1 }],

@@ -408,6 +408,59 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     expect(count).toBe(1);
   });
 
+  it('repairs legacy partial activities when adding a question to session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    const q1Res = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Q1',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const slideRes = await createQuestionAsProf(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+    const libraryRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Library question',
+    });
+
+    const q1 = q1Res.json().question;
+    const slide = slideRes.json().question;
+    const libraryQuestion = libraryRes.json().question;
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [q1._id, slide._id],
+        activities: [{ activityType: 'question', activityId: q1._id }],
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: libraryQuestion._id },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session.questions).toEqual([q1._id, slide._id, libraryQuestion._id]);
+    expect(body.session.activities).toEqual([
+      { activityType: 'question', activityId: q1._id },
+      { activityType: 'slide', activityId: slide._id },
+      { activityType: 'question', activityId: libraryQuestion._id },
+    ]);
+  });
+
   it('non-instructor gets 403', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, session } = await setupCourseAndSession();

@@ -9,6 +9,25 @@ export const ACTIVITY_TYPES = {
   SLIDE: 'slide',
 };
 
+function normalizeId(value) {
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function hasCompleteActivities(session) {
+  const questionIds = Array.isArray(session?.questions)
+    ? session.questions.map((questionId) => normalizeId(questionId))
+    : [];
+  const activities = Array.isArray(session?.activities) ? session.activities : [];
+
+  if (activities.length === 0) return false;
+  if (activities.length !== questionIds.length) return false;
+
+  return activities.every((activity, index) => (
+    normalizeId(activity?.activityId) === questionIds[index]
+  ));
+}
+
 /**
  * Determine the activity type for a question document.
  */
@@ -31,7 +50,7 @@ export function classifyQuestionAsActivity(question) {
  * @returns {Array<{activityType: string, activityId: string}>}
  */
 export function getSessionActivities(session, questions = []) {
-  if (Array.isArray(session?.activities) && session.activities.length > 0) {
+  if (hasCompleteActivities(session)) {
     return session.activities;
   }
   const questionMap = new Map(
@@ -47,7 +66,9 @@ export function getSessionActivities(session, questions = []) {
  * Extract a flat ordered list of activity IDs from an activities array.
  */
 export function getActivityIds(activities) {
-  return (activities || []).map((a) => a.activityId);
+  return (activities || [])
+    .map((activity) => normalizeId(activity?.activityId))
+    .filter(Boolean);
 }
 
 export function isQuestionActivity(activity) {
@@ -62,5 +83,6 @@ export function isSlideActivity(activity) {
  * Find the index of an activity by its ID within an activities array.
  */
 export function findActivityIndex(activities, activityId) {
-  return (activities || []).findIndex((a) => a.activityId === activityId);
+  const normalizedActivityId = normalizeId(activityId);
+  return (activities || []).findIndex((activity) => normalizeId(activity?.activityId) === normalizedActivityId);
 }

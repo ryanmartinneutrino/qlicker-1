@@ -193,11 +193,21 @@ export default function QuestionEditor({
   const [initialSnapshotHash, setInitialSnapshotHash] = useState('');
 
   const questionIdRef = useRef(null);
+  const latestFormRef = useRef(emptyForm());
   const hydratingRef = useRef(false);
   const lastSavedHashRef = useRef('');
   const initialFormRef = useRef(emptyForm());
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(null);
+
+  const updateForm = useCallback((updater) => {
+    const baseForm = latestFormRef.current;
+    const nextForm = typeof updater === 'function' ? updater(baseForm) : updater;
+    const normalizedNextForm = cloneFormState(nextForm);
+    latestFormRef.current = normalizedNextForm;
+    setForm(normalizedNextForm);
+    return normalizedNextForm;
+  }, []);
 
   const persistPayload = useCallback(async (payload, payloadHash) => {
     const runSave = async (nextPayload, nextHash) => {
@@ -285,6 +295,7 @@ export default function QuestionEditor({
     const snapshotHash = JSON.stringify(buildQuestionPayload(baselineForm));
 
     hydratingRef.current = true;
+    latestFormRef.current = cloneFormState(nextForm);
     setForm(nextForm);
     initialFormRef.current = baselineForm;
     setInitialSnapshotHash(snapshotHash);
@@ -329,36 +340,37 @@ export default function QuestionEditor({
 
   // Warn before erasing option content when leaving option-based types.
   const handleTypeChange = (type) => {
+    const currentForm = latestFormRef.current;
     if (disableTypeSelection) return;
-    if (type === form.type) return;
+    if (type === currentForm.type) return;
 
-    const switchingFromOptionBasedType = isOptionBasedQuestionType(form.type);
+    const switchingFromOptionBasedType = isOptionBasedQuestionType(currentForm.type);
     const switchingToNonOptionBasedType = !isOptionBasedQuestionType(type);
-    if (switchingFromOptionBasedType && switchingToNonOptionBasedType && hasAnyOptionContent(form.options)) {
+    if (switchingFromOptionBasedType && switchingToNonOptionBasedType && hasAnyOptionContent(currentForm.options)) {
       const confirmReset = window.confirm(
         t('questions.editor.confirmTypeChange')
       );
       if (!confirmReset) return;
     }
 
-    let nextOptions = form.options;
-    if (form.type === QUESTION_TYPES.MULTI_SELECT && type === QUESTION_TYPES.MULTIPLE_CHOICE) {
-      const correctCount = form.options.filter((option) => !!option.correct).length;
+    let nextOptions = currentForm.options;
+    if (currentForm.type === QUESTION_TYPES.MULTI_SELECT && type === QUESTION_TYPES.MULTIPLE_CHOICE) {
+      const correctCount = currentForm.options.filter((option) => !!option.correct).length;
       if (correctCount > 1) {
         const confirmSingleCorrect = window.confirm(
           t('questions.editor.confirmSingleCorrect')
         );
         if (!confirmSingleCorrect) return;
       }
-      nextOptions = enforceSingleCorrectOption(form.options);
+      nextOptions = enforceSingleCorrectOption(currentForm.options);
     }
 
-    const update = { ...form, type };
+    const update = { ...currentForm, type };
     if (type === QUESTION_TYPES.TRUE_FALSE) {
-      update.options = normalizeTrueFalseOptions(form.options);
+      update.options = normalizeTrueFalseOptions(currentForm.options);
     } else if (type === QUESTION_TYPES.SHORT_ANSWER) {
       update.options = [];
-      update.solution = form.solution;
+      update.solution = currentForm.solution;
     } else if (type === QUESTION_TYPES.NUMERICAL) {
       update.options = [];
     } else if (type === QUESTION_TYPES.SLIDE) {
@@ -366,23 +378,23 @@ export default function QuestionEditor({
       update.solution = '';
       update.points = 0;
     } else if (
-      form.type === QUESTION_TYPES.TRUE_FALSE
-      || form.type === QUESTION_TYPES.SHORT_ANSWER
-      || form.type === QUESTION_TYPES.NUMERICAL
-      || form.type === QUESTION_TYPES.SLIDE
+      currentForm.type === QUESTION_TYPES.TRUE_FALSE
+      || currentForm.type === QUESTION_TYPES.SHORT_ANSWER
+      || currentForm.type === QUESTION_TYPES.NUMERICAL
+      || currentForm.type === QUESTION_TYPES.SLIDE
     ) {
       update.options = [{ content: '', correct: false }, { content: '', correct: false }];
-    } else if (nextOptions !== form.options) {
+    } else if (nextOptions !== currentForm.options) {
       update.options = nextOptions;
     }
-    if (type !== QUESTION_TYPES.SLIDE && form.type === QUESTION_TYPES.SLIDE && Number(update.points) === 0) {
+    if (type !== QUESTION_TYPES.SLIDE && currentForm.type === QUESTION_TYPES.SLIDE && Number(update.points) === 0) {
       update.points = 1;
     }
-    setForm(update);
+    updateForm(update);
   };
 
   const setOption = (idx, field, value) => {
-    setForm((prev) => {
+    updateForm((prev) => {
       const opts = [...prev.options];
       opts[idx] = { ...opts[idx], [field]: value };
       if (field === 'correct' && value && (prev.type === QUESTION_TYPES.MULTIPLE_CHOICE || prev.type === QUESTION_TYPES.TRUE_FALSE)) {
@@ -392,8 +404,8 @@ export default function QuestionEditor({
     });
   };
 
-  const addOption = () => setForm(prev => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
-  const removeOption = (idx) => setForm(prev => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  const addOption = () => updateForm((prev) => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
+  const removeOption = (idx) => updateForm((prev) => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
 
   const autoSaveStatus = autosaveState === 'saved' ? 'success' : autosaveState;
 
@@ -402,9 +414,10 @@ export default function QuestionEditor({
 
     setClosing(true);
     try {
-      const shouldAttemptSave = hasRichTextContent(form.content) || !!questionIdRef.current;
+      const latestForm = latestFormRef.current;
+      const shouldAttemptSave = hasRichTextContent(latestForm.content) || !!questionIdRef.current;
       if (shouldAttemptSave) {
-        const payload = buildQuestionPayload(form);
+        const payload = buildQuestionPayload(latestForm);
         const payloadHash = JSON.stringify(payload);
         if (payloadHash !== lastSavedHashRef.current || saveInFlightRef.current || queuedSaveRef.current) {
           await persistPayload(payload, payloadHash);
@@ -418,13 +431,13 @@ export default function QuestionEditor({
     } finally {
       setClosing(false);
     }
-  }, [closing, form, onClose, persistPayload, waitForSaveDrain]);
+  }, [closing, onClose, persistPayload, waitForSaveDrain]);
 
   const handleUndoAllChanges = useCallback(() => {
     setAutosaveError('');
     setAutosaveState('idle');
-    setForm(cloneFormState(initialFormRef.current));
-  }, []);
+    updateForm(cloneFormState(initialFormRef.current));
+  }, [updateForm]);
 
   const editorFields = (
     <>
@@ -481,7 +494,7 @@ export default function QuestionEditor({
               sx={{ width: 120, ...COMPACT_FIELD_SX }}
               inputProps={{ min: 0 }}
               value={form.points}
-              onChange={e => setForm({ ...form, points: e.target.value })}
+              onChange={e => updateForm((prev) => ({ ...prev, points: e.target.value }))}
             />
           )}
         </Box>
@@ -501,7 +514,7 @@ export default function QuestionEditor({
           </Box>
           <RichTextEditor
             value={form.content}
-            onChange={({ html }) => setForm(prev => ({ ...prev, content: html }))}
+            onChange={({ html }) => updateForm((prev) => ({ ...prev, content: html }))}
             placeholder={questionPlaceholder}
             minHeight={26}
             resizable
@@ -545,13 +558,13 @@ export default function QuestionEditor({
             <FormGroup row>
               <FormControlLabel
                 control={<Checkbox checked={form.options[0]?.correct || false} onChange={() => {
-                  setForm({ ...form, options: buildTrueFalseOptions(0) });
+                  updateForm((prev) => ({ ...prev, options: buildTrueFalseOptions(0) }));
                 }} />}
                 label={t('questions.editor.true')}
               />
               <FormControlLabel
                 control={<Checkbox checked={form.options[1]?.correct || false} onChange={() => {
-                  setForm({ ...form, options: buildTrueFalseOptions(1) });
+                  updateForm((prev) => ({ ...prev, options: buildTrueFalseOptions(1) }));
                 }} />}
                 label={t('questions.editor.false')}
               />
@@ -566,14 +579,14 @@ export default function QuestionEditor({
               type="number"
               fullWidth
               value={form.correctNumerical}
-              onChange={e => setForm({ ...form, correctNumerical: e.target.value })}
+              onChange={e => updateForm((prev) => ({ ...prev, correctNumerical: e.target.value }))}
             />
             <TextField
               label={t('questions.editor.toleranceLabel')}
               type="number"
               fullWidth
               value={form.toleranceNumerical}
-              onChange={e => setForm({ ...form, toleranceNumerical: e.target.value })}
+              onChange={e => updateForm((prev) => ({ ...prev, toleranceNumerical: e.target.value }))}
             />
           </Box>
         )}
@@ -585,7 +598,7 @@ export default function QuestionEditor({
             <RichTextEditor
               label={t('questions.editor.solutionLabel')}
               value={form.solution}
-              onChange={({ html }) => setForm(prev => ({ ...prev, solution: html }))}
+              onChange={({ html }) => updateForm((prev) => ({ ...prev, solution: html }))}
               placeholder={t('questions.editor.solutionPlaceholder')}
               minHeight={26}
               resizable

@@ -3,7 +3,7 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
-import { classifyQuestionAsActivity, buildActivitiesFromQuestions } from '../services/activities.js';
+import { buildActivitiesFromQuestions } from '../services/activities.js';
 
 const createQuestionSchema = {
   body: {
@@ -519,14 +519,18 @@ export default async function questionRoutes(app) {
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
-      const activityEntry = {
-        activityType: classifyQuestionAsActivity(question),
-        activityId: String(questionId),
-      };
+      const nextQuestionIds = [...(session.questions || []), String(questionId)];
+      const sessionQuestionDocs = await Question.find({ _id: { $in: nextQuestionIds } })
+        .select('_id type')
+        .lean();
+      const sessionQuestionMap = new Map(
+        sessionQuestionDocs.map((sessionQuestion) => [String(sessionQuestion._id), sessionQuestion])
+      );
+      const nextActivities = buildActivitiesFromQuestions(nextQuestionIds, sessionQuestionMap);
 
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $addToSet: { questions: questionId, activities: activityEntry } },
+        { $set: { questions: nextQuestionIds, activities: nextActivities } },
         { new: true }
       );
 
@@ -595,20 +599,13 @@ export default async function questionRoutes(app) {
 
       const newOrder = request.body.questions;
 
-      // Rebuild activities in the new order.
-      // Use existing activities if the session already has them; otherwise load
-      // question docs to determine each item's activity type (legacy sessions).
-      const existingMap = new Map(
-        (session.activities || []).map((a) => [a.activityId, a])
-      );
-      let newActivities;
-      if (existingMap.size > 0) {
-        newActivities = newOrder.map((id) => existingMap.get(id)).filter(Boolean);
-      } else {
-        const questions = await Question.find({ _id: { $in: newOrder } }).lean();
-        const questionMap = new Map(questions.map((q) => [String(q._id), q]));
-        newActivities = buildActivitiesFromQuestions(newOrder, questionMap);
-      }
+      // Rebuild activities from the authoritative ordered question list so we
+      // also repair legacy/partial activity arrays as part of a reorder.
+      const questions = await Question.find({ _id: { $in: newOrder } })
+        .select('_id type')
+        .lean();
+      const questionMap = new Map(questions.map((question) => [String(question._id), question]));
+      const newActivities = buildActivitiesFromQuestions(newOrder, questionMap);
 
       const updated = await Session.findByIdAndUpdate(
         session._id,

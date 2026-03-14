@@ -5,6 +5,7 @@ const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
+const RICH_TEXT_ALLOWED_ATTRIBUTES = ['width', 'height', 'data-width', 'data-height'];
 
 function isHtmlLike(value) {
   return /<\/?[a-z][\s\S]*>/i.test(value);
@@ -161,6 +162,7 @@ export function sanitizeRichHtml(html) {
 
   return DOMPurify.sanitize(source, {
     USE_PROFILES: { html: true },
+    ADD_ATTR: RICH_TEXT_ALLOWED_ATTRIBUTES,
   });
 }
 

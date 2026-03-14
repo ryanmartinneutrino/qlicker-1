@@ -2735,7 +2735,7 @@ export default async function sessionRoutes(app) {
             courseId: session.courseId,
             status: session.status,
             questions: session.questions,
-            activities: session.activities || [],
+            activities: getSessionActivities(session),
             currentQuestion: session.currentQuestion,
             joinedCount: (session.joined || []).length,
             joinCodeActive: session.joinCodeActive,
