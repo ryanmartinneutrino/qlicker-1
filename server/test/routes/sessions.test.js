@@ -2371,7 +2371,7 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
 
 // ---------- Activities field integration tests ----------
 describe('session activities field', () => {
-  it('populates activities when questions are added to a session', async (ctx) => {
+  it('populates activities when questions and slides are added to a session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);

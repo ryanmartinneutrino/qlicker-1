@@ -516,6 +516,9 @@ export default async function questionRoutes(app) {
       }
 
       const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
       const activityEntry = {
         activityType: classifyQuestionAsActivity(question),
         activityId: String(questionId),
