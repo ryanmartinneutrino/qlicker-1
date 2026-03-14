@@ -50,6 +50,21 @@ function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
 }
 
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !payload?.question) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: payload.question,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -247,6 +262,9 @@ export default function PresentationWindow() {
               break;
             case 'session:question-changed':
               fetchLive();
+              break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();

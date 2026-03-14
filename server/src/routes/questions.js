@@ -4,6 +4,7 @@ import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import { buildActivitiesFromQuestions } from '../services/activities.js';
+import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 
 const createQuestionSchema = {
   body: {
@@ -252,7 +253,81 @@ function sendToCourseMembers(app, course, event, payload) {
     ...(course.instructors || []),
     ...(course.students || []),
   ].map((userId) => String(userId)).filter(Boolean))];
+  if (memberIds.length === 0) return;
   app.wsSendToUsers(memberIds, event, payload);
+}
+
+function sendToInstructors(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const instructorIds = [...new Set(
+    (course.instructors || []).map((userId) => String(userId)).filter(Boolean)
+  )];
+  if (instructorIds.length === 0) return;
+  app.wsSendToUsers(instructorIds, event, payload);
+}
+
+function sendToStudents(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const studentIds = [...new Set(
+    (course.students || []).map((userId) => String(userId)).filter(Boolean)
+  )];
+  if (studentIds.length === 0) return;
+  app.wsSendToUsers(studentIds, event, payload);
+}
+
+function toQuestionPayload(question) {
+  if (!question) return null;
+  return typeof question.toObject === 'function'
+    ? question.toObject()
+    : { ...question };
+}
+
+function stripAnswerRevealFields(questionPayload, { revealCorrectAnswers = false } = {}) {
+  if (!questionPayload) return null;
+  if (revealCorrectAnswers) return questionPayload;
+
+  const sanitized = { ...questionPayload };
+  if (Array.isArray(sanitized.options)) {
+    sanitized.options = sanitized.options.map((option) => ({
+      ...option,
+      correct: undefined,
+    }));
+  }
+  delete sanitized.correctNumerical;
+  delete sanitized.solution;
+  delete sanitized.solution_plainText;
+  delete sanitized.solutionText;
+  delete sanitized.solutionPlainText;
+  delete sanitized.solutionHtml;
+  return sanitized;
+}
+
+function buildStudentQuestionUpdate(question) {
+  const questionPayload = toQuestionPayload(question);
+  if (!questionPayload) {
+    return {
+      question: null,
+      questionHidden: false,
+      showStats: false,
+      showCorrect: false,
+    };
+  }
+
+  const questionHidden = !!questionPayload?.sessionOptions?.hidden;
+  const collectsResponses = isQuestionResponseCollectionEnabled(questionPayload);
+  const showStats = collectsResponses ? !!questionPayload?.sessionOptions?.stats : false;
+  const showCorrect = collectsResponses ? !!questionPayload?.sessionOptions?.correct : false;
+
+  return {
+    question: questionHidden
+      ? null
+      : stripAnswerRevealFields(questionPayload, { revealCorrectAnswers: showCorrect }),
+    questionHidden,
+    showStats,
+    showCorrect,
+  };
 }
 
 async function getLinkedSessionsForQuestion(question) {
@@ -266,17 +341,22 @@ async function getLinkedSessionsForQuestion(question) {
     linkedSessions.push({
       _id: sessionId,
       courseId: String(session?.courseId || '').trim(),
+      currentQuestion: String(session?.currentQuestion || '').trim(),
     });
   };
 
   if (question?.sessionId) {
-    const session = await Session.findById(question.sessionId).select('_id courseId').lean();
+    const session = await Session.findById(question.sessionId)
+      .select('_id courseId currentQuestion')
+      .lean();
     if (session) addSession(session);
   }
 
   const normalizedQuestionId = String(question?._id || '').trim();
   if (normalizedQuestionId) {
-    const sessions = await Session.find({ questions: normalizedQuestionId }).select('_id courseId').lean();
+    const sessions = await Session.find({ questions: normalizedQuestionId })
+      .select('_id courseId currentQuestion')
+      .lean();
     sessions.forEach(addSession);
   }
 
@@ -320,7 +400,7 @@ async function userCanManageQuestion(question, user) {
   return false;
 }
 
-async function notifyLinkedSessionsUpdated(app, question) {
+async function notifyLinkedSessionQuestionUpdated(app, question) {
   const linkedSessions = await getLinkedSessionsForQuestion(question);
   if (linkedSessions.length === 0) return;
 
@@ -335,15 +415,37 @@ async function notifyLinkedSessionsUpdated(app, question) {
   const courseById = new Map(
     courses.map((course) => [String(course._id), course])
   );
+  const questionId = String(question?._id || '').trim();
+  const instructorQuestionPayload = toQuestionPayload(question);
+  const studentQuestionUpdate = buildStudentQuestionUpdate(question);
 
   linkedSessions.forEach((session) => {
     const course = courseById.get(String(session.courseId || ''));
     if (!course) return;
-    sendToCourseMembers(app, course, 'session:updated', {
+
+    const payload = {
       courseId: String(course._id),
       sessionId: String(session._id),
-      questionId: String(question._id),
-    });
+      questionId,
+    };
+    const includeQuestionPayload = String(session.currentQuestion || '') === questionId;
+
+    sendToInstructors(
+      app,
+      course,
+      'session:question-updated',
+      includeQuestionPayload
+        ? { ...payload, question: instructorQuestionPayload }
+        : payload
+    );
+    sendToStudents(
+      app,
+      course,
+      'session:question-updated',
+      includeQuestionPayload
+        ? { ...payload, ...studentQuestionUpdate }
+        : payload
+    );
   });
 }
 
@@ -474,7 +576,7 @@ export default async function questionRoutes(app) {
         { new: true }
       );
 
-      await notifyLinkedSessionsUpdated(app, updated || question);
+      await notifyLinkedSessionQuestionUpdated(app, updated || question);
 
       return { question: updated.toObject() };
     }

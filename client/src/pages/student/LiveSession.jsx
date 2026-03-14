@@ -65,6 +65,22 @@ function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
 }
 
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) return prev;
+
+  return {
+    ...prev,
+    currentQuestion: payload?.question ?? null,
+    questionHidden: payload?.questionHidden ?? prev.questionHidden,
+    showStats: payload?.showStats ?? prev.showStats,
+    showCorrect: payload?.showCorrect ?? prev.showCorrect,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -190,6 +206,9 @@ export default function LiveSession() {
               break;
             case 'session:question-changed':
               fetchLive();
+              break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();

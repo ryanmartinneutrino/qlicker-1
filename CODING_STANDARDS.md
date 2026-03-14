@@ -301,6 +301,7 @@ WebSocket endpoint: `/ws?token=<JWT>`
 |-------|-----------|----------|---------|---------|
 | `session:updated` | Server→Client | All members | `{ sessionId }` | Generic notification for non-live mutations (CRUD, join, quiz close) |
 | `session:question-changed` | Server→Client | All members | `{ sessionId, questionId, questionIndex, questionNumber, questionCount }` | Professor navigated to a new question |
+| `session:question-updated` | Server→Client | All members | `{ sessionId, questionId, question? }` | Current question content edited; include only the minimal per-audience question delta clients need |
 | `session:response-added` | Server→Instructors | Instructors only | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted (students don't need this) |
 | `session:visibility-changed` | Server→Client | All members | `{ sessionId, questionId, hidden, stats, correct }` | Question visibility/stats/correct toggled |
 | `session:status-changed` | Server→Client | All members | `{ sessionId, status }` | Session started/ended |

@@ -78,6 +78,21 @@ function normalizeValue(value) {
   return String(value).trim();
 }
 
+function applyCurrentQuestionUpdate(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !payload?.question) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: payload.question,
+  };
+}
+
 function formatJoinedTimestamp(value, fallbackLabel) {
   if (!value) return fallbackLabel;
   const parsed = new Date(value);
@@ -305,6 +320,9 @@ export default function LiveSession() {
               break;
             case 'session:question-changed':
               fetchLive();
+              break;
+            case 'session:question-updated':
+              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();

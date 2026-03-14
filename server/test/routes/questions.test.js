@@ -393,7 +393,7 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.json().message).toBe('Question options cannot be added or removed because this question has response data');
   });
 
-  it('broadcasts session updates when a linked session question changes', async (ctx) => {
+  it('broadcasts a granular question update when a linked session question changes', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, session } = await setupCourseAndSession();
     const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
@@ -425,13 +425,108 @@ describe('PATCH /api/v1/questions/:id', () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+    expect(wsSendToUsersSpy).toHaveBeenLastCalledWith(
       expect.arrayContaining([String(course.instructors[0])]),
-      'session:updated',
+      'session:question-updated',
       expect.objectContaining({
         courseId: course._id,
         sessionId: session._id,
         questionId: question._id,
+      })
+    );
+  });
+
+  it('sanitizes current-question updates for students in a live session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: '<p>Current question</p>',
+      plainText: 'Current question',
+      options: [
+        { answer: 'A', correct: false },
+        { answer: 'B', correct: true },
+      ],
+      sessionOptions: {
+        hidden: false,
+        correct: false,
+        stats: true,
+        points: 1,
+      },
+    });
+    const question = qRes.json().question;
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        currentQuestion: question._id,
+        status: 'running',
+      },
+      $addToSet: {
+        questions: question._id,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: '<p>Updated current question</p>',
+        plainText: 'Updated current question',
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+        ],
+        sessionOptions: {
+          hidden: false,
+          correct: false,
+          stats: true,
+          points: 1,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      [String(course.instructors[0])],
+      'session:question-updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        question: expect.objectContaining({
+          content: '<p>Updated current question</p>',
+          options: expect.arrayContaining([
+            expect.objectContaining({ answer: 'A', correct: true }),
+            expect.objectContaining({ answer: 'B', correct: false }),
+          ]),
+        }),
+      })
+    );
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      [String(student._id)],
+      'session:question-updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        questionHidden: false,
+        showStats: true,
+        showCorrect: false,
+        question: expect.objectContaining({
+          content: '<p>Updated current question</p>',
+          options: expect.arrayContaining([
+            expect.objectContaining({ answer: 'A', correct: undefined }),
+            expect.objectContaining({ answer: 'B', correct: undefined }),
+          ]),
+        }),
       })
     );
   });
