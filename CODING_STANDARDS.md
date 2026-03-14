@@ -383,6 +383,27 @@ const joined = session.joined || [];
 course.students.forEach(/* ... */);  // TypeError if undefined
 ```
 
+#### Session Activity Sequence
+
+Sessions use an `activities` array to track the typed, ordered sequence of items (questions, slides, and potentially future types). The legacy `questions` array is kept in sync for backward compatibility.
+
+```javascript
+// ✅ Use the activity abstraction for navigation and type-awareness
+import { getSessionActivities, getActivityIds, ACTIVITY_TYPES } from '../services/activities.js';
+
+const activities = getSessionActivities(session, questionsMap);
+const orderedIds = getActivityIds(activities);
+const isSlide = activities[i]?.activityType === ACTIVITY_TYPES.SLIDE;
+
+// ✅ When modifying session items, always update both arrays
+await Session.findByIdAndUpdate(sessionId, {
+  $addToSet: { questions: qId, activities: { activityType, activityId: qId } },
+});
+
+// Legacy sessions (activities empty/absent) are handled transparently:
+// getSessionActivities() builds activities on the fly from questions + loaded docs.
+```
+
 #### Password Hash Compatibility
 
 Legacy Meteor users have `services.password.bcrypt` (bcrypt `$2a$`/`$2b$`). New users get `services.password.hash` (argon2id). The User model handles both:
@@ -882,6 +903,11 @@ ws.onmessage = (event) => {
 | `verifyPasswordArgon2id(pw, hash)` | `server/src/utils/password.js` | Verify password against argon2id hash |
 | `isLegacyBcryptHash(value)` | `server/src/utils/password.js` | Check if hash is legacy bcrypt format |
 | `sanitizeUser(user)` | Local function in `auth.js` and `users.js` | Remove `services` field from user object before responding |
+| `ACTIVITY_TYPES` | `server/src/services/activities.js` | Canonical activity-type constants: `QUESTION`, `SLIDE` |
+| `classifyQuestionAsActivity(q)` | `server/src/services/activities.js` | Map a question document to its activity type |
+| `buildActivitiesFromQuestions(ids, map)` | `server/src/services/activities.js` | Build an ordered activities array from question IDs + docs |
+| `getSessionActivities(session, map)` | `server/src/services/activities.js` | Return authoritative activities, with legacy fallback |
+| `getActivityIds(activities)` | `server/src/services/activities.js` | Extract flat ID list from activities array |
 | `sendVerificationEmail(...)` | `server/src/services/email.js` | Send email verification link |
 | `sendPasswordResetEmail(...)` | `server/src/services/email.js` | Send password reset link |
 
@@ -900,6 +926,13 @@ ws.onmessage = (event) => {
 | `extractPlainTextFromHtml(html)` | `client/src/components/questions/richTextUtils.js` | Strip HTML tags to plain text |
 | `SUPPORTED_LOCALES`, `DATE_FORMATS` | `client/src/i18n/index.js` | Available locales and date format options |
 | `AutoSaveStatus` | `client/src/components/common/AutoSaveStatus.jsx` | Autosave notification component |
+| `ACTIVITY_TYPES` | `client/src/utils/activities.js` | Canonical activity-type constants (mirrors server) |
+| `classifyQuestionAsActivity(q)` | `client/src/utils/activities.js` | Map a question to its activity type |
+| `getSessionActivities(session, qs)` | `client/src/utils/activities.js` | Return authoritative activities, with legacy fallback |
+| `getActivityIds(activities)` | `client/src/utils/activities.js` | Extract flat ID list from activities array |
+| `isQuestionActivity(a)` | `client/src/utils/activities.js` | Check if activity is a question |
+| `isSlideActivity(a)` | `client/src/utils/activities.js` | Check if activity is a slide |
+| `findActivityIndex(activities, id)` | `client/src/utils/activities.js` | Find activity index by ID |
 
 ---
 

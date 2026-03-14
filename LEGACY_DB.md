@@ -169,6 +169,10 @@ The production database (`qlickerdb`) contains the following collections:
   quizStart: Date,
   quizEnd: Date,
   questions: [String],            // Question IDs
+  activities: [{                  // New: typed activity sequence (see below)
+    activityType: String,         //   'question' | 'slide'
+    activityId: String            //   References question _id
+  }],
   currentQuestion: Number,        // Index into questions array
   joined: [String],               // Legacy: simple user ID array
   joinRecords: [{                 // New: structured join records
@@ -192,7 +196,7 @@ The production database (`qlickerdb`) contains the following collections:
 ```javascript
 {
   _id: String,
-  type: Number,                   // Canonical: MC=0, TF=1, SA=2, MS=3, NU=4
+  type: Number,                   // Canonical: MC=0, TF=1, SA=2, MS=3, NU=4, Slide=6
                                   // Legacy may have type=5 (→ 4) or string types
   content: String,                // HTML content
   plainText: String,              // New: plain text version

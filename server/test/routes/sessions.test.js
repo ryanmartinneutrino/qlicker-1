@@ -2368,3 +2368,233 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
     expect(afterUpdateSession.hasNewFeedback).toBe(true);
   });
 });
+
+// ---------- Activities field integration tests ----------
+describe('session activities field', () => {
+  it('populates activities when questions are added to a session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    // Create a regular MC question and add to session
+    const q = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>MC question</p>',
+      plainText: 'MC question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }, { content: 'B', correct: false }],
+    });
+
+    // Create a slide and add to session
+    const s = await createQuestionInSession(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+
+    // Fetch the session to verify activities
+    const getRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+    expect(getRes.statusCode).toBe(200);
+    const fetched = getRes.json().session;
+    expect(fetched.activities).toBeDefined();
+    expect(fetched.activities.length).toBe(2);
+    expect(fetched.activities[0]).toEqual({ activityType: 'question', activityId: q._id });
+    expect(fetched.activities[1]).toEqual({ activityType: 'slide', activityId: s._id });
+    // questions array should match
+    expect(fetched.questions).toEqual([q._id, s._id]);
+  });
+
+  it('removes from activities when a question is removed from session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const q1 = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Q1</p>',
+      plainText: 'Q1',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }],
+    });
+    const q2 = await createQuestionInSession(profToken, {
+      type: 2,
+      content: '<p>Q2</p>',
+      plainText: 'Q2',
+      sessionId: session._id,
+      courseId: course._id,
+    });
+
+    // Remove q1
+    const removeRes = await authenticatedRequest(app, 'DELETE', `/api/v1/sessions/${session._id}/questions/${q1._id}`, {
+      token: profToken,
+    });
+    expect(removeRes.statusCode).toBe(200);
+    const after = removeRes.json().session;
+    expect(after.questions).toEqual([q2._id]);
+    expect(after.activities).toEqual([{ activityType: 'question', activityId: q2._id }]);
+  });
+
+  it('reorders activities when questions are reordered', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const slide = await createQuestionInSession(profToken, {
+      type: 6,
+      content: '<p>Slide first</p>',
+      plainText: 'Slide first',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+    const q = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>MC</p>',
+      plainText: 'MC',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }],
+    });
+
+    // Reorder: put MC first, then slide
+    const reorderRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/questions/order`, {
+      token: profToken,
+      payload: { questions: [q._id, slide._id] },
+    });
+    expect(reorderRes.statusCode).toBe(200);
+    const reordered = reorderRes.json().session;
+    expect(reordered.questions).toEqual([q._id, slide._id]);
+    expect(reordered.activities).toEqual([
+      { activityType: 'question', activityId: q._id },
+      { activityType: 'slide', activityId: slide._id },
+    ]);
+  });
+
+  it('includes activities in instructor live session response', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Q</p>',
+      plainText: 'Q',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    const liveSession = liveRes.json().session;
+    expect(liveSession.activities).toBeDefined();
+    expect(liveSession.activities.length).toBe(2);
+    expect(liveSession.activities[0].activityType).toBe('slide');
+    expect(liveSession.activities[1].activityType).toBe('question');
+  });
+
+  it('populates activities when copying a session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Q</p>',
+      plainText: 'Q',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }],
+    });
+    await createQuestionInSession(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 0 },
+    });
+
+    const copyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+    });
+    expect(copyRes.statusCode).toBe(201);
+    const copiedSession = copyRes.json().session;
+    expect(copiedSession.activities).toBeDefined();
+    expect(copiedSession.activities.length).toBe(2);
+    expect(copiedSession.activities[0].activityType).toBe('question');
+    expect(copiedSession.activities[1].activityType).toBe('slide');
+    expect(copiedSession.questions.length).toBe(2);
+  });
+
+  it('removes from activities when a question is deleted', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const q = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Q</p>',
+      plainText: 'Q',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [{ content: 'A', correct: true }],
+    });
+
+    // Delete the question
+    const delRes = await authenticatedRequest(app, 'DELETE', `/api/v1/questions/${q._id}`, {
+      token: profToken,
+    });
+    expect(delRes.statusCode).toBe(200);
+
+    const getRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+    expect(getRes.statusCode).toBe(200);
+    const fetched = getRes.json().session;
+    expect(fetched.questions).toEqual([]);
+    expect(fetched.activities).toEqual([]);
+  });
+});
