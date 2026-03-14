@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, TextField, Paper,
@@ -175,6 +175,7 @@ export default function SessionEditor() {
 
   // Question editor
   const [inlineEditor, setInlineEditor] = useState(null);
+  const inlineQuestionEditorRef = useRef(null);
 
   // Delete question
   const [deleteQTarget, setDeleteQTarget] = useState(null);
@@ -500,6 +501,15 @@ export default function SessionEditor() {
         // Keep local state if refresh fails.
       }
     }
+  };
+
+  const requestInlineEditorClose = () => {
+    const requestClose = inlineQuestionEditorRef.current?.requestClose;
+    if (typeof requestClose === 'function') {
+      requestClose();
+      return;
+    }
+    closeInlineEditor();
   };
 
   const handleAutoSaveQuestion = async (payload, questionId) => {
@@ -856,7 +866,7 @@ export default function SessionEditor() {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
             <Tooltip title={t('professor.sessionEditor.closeEditor')}>
-              <IconButton size="small" onClick={() => closeInlineEditor()}>
+              <IconButton size="small" aria-label={t('professor.sessionEditor.closeEditor')} onClick={requestInlineEditorClose}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -883,7 +893,7 @@ export default function SessionEditor() {
           }}
         >
           <Tooltip title={t('professor.sessionEditor.closeEditor')}>
-            <IconButton size="small" onClick={() => closeInlineEditor()}>
+            <IconButton size="small" aria-label={t('professor.sessionEditor.closeEditor')} onClick={requestInlineEditorClose}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip>
@@ -938,6 +948,7 @@ export default function SessionEditor() {
 
         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
           <QuestionEditor
+            ref={inlineQuestionEditorRef}
             key={`inline-editor-${inlineEditor?.key}`}
             inline
             open
@@ -1525,6 +1536,7 @@ export default function SessionEditor() {
                           <span>
                             <IconButton
                               size="small"
+                              aria-label={t('common.edit')}
                               disabled={questionsEditingLocked}
                               onClick={() => openEditEditor(currentQuestion._id)}
                             >

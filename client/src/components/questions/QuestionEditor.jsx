@@ -1,5 +1,5 @@
 import {
-  useCallback, useEffect, useMemo, useRef, useState,
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -174,7 +174,7 @@ function MathLivePreview({
   );
 }
 
-export default function QuestionEditor({
+const QuestionEditor = forwardRef(function QuestionEditor({
   open,
   onClose,
   onAutoSave,
@@ -183,7 +183,7 @@ export default function QuestionEditor({
   inline = false,
   disableTypeSelection = false,
   typeSelectionLockReason = 'Question type is locked for this question.',
-}) {
+}, ref) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
@@ -432,6 +432,10 @@ export default function QuestionEditor({
       setClosing(false);
     }
   }, [closing, onClose, persistPayload, waitForSaveDrain]);
+
+  useImperativeHandle(ref, () => ({
+    requestClose: handleCloseRequest,
+  }), [handleCloseRequest]);
 
   const handleUndoAllChanges = useCallback(() => {
     setAutosaveError('');
@@ -738,4 +742,6 @@ export default function QuestionEditor({
       <DialogActions>{footer}</DialogActions>
     </Dialog>
   );
-}
+});
+
+export default QuestionEditor;
