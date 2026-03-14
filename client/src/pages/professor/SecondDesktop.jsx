@@ -65,6 +65,29 @@ function applyCurrentQuestionUpdate(prev, payload) {
   };
 }
 
+function applyVisibilityChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId || !prev.currentQuestion) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    currentQuestion: {
+      ...prev.currentQuestion,
+      sessionOptions: {
+        ...(prev.currentQuestion.sessionOptions || {}),
+        hidden: payload?.hidden ?? prev.currentQuestion?.sessionOptions?.hidden,
+        stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+        correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+      },
+    },
+  };
+}
+
 function applyAttemptChanged(prev, payload) {
   if (!prev) return prev;
 
@@ -315,7 +338,7 @@ export default function PresentationWindow() {
               setLiveData((prev) => applyJoinCodeChanged(prev, d));
               break;
             case 'session:visibility-changed':
-              fetchLive();
+              setLiveData((prev) => applyVisibilityChanged(prev, d));
               break;
             case 'session:status-changed':
               if (d.status === 'done') { setSessionEnded(true); }
