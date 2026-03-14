@@ -879,7 +879,13 @@ ws.onmessage = (event) => {
 
   switch (evt) {
     case 'session:question-changed':
-      // Update local state from delta payload
+      // Re-fetch only when navigation changes require a new live payload
+      fetchLive();
+      break;
+    case 'session:question-updated':
+    case 'session:visibility-changed':
+      // Patch local state directly when the event already carries the needed delta
+      setLiveData((prev) => applyDelta(prev, d));
       break;
     case 'session:response-added':
       // Throttled re-fetch

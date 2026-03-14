@@ -72,10 +72,14 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 | Event | Direction | Description |
 |-------|-----------|-------------|
 | `session:question-changed` | Server → Client | Delta: `{ questionId, questionIndex, questionNumber, questionCount }` |
-| `session:response-added` | Server → Instructors | Delta: `{ questionId, attempt, responseCount, joinedCount }` |
+| `session:question-updated` | Server → Client | Delta: `{ questionId, question? }` for current-question content edits |
+| `session:response-added` | Server → Instructors + joined students when stats are visible | Delta: `{ questionId, attempt, responseCount, joinedCount }` |
+| `session:attempt-changed` | Server → Client | Delta: `{ questionId, currentAttempt, stats, correct, resetResponses }` |
+| `session:participant-joined` | Server → Instructors | Delta: `{ joinedCount, joinedStudent }` |
+| `session:join-code-changed` | Server → Client | Delta: `{ joinCodeEnabled, joinCodeActive, ... }` with student-safe payloads |
 | `session:status-changed` | Server → Client | Delta: `{ status }` |
 | `session:visibility-changed` | Server → Client | Delta: `{ questionId, hidden, stats, correct }` |
-| `session:updated` | Server → Client | Generic notification for non-live mutations |
+| `session:updated` | Server → Client | Generic fallback for non-live mutations or targeted single-user refreshes |
 
 ---
 
@@ -111,6 +115,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
 - ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
 - ✅ Session activity abstraction — sessions now carry an explicit `activities` array alongside the legacy `questions` array; each activity entry has an `activityType` (`'question'` or `'slide'`) and an `activityId`; all question add/remove/reorder/copy/delete operations maintain both arrays; legacy sessions without `activities` are handled transparently via on-the-fly construction from `questions`; utility modules on both server (`services/activities.js`) and client (`utils/activities.js`) provide `ACTIVITY_TYPES`, `getSessionActivities()`, `getActivityIds()`, and classification helpers; 21 new tests (15 unit + 6 integration)
+- ✅ Live session editing and delta sync — question/slide edits now save reliably from the session editor and live sessions, including rich-text image resizing; legacy session-linked questions authorize correctly through session/course fallback metadata; live websocket traffic now uses audience-scoped deltas (`session:question-updated`, `session:attempt-changed`, `session:participant-joined`, `session:join-code-changed`) and limits response-count updates to instructors plus joined students when visible stats need histogram refreshes
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
