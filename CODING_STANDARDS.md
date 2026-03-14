@@ -299,10 +299,13 @@ WebSocket endpoint: `/ws?token=<JWT>`
 
 | Event | Direction | Audience | Payload | Purpose |
 |-------|-----------|----------|---------|---------|
-| `session:updated` | Server→Client | All members | `{ sessionId }` | Generic notification for non-live mutations (CRUD, join, quiz close) |
+| `session:updated` | Server→Client | All members or a single affected user | `{ sessionId }` | Generic fallback for non-live mutations or targeted refetches when no finer delta exists |
 | `session:question-changed` | Server→Client | All members | `{ sessionId, questionId, questionIndex, questionNumber, questionCount }` | Professor navigated to a new question |
 | `session:question-updated` | Server→Client | All members | `{ sessionId, questionId, question? }` | Current question content edited; include only the minimal per-audience question delta clients need |
-| `session:response-added` | Server→Instructors | Instructors only | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted (students don't need this) |
+| `session:response-added` | Server→Client | Instructors always; joined students when stats are visible | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted; clients that show live stats should throttle-refetch |
+| `session:attempt-changed` | Server→Client | All members | `{ sessionId, questionId, currentAttempt, stats, correct, resetResponses }` | Current attempt opened/closed/reset for the live question |
+| `session:participant-joined` | Server→Instructors | Instructors only | `{ sessionId, joinedCount, joinedStudent }` | A student joined the live session; update instructor roster/count locally |
+| `session:join-code-changed` | Server→Client | All members | `{ sessionId, joinCodeEnabled, joinCodeActive, ... }` | Passcode requirement/join period changed; omit the actual code from student payloads |
 | `session:visibility-changed` | Server→Client | All members | `{ sessionId, questionId, hidden, stats, correct }` | Question visibility/stats/correct toggled |
 | `session:status-changed` | Server→Client | All members | `{ sessionId, status }` | Session started/ended |
 
@@ -499,14 +502,16 @@ app.wsSendToUsers(memberIds, 'session:question-changed', payload);
 memberIds.forEach((id) => app.wsSendToUser(id, 'session:question-changed', payload));
 ```
 
-### Instructor-Only Events
+### Audience-Scoped Events
 
-Events that students don't need (like response counts) should only be sent to instructors:
+Send deltas only to the audience that can act on them. Live response counts are the main exception: students need them for visible histograms, but only while they are joined and stats are on.
 
 ```javascript
-// Only instructors get response count updates
-const instructorIds = (course.instructors || []).map(String).filter(Boolean);
-app.wsSendToUsers(instructorIds, 'session:response-added', {
+// Instructors always get response deltas; joined students only when stats are visible
+sendToInstructors(app, course, 'session:response-added', {
+  sessionId, questionId, attempt, responseCount, joinedCount,
+});
+sendToUsersById(app, session.joined || [], 'session:response-added', {
   sessionId, questionId, attempt, responseCount, joinedCount,
 });
 ```

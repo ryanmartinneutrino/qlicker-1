@@ -93,6 +93,80 @@ function applyCurrentQuestionUpdate(prev, payload) {
   };
 }
 
+function applyParticipantJoined(prev, payload) {
+  if (!prev?.session) return prev;
+
+  const joinedStudent = payload?.joinedStudent;
+  const joinedStudentId = String(joinedStudent?._id || '');
+  const previousJoinedStudents = Array.isArray(prev.session.joinedStudents) ? prev.session.joinedStudents : [];
+  const nextJoinedStudents = joinedStudentId
+    ? [
+      ...previousJoinedStudents.filter((student) => String(student?._id || '') !== joinedStudentId),
+      joinedStudent,
+    ]
+    : previousJoinedStudents;
+  const previousJoined = Array.isArray(prev.session.joined) ? prev.session.joined : [];
+  const nextJoined = joinedStudentId && !previousJoined.some((id) => String(id) === joinedStudentId)
+    ? [...previousJoined, joinedStudentId]
+    : previousJoined;
+
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinedCount: payload?.joinedCount ?? prev.session.joinedCount,
+      joined: nextJoined,
+      joinedStudents: nextJoinedStudents,
+    },
+  };
+}
+
+function applyAttemptChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) {
+    return prev;
+  }
+
+  const previousAttemptNumber = prev?.currentAttempt?.number ?? null;
+  const nextAttemptNumber = payload?.currentAttempt?.number ?? previousAttemptNumber;
+  const resetResponses = !!payload?.resetResponses || nextAttemptNumber !== previousAttemptNumber;
+
+  return {
+    ...prev,
+    currentAttempt: payload?.currentAttempt ?? prev.currentAttempt,
+    currentQuestion: prev.currentQuestion
+      ? {
+        ...prev.currentQuestion,
+        sessionOptions: {
+          ...(prev.currentQuestion.sessionOptions || {}),
+          stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+          correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+        },
+      }
+      : prev.currentQuestion,
+    responseCount: resetResponses ? 0 : prev.responseCount,
+    responseStats: resetResponses ? null : prev.responseStats,
+    allResponses: resetResponses ? [] : prev.allResponses,
+  };
+}
+
+function applyJoinCodeChanged(prev, payload) {
+  if (!prev?.session) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinCodeEnabled: payload?.joinCodeEnabled ?? prev.session.joinCodeEnabled,
+      joinCodeActive: payload?.joinCodeActive ?? prev.session.joinCodeActive,
+      joinCodeInterval: payload?.joinCodeInterval ?? prev.session.joinCodeInterval,
+      currentJoinCode: payload?.currentJoinCode ?? prev.session.currentJoinCode,
+    },
+  };
+}
+
 function formatJoinedTimestamp(value, fallbackLabel) {
   if (!value) return fallbackLabel;
   const parsed = new Date(value);
@@ -318,11 +392,20 @@ export default function LiveSession() {
               });
               scheduleFetchLive();
               break;
+            case 'session:participant-joined':
+              setLiveData((prev) => applyParticipantJoined(prev, d));
+              break;
             case 'session:question-changed':
               fetchLive();
               break;
             case 'session:question-updated':
               setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              break;
+            case 'session:attempt-changed':
+              setLiveData((prev) => applyAttemptChanged(prev, d));
+              break;
+            case 'session:join-code-changed':
+              setLiveData((prev) => applyJoinCodeChanged(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();
@@ -397,7 +480,6 @@ export default function LiveSession() {
     joinCodeTimerRef.current = setInterval(async () => {
       try {
         await apiClient.post(`/sessions/${sessionId}/refresh-join-code`);
-        fetchLive();
       } catch { /* ignore */ }
     }, interval);
 
@@ -412,7 +494,6 @@ export default function LiveSession() {
     liveData?.session?.joinCodeActive,
     liveData?.session?.joinCodeInterval,
     sessionId,
-    fetchLive,
   ]);
 
   useEffect(() => {

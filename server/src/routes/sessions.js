@@ -811,24 +811,49 @@ function summarizeFeedbackFromGrades(grades = []) {
 // WebSocket notification helpers
 // ---------------------------------------------------------------------------
 
-function sendToCourseMembers(app, course, event, payload) {
+function sendToUsersById(app, userIds, event, payload) {
   if (typeof app.wsSendToUsers !== 'function') return;
+  const normalizedUserIds = [...new Set((userIds || []).map((userId) => String(userId)).filter(Boolean))];
+  if (normalizedUserIds.length === 0) return;
+  app.wsSendToUsers(normalizedUserIds, event, payload);
+}
+
+function sendToCourseMembers(app, course, event, payload) {
   if (!course) return;
-  const memberIds = [...new Set([
+  sendToUsersById(app, [
     ...(course.instructors || []),
     ...(course.students || []),
-  ].map((userId) => String(userId)).filter(Boolean))];
-  app.wsSendToUsers(memberIds, event, payload);
+  ], event, payload);
 }
 
 function sendToInstructors(app, course, event, payload) {
-  if (typeof app.wsSendToUsers !== 'function') return;
   if (!course) return;
-  const instructorIds = (course.instructors || []).map((userId) => String(userId)).filter(Boolean);
-  app.wsSendToUsers(instructorIds, event, payload);
+  sendToUsersById(app, course.instructors || [], event, payload);
 }
 
-/** Generic session:updated — used for non-live-critical mutations (CRUD, join, quiz auto-close, etc.) */
+function sendToStudents(app, course, event, payload) {
+  if (!course) return;
+  sendToUsersById(app, course.students || [], event, payload);
+}
+
+function sendToJoinedStudents(app, session, event, payload) {
+  if (!session) return;
+  sendToUsersById(app, session.joined || [], event, payload);
+}
+
+function sendToUser(app, userId, event, payload) {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) return;
+  if (typeof app.wsSendToUser === 'function') {
+    app.wsSendToUser(normalizedUserId, event, payload);
+    return;
+  }
+  if (typeof app.wsSendToUsers === 'function') {
+    app.wsSendToUsers([normalizedUserId], event, payload);
+  }
+}
+
+/** Generic session:updated — used for non-live or single-user mutations that still rely on a refetch. */
 function notifySessionUpdated(app, course, sessionId) {
   if (!sessionId) return;
   sendToCourseMembers(app, course, 'session:updated', {
@@ -837,14 +862,18 @@ function notifySessionUpdated(app, course, sessionId) {
   });
 }
 
-/** Delta: new response submitted — sent only to instructors (students don't need real-time response notifications). */
-function notifyResponseAdded(app, course, sessionId, data) {
-  if (!sessionId) return;
-  sendToInstructors(app, course, 'session:response-added', {
+/** Delta: new response submitted. Students only receive it when live stats are visible and they are joined. */
+function notifyResponseAdded(app, course, session, data, { includeStudents = false } = {}) {
+  if (!session?._id) return;
+  const payload = {
     courseId: String(course._id),
-    sessionId: String(sessionId),
+    sessionId: String(session._id),
     ...data,
-  });
+  };
+  sendToInstructors(app, course, 'session:response-added', payload);
+  if (includeStudents) {
+    sendToJoinedStudents(app, session, 'session:response-added', payload);
+  }
 }
 
 /** Delta: professor navigated to a different question. */
@@ -874,6 +903,74 @@ function notifyStatusChanged(app, course, sessionId, data) {
     courseId: String(course._id),
     sessionId: String(sessionId),
     ...data,
+  });
+}
+
+function getCurrentAttempt(question) {
+  const attempts = Array.isArray(question?.sessionOptions?.attempts)
+    ? question.sessionOptions.attempts
+    : [];
+  if (attempts.length > 0) {
+    const latestAttempt = attempts[attempts.length - 1];
+    return {
+      number: Number(latestAttempt?.number) || 1,
+      closed: !!latestAttempt?.closed,
+    };
+  }
+  return { number: 1, closed: false };
+}
+
+/** Delta: current attempt opened/closed/reset on the live question. */
+function notifyAttemptChanged(app, course, sessionId, question, data = {}) {
+  if (!sessionId || !question?._id) return;
+  sendToCourseMembers(app, course, 'session:attempt-changed', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    questionId: String(question._id),
+    currentAttempt: getCurrentAttempt(question),
+    stats: !!question?.sessionOptions?.stats,
+    correct: !!question?.sessionOptions?.correct,
+    resetResponses: false,
+    ...data,
+  });
+}
+
+/** Delta: a student joined the live session. Instructors only need the roster/count update. */
+function notifyParticipantJoined(app, course, sessionId, data) {
+  if (!sessionId) return;
+  sendToInstructors(app, course, 'session:participant-joined', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
+    ...data,
+  });
+}
+
+function buildJoinCodePayload(session, { includeInstructorFields = false } = {}) {
+  const payload = {
+    joinCodeEnabled: !!session?.joinCodeEnabled,
+    joinCodeActive: !!session?.joinCodeActive,
+  };
+  if (includeInstructorFields) {
+    payload.joinCodeInterval = Number(session?.joinCodeInterval || 10);
+    payload.currentJoinCode = normalizeAnswerValue(session?.currentJoinCode);
+  }
+  return payload;
+}
+
+/** Delta: join-code requirement/availability changed. */
+function notifyJoinCodeChanged(app, course, session) {
+  if (!session?._id) return;
+  const basePayload = {
+    courseId: String(course._id),
+    sessionId: String(session._id),
+  };
+  sendToStudents(app, course, 'session:join-code-changed', {
+    ...basePayload,
+    ...buildJoinCodePayload(session),
+  });
+  sendToInstructors(app, course, 'session:join-code-changed', {
+    ...basePayload,
+    ...buildJoinCodePayload(session, { includeInstructorFields: true }),
   });
 }
 
@@ -1079,7 +1176,7 @@ export default async function sessionRoutes(app) {
       for (const rawSession of sessions) {
         const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession);
         if (changed) {
-          notifySessionUpdated(app, course, normalizedSession?._id || rawSession?._id);
+          notifyStatusChanged(app, course, normalizedSession?._id || rawSession?._id, { status: 'done' });
         }
         normalizedSessions.push(normalizedSession);
       }
@@ -1228,7 +1325,7 @@ export default async function sessionRoutes(app) {
         normalizedSession = msNormalization.session || normalizedSession;
       }
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || session._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || session._id, { status: 'done' });
       }
 
       // For students, hide certain fields if session is hidden.
@@ -1855,7 +1952,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || session._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || session._id, { status: 'done' });
       }
 
       // Students can only review if the session is reviewable and done
@@ -1942,7 +2039,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
 
       if (isInstructorOrAdmin(course, request.user)) {
@@ -1979,7 +2076,10 @@ export default async function sessionRoutes(app) {
 
       const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
       if (modifiedCount > 0) {
-        notifySessionUpdated(app, course, normalizedSession._id);
+        sendToUser(app, request.user.userId, 'session:updated', {
+          courseId: String(course._id),
+          sessionId: String(normalizedSession._id),
+        });
       }
 
       return {
@@ -2014,7 +2114,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
 
       if (!isQuizLikeSession(normalizedSession)) {
@@ -2147,7 +2247,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
 
       if (!isQuizLikeSession(normalizedSession)) {
@@ -2256,7 +2356,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
 
       if (!isQuizLikeSession(normalizedSession)) {
@@ -2335,7 +2435,7 @@ export default async function sessionRoutes(app) {
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
       if (changed) {
-        notifySessionUpdated(app, course, normalizedSession?._id || sessionDoc._id);
+        notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
 
       if (!isQuizLikeSession(normalizedSession)) {
@@ -2415,7 +2515,10 @@ export default async function sessionRoutes(app) {
           : { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      sendToUser(app, request.user.userId, 'session:updated', {
+        courseId: String(course._id),
+        sessionId: String(updated?._id || request.params.id),
+      });
 
       return {
         success: true,
@@ -2517,7 +2620,28 @@ export default async function sessionRoutes(app) {
         });
       }
 
-      notifySessionUpdated(app, course, request.params.id);
+      const updatedSession = await Session.findById(request.params.id)
+        .select('joined')
+        .lean();
+      const joinedUser = await User.findById(userId)
+        .select('_id profile emails email')
+        .lean();
+
+      notifyParticipantJoined(app, course, request.params.id, {
+        joinedCount: Array.isArray(updatedSession?.joined)
+          ? updatedSession.joined.length
+          : ((session.joined || []).length + 1),
+        joinedStudent: {
+          _id: userId,
+          firstname: normalizeAnswerValue(joinedUser?.profile?.firstname),
+          lastname: normalizeAnswerValue(joinedUser?.profile?.lastname),
+          email: normalizeAnswerValue(joinedUser?.emails?.[0]?.address || joinedUser?.email),
+          profileImage: normalizeAnswerValue(joinedUser?.profile?.profileImage),
+          profileThumbnail: normalizeAnswerValue(joinedUser?.profile?.profileThumbnail),
+          displayName: formatUserDisplayName(joinedUser),
+          joinedAt: now,
+        },
+      });
 
       return { success: true, alreadyJoined: false };
     }
@@ -2899,12 +3023,14 @@ export default async function sessionRoutes(app) {
         attempt: currentAttempt.number,
       });
 
-      // Notify instructors of new response (delta event — students don't need this)
-      notifyResponseAdded(app, course, session._id, {
+      // Keep the response event minimal; joined students only receive it while live stats are visible.
+      notifyResponseAdded(app, course, session, {
         questionId: String(questionId),
         attempt: currentAttempt.number,
         responseCount,
         joinedCount: (session.joined || []).length,
+      }, {
+        includeStudents: !!question?.sessionOptions?.stats,
       });
 
       return reply.code(201).send({ response: response.toObject() });
@@ -3028,7 +3154,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyAttemptChanged(app, course, session._id, updatedQuestion, { resetResponses: true });
 
       return { question: updatedQuestion?.toObject(), attemptNumber: newAttemptNumber };
     }
@@ -3086,7 +3212,7 @@ export default async function sessionRoutes(app) {
           { $set: { 'sessionOptions.attempts': [{ number: 1, closed: request.body.closed }] } },
           { new: true }
         );
-        notifySessionUpdated(app, course, session._id);
+        notifyAttemptChanged(app, course, session._id, updatedQuestion, { resetResponses: true });
         return { question: updatedQuestion?.toObject() };
       }
 
@@ -3103,7 +3229,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyAttemptChanged(app, course, session._id, updatedQuestion);
 
       return { question: updatedQuestion?.toObject() };
     }
@@ -3151,7 +3277,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyJoinCodeChanged(app, course, updated);
 
       return { joinCode: code, expiresAt: updated.joinCodeExpiresAt };
     }
@@ -3228,7 +3354,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, session._id);
+      notifyJoinCodeChanged(app, course, updated);
 
       return { session: updated.toObject() };
     }
@@ -3256,7 +3382,7 @@ export default async function sessionRoutes(app) {
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
       session = normalizedSession;
       if (changed) {
-        notifySessionUpdated(app, course, session?._id || request.params.id);
+        notifyStatusChanged(app, course, session?._id || request.params.id, { status: 'done' });
       }
 
       // Fetch questions in session order and normalize legacy fields for review.

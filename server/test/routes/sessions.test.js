@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
@@ -1482,6 +1482,35 @@ describe('Student quiz routes', () => {
     expect(reenterRes.json().message).toContain('already submitted');
   });
 
+  it('notifies only the submitting student after quiz submission', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const session = await createOpenQuiz({ profToken, courseId: course._id, practiceQuiz: false });
+    const question = await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'Only question' });
+
+    const saveRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: question._id, answer: '0' },
+    });
+    expect(saveRes.statusCode).toBe(200);
+
+    const wsSendToUserSpy = vi.spyOn(app, 'wsSendToUser');
+    const submitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/submit`, {
+      token: studentToken,
+    });
+
+    expect(submitRes.statusCode).toBe(200);
+    expect(wsSendToUserSpy).toHaveBeenCalledTimes(1);
+    expect(wsSendToUserSpy).toHaveBeenCalledWith(
+      String(student._id),
+      'session:updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+      })
+    );
+  });
+
   it('ignores slides when checking quiz completion and rejects slide autosaves', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, student, studentToken } = await setupCourseWithStudent();
@@ -1723,6 +1752,208 @@ describe('POST /api/v1/sessions/:id/join', () => {
     expect(disableRes.json().session.joinCodeEnabled).toBe(false);
     expect(disableRes.json().session.joinCodeActive).toBe(false);
     expect(disableRes.json().session.currentJoinCode).toBe('');
+  });
+});
+
+describe('Live session websocket delta events', () => {
+  it('broadcasts participant joins only to instructors', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const joinRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    expect(joinRes.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledTimes(1);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      [String(prof._id)],
+      'session:participant-joined',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        joinedCount: 1,
+        joinedStudent: expect.objectContaining({
+          _id: String(student._id),
+        }),
+      })
+    );
+  });
+
+  it('broadcasts attempt deltas for live response state changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const question = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Current question</p>',
+      plainText: 'Current question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+
+    const newAttemptRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/new-attempt`, {
+      token: profToken,
+    });
+    expect(newAttemptRes.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([String(prof._id), String(student._id)]),
+      'session:attempt-changed',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        currentAttempt: expect.objectContaining({ number: 1, closed: false }),
+        stats: false,
+        correct: false,
+        resetResponses: true,
+      })
+    );
+
+    wsSendToUsersSpy.mockClear();
+
+    const toggleRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/toggle-responses`, {
+      token: profToken,
+      payload: { closed: true },
+    });
+    expect(toggleRes.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([String(prof._id), String(student._id)]),
+      'session:attempt-changed',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+        currentAttempt: expect.objectContaining({ number: 1, closed: true }),
+        resetResponses: false,
+      })
+    );
+  });
+
+  it('broadcasts join-code changes without leaking the code to students', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/join-code-settings`, {
+      token: profToken,
+      payload: { joinCodeEnabled: true, joinCodeActive: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const joinCodeCalls = wsSendToUsersSpy.mock.calls.filter(([, event]) => event === 'session:join-code-changed');
+    expect(joinCodeCalls).toHaveLength(2);
+
+    const instructorCall = joinCodeCalls.find(([userIds]) => userIds.includes(String(prof._id)));
+    const studentCall = joinCodeCalls.find(([userIds]) => userIds.includes(String(student._id)));
+
+    expect(instructorCall).toBeDefined();
+    expect(instructorCall[2]).toEqual(expect.objectContaining({
+      courseId: course._id,
+      sessionId: session._id,
+      joinCodeEnabled: true,
+      joinCodeActive: true,
+      joinCodeInterval: 10,
+    }));
+    expect(instructorCall[2].currentJoinCode).toBeTruthy();
+
+    expect(studentCall).toBeDefined();
+    expect(studentCall[2]).toEqual(expect.objectContaining({
+      courseId: course._id,
+      sessionId: session._id,
+      joinCodeEnabled: true,
+      joinCodeActive: true,
+    }));
+    expect(studentCall[2].currentJoinCode).toBeUndefined();
+  });
+
+  it('sends response-added deltas only to joined students when live stats are visible', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const spectator = await createTestUser({ email: 'spectator-stats@example.com', roles: ['student'] });
+    const spectatorToken = await getAuthToken(app, spectator);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: spectatorToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Visible stats question</p>',
+      plainText: 'Visible stats question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: '0' },
+    });
+
+    expect(respondRes.statusCode).toBe(201);
+    const responseCalls = wsSendToUsersSpy.mock.calls.filter(([, event]) => event === 'session:response-added');
+    expect(responseCalls).toHaveLength(2);
+    expect(responseCalls).toEqual(expect.arrayContaining([
+      [
+        [String(prof._id)],
+        'session:response-added',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          responseCount: 1,
+        }),
+      ],
+      [
+        [String(student._id)],
+        'session:response-added',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          responseCount: 1,
+        }),
+      ],
+    ]));
+    expect(responseCalls.some(([userIds]) => userIds.includes(String(spectator._id)))).toBe(false);
   });
 });
 

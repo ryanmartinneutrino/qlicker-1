@@ -65,6 +65,48 @@ function applyCurrentQuestionUpdate(prev, payload) {
   };
 }
 
+function applyAttemptChanged(prev, payload) {
+  if (!prev) return prev;
+
+  const nextQuestionId = String(payload?.questionId || '');
+  const currentQuestionId = String(prev?.currentQuestion?._id || prev?.session?.currentQuestion || '');
+  if (!nextQuestionId || currentQuestionId !== nextQuestionId) {
+    return prev;
+  }
+
+  const nextQuestion = prev.currentQuestion
+    ? {
+      ...prev.currentQuestion,
+      sessionOptions: {
+        ...(prev.currentQuestion.sessionOptions || {}),
+        stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
+        correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+      },
+    }
+    : prev.currentQuestion;
+
+  return {
+    ...prev,
+    currentQuestion: nextQuestion,
+    responseStats: payload?.resetResponses ? null : prev.responseStats,
+    allResponses: payload?.resetResponses ? [] : prev.allResponses,
+  };
+}
+
+function applyJoinCodeChanged(prev, payload) {
+  if (!prev?.session) return prev;
+  return {
+    ...prev,
+    session: {
+      ...prev.session,
+      joinCodeEnabled: payload?.joinCodeEnabled ?? prev.session.joinCodeEnabled,
+      joinCodeActive: payload?.joinCodeActive ?? prev.session.joinCodeActive,
+      joinCodeInterval: payload?.joinCodeInterval ?? prev.session.joinCodeInterval,
+      currentJoinCode: payload?.currentJoinCode ?? prev.session.currentJoinCode,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -265,6 +307,12 @@ export default function PresentationWindow() {
               break;
             case 'session:question-updated':
               setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              break;
+            case 'session:attempt-changed':
+              setLiveData((prev) => applyAttemptChanged(prev, d));
+              break;
+            case 'session:join-code-changed':
+              setLiveData((prev) => applyJoinCodeChanged(prev, d));
               break;
             case 'session:visibility-changed':
               fetchLive();
