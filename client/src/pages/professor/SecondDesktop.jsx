@@ -11,6 +11,7 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
+import { getSessionActivities, getActivityIds, findActivityIndex } from '../../utils/activities';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -315,8 +316,8 @@ export default function PresentationWindow() {
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
-  const qIdx = session ? (session.questions || []).indexOf(session.currentQuestion) : -1;
-  const totalQ = session?.questions?.length || 0;
+  const qIdx = session ? findActivityIndex(getSessionActivities(session), session.currentQuestion) : -1;
+  const totalQ = getActivityIds(getSessionActivities(session || {})).length || 0;
   const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
     ? { current: qIdx + 1, total: totalQ }
     : null);

@@ -17,6 +17,7 @@ import {
   summarizeGradeFeedback,
   setSessionGradesVisibility,
 } from '../services/grading.js';
+import { buildActivitiesFromQuestions, getSessionActivities } from '../services/activities.js';
 
 const createSessionSchema = {
   body: {
@@ -1816,8 +1817,11 @@ export default async function sessionRoutes(app) {
         }
 
         if (copiedQuestionIds.length > 0) {
+          const copiedQuestions = await Question.find({ _id: { $in: copiedQuestionIds } }).lean();
+          const copiedQuestionMap = new Map(copiedQuestions.map((q) => [String(q._id), q]));
+          const copiedActivities = buildActivitiesFromQuestions(copiedQuestionIds, copiedQuestionMap);
           await Session.findByIdAndUpdate(newSession._id, {
-            $set: { questions: copiedQuestionIds },
+            $set: { questions: copiedQuestionIds, activities: copiedActivities },
           });
         }
       }
@@ -2731,6 +2735,7 @@ export default async function sessionRoutes(app) {
             courseId: session.courseId,
             status: session.status,
             questions: session.questions,
+            activities: session.activities || [],
             currentQuestion: session.currentQuestion,
             joinedCount: (session.joined || []).length,
             joinCodeActive: session.joinCodeActive,

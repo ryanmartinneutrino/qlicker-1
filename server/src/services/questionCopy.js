@@ -1,5 +1,6 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
+import { classifyQuestionAsActivity } from './activities.js';
 
 export async function copyQuestionToSession({
   sourceQuestion,
@@ -30,8 +31,12 @@ export async function copyQuestionToSession({
   });
 
   if (addToSession) {
+    const activityEntry = {
+      activityType: classifyQuestionAsActivity(copy),
+      activityId: String(copy._id),
+    };
     await Session.findByIdAndUpdate(targetSessionId, {
-      $addToSet: { questions: copy._id },
+      $addToSet: { questions: String(copy._id), activities: activityEntry },
     });
   }
 

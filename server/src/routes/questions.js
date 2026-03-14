@@ -3,6 +3,7 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
+import { classifyQuestionAsActivity, buildActivitiesFromQuestions } from '../services/activities.js';
 
 const createQuestionSchema = {
   body: {
@@ -405,7 +406,7 @@ export default async function questionRoutes(app) {
       // Remove from session if linked
       if (question.sessionId) {
         await Session.findByIdAndUpdate(question.sessionId, {
-          $pull: { questions: question._id },
+          $pull: { questions: question._id, activities: { activityId: String(question._id) } },
         });
       }
 
@@ -514,9 +515,15 @@ export default async function questionRoutes(app) {
         return { session: session.toObject() };
       }
 
+      const question = await Question.findById(questionId).lean();
+      const activityEntry = {
+        activityType: classifyQuestionAsActivity(question),
+        activityId: String(questionId),
+      };
+
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $addToSet: { questions: questionId } },
+        { $addToSet: { questions: questionId, activities: activityEntry } },
         { new: true }
       );
 
@@ -553,7 +560,7 @@ export default async function questionRoutes(app) {
 
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $pull: { questions: request.params.questionId } },
+        { $pull: { questions: request.params.questionId, activities: { activityId: request.params.questionId } } },
         { new: true }
       );
 
@@ -583,9 +590,26 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const newOrder = request.body.questions;
+
+      // Rebuild activities in the new order.
+      // Use existing activities if the session already has them; otherwise load
+      // question docs to determine each item's activity type (legacy sessions).
+      const existingMap = new Map(
+        (session.activities || []).map((a) => [a.activityId, a])
+      );
+      let newActivities;
+      if (existingMap.size > 0) {
+        newActivities = newOrder.map((id) => existingMap.get(id)).filter(Boolean);
+      } else {
+        const questions = await Question.find({ _id: { $in: newOrder } }).lean();
+        const questionMap = new Map(questions.map((q) => [String(q._id), q]));
+        newActivities = buildActivitiesFromQuestions(newOrder, questionMap);
+      }
+
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $set: { questions: request.body.questions } },
+        { $set: { questions: newOrder, activities: newActivities } },
         { new: true }
       );
 
