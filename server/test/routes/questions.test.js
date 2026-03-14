@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
 import Session from '../../src/models/Session.js';
 import Question from '../../src/models/Question.js';
+import Response from '../../src/models/Response.js';
 
 let app;
 
@@ -351,6 +352,88 @@ describe('PATCH /api/v1/questions/:id', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
+  });
+
+  it('rejects changing the number of options when the question already has responses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Choose one',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const question = qRes.json().question;
+
+    await Response.create({
+      attempt: 1,
+      questionId: question._id,
+      studentUserId: 'student-1',
+      answer: '0',
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 0,
+        content: 'Choose one',
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+          { answer: 'C', correct: false },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toBe('Question options cannot be added or removed because this question has response data');
+  });
+
+  it('broadcasts session updates when a linked session question changes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 6,
+      content: '<p>Slide</p>',
+      plainText: 'Slide',
+      sessionId: '',
+      courseId: '',
+      sessionOptions: { points: 0 },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    expect(addRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+      token: profToken,
+      payload: {
+        type: 6,
+        content: '<p>Updated slide</p>',
+        plainText: 'Updated slide',
+        sessionOptions: { points: 0 },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(wsSendToUsersSpy).toHaveBeenCalledWith(
+      expect.arrayContaining([String(course.instructors[0])]),
+      'session:updated',
+      expect.objectContaining({
+        courseId: course._id,
+        sessionId: session._id,
+        questionId: question._id,
+      })
+    );
   });
 });
 

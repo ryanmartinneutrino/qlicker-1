@@ -17,7 +17,7 @@ import {
   FormGroup,
   Divider,
 } from '@mui/material';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import {
@@ -45,6 +45,12 @@ const richContentSx = {
     my: 0.75,
   },
 };
+
+function buildWebsocketUrl(token) {
+  const encodedToken = encodeURIComponent(token);
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
+}
 
 function normalizeValue(value) {
   if (value === undefined || value === null) return '';
@@ -154,6 +160,7 @@ export default function QuizSession() {
   const [lockingQuestionId, setLockingQuestionId] = useState('');
 
   const autosaveTimersRef = useRef(new Map());
+  const latestQuestionsRef = useRef([]);
 
   const hydrateFromPayload = useCallback((payload) => {
     const nextSession = payload?.session || null;
@@ -164,12 +171,28 @@ export default function QuizSession() {
     setQuestions(nextQuestions);
     setResponsesByQuestion(nextResponses);
 
-    const nextDrafts = {};
-    nextQuestions.forEach((question) => {
-      const qId = String(question._id);
-      nextDrafts[qId] = getDraftForQuestion(question, nextResponses[qId]);
+    setDraftByQuestion((prev) => {
+      const previousQuestionById = new Map(
+        latestQuestionsRef.current.map((question) => [String(question._id), question])
+      );
+      const nextDrafts = {};
+
+      nextQuestions.forEach((question) => {
+        const qId = String(question._id);
+        const previousQuestion = previousQuestionById.get(qId);
+        const draftCanCarryForward = prev[qId] !== undefined
+          && previousQuestion
+          && normalizeQuestionType(previousQuestion) === normalizeQuestionType(question)
+          && (previousQuestion.options?.length || 0) === (question.options?.length || 0);
+
+        nextDrafts[qId] = draftCanCarryForward
+          ? prev[qId]
+          : getDraftForQuestion(question, nextResponses[qId]);
+      });
+
+      return nextDrafts;
     });
-    setDraftByQuestion(nextDrafts);
+    latestQuestionsRef.current = nextQuestions;
   }, []);
 
   const fetchQuiz = useCallback(async () => {
@@ -187,6 +210,102 @@ export default function QuizSession() {
   useEffect(() => {
     fetchQuiz();
   }, [fetchQuiz]);
+
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimer = null;
+    let pollingTimer = null;
+    let closed = false;
+
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchQuiz();
+    };
+
+    const startPolling = () => {
+      if (pollingTimer || closed) return;
+      pollingTimer = setInterval(refresh, 3000);
+    };
+
+    const stopPolling = () => {
+      if (!pollingTimer) return;
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const latestToken = getAccessToken();
+      if (!latestToken) return;
+      try {
+        ws = new WebSocket(buildWebsocketUrl(latestToken));
+      } catch {
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      ws.onopen = () => { stopPolling(); };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const evt = message?.event;
+          const data = message?.data;
+          if (!evt || String(data?.sessionId || '') !== String(sessionId)) return;
+
+          switch (evt) {
+            case 'session:question-changed':
+            case 'session:visibility-changed':
+            case 'session:status-changed':
+            case 'session:updated':
+              fetchQuiz();
+              break;
+            default:
+              break;
+          }
+        } catch {
+          // Ignore malformed payloads.
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+      };
+    };
+
+    const init = async () => {
+      try {
+        const { data } = await apiClient.get('/health');
+        if (data?.websocket === true) {
+          connect();
+          return;
+        }
+      } catch {
+        // Fall back to polling when websocket health is unavailable.
+      }
+      startPolling();
+    };
+
+    init();
+
+    const handleVisibility = () => refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [fetchQuiz, sessionId]);
 
   useEffect(() => () => {
     autosaveTimersRef.current.forEach((timerId) => clearTimeout(timerId));

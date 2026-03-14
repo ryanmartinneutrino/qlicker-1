@@ -512,7 +512,7 @@ export default function SessionEditor() {
     closeInlineEditor();
   };
 
-  const handleAutoSaveQuestion = async (payload, questionId) => {
+  const handleAutoSaveQuestion = useCallback(async (payload, questionId) => {
     try {
       if (questionId) {
         const { data } = await apiClient.patch(`/questions/${questionId}`, payload);
@@ -549,7 +549,7 @@ export default function SessionEditor() {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedAutoSave') });
       throw err;
     }
-  };
+  }, [courseId, inlineEditor, questions, session, sessionId, t, upsertQuestionLocally]);
 
   // Delete question
   const handleDeleteQuestion = async (qId) => {
@@ -957,6 +957,8 @@ export default function SessionEditor() {
             initial={initialQuestion}
             initialBaseline={baselineQuestion}
             disableTypeSelection={questionHasResponses}
+            disableOptionCountChanges={questionHasResponses}
+            optionCountLockReason={t('professor.sessionEditor.questionOptionsLocked')}
             typeSelectionLockReason={t('professor.sessionEditor.questionTypeLocked')}
           />
         </Box>

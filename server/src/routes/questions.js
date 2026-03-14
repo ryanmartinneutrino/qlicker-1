@@ -245,6 +245,44 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
+function sendToCourseMembers(app, course, event, payload) {
+  if (typeof app.wsSendToUsers !== 'function') return;
+  if (!course) return;
+  const memberIds = [...new Set([
+    ...(course.instructors || []),
+    ...(course.students || []),
+  ].map((userId) => String(userId)).filter(Boolean))];
+  app.wsSendToUsers(memberIds, event, payload);
+}
+
+async function getLinkedSessionsForQuestion(question) {
+  const linkedSessions = [];
+  const seenSessionIds = new Set();
+
+  const addSession = (session) => {
+    const sessionId = String(session?._id || '').trim();
+    if (!sessionId || seenSessionIds.has(sessionId)) return;
+    seenSessionIds.add(sessionId);
+    linkedSessions.push({
+      _id: sessionId,
+      courseId: String(session?.courseId || '').trim(),
+    });
+  };
+
+  if (question?.sessionId) {
+    const session = await Session.findById(question.sessionId).select('_id courseId').lean();
+    if (session) addSession(session);
+  }
+
+  const normalizedQuestionId = String(question?._id || '').trim();
+  if (normalizedQuestionId) {
+    const sessions = await Session.find({ questions: normalizedQuestionId }).select('_id courseId').lean();
+    sessions.forEach(addSession);
+  }
+
+  return linkedSessions;
+}
+
 async function userCanManageQuestion(question, user) {
   if (!question || !user) return false;
   const roles = user.roles || [];
@@ -264,27 +302,11 @@ async function userCanManageQuestion(question, user) {
     }
   }
 
-  const linkedSessionCourseIds = new Set();
-  if (question.sessionId) {
-    const session = await Session.findById(question.sessionId).select('courseId').lean();
-    const sessionCourseId = String(session?.courseId || '').trim();
-    if (sessionCourseId) {
-      linkedSessionCourseIds.add(sessionCourseId);
-    }
-  }
-
-  const normalizedQuestionId = String(question._id || '').trim();
-  if (normalizedQuestionId) {
-    const linkedSessions = await Session.find({ questions: normalizedQuestionId })
-      .select('courseId')
-      .lean();
-    linkedSessions.forEach((session) => {
-      const sessionCourseId = String(session?.courseId || '').trim();
-      if (sessionCourseId) {
-        linkedSessionCourseIds.add(sessionCourseId);
-      }
-    });
-  }
+  const linkedSessionCourseIds = new Set(
+    (await getLinkedSessionsForQuestion(question))
+      .map((session) => String(session?.courseId || '').trim())
+      .filter(Boolean)
+  );
 
   for (const sessionCourseId of linkedSessionCourseIds) {
     if (!candidateCourseIds.includes(sessionCourseId)) {
@@ -296,6 +318,33 @@ async function userCanManageQuestion(question, user) {
   }
 
   return false;
+}
+
+async function notifyLinkedSessionsUpdated(app, question) {
+  const linkedSessions = await getLinkedSessionsForQuestion(question);
+  if (linkedSessions.length === 0) return;
+
+  const courseIds = [...new Set(
+    linkedSessions
+      .map((session) => String(session.courseId || '').trim())
+      .filter(Boolean)
+  )];
+  if (courseIds.length === 0) return;
+
+  const courses = await Course.find({ _id: { $in: courseIds } }).lean();
+  const courseById = new Map(
+    courses.map((course) => [String(course._id), course])
+  );
+
+  linkedSessions.forEach((session) => {
+    const course = courseById.get(String(session.courseId || ''));
+    if (!course) return;
+    sendToCourseMembers(app, course, 'session:updated', {
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      questionId: String(question._id),
+    });
+  });
 }
 
 export default async function questionRoutes(app) {
@@ -389,6 +438,18 @@ export default async function questionRoutes(app) {
         }
       }
 
+      const hasResponses = await Response.exists({ questionId: String(question._id) });
+      if (hasResponses && request.body.options !== undefined) {
+        const currentOptionCount = Array.isArray(question.options) ? question.options.length : 0;
+        const nextOptionCount = Array.isArray(request.body.options) ? request.body.options.length : 0;
+        if (nextOptionCount !== currentOptionCount) {
+          return reply.code(409).send({
+            error: 'Conflict',
+            message: 'Question options cannot be added or removed because this question has response data',
+          });
+        }
+      }
+
       const nextType = request.body.type !== undefined ? request.body.type : question.type;
       const nextOptions = request.body.options !== undefined ? request.body.options : question.options;
       const updateValidationError = multipleChoiceValidationError(nextType, nextOptions);
@@ -412,6 +473,8 @@ export default async function questionRoutes(app) {
         { $set: updates },
         { new: true }
       );
+
+      await notifyLinkedSessionsUpdated(app, updated || question);
 
       return { question: updated.toObject() };
     }

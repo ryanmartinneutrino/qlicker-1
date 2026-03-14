@@ -1,5 +1,5 @@
 import {
-  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -182,6 +182,8 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   initialBaseline = null,
   inline = false,
   disableTypeSelection = false,
+  disableOptionCountChanges = false,
+  optionCountLockReason = 'Option count is locked for this question.',
   typeSelectionLockReason = 'Question type is locked for this question.',
 }, ref) {
   const { t } = useTranslation();
@@ -199,6 +201,16 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   const initialFormRef = useRef(emptyForm());
   const saveInFlightRef = useRef(false);
   const queuedSaveRef = useRef(null);
+  const onAutoSaveRef = useRef(onAutoSave);
+  const tRef = useRef(t);
+
+  useEffect(() => {
+    onAutoSaveRef.current = onAutoSave;
+  }, [onAutoSave]);
+
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
 
   const updateForm = useCallback((updater) => {
     const baseForm = latestFormRef.current;
@@ -221,7 +233,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
       setAutosaveError('');
 
       try {
-        const savedQuestion = await onAutoSave(nextPayload, questionIdRef.current);
+        const savedQuestion = await onAutoSaveRef.current(nextPayload, questionIdRef.current);
         if (savedQuestion?._id && savedQuestion._id !== questionIdRef.current) {
           questionIdRef.current = savedQuestion._id;
           setPersistedQuestionId(savedQuestion._id);
@@ -231,7 +243,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
         return savedQuestion;
       } catch (err) {
         setAutosaveState('error');
-        setAutosaveError(err.response?.data?.message || t('questions.editor.autosaveFailed'));
+        setAutosaveError(err.response?.data?.message || tRef.current('questions.editor.autosaveFailed'));
         throw err;
       } finally {
         saveInFlightRef.current = false;
@@ -248,7 +260,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     };
 
     return runSave(payload, payloadHash);
-  }, [onAutoSave]);
+  }, []);
 
   const waitForSaveDrain = useCallback(async () => {
     while (saveInFlightRef.current || queuedSaveRef.current) {
@@ -332,11 +344,13 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     return () => clearTimeout(autosaveTimer);
   }, [open, form, persistPayload]);
 
-  const previewPayload = useMemo(() => buildQuestionPayload(form), [form]);
+  const currentPayloadHash = useMemo(() => JSON.stringify(buildQuestionPayload(form)), [form]);
+  const deferredPreviewForm = useDeferredValue(form);
+  const previewPayload = useMemo(() => buildQuestionPayload(deferredPreviewForm), [deferredPreviewForm]);
   const hasChangesSinceOpen = useMemo(() => {
     if (!open) return false;
-    return JSON.stringify(previewPayload) !== initialSnapshotHash;
-  }, [open, previewPayload, initialSnapshotHash]);
+    return currentPayloadHash !== initialSnapshotHash;
+  }, [currentPayloadHash, initialSnapshotHash, open]);
 
   // Warn before erasing option content when leaving option-based types.
   const handleTypeChange = (type) => {
@@ -404,8 +418,14 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     });
   };
 
-  const addOption = () => updateForm((prev) => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
-  const removeOption = (idx) => updateForm((prev) => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  const addOption = () => {
+    if (disableOptionCountChanges) return;
+    updateForm((prev) => ({ ...prev, options: [...prev.options, { content: '', correct: false }] }));
+  };
+  const removeOption = (idx) => {
+    if (disableOptionCountChanges) return;
+    updateForm((prev) => ({ ...prev, options: prev.options.filter((_, i) => i !== idx) }));
+  };
 
   const autoSaveStatus = autosaveState === 'saved' ? 'success' : autosaveState;
 
@@ -531,6 +551,11 @@ const QuestionEditor = forwardRef(function QuestionEditor({
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               {form.type === QUESTION_TYPES.MULTI_SELECT ? t('questions.editor.optionsSelectAll') : t('questions.editor.optionsSelectOne')}
             </Typography>
+            {disableOptionCountChanges && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                {optionCountLockReason}
+              </Typography>
+            )}
             {form.options.map((opt, i) => (
               <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 1.5 }}>
                 {form.type === QUESTION_TYPES.MULTI_SELECT ? (
@@ -548,11 +573,11 @@ const QuestionEditor = forwardRef(function QuestionEditor({
                   />
                 </Box>
                 {form.options.length > 2 && (
-                  <IconButton size="small" onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" disabled={disableOptionCountChanges} onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
                 )}
               </Box>
             ))}
-            <Button size="small" startIcon={<AddIcon />} onClick={addOption}>{t('questions.editor.addOption')}</Button>
+            <Button size="small" startIcon={<AddIcon />} onClick={addOption} disabled={disableOptionCountChanges}>{t('questions.editor.addOption')}</Button>
           </Box>
         )}
 
