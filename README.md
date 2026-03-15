@@ -75,6 +75,7 @@ docker compose up -d
 ./scripts/qlicker.sh stop     # Stop the app
 ./scripts/qlicker.sh restart  # Restart the app
 ./scripts/qlicker.sh status   # Check running status
+./scripts/qlicker.sh e2e --install-browser  # Install Chromium once (if needed) and run Playwright E2E tests
 ```
 
 ### Database Seeding
@@ -132,13 +133,38 @@ cd server && npm test
 cd client && npm test
 ```
 
+### E2E Tests (Playwright)
+
+The E2E suite lives in `client/e2e/` and starts its own temporary Fastify + Vite stack automatically. It does **not** require your local MongoDB instance because the server side of the suite uses `mongodb-memory-server`.
+
+One-time browser setup:
+
+```bash
+cd client && npx playwright install chromium
+```
+
+Run the suite with either:
+
+```bash
+./scripts/qlicker.sh e2e
+
+# or directly
+cd client && npm run test:e2e
+```
+
+Port behavior:
+
+- By default, Playwright uses client port `3000` and API port `3001`
+- If the repository root `.env` file defines `APP_PORT` and/or `API_PORT`, the Playwright config will use those values automatically
+- The E2E web servers still run locally on those ports; they do not reuse an already-running development stack
+
 ## Scripts Reference
 
 | Script | Description |
 |--------|-------------|
 | `scripts/setup-native.sh` | Interactive wizard for native (non-Docker) installation |
 | `scripts/setup-docker.sh` | Interactive wizard for Docker Compose setup |
-| `scripts/qlicker.sh` | Service manager — `start`, `stop`, `restart`, `status` |
+| `scripts/qlicker.sh` | Service manager — `start`, `stop`, `restart`, `status`, `e2e [--install-browser]` |
 | `scripts/seed-db.sh` | Seed the database with test data (native) |
 | `scripts/seed-db-docker.sh` | Seed the database with test data (Docker) |
 | `scripts/seed-db.js` | Node.js seeding logic used by the shell wrappers |

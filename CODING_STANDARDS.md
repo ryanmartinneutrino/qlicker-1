@@ -947,6 +947,19 @@ ws.onmessage = (event) => {
 | Setup | `server/test/setup.js` | `client/test/setup.js` |
 | Helpers | `server/test/helpers.js` | `@testing-library/react` |
 
+### E2E Test Infrastructure
+
+| Aspect | E2E |
+|--------|-----|
+| Framework | Playwright |
+| Test runner | `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` |
+| Browser setup | One-time: `cd client && npx playwright install chromium` |
+| Backend | `server/scripts/e2e-server.js` with `mongodb-memory-server` |
+| Frontend | Vite dev server started by `client/playwright.config.js` |
+| Ports | Reads `APP_PORT` / `API_PORT` from the repository root `.env` when present, else defaults to `3000` / `3001` |
+
+Use the script entry point when possible so dependency checks stay consistent with the rest of the repository tooling.
+
 ### Server Test Pattern
 
 ```javascript

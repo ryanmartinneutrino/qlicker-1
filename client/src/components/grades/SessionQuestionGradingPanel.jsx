@@ -200,7 +200,7 @@ function isAutoGradeableQuestionType(questionType) {
   ].includes(questionType);
 }
 
-function buildResponseSummary(question, response, noAnswerLabel = '(no answer)') {
+export function buildResponseSummary(question, response, noAnswerLabel = '(no answer)') {
   if (!response) {
     return {
       displayText: '—',
@@ -232,12 +232,16 @@ function buildResponseSummary(question, response, noAnswerLabel = '(no answer)')
 
     if (selectedIndices.length > 0) {
       const labels = selectedIndices.map((idx) => OPTION_LETTERS[idx] || String(idx + 1));
-      const optionTexts = selectedIndices
-        .map((idx) => stripHtml(optionDisplayHtml(options[idx])))
-        .filter(Boolean);
+      const filterTerms = qType === QUESTION_TYPES.TRUE_FALSE
+        ? selectedIndices.map((idx) => {
+          const optionText = stripHtml(optionDisplayHtml(options[idx])).toLowerCase();
+          if (optionText) return optionText;
+          return idx === 0 ? 'true' : idx === 1 ? 'false' : OPTION_LETTERS[idx] || String(idx + 1);
+        })
+        : labels;
       return {
         displayText: labels.join(', '),
-        filterText: [labels.join(' '), optionTexts.join(' ')].filter(Boolean).join(' '),
+        filterText: filterTerms.join(' '),
         richHtml: '',
       };
     }
@@ -354,6 +358,7 @@ export default function SessionQuestionGradingPanel({
   const [activeQuestionId, setActiveQuestionId] = useState('');
   const [studentQuery, setStudentQuery] = useState('');
   const [answerQuery, setAnswerQuery] = useState('');
+  const [debouncedAnswerQuery, setDebouncedAnswerQuery] = useState('');
   const [showNeedsGradingOnly, setShowNeedsGradingOnly] = useState(false);
   const [draftByStudentId, setDraftByStudentId] = useState({});
   const [savingByStudentId, setSavingByStudentId] = useState({});
@@ -510,9 +515,19 @@ export default function SessionQuestionGradingPanel({
     setDraftByStudentId(nextDrafts);
   }, [allRows]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedAnswerQuery(answerQuery);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [answerQuery]);
+
   const filteredRows = useMemo(() => {
     const studentNeedle = normalizeValue(studentQuery).toLowerCase();
-    const answerNeedle = normalizeComparableText(answerQuery);
+    const answerNeedle = normalizeComparableText(debouncedAnswerQuery);
     return allRows.filter((row) => {
       if (studentNeedle) {
         const studentHaystack = [
@@ -533,7 +548,7 @@ export default function SessionQuestionGradingPanel({
 
       return true;
     });
-  }, [allRows, answerQuery, showNeedsGradingOnly, studentQuery]);
+  }, [allRows, debouncedAnswerQuery, showNeedsGradingOnly, studentQuery]);
 
   const sortedRows = useMemo(() => {
     const nextRows = [...filteredRows];

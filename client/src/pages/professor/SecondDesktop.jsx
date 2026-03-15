@@ -700,15 +700,6 @@ export default function PresentationWindow() {
         </Box>
       )}
 
-      {/* Short answer placeholder */}
-      {qType === QUESTION_TYPES.SHORT_ANSWER && (
-        <Paper variant="outlined" sx={{ p: 3, mb: 3, textAlign: 'center' }}>
-          <Typography variant="h6" color="text.secondary">
-            {t('professor.secondDesktop.shortAnswerQuestion')}
-          </Typography>
-        </Paper>
-      )}
-
       {/* Numerical placeholder */}
       {qType === QUESTION_TYPES.NUMERICAL && (
         <Paper variant="outlined" sx={{ p: 3, mb: 3, textAlign: 'center' }}>
