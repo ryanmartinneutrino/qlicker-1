@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest | Unit tests (243 server + 9 client) |
+| **Testing** | Vitest | Unit tests (240 server + 12 client) |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -114,15 +114,15 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
 - ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
 - ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
-- ✅ Session activity abstraction — sessions now carry an explicit `activities` array alongside the legacy `questions` array; each activity entry has an `activityType` (`'question'` or `'slide'`) and an `activityId`; all question add/remove/reorder/copy/delete operations maintain both arrays; legacy sessions without `activities` are handled transparently via on-the-fly construction from `questions`; utility modules on both server (`services/activities.js`) and client (`utils/activities.js`) provide `ACTIVITY_TYPES`, `getSessionActivities()`, `getActivityIds()`, and classification helpers; 21 new tests (15 unit + 6 integration)
+- ✅ Session sequencing simplification — sessions once again use the ordered `questions` array as the single source of truth, matching the legacy Meteor database; slides are represented as question documents with `type: 6`, so interactive sessions and quizzes can mix slides and response-collecting questions without a second session-level array
 - ✅ Live session editing and delta sync — question/slide edits now save reliably from the session editor and live sessions, including rich-text image resizing; legacy session-linked questions authorize correctly through session/course fallback metadata; live websocket traffic now uses audience-scoped deltas (`session:question-updated`, `session:attempt-changed`, `session:participant-joined`, `session:join-code-changed`) and limits response-count updates to instructors plus joined students when visible stats need histogram refreshes
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 243 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, activities service, users, groups, video)
-- **Client:** 9 tests in 2 files (grading UI, student quiz CTA)
+- **Server:** 240 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
+- **Client:** 12 tests across 5 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 
@@ -305,7 +305,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 252 tests (243 server + 9 client) |
+| Unit tests | ✅ 252 tests (240 server + 12 client) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -325,13 +325,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (243 tests, 12 files)
+# Server tests (240 tests, 11 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (9 tests, 2 files)
+# Client tests (12 tests, 5 files)
 cd client && npx vitest run
 ```
 

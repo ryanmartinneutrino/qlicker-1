@@ -666,7 +666,7 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     expect(count).toBe(1);
   });
 
-  it('repairs legacy partial activities when adding a question to session', async (ctx) => {
+  it('keeps the session questions array authoritative when adding a question to session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, session } = await setupCourseAndSession();
 
@@ -698,10 +698,7 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     const libraryQuestion = libraryRes.json().question;
 
     await Session.findByIdAndUpdate(session._id, {
-      $set: {
-        questions: [q1._id, slide._id],
-        activities: [{ activityType: 'question', activityId: q1._id }],
-      },
+      $set: { questions: [q1._id, slide._id] },
     });
 
     const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
@@ -712,11 +709,7 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.session.questions).toEqual([q1._id, slide._id, libraryQuestion._id]);
-    expect(body.session.activities).toEqual([
-      { activityType: 'question', activityId: q1._id },
-      { activityType: 'slide', activityId: slide._id },
-      { activityType: 'question', activityId: libraryQuestion._id },
-    ]);
+    expect(body.session.activities).toBeUndefined();
   });
 
   it('non-instructor gets 403', async (ctx) => {

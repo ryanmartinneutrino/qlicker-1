@@ -22,7 +22,6 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
-import { getSessionActivities, getActivityIds, findActivityIndex, isSlideActivity } from '../../utils/activities';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
@@ -58,15 +57,6 @@ function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
-}
-
-function activityIndex(session, activityId) {
-  const activities = session?.activities;
-  if (Array.isArray(activities) && activities.length > 0) {
-    return findActivityIndex(activities, activityId);
-  }
-  const ids = session?.questions || [];
-  return ids.indexOf(activityId);
 }
 
 function optionDisplayHtml(option) {
@@ -609,7 +599,7 @@ export default function LiveSession() {
   const handlePrev = useCallback(() => {
     const session = liveData?.session;
     if (!session) return;
-    const ids = getActivityIds(getSessionActivities(session));
+    const ids = session.questions || [];
     const idx = ids.indexOf(session.currentQuestion);
     if (idx > 0) handleSetQuestion(ids[idx - 1]);
   }, [liveData, handleSetQuestion]);
@@ -617,7 +607,7 @@ export default function LiveSession() {
   const handleNext = useCallback(() => {
     const session = liveData?.session;
     if (!session) return;
-    const ids = getActivityIds(getSessionActivities(session));
+    const ids = session.questions || [];
     const idx = ids.indexOf(session.currentQuestion);
     if (idx < ids.length - 1) handleSetQuestion(ids[idx + 1]);
   }, [liveData, handleSetQuestion]);
@@ -811,8 +801,9 @@ export default function LiveSession() {
     return normalizeValue(a?.email).localeCompare(normalizeValue(b?.email));
   }), [joinedStudents]);
 
-  const qIdx = session ? activityIndex(session, session.currentQuestion) : -1;
-  const totalQ = getActivityIds(getSessionActivities(session || {})).length || 0;
+  const questionIds = session?.questions || [];
+  const qIdx = session ? questionIds.indexOf(session.currentQuestion) : -1;
+  const totalQ = questionIds.length || 0;
   const hasPrev = qIdx > 0;
   const hasNext = qIdx < totalQ - 1;
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;

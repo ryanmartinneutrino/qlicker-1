@@ -3,7 +3,6 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
-import { buildActivitiesFromQuestions } from '../services/activities.js';
 import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 
 const createQuestionSchema = {
@@ -611,7 +610,7 @@ export default async function questionRoutes(app) {
       // Remove from session if linked
       if (question.sessionId) {
         await Session.findByIdAndUpdate(question.sessionId, {
-          $pull: { questions: question._id, activities: { activityId: String(question._id) } },
+          $pull: { questions: question._id },
         });
       }
 
@@ -725,17 +724,10 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
       const nextQuestionIds = [...(session.questions || []), String(questionId)];
-      const sessionQuestionDocs = await Question.find({ _id: { $in: nextQuestionIds } })
-        .select('_id type')
-        .lean();
-      const sessionQuestionMap = new Map(
-        sessionQuestionDocs.map((sessionQuestion) => [String(sessionQuestion._id), sessionQuestion])
-      );
-      const nextActivities = buildActivitiesFromQuestions(nextQuestionIds, sessionQuestionMap);
 
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $set: { questions: nextQuestionIds, activities: nextActivities } },
+        { $set: { questions: nextQuestionIds } },
         { new: true }
       );
 
@@ -772,7 +764,7 @@ export default async function questionRoutes(app) {
 
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $pull: { questions: request.params.questionId, activities: { activityId: request.params.questionId } } },
+        { $pull: { questions: request.params.questionId } },
         { new: true }
       );
 
@@ -804,17 +796,9 @@ export default async function questionRoutes(app) {
 
       const newOrder = request.body.questions;
 
-      // Rebuild activities from the authoritative ordered question list so we
-      // also repair legacy/partial activity arrays as part of a reorder.
-      const questions = await Question.find({ _id: { $in: newOrder } })
-        .select('_id type')
-        .lean();
-      const questionMap = new Map(questions.map((question) => [String(question._id), question]));
-      const newActivities = buildActivitiesFromQuestions(newOrder, questionMap);
-
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $set: { questions: newOrder, activities: newActivities } },
+        { $set: { questions: newOrder } },
         { new: true }
       );
 
