@@ -305,7 +305,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 252 tests (243 server + 9 client) |
+| Unit tests | ✅ 252 tests (240 server + 12 client) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -325,13 +325,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (243 tests, 12 files)
+# Server tests (240 tests, 11 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (9 tests, 2 files)
+# Client tests (12 tests, 5 files)
 cd client && npx vitest run
 ```
 
