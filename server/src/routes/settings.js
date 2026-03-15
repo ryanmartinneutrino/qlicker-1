@@ -1,5 +1,6 @@
 import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
+import { stringParamsSchema } from '../utils/apiDocs.js';
 
 async function getOrCreateSettings() {
   let settings = await Settings.findOne();
@@ -8,6 +9,64 @@ async function getOrCreateSettings() {
   }
   return settings;
 }
+
+const updateSettingsSchema = {
+  body: {
+    type: 'object',
+    properties: {
+      restrictDomain: { type: 'boolean' },
+      allowedDomains: { type: 'array', items: { type: 'string' } },
+      requireVerified: { type: 'boolean' },
+      adminEmail: { type: 'string' },
+      email: { type: 'string' },
+      SSO_enabled: { type: 'boolean' },
+      SSO_entrypoint: { type: 'string' },
+      SSO_cert: { type: 'string' },
+      SSO_privCert: { type: 'string' },
+      SSO_privKey: { type: 'string' },
+      SSO_EntityId: { type: 'string' },
+      SSO_logoutUrl: { type: 'string' },
+      SSO_identifierFormat: { type: 'string' },
+      SSO_emailIdentifier: { type: 'string' },
+      SSO_firstNameIdentifier: { type: 'string' },
+      SSO_lastNameIdentifier: { type: 'string' },
+      SSO_studentNumberIdentifier: { type: 'string' },
+      SSO_institutionName: { type: 'string' },
+      SSO_roleIdentifier: { type: 'string' },
+      SSO_roleProfName: { type: 'string' },
+      storageType: { type: 'string', enum: ['local', 's3', 'azure'] },
+      AWS_bucket: { type: 'string' },
+      AWS_region: { type: 'string' },
+      AWS_accessKeyId: { type: 'string' },
+      AWS_secretAccessKey: { type: 'string' },
+      AWS_endpoint: { type: 'string' },
+      AWS_forcePathStyle: { type: 'boolean' },
+      AWS_accessKey: { type: 'string' },
+      AWS_secret: { type: 'string' },
+      Azure_storageAccount: { type: 'string' },
+      Azure_storageAccessKey: { type: 'string' },
+      Azure_storageContainer: { type: 'string' },
+      Azure_accountName: { type: 'string' },
+      Azure_accountKey: { type: 'string' },
+      Azure_containerName: { type: 'string' },
+      tokenExpiryMinutes: { type: 'number', minimum: 1 },
+      Jitsi_Enabled: { type: 'boolean' },
+      Jitsi_Domain: { type: 'string' },
+      Jitsi_EtherpadDomain: { type: 'string' },
+      Jitsi_EnabledCourses: { type: 'array', items: { type: 'string' } },
+      locale: { type: 'string' },
+      dateFormat: { type: 'string' },
+      timeFormat: { type: 'string', enum: ['24h', '12h'] },
+      maxImageSize: { type: 'number', minimum: 0 },
+      maxImageWidth: { type: 'number', minimum: 0 },
+    },
+    additionalProperties: false,
+  },
+};
+
+const courseIdParamsSchema = {
+  params: stringParamsSchema(['courseId']),
+};
 
 export default async function settingsRoutes(app) {
   const { authenticate, requireRole } = app;
@@ -37,7 +96,7 @@ export default async function settingsRoutes(app) {
   ]);
 
   // PATCH / (admin only)
-  app.patch('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
+  app.patch('/', { preHandler: requireRole(['admin']), schema: updateSettingsSchema }, async (request, reply) => {
     const rawUpdates = request.body || {};
     // Filter to allowed fields only
     const updates = {};
@@ -86,7 +145,7 @@ export default async function settingsRoutes(app) {
   });
 
   // GET /jitsi-course/:courseId (authenticated) — returns whether Jitsi is enabled for a specific course
-  app.get('/jitsi-course/:courseId', { preHandler: authenticate }, async (request, reply) => {
+  app.get('/jitsi-course/:courseId', { preHandler: authenticate, schema: courseIdParamsSchema }, async (request, reply) => {
     const { courseId } = request.params;
     const course = await Course.findById(courseId).select('_id instructors students inactive');
     if (!course) {

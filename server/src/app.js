@@ -5,6 +5,8 @@ import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import fs from 'fs';
 import path from 'path';
 import config from './config/index.js';
@@ -23,6 +25,7 @@ import questionRoutes from './routes/questions.js';
 import gradeRoutes from './routes/grades.js';
 import groupRoutes from './routes/groups.js';
 import videoRoutes from './routes/video.js';
+import { transformApiDocs } from './utils/apiDocs.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -50,6 +53,38 @@ export async function buildApp(opts = {}) {
   await app.register(jwt, {
     secret: app.config.jwtSecret,
     sign: { expiresIn: '15m' },
+  });
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'Qlicker API',
+        description: 'Fastify API for the Qlicker migration project.',
+        version: '1.0.0',
+      },
+      servers: [
+        { url: app.config.rootUrl },
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+    },
+    transform: ({ schema, url, route }) => ({
+      schema: transformApiDocs({ schema, url, route }),
+      url,
+    }),
+  });
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
   });
 
   // Auth decorators
@@ -90,14 +125,38 @@ export async function buildApp(opts = {}) {
   }
 
   // Health check
-  app.get('/api/v1/health', async () => ({
+  app.get('/api/v1/health', {
+    schema: {
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            timestamp: { type: 'string', format: 'date-time' },
+            websocket: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  }, async () => ({
     status: 'ok',
     timestamp: new Date().toISOString(),
     websocket: typeof app.wsSendToUser === 'function',
   }));
 
   // Serve local uploads as static files
-  app.get('/uploads/:filename', async (request, reply) => {
+  app.get('/uploads/:filename', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['filename'],
+        properties: {
+          filename: { type: 'string', minLength: 1 },
+        },
+        additionalProperties: false,
+      },
+    },
+  }, async (request, reply) => {
     const filename = request.params.filename;
     // Prevent directory traversal
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
