@@ -292,6 +292,133 @@ function escapeCsvCell(value) {
   return str;
 }
 
+function buildGradesByStudentId(grades = []) {
+  return Object.fromEntries(
+    (grades || [])
+      .filter((grade) => grade?.userId)
+      .map((grade) => [String(grade.userId), grade])
+  );
+}
+
+function getStudentQuestionPoints(gradesByStudentId = {}, studentId, questionId, response = null) {
+  const grade = gradesByStudentId[String(studentId)];
+  const mark = (grade?.marks || []).find((entry) => String(entry?.questionId) === String(questionId));
+  const markPoints = Number(mark?.points);
+  if (Number.isFinite(markPoints)) return markPoints;
+
+  const responsePoints = Number(response?.points ?? response?.mark);
+  if (Number.isFinite(responsePoints)) return responsePoints;
+
+  return null;
+}
+
+function formatAnswerText(question, answer) {
+  let answerText = answer ?? '';
+  const normType = normalizeQuestionType(question);
+
+  if (
+    [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
+      .includes(normType) && question.options
+  ) {
+    answerText = collectAnswerEntries(answerText)
+      .map((entry) => {
+        const idx = resolveOptionIndex(entry, question.options);
+        return idx >= 0 ? OPTION_LETTERS[idx] : entry;
+      })
+      .join(', ');
+  } else if (answerText && typeof answerText === 'object') {
+    try {
+      answerText = JSON.stringify(answerText);
+    } catch {
+      answerText = String(answerText);
+    }
+  }
+
+  return String(answerText || '');
+}
+
+export function buildSessionResultsCsv({
+  csvQuestionAttempts,
+  gradesByStudentId,
+  sessionName,
+  studentResults,
+  t,
+}) {
+  if (!csvQuestionAttempts.length || !studentResults.length) return null;
+
+  const headers = [t('professor.sessionReview.csvLastName'), t('professor.sessionReview.csvFirstName'), t('professor.sessionReview.csvEmail'), t('professor.sessionReview.csvParticipation')];
+  csvQuestionAttempts.forEach(({ questionNumber, attempts }) => {
+    if (attempts.length <= 1) {
+      headers.push(t('professor.sessionReview.csvResponse', { number: questionNumber }));
+      headers.push(t('professor.sessionReview.csvPoints', { number: questionNumber }));
+      return;
+    }
+    attempts.forEach((attemptNumber) => {
+      headers.push(t('professor.sessionReview.csvAttemptResponse', { number: questionNumber, attempt: attemptNumber }));
+      headers.push(t('professor.sessionReview.csvAttemptPoints', { number: questionNumber, attempt: attemptNumber }));
+    });
+  });
+
+  const rows = studentResults.map((student) => {
+    const questionResultsById = new Map(
+      (student.questionResults || []).map((result) => [String(result.questionId), result]),
+    );
+
+    const row = [
+      escapeCsvCell(student.lastname),
+      escapeCsvCell(student.firstname),
+      escapeCsvCell(student.email),
+      escapeCsvCell(formatParticipation(student.participation)),
+    ];
+
+    csvQuestionAttempts.forEach(({ question, attempts }) => {
+      const qr = questionResultsById.get(String(question._id));
+      const responsesByAttempt = new Map();
+      (qr?.responses || []).forEach((response) => {
+        const attemptNumber = Number(response?.attempt);
+        const normalizedAttempt = Number.isInteger(attemptNumber) && attemptNumber > 0 ? attemptNumber : 1;
+        const current = responsesByAttempt.get(normalizedAttempt);
+        if (!current) {
+          responsesByAttempt.set(normalizedAttempt, response);
+          return;
+        }
+        const currentTime = current?.createdAt ? new Date(current.createdAt).getTime() : 0;
+        const nextTime = response?.createdAt ? new Date(response.createdAt).getTime() : 0;
+        if (nextTime >= currentTime) {
+          responsesByAttempt.set(normalizedAttempt, response);
+        }
+      });
+
+      attempts.forEach((attemptNumber) => {
+        const attemptResponse = responsesByAttempt.get(attemptNumber);
+        if (!attemptResponse) {
+          row.push(escapeCsvCell(''));
+          row.push(escapeCsvCell(''));
+          return;
+        }
+
+        const answerText = formatAnswerText(question, attemptResponse?.answer);
+        const points = getStudentQuestionPoints(
+          gradesByStudentId,
+          student.studentId,
+          question._id,
+          attemptResponse
+        );
+
+        row.push(escapeCsvCell(answerText));
+        row.push(escapeCsvCell(points ?? ''));
+      });
+    });
+
+    return row.join(',');
+  });
+
+  return {
+    csvContent: [headers.map(escapeCsvCell).join(','), ...rows].join('\n'),
+    filename: `${(sessionName || 'session').replace(/[^a-zA-Z0-9]/g, '_')}_results.csv`,
+  };
+}
+
 function downloadCsv(filename, csvContent) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -416,6 +543,7 @@ export default function SessionReview() {
   const [gradingNeedsSummary, setGradingNeedsSummary] = useState({ marks: 0, students: 0, questions: 0 });
   const [studentSort, setStudentSort] = useState({ field: 'name', direction: 'asc' });
   const [studentSearch, setStudentSearch] = useState('');
+  const [gradesByStudentId, setGradesByStudentId] = useState({});
   const [groupCategories, setGroupCategories] = useState([]);
   const [selectedCatIdx, setSelectedCatIdx] = useState(-1);
   const [selectedGroupIdx, setSelectedGroupIdx] = useState(-1);
@@ -446,9 +574,12 @@ export default function SessionReview() {
 
       try {
         const gradesRes = await apiClient.get(`/sessions/${sessionId}/grades`);
-        const summary = summarizeUngradedMarks(gradesRes.data?.grades || []);
+        const grades = gradesRes.data?.grades || [];
+        const summary = summarizeUngradedMarks(grades);
+        setGradesByStudentId(buildGradesByStudentId(grades));
         setGradingNeedsSummary(summary);
       } catch {
+        setGradesByStudentId({});
         setGradingNeedsSummary({ marks: 0, students: 0, questions: 0 });
       }
 
@@ -712,91 +843,17 @@ export default function SessionReview() {
   // ---- CSV export ----
 
   const handleExportCsv = useCallback(() => {
-    if (!csvQuestionAttempts.length || !studentResults.length) return;
-
-    const headers = [t('professor.sessionReview.csvLastName'), t('professor.sessionReview.csvFirstName'), t('professor.sessionReview.csvEmail'), t('professor.sessionReview.csvParticipation')];
-    csvQuestionAttempts.forEach(({ questionNumber, attempts }) => {
-      if (attempts.length <= 1) {
-        headers.push(t('professor.sessionReview.csvResponse', { number: questionNumber }));
-        headers.push(t('professor.sessionReview.csvPoints', { number: questionNumber }));
-        return;
-      }
-      attempts.forEach((attemptNumber) => {
-        headers.push(t('professor.sessionReview.csvAttemptResponse', { number: questionNumber, attempt: attemptNumber }));
-        headers.push(t('professor.sessionReview.csvAttemptPoints', { number: questionNumber, attempt: attemptNumber }));
-      });
+    const csvExport = buildSessionResultsCsv({
+      csvQuestionAttempts,
+      gradesByStudentId,
+      sessionName: session?.name,
+      studentResults,
+      t,
     });
+    if (!csvExport) return;
 
-    const rows = studentResults.map((student) => {
-      const questionResultsById = new Map(
-        (student.questionResults || []).map((result) => [String(result.questionId), result]),
-      );
-
-      const row = [
-        escapeCsvCell(student.lastname),
-        escapeCsvCell(student.firstname),
-        escapeCsvCell(student.email),
-        escapeCsvCell(formatParticipation(student.participation)),
-      ];
-
-      csvQuestionAttempts.forEach(({ question, attempts }) => {
-        const qr = questionResultsById.get(String(question._id));
-        const responsesByAttempt = new Map();
-        (qr?.responses || []).forEach((response) => {
-          const attemptNumber = Number(response?.attempt);
-          const normalizedAttempt = Number.isInteger(attemptNumber) && attemptNumber > 0 ? attemptNumber : 1;
-          const current = responsesByAttempt.get(normalizedAttempt);
-          if (!current) {
-            responsesByAttempt.set(normalizedAttempt, response);
-            return;
-          }
-          const currentTime = current?.createdAt ? new Date(current.createdAt).getTime() : 0;
-          const nextTime = response?.createdAt ? new Date(response.createdAt).getTime() : 0;
-          if (nextTime >= currentTime) {
-            responsesByAttempt.set(normalizedAttempt, response);
-          }
-        });
-
-        attempts.forEach((attemptNumber) => {
-          const attemptResponse = responsesByAttempt.get(attemptNumber);
-          if (!attemptResponse) {
-            row.push(escapeCsvCell(''));
-            row.push(escapeCsvCell(''));
-            return;
-          }
-
-          let answerText = attemptResponse?.answer ?? '';
-          const normType = normalizeQuestionType(question);
-          if (
-            [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
-              .includes(normType) && question.options
-          ) {
-            answerText = collectAnswerEntries(answerText)
-              .map((entry) => {
-                const idx = resolveOptionIndex(entry, question.options);
-                return idx >= 0 ? OPTION_LETTERS[idx] : entry;
-              })
-              .join(', ');
-          } else if (answerText && typeof answerText === 'object') {
-            try {
-              answerText = JSON.stringify(answerText);
-            } catch {
-              answerText = String(answerText);
-            }
-          }
-
-          row.push(escapeCsvCell(answerText));
-          row.push(escapeCsvCell(attemptResponse?.points ?? attemptResponse?.mark ?? ''));
-        });
-      });
-
-      return row.join(',');
-    });
-
-    const csvContent = [headers.map(escapeCsvCell).join(','), ...rows].join('\n');
-    const filename = `${(session?.name || 'session').replace(/[^a-zA-Z0-9]/g, '_')}_results.csv`;
-    downloadCsv(filename, csvContent);
-  }, [csvQuestionAttempts, studentResults, session?.name, t]);
+    downloadCsv(csvExport.filename, csvExport.csvContent);
+  }, [csvQuestionAttempts, gradesByStudentId, studentResults, session?.name, t]);
 
   // ---- Render: loading ----
 
@@ -1125,26 +1182,19 @@ export default function SessionReview() {
                         );
                       }
                       const lastResponse = getLatestResponse(qr.responses);
-                      let display = lastResponse?.answer ?? '—';
-                      const normType = normalizeQuestionType(q);
-
-                      if (
-                        [QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT]
-                          .includes(normType) && q.options
-                      ) {
-                        display = collectAnswerEntries(display)
-                          .map((a) => {
-                            const idx = resolveOptionIndex(a, q.options);
-                            return idx >= 0 ? OPTION_LETTERS[idx] : a;
-                          })
-                          .join(', ');
-                      }
+                      const display = formatAnswerText(q, lastResponse?.answer) || '—';
+                      const points = getStudentQuestionPoints(
+                        gradesByStudentId,
+                        student.studentId,
+                        q._id,
+                        lastResponse
+                      );
 
                       return (
                         <TableCell key={qi} align="center">
-                          <Typography variant="body2">{display}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {t('professor.sessionReview.attemptCount', { count: qr.responses.length })}
+                          <Typography variant="body2">
+                            {display}
+                            {` (${points ?? '—'})`}
                           </Typography>
                         </TableCell>
                       );

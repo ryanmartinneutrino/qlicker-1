@@ -351,6 +351,19 @@ restart() {
   start
 }
 
+run_e2e() {
+  ensure_workspace_dependencies "$PROJECT_ROOT/server" "Server"
+  ensure_workspace_dependencies "$PROJECT_ROOT/client" "Client"
+
+  if [ "${2:-}" = "--install-browser" ]; then
+    echo "Installing Playwright Chromium browser..."
+    (cd "$PROJECT_ROOT/client" && npx playwright install chromium)
+  fi
+
+  echo "Running Playwright E2E tests..."
+  (cd "$PROJECT_ROOT/client" && npm run test:e2e)
+}
+
 status() {
   if [ ! -f "$PID_FILE" ]; then
     echo "Qlicker is not running (no PID file found)."
@@ -384,8 +397,9 @@ case "${1:-}" in
   stop)    stop ;;
   restart) restart ;;
   status)  status ;;
+  e2e)     run_e2e "$@" ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status}"
+    echo "Usage: $0 {start|stop|restart|status|e2e [--install-browser]}"
     exit 1
     ;;
 esac

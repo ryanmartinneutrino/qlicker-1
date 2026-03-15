@@ -1,10 +1,36 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(configDir, '..');
 const stateFile = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
+
+function readLocalEnv(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return raw.split(/\r?\n/).reduce((acc, line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return acc;
+      const separatorIndex = trimmed.indexOf('=');
+      if (separatorIndex === -1) return acc;
+      const key = trimmed.slice(0, separatorIndex).trim();
+      const value = trimmed.slice(separatorIndex + 1).trim().replace(/^['"]|['"]$/g, '');
+      acc[key] = value;
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+const localEnv = readLocalEnv(path.join(repoRoot, '.env'));
+const appPort = process.env.APP_PORT || localEnv.APP_PORT || '3000';
+const apiPort = process.env.API_PORT || localEnv.API_PORT || '3001';
+const baseURL = `http://127.0.0.1:${appPort}`;
+const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
+const wsBaseUrl = `ws://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -16,21 +42,21 @@ export default defineConfig({
     timeout: 10_000,
   },
   use: {
-    baseURL: 'http://127.0.0.1:3000',
+    baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
   webServer: [
     {
-      command: `cd ${repoRoot}/server && QCLICKER_E2E_STATE_FILE=${stateFile} ROOT_URL=http://127.0.0.1:3000 HOST=127.0.0.1 PORT=3001 node scripts/e2e-server.js`,
-      url: 'http://127.0.0.1:3001/api/v1/health',
+      command: `cd ${repoRoot}/server && QCLICKER_E2E_STATE_FILE=${stateFile} ROOT_URL=${baseURL} HOST=127.0.0.1 PORT=${apiPort} node scripts/e2e-server.js`,
+      url: `${apiBaseUrl}/api/v1/health`,
       reuseExistingServer: false,
       timeout: 120_000,
     },
     {
-      command: `cd ${repoRoot}/client && QCLICKER_E2E_STATE_FILE=${stateFile} VITE_API_URL=http://127.0.0.1:3001 VITE_WS_URL=ws://127.0.0.1:3001 npm run dev -- --host 127.0.0.1 --port 3000`,
-      url: 'http://127.0.0.1:3000/login',
+      command: `cd ${repoRoot}/client && QCLICKER_E2E_STATE_FILE=${stateFile} VITE_API_URL=${apiBaseUrl} VITE_WS_URL=${wsBaseUrl} npm run dev -- --host 127.0.0.1 --port ${appPort}`,
+      url: `${baseURL}/login`,
       reuseExistingServer: false,
       timeout: 120_000,
     },

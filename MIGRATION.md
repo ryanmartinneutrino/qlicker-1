@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest | Unit tests (240 server + 12 client) |
+| **Testing** | Vitest + Playwright | Unit tests (241 server + 15 client) plus E2E flows |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -121,10 +121,11 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 240 tests across 11 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video)
-- **Client:** 12 tests across 5 files
+- **Server:** 241 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
+- **Client:** 15 tests across 7 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
+- **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
 
 ---
 
@@ -335,7 +336,7 @@ cd client && npm install && npx vite build
 cd client && npx vitest run
 
 # Client E2E tests (6 Playwright flows)
-cd client && npx playwright test
+./scripts/qlicker.sh e2e
 ```
 
 ### Key Files
