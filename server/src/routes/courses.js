@@ -52,6 +52,18 @@ const updateCourseSchema = {
   },
 };
 
+const listCoursesSchema = {
+  querystring: {
+    type: 'object',
+    properties: {
+      search: { type: 'string' },
+      page: { type: 'integer', minimum: 1 },
+      limit: { type: 'integer', minimum: 1, maximum: 500 },
+    },
+    additionalProperties: false,
+  },
+};
+
 export default async function courseRoutes(app) {
   const { authenticate, requireRole } = app;
 
@@ -94,7 +106,7 @@ export default async function courseRoutes(app) {
   // GET / - List courses for current user
   app.get(
     '/',
-    { preHandler: authenticate },
+    { preHandler: authenticate, schema: listCoursesSchema },
     async (request, reply) => {
       const { search, page: pageParam, limit: limitParam } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);

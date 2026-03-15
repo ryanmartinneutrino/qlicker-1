@@ -33,6 +33,18 @@ const DEFAULT_JITSI_INTERFACE_CONFIG_OVERWRITE = {
   ],
 };
 
+const videoApiOptionsSchema = {
+  body: {
+    type: 'object',
+    properties: {
+      startAudioMuted: { type: 'boolean' },
+      startVideoMuted: { type: 'boolean' },
+      startTileView: { type: 'boolean' },
+    },
+    additionalProperties: false,
+  },
+};
+
 function generateVideoId() {
   return crypto.randomBytes(6).toString('hex');
 }
@@ -120,7 +132,7 @@ export default async function videoRoutes(app) {
   // ── PATCH /:id/video/api-options — Update course-wide api options ───────
   app.patch(
     '/:id/video/api-options',
-    { preHandler: authenticate },
+    { preHandler: authenticate, schema: videoApiOptionsSchema },
     async (request, reply) => {
       const course = await requireCourseInstructorOrAdmin(request, reply);
       if (!course) return;
@@ -255,7 +267,7 @@ export default async function videoRoutes(app) {
   // ── PATCH /:id/video/category/:catNum/api-options — Update category api options
   app.patch(
     '/:id/video/category/:catNum/api-options',
-    { preHandler: authenticate },
+    { preHandler: authenticate, schema: videoApiOptionsSchema },
     async (request, reply) => {
       const course = await requireCourseInstructorOrAdmin(request, reply);
       if (!course) return;

@@ -1,0 +1,221 @@
+import fs from 'fs/promises';
+import { expect } from '@playwright/test';
+
+const STATE_FILE = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
+const ADMIN_STATE_FILE = '/tmp/qlicker-e2e-admin.json';
+const CSRF_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
+
+let cachedState = null;
+let cachedAdmin = null;
+
+export const PASSWORD = 'Password123!';
+
+function buildHeaders(token) {
+  return token
+    ? { ...CSRF_HEADERS, Authorization: `Bearer ${token}` }
+    : { ...CSRF_HEADERS };
+}
+
+export async function readE2eState() {
+  if (cachedState) return cachedState;
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const raw = await fs.readFile(STATE_FILE, 'utf8');
+      cachedState = JSON.parse(raw);
+      return cachedState;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw new Error(`Timed out waiting for E2E state file: ${STATE_FILE}`);
+}
+
+export async function apiJson(request, method, path, { token, payload } = {}) {
+  const { serverBaseUrl } = await readE2eState();
+  const response = await request.fetch(`${serverBaseUrl}/api/v1${path}`, {
+    method,
+    headers: buildHeaders(token),
+    data: payload,
+  });
+  const body = await response.json().catch(() => null);
+  return { response, body };
+}
+
+export function uniqueSuffix(prefix = 'e2e') {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function buildUser(prefix, roleLabel = prefix) {
+  const suffix = uniqueSuffix(prefix);
+  return {
+    firstname: 'E2E',
+    lastname: roleLabel,
+    email: `${suffix}@example.com`,
+    password: PASSWORD,
+  };
+}
+
+export async function seedUsers(request, options = {}) {
+  if (!cachedAdmin) {
+    try {
+      const rawAdmin = await fs.readFile(ADMIN_STATE_FILE, 'utf8');
+      const persistedAdmin = JSON.parse(rawAdmin);
+      const loginBody = await loginViaApi(request, persistedAdmin.email, persistedAdmin.password);
+      cachedAdmin = {
+        ...persistedAdmin,
+        token: loginBody.token,
+        user: loginBody.user,
+      };
+    } catch {
+      // Fall back to provisioning a new admin for a fresh in-memory database.
+    }
+  }
+
+  if (!cachedAdmin) {
+    const adminUser = buildUser('admin', 'Admin');
+    const { response: registerResponse, body: registerBody } = await apiJson(request, 'POST', '/auth/register', {
+      payload: adminUser,
+    });
+    expect(registerResponse.status(), JSON.stringify(registerBody)).toBe(201);
+    cachedAdmin = {
+      ...adminUser,
+      token: registerBody.token,
+      user: registerBody.user,
+    };
+    await fs.writeFile(ADMIN_STATE_FILE, `${JSON.stringify(adminUser, null, 2)}\n`, 'utf8');
+  }
+
+  const admin = cachedAdmin;
+
+  const result = { admin };
+
+  if (options.professor !== false) {
+    const professorUser = buildUser('professor', 'Professor');
+    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+      payload: professorUser,
+    });
+    expect(response.status(), JSON.stringify(body)).toBe(201);
+    const promoteProfessor = await apiJson(request, 'PATCH', `/users/${body.user._id}/role`, {
+      token: admin.token,
+      payload: { role: 'professor' },
+    });
+    expect(promoteProfessor.response.status(), JSON.stringify(promoteProfessor.body)).toBe(200);
+    result.professor = {
+      ...professorUser,
+      token: body.token,
+      user: promoteProfessor.body,
+    };
+  }
+
+  if (options.student !== false) {
+    const studentUser = buildUser('student', 'Student');
+    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+      payload: studentUser,
+    });
+    expect(response.status(), JSON.stringify(body)).toBe(201);
+    result.student = {
+      ...studentUser,
+      token: body.token,
+      user: body.user,
+    };
+  }
+
+  return result;
+}
+
+export async function loginViaUi(page, email, password, expectedPathPattern) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: /^Login$/ }).click();
+  await expect(page).toHaveURL(expectedPathPattern);
+}
+
+export async function loginViaApi(request, email, password) {
+  const { response, body } = await apiJson(request, 'POST', '/auth/login', {
+    payload: { email, password },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+  return body;
+}
+
+export async function createCourseViaApi(request, token, overrides = {}) {
+  const payload = {
+    name: overrides.name || `Course ${uniqueSuffix('course')}`,
+    deptCode: overrides.deptCode || 'CS',
+    courseNumber: overrides.courseNumber || '101',
+    section: overrides.section || '001',
+    semester: overrides.semester || 'Fall 2026',
+  };
+  const { response, body } = await apiJson(request, 'POST', '/courses', {
+    token,
+    payload,
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(201);
+  return body.course;
+}
+
+export async function addInstructorToCourseViaApi(request, token, courseId, userId) {
+  const { response, body } = await apiJson(request, 'POST', `/courses/${courseId}/instructors`, {
+    token,
+    payload: { userId },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+}
+
+export async function createSessionViaApi(request, token, courseId, overrides = {}) {
+  const payload = {
+    name: overrides.name || `Session ${uniqueSuffix('session')}`,
+    ...overrides,
+  };
+  const { response, body } = await apiJson(request, 'POST', `/courses/${courseId}/sessions`, {
+    token,
+    payload,
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(201);
+  return body.session;
+}
+
+export async function patchSessionViaApi(request, token, sessionId, payload) {
+  const { response, body } = await apiJson(request, 'PATCH', `/sessions/${sessionId}`, {
+    token,
+    payload,
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+  return body.session || body;
+}
+
+export async function createQuestionViaApi(request, token, payload = {}) {
+  const { response, body } = await apiJson(request, 'POST', '/questions', {
+    token,
+    payload: {
+      type: 0,
+      content: payload.content || 'What is 2 + 2?',
+      options: payload.options || [
+        { answer: '3', correct: false },
+        { answer: '4', correct: true },
+      ],
+      ...payload,
+    },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(201);
+  return body.question;
+}
+
+export async function addQuestionToSessionViaApi(request, token, sessionId, questionId) {
+  const { response, body } = await apiJson(request, 'POST', `/sessions/${sessionId}/questions`, {
+    token,
+    payload: { questionId },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+}
+
+export async function enrollStudentViaApi(request, token, enrollmentCode) {
+  const { response, body } = await apiJson(request, 'POST', '/courses/enroll', {
+    token,
+    payload: { enrollmentCode },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+}

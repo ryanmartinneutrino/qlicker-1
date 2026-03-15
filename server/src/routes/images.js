@@ -8,7 +8,19 @@ export default async function imageRoutes(app) {
   const { authenticate } = app;
 
   // POST / — Upload an image
-  app.post('/', { preHandler: authenticate }, async (request, reply) => {
+  app.post('/', {
+    preHandler: authenticate,
+    schema: {
+      consumes: ['multipart/form-data'],
+      body: {
+        type: 'object',
+        required: ['file'],
+        properties: {
+          file: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     try {
       const data = await request.file();
       if (!data) {

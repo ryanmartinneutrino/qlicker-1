@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
+import { stringParamsSchema } from '../utils/apiDocs.js';
 
 function sanitizeUser(user) {
   const obj = user.toObject();
@@ -9,8 +10,67 @@ function sanitizeUser(user) {
   return obj;
 }
 
+const updateProfileSchema = {
+  body: {
+    type: 'object',
+    properties: {
+      firstname: { type: 'string', minLength: 1 },
+      lastname: { type: 'string', minLength: 1 },
+      studentNumber: { type: 'string' },
+      locale: { type: 'string' },
+    },
+    additionalProperties: false,
+  },
+};
+
+const updateProfileImageSchema = {
+  body: {
+    type: 'object',
+    required: ['profileImage'],
+    properties: {
+      profileImage: { type: 'string', minLength: 1 },
+      profileThumbnail: { type: 'string', minLength: 1 },
+    },
+    additionalProperties: false,
+  },
+};
+
+const listUsersSchema = {
+  querystring: {
+    type: 'object',
+    properties: {
+      search: { type: 'string' },
+      role: { type: 'string' },
+      page: { type: 'integer', minimum: 1 },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+    },
+    additionalProperties: false,
+  },
+};
+
+const userIdParamsSchema = {
+  params: stringParamsSchema(['id']),
+};
+
+const updateRoleSchema = {
+  ...userIdParamsSchema,
+  body: {
+    type: 'object',
+    required: ['role'],
+    properties: {
+      role: { type: 'string', minLength: 1 },
+    },
+    additionalProperties: false,
+  },
+};
+
 export default async function userRoutes(app) {
   const { authenticate, requireRole } = app;
+  const userMutationRateLimit = {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  };
 
   // GET /me
   app.get('/me', { preHandler: authenticate }, async (request, reply) => {
@@ -24,7 +84,7 @@ export default async function userRoutes(app) {
   });
 
   // PATCH /me
-  app.patch('/me', { preHandler: authenticate }, async (request, reply) => {
+  app.patch('/me', { preHandler: authenticate, schema: updateProfileSchema, ...userMutationRateLimit }, async (request, reply) => {
     const profileAllowed = ['firstname', 'lastname', 'studentNumber'];
     const updates = {};
 
@@ -113,7 +173,7 @@ export default async function userRoutes(app) {
   );
 
   // PATCH /me/image — Update profile image
-  app.patch('/me/image', { preHandler: authenticate }, async (request, reply) => {
+  app.patch('/me/image', { preHandler: authenticate, schema: updateProfileImageSchema, ...userMutationRateLimit }, async (request, reply) => {
     const { profileImage, profileThumbnail } = request.body || {};
     if (typeof profileImage !== 'string') {
       return reply.code(400).send({ error: 'Bad Request', message: 'profileImage URL string is required' });
@@ -143,7 +203,7 @@ export default async function userRoutes(app) {
   // GET / (admin only - paginated user list)
   app.get(
     '/',
-    { preHandler: requireRole(['admin']) },
+    { preHandler: requireRole(['admin']), schema: listUsersSchema },
     async (request, reply) => {
       const { search, role, page: pageParam, limit: limitParam } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
@@ -189,7 +249,7 @@ export default async function userRoutes(app) {
   // GET /:id (admin only)
   app.get(
     '/:id',
-    { preHandler: requireRole(['admin']) },
+      { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
       const user = await User.findById(request.params.id);
       if (!user) {
@@ -202,7 +262,7 @@ export default async function userRoutes(app) {
   // PATCH /:id/role (admin or canPromote professor)
   app.patch(
     '/:id/role',
-    { preHandler: authenticate },
+      { preHandler: authenticate, schema: updateRoleSchema },
     async (request, reply) => {
       const { role } = request.body || {};
       if (!role) {
@@ -240,7 +300,7 @@ export default async function userRoutes(app) {
   // PATCH /:id/verify-email (admin only)
   app.patch(
     '/:id/verify-email',
-    { preHandler: requireRole(['admin']) },
+      { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
       const user = await User.findById(request.params.id);
       if (!user) {
@@ -257,7 +317,7 @@ export default async function userRoutes(app) {
   // DELETE /:id (admin only)
   app.delete(
     '/:id',
-    { preHandler: requireRole(['admin']) },
+    { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
       const user = await User.findByIdAndDelete(request.params.id);
       if (!user) {
