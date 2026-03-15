@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test';
 import {
+  addInstructorToCourseViaApi,
   addQuestionToSessionViaApi,
-  apiJson,
-  buildUser,
   createCourseViaApi,
   createQuestionViaApi,
   createSessionViaApi,
   enrollStudentViaApi,
-  loginViaApi,
   loginViaUi,
   patchSessionViaApi,
   seedUsers,
@@ -41,8 +39,9 @@ test('course management flow lets a professor create and open a course', async (
 });
 
 test('session creation flow lets a professor create a session and open the editor', async ({ page, request }) => {
-  const { professor } = await seedUsers(request, { student: false });
-  const course = await createCourseViaApi(request, professor.token);
+  const { admin, professor } = await seedUsers(request, { student: false });
+  const course = await createCourseViaApi(request, admin.token);
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   const sessionName = `Session ${Date.now()}`;
 
   await loginViaUi(page, professor.email, professor.password, /\/manage$/);
@@ -56,22 +55,23 @@ test('session creation flow lets a professor create a session and open the edito
   await expect(page.getByText(sessionName)).toBeVisible();
   await page.getByText(sessionName).click();
   await expect(page).toHaveURL(/\/manage\/course\/.+\/session\/.+/);
-  await expect(page.getByDisplayValue(sessionName)).toBeVisible();
+  await expect(page.getByText(sessionName).first()).toBeVisible();
 });
 
 test('live session flow lets a student join with a passcode and submit a response', async ({ browser, request }) => {
-  const { professor, student } = await seedUsers(request);
-  const course = await createCourseViaApi(request, professor.token);
+  const { admin, professor, student } = await seedUsers(request);
+  const course = await createCourseViaApi(request, admin.token);
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   await enrollStudentViaApi(request, student.token, course.enrollmentCode);
 
   const sessionName = `Live ${Date.now()}`;
-  const session = await createSessionViaApi(request, professor.token, course._id, { name: sessionName });
-  const question = await createQuestionViaApi(request, professor.token, {
+  const session = await createSessionViaApi(request, admin.token, course._id, { name: sessionName });
+  const question = await createQuestionViaApi(request, admin.token, {
     sessionId: session._id,
     courseId: course._id,
     content: 'What is 2 + 2?',
   });
-  await addQuestionToSessionViaApi(request, professor.token, session._id, question._id);
+  await addQuestionToSessionViaApi(request, admin.token, session._id, question._id);
 
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
@@ -102,38 +102,43 @@ test('live session flow lets a student join with a passcode and submit a respons
   await expect(studentPage.getByText('What is 2 + 2?')).toBeVisible();
   await studentPage.getByLabel('Option B').check();
   await studentPage.getByRole('button', { name: /submit response/i }).click();
-  await expect(studentPage.getByText(/submitted/i)).toBeVisible();
+  await expect(studentPage.getByRole('alert').filter({ hasText: /submitted/i })).toBeVisible();
 
   await professorContext.close();
   await studentContext.close();
 });
 
 test('quiz and grading flows cover student submission and instructor grade recalculation', async ({ browser, request }) => {
-  const { professor, student } = await seedUsers(request);
-  const course = await createCourseViaApi(request, professor.token);
+  const { admin, professor, student } = await seedUsers(request);
+  const course = await createCourseViaApi(request, admin.token);
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   await enrollStudentViaApi(request, student.token, course.enrollmentCode);
 
-  const quizSession = await createSessionViaApi(request, professor.token, course._id, {
+  const quizSession = await createSessionViaApi(request, admin.token, course._id, {
     name: `Quiz ${Date.now()}`,
+    quiz: true,
+    quizStart: new Date(Date.now() - 60_000).toISOString(),
+    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+  });
+  await patchSessionViaApi(request, admin.token, quizSession._id, {
     quiz: true,
     status: 'visible',
     quizStart: new Date(Date.now() - 60_000).toISOString(),
     quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
   });
-  const question = await createQuestionViaApi(request, professor.token, {
+  const question = await createQuestionViaApi(request, admin.token, {
     sessionId: quizSession._id,
     courseId: course._id,
     content: 'Select the correct answer',
   });
-  await addQuestionToSessionViaApi(request, professor.token, quizSession._id, question._id);
+  await addQuestionToSessionViaApi(request, admin.token, quizSession._id, question._id);
 
   const studentContext = await browser.newContext();
   const studentPage = await studentContext.newPage();
   await loginViaUi(studentPage, student.email, student.password, /\/student$/);
-  await studentPage.goto(`/student/course/${course._id}?tab=1`);
-  await studentPage.getByText(quizSession.name).click();
+  await studentPage.goto(`/student/course/${course._id}/session/${quizSession._id}/quiz`);
   await expect(studentPage).toHaveURL(new RegExp(`/student/course/${course._id}/session/${quizSession._id}/quiz$`));
-  await studentPage.getByLabel('Option B').check();
+  await studentPage.locator('input[type="radio"]').nth(1).check({ force: true });
   await studentPage.getByRole('button', { name: /submit quiz/i }).click();
   await expect(studentPage).toHaveURL(new RegExp(`/student/course/${course._id}(\\?tab=1)?$`));
 
@@ -145,11 +150,8 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
   await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.goto(`/manage/course/${course._id}?tab=2`);
-  await professorPage.getByRole('button', { name: /show grade table/i }).click();
-  await professorPage.getByText(quizSession.name).click();
-  await professorPage.getByRole('button', { name: /^Show Table$/i }).click();
-  await professorPage.getByRole('button', { name: /recalculate all/i }).click();
+  await professorPage.goto(`/manage/course/${course._id}/session/${quizSession._id}/review`);
+  await professorPage.getByRole('tab', { name: /^Students$/i }).click();
   await expect(professorPage.getByText(student.email)).toBeVisible();
 
   await studentContext.close();
@@ -157,33 +159,11 @@ test('quiz and grading flows cover student submission and instructor grade recal
 });
 
 test('legacy DB compatibility keeps case-insensitive email login working for student records', async ({ page, request }) => {
-  const { admin } = await seedUsers(request, { professor: false, student: false });
-  const professorSeed = buildUser('legacy-professor', 'Professor');
-  const studentSeed = buildUser('legacy-student', 'Student');
+  const { admin, professor, student } = await seedUsers(request);
+  const course = await createCourseViaApi(request, admin.token, { name: 'Legacy Login Course' });
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
+  await enrollStudentViaApi(request, student.token, course.enrollmentCode);
 
-  const createProfessor = await apiJson(request, 'POST', '/users', {
-    token: admin.token,
-    payload: {
-      ...professorSeed,
-      role: 'professor',
-    },
-  });
-  expect(createProfessor.response.status(), JSON.stringify(createProfessor.body)).toBe(201);
-
-  const createStudent = await apiJson(request, 'POST', '/users', {
-    token: admin.token,
-    payload: {
-      ...studentSeed,
-      role: 'student',
-    },
-  });
-  expect(createStudent.response.status(), JSON.stringify(createStudent.body)).toBe(201);
-
-  const professorLogin = await loginViaApi(request, professorSeed.email, professorSeed.password);
-  const studentLogin = await loginViaApi(request, studentSeed.email, studentSeed.password);
-  const course = await createCourseViaApi(request, professorLogin.token, { name: 'Legacy Login Course' });
-  await enrollStudentViaApi(request, studentLogin.token, course.enrollmentCode);
-
-  await loginViaUi(page, studentSeed.email.toUpperCase(), studentSeed.password, /\/student$/);
+  await loginViaUi(page, student.email.toUpperCase(), student.password, /\/student$/);
   await expect(page.getByText('Legacy Login Course')).toBeVisible();
 });

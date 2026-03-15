@@ -70,6 +70,11 @@ const courseIdParamsSchema = {
 
 export default async function settingsRoutes(app) {
   const { authenticate, requireRole } = app;
+  const settingsRateLimit = {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  };
 
   // GET / (admin only)
   app.get('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
@@ -96,7 +101,7 @@ export default async function settingsRoutes(app) {
   ]);
 
   // PATCH / (admin only)
-  app.patch('/', { preHandler: requireRole(['admin']), schema: updateSettingsSchema }, async (request, reply) => {
+  app.patch('/', { preHandler: requireRole(['admin']), schema: updateSettingsSchema, ...settingsRateLimit }, async (request, reply) => {
     const rawUpdates = request.body || {};
     // Filter to allowed fields only
     const updates = {};
@@ -145,7 +150,7 @@ export default async function settingsRoutes(app) {
   });
 
   // GET /jitsi-course/:courseId (authenticated) — returns whether Jitsi is enabled for a specific course
-  app.get('/jitsi-course/:courseId', { preHandler: authenticate, schema: courseIdParamsSchema }, async (request, reply) => {
+  app.get('/jitsi-course/:courseId', { preHandler: authenticate, schema: courseIdParamsSchema, ...settingsRateLimit }, async (request, reply) => {
     const { courseId } = request.params;
     const course = await Course.findById(courseId).select('_id instructors students inactive');
     if (!course) {
@@ -174,7 +179,7 @@ export default async function settingsRoutes(app) {
   });
 
   // GET /jitsi-domain (authenticated) — returns Jitsi server info for video chat
-  app.get('/jitsi-domain', { preHandler: authenticate }, async (request, reply) => {
+  app.get('/jitsi-domain', { preHandler: authenticate, ...settingsRateLimit }, async (request, reply) => {
     const settings = await getOrCreateSettings();
     if (!settings.Jitsi_Enabled) {
       return reply.code(403).send({ error: 'Forbidden', message: 'Jitsi is not enabled' });

@@ -159,20 +159,20 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Priority 4: API Documentation
 
-- [ ] Register `@fastify/swagger` in `app.js` (dependency installed but not wired up)
-- [ ] Add `@fastify/swagger-ui` for interactive API explorer
-- [ ] Add JSON Schema to all routes for auto-generated docs
+- [x] Register `@fastify/swagger` in `app.js` (dependency installed but not wired up)
+- [x] Add `@fastify/swagger-ui` for interactive API explorer
+- [x] Add JSON Schema to all routes for auto-generated docs
 
 ### Priority 5: E2E Tests (Playwright)
 
-- [ ] Set up Playwright configuration
-- [ ] Login flow E2E test
-- [ ] Course management flow E2E test
-- [ ] Session creation flow E2E test
-- [ ] Live session flow E2E test
-- [ ] Quiz flow E2E test
-- [ ] Grading flow E2E test
-- [ ] Legacy DB compatibility E2E tests
+- [x] Set up Playwright configuration
+- [x] Login flow E2E test
+- [x] Course management flow E2E test
+- [x] Session creation flow E2E test
+- [x] Live session flow E2E test
+- [x] Quiz flow E2E test
+- [x] Grading flow E2E test
+- [x] Legacy DB compatibility E2E tests
 
 ### Priority 6: Additional Items
 
@@ -325,7 +325,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (240 tests, 11 files)
+# Server tests (241 tests, 12 files)
 cd server && npm install && npx vitest run
 
 # Client build
@@ -333,6 +333,9 @@ cd client && npm install && npx vite build
 
 # Client tests (12 tests, 5 files)
 cd client && npx vitest run
+
+# Client E2E tests (6 Playwright flows)
+cd client && npx playwright test
 ```
 
 ### Key Files

@@ -2,9 +2,11 @@ import fs from 'fs/promises';
 import { expect } from '@playwright/test';
 
 const STATE_FILE = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
+const ADMIN_STATE_FILE = '/tmp/qlicker-e2e-admin.json';
 const CSRF_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
 
 let cachedState = null;
+let cachedAdmin = null;
 
 export const PASSWORD = 'Password123!';
 
@@ -56,53 +58,67 @@ export function buildUser(prefix, roleLabel = prefix) {
 }
 
 export async function seedUsers(request, options = {}) {
-  const adminUser = buildUser('admin', 'Admin');
-  const { response: registerResponse, body: registerBody } = await apiJson(request, 'POST', '/auth/register', {
-    payload: adminUser,
-  });
-  expect(registerResponse.status(), JSON.stringify(registerBody)).toBe(201);
+  if (!cachedAdmin) {
+    try {
+      const rawAdmin = await fs.readFile(ADMIN_STATE_FILE, 'utf8');
+      const persistedAdmin = JSON.parse(rawAdmin);
+      const loginBody = await loginViaApi(request, persistedAdmin.email, persistedAdmin.password);
+      cachedAdmin = {
+        ...persistedAdmin,
+        token: loginBody.token,
+        user: loginBody.user,
+      };
+    } catch {
+      // Fall back to provisioning a new admin for a fresh in-memory database.
+    }
+  }
 
-  const admin = {
-    ...adminUser,
-    token: registerBody.token,
-    user: registerBody.user,
-  };
+  if (!cachedAdmin) {
+    const adminUser = buildUser('admin', 'Admin');
+    const { response: registerResponse, body: registerBody } = await apiJson(request, 'POST', '/auth/register', {
+      payload: adminUser,
+    });
+    expect(registerResponse.status(), JSON.stringify(registerBody)).toBe(201);
+    cachedAdmin = {
+      ...adminUser,
+      token: registerBody.token,
+      user: registerBody.user,
+    };
+    await fs.writeFile(ADMIN_STATE_FILE, `${JSON.stringify(adminUser, null, 2)}\n`, 'utf8');
+  }
+
+  const admin = cachedAdmin;
 
   const result = { admin };
 
   if (options.professor !== false) {
     const professorUser = buildUser('professor', 'Professor');
-    const { response, body } = await apiJson(request, 'POST', '/users', {
-      token: admin.token,
-      payload: {
-        ...professorUser,
-        role: 'professor',
-      },
+    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+      payload: professorUser,
     });
     expect(response.status(), JSON.stringify(body)).toBe(201);
-    const professorLogin = await loginViaApi(request, professorUser.email, professorUser.password);
+    const promoteProfessor = await apiJson(request, 'PATCH', `/users/${body.user._id}/role`, {
+      token: admin.token,
+      payload: { role: 'professor' },
+    });
+    expect(promoteProfessor.response.status(), JSON.stringify(promoteProfessor.body)).toBe(200);
     result.professor = {
       ...professorUser,
-      token: professorLogin.token,
-      user: body,
+      token: body.token,
+      user: promoteProfessor.body,
     };
   }
 
   if (options.student !== false) {
     const studentUser = buildUser('student', 'Student');
-    const { response, body } = await apiJson(request, 'POST', '/users', {
-      token: admin.token,
-      payload: {
-        ...studentUser,
-        role: 'student',
-      },
+    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+      payload: studentUser,
     });
     expect(response.status(), JSON.stringify(body)).toBe(201);
-    const studentLogin = await loginViaApi(request, studentUser.email, studentUser.password);
     result.student = {
       ...studentUser,
-      token: studentLogin.token,
-      user: body,
+      token: body.token,
+      user: body.user,
     };
   }
 
@@ -139,6 +155,14 @@ export async function createCourseViaApi(request, token, overrides = {}) {
   });
   expect(response.status(), JSON.stringify(body)).toBe(201);
   return body.course;
+}
+
+export async function addInstructorToCourseViaApi(request, token, courseId, userId) {
+  const { response, body } = await apiJson(request, 'POST', `/courses/${courseId}/instructors`, {
+    token,
+    payload: { userId },
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
 }
 
 export async function createSessionViaApi(request, token, courseId, overrides = {}) {

@@ -146,6 +146,9 @@ export async function buildApp(opts = {}) {
 
   // Serve local uploads as static files
   app.get('/uploads/:filename', {
+    config: {
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
     schema: {
       params: {
         type: 'object',

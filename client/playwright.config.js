@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const repoRoot = '/home/runner/work/qlicker-1/qlicker-1';
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(configDir, '..');
 const stateFile = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
 
 export default defineConfig({

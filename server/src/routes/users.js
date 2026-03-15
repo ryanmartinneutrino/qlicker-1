@@ -66,6 +66,11 @@ const updateRoleSchema = {
 
 export default async function userRoutes(app) {
   const { authenticate, requireRole } = app;
+  const userMutationRateLimit = {
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  };
 
   // GET /me
   app.get('/me', { preHandler: authenticate }, async (request, reply) => {
@@ -79,7 +84,7 @@ export default async function userRoutes(app) {
   });
 
   // PATCH /me
-  app.patch('/me', { preHandler: authenticate, schema: updateProfileSchema }, async (request, reply) => {
+  app.patch('/me', { preHandler: authenticate, schema: updateProfileSchema, ...userMutationRateLimit }, async (request, reply) => {
     const profileAllowed = ['firstname', 'lastname', 'studentNumber'];
     const updates = {};
 
@@ -168,7 +173,7 @@ export default async function userRoutes(app) {
   );
 
   // PATCH /me/image — Update profile image
-  app.patch('/me/image', { preHandler: authenticate, schema: updateProfileImageSchema }, async (request, reply) => {
+  app.patch('/me/image', { preHandler: authenticate, schema: updateProfileImageSchema, ...userMutationRateLimit }, async (request, reply) => {
     const { profileImage, profileThumbnail } = request.body || {};
     if (typeof profileImage !== 'string') {
       return reply.code(400).send({ error: 'Bad Request', message: 'profileImage URL string is required' });

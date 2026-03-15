@@ -27,7 +27,7 @@ describe('API documentation', () => {
     expect(body.openapi).toMatch(/^3\./);
     expect(body.paths['/api/v1/health']).toBeDefined();
     expect(body.paths['/api/v1/users/me'].patch.requestBody).toBeDefined();
-    expect(body.paths['/api/v1/courses'].get.parameters).toEqual(expect.arrayContaining([
+    expect(body.paths['/api/v1/courses/'].get.parameters).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'search', in: 'query' }),
       expect.objectContaining({ name: 'page', in: 'query' }),
     ]));
