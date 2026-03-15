@@ -2600,9 +2600,9 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
   });
 });
 
-// ---------- Activities field integration tests ----------
-describe('session activities field', () => {
-  it('populates activities when questions and slides are added to a session', async (ctx) => {
+// ---------- Session question ordering integration tests ----------
+describe('session question ordering', () => {
+  it('stores questions and slides in order on the session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -2631,21 +2631,17 @@ describe('session activities field', () => {
       sessionOptions: { points: 0 },
     });
 
-    // Fetch the session to verify activities
+    // Fetch the session to verify the ordered questions array
     const getRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
       token: profToken,
     });
     expect(getRes.statusCode).toBe(200);
     const fetched = getRes.json().session;
-    expect(fetched.activities).toBeDefined();
-    expect(fetched.activities.length).toBe(2);
-    expect(fetched.activities[0]).toEqual({ activityType: 'question', activityId: q._id });
-    expect(fetched.activities[1]).toEqual({ activityType: 'slide', activityId: s._id });
-    // questions array should match
     expect(fetched.questions).toEqual([q._id, s._id]);
+    expect(fetched.activities).toBeUndefined();
   });
 
-  it('removes from activities when a question is removed from session', async (ctx) => {
+  it('removes a question from the session questions array', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -2677,10 +2673,10 @@ describe('session activities field', () => {
     expect(removeRes.statusCode).toBe(200);
     const after = removeRes.json().session;
     expect(after.questions).toEqual([q2._id]);
-    expect(after.activities).toEqual([{ activityType: 'question', activityId: q2._id }]);
+    expect(after.activities).toBeUndefined();
   });
 
-  it('reorders activities when questions are reordered', async (ctx) => {
+  it('reorders the session questions array', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -2714,13 +2710,10 @@ describe('session activities field', () => {
     expect(reorderRes.statusCode).toBe(200);
     const reordered = reorderRes.json().session;
     expect(reordered.questions).toEqual([q._id, slide._id]);
-    expect(reordered.activities).toEqual([
-      { activityType: 'question', activityId: q._id },
-      { activityType: 'slide', activityId: slide._id },
-    ]);
+    expect(reordered.activities).toBeUndefined();
   });
 
-  it('includes activities in instructor live session response', async (ctx) => {
+  it('does not expose a separate activities array in instructor live session responses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course } = await setupCourseWithStudent();
     const sessRes = await createSessionInCourse(profToken, course._id);
@@ -2752,13 +2745,11 @@ describe('session activities field', () => {
     });
     expect(liveRes.statusCode).toBe(200);
     const liveSession = liveRes.json().session;
-    expect(liveSession.activities).toBeDefined();
-    expect(liveSession.activities.length).toBe(2);
-    expect(liveSession.activities[0].activityType).toBe('slide');
-    expect(liveSession.activities[1].activityType).toBe('question');
+    expect(liveSession.activities).toBeUndefined();
+    expect(liveSession.questions).toHaveLength(2);
   });
 
-  it('populates activities when copying a session', async (ctx) => {
+  it('copies the questions array when copying a session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -2789,14 +2780,11 @@ describe('session activities field', () => {
     });
     expect(copyRes.statusCode).toBe(201);
     const copiedSession = copyRes.json().session;
-    expect(copiedSession.activities).toBeDefined();
-    expect(copiedSession.activities.length).toBe(2);
-    expect(copiedSession.activities[0].activityType).toBe('question');
-    expect(copiedSession.activities[1].activityType).toBe('slide');
+    expect(copiedSession.activities).toBeUndefined();
     expect(copiedSession.questions.length).toBe(2);
   });
 
-  it('removes from activities when a question is deleted', async (ctx) => {
+  it('removes deleted questions from the session questions array', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -2826,6 +2814,6 @@ describe('session activities field', () => {
     expect(getRes.statusCode).toBe(200);
     const fetched = getRes.json().session;
     expect(fetched.questions).toEqual([]);
-    expect(fetched.activities).toEqual([]);
+    expect(fetched.activities).toBeUndefined();
   });
 });

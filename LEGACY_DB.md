@@ -168,12 +168,8 @@ The production database (`qlickerdb`) contains the following collections:
   practiceQuiz: Boolean,          // New
   quizStart: Date,
   quizEnd: Date,
-  questions: [String],            // Question IDs
-  activities: [{                  // New: typed activity sequence (see below)
-    activityType: String,         //   'question' | 'slide'
-    activityId: String            //   References question _id
-  }],
-  currentQuestion: Number,        // Index into questions array
+  questions: [String],            // Ordered question IDs (slides are question docs with type=6)
+  currentQuestion: String,        // Current question ID
   joined: [String],               // Legacy: simple user ID array
   joinRecords: [{                 // New: structured join records
     odUserId: String,

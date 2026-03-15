@@ -28,16 +28,6 @@ const JoinRecordSchema = new mongoose.Schema(
   { _id: false }
 );
 
-// Typed activity entry — represents a single ordered item in the session sequence.
-// activityType is extensible: currently 'question' and 'slide' are supported.
-const ActivitySchema = new mongoose.Schema(
-  {
-    activityType: { type: String, required: true },
-    activityId: { type: String, required: true },
-  },
-  { _id: false }
-);
-
 const SessionSchema = new mongoose.Schema(
   {
     _id: { type: String, default: () => generateMeteorId() },
@@ -54,12 +44,6 @@ const SessionSchema = new mongoose.Schema(
     // Multi-select grading strategy for autograding (Meteor-compatible default).
     msScoringMethod: { type: String, default: 'right-minus-wrong' },
     questions: { type: [String], default: [] },
-    // Ordered sequence of typed activities. When present, this is the authoritative
-    // order; the `questions` array is kept in sync for backward compatibility with
-    // legacy code that reads only `questions`. Legacy sessions that predate this
-    // field will have an empty array; the server builds activities on the fly from
-    // `questions` when this field is absent or empty.
-    activities: { type: [ActivitySchema], default: [] },
     createdAt: { type: Date, default: Date.now },
     currentQuestion: { type: String, default: '' },
     // Legacy: plain userId strings. New sessions also populate joinRecords.
