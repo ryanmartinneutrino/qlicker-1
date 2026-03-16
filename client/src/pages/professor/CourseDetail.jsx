@@ -1342,12 +1342,12 @@ export default function CourseDetail() {
               setEditFields((current) => ({ ...current, tags: normalizedTags }));
             }}
             renderInput={(params) => (
-              <TextField
-                {...params}
-                label={t('professor.course.tags', { defaultValue: 'Course tags' })}
-                placeholder={t('professor.course.tagsPlaceholder', { defaultValue: 'Add a course topic tag' })}
-                helperText={t('professor.course.tagsHelp', {
-                  defaultValue: 'Use tags that describe the course content, such as “first year physics”.',
+                <TextField
+                  {...params}
+                label={t('professor.course.topics', { defaultValue: 'Course topics' })}
+                placeholder={t('professor.course.topicsPlaceholder', { defaultValue: 'Add a course topic' })}
+                helperText={t('professor.course.topicsHelp', {
+                  defaultValue: 'Students can only use these course topics on their own questions.',
                 })}
               />
             )}

@@ -495,6 +495,50 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('student cannot update another student’s question', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'student-owner-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        allowStudentQuestions: true,
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      },
+    });
+
+    const studentOwner = await createTestUser({ email: 'student-owner@example.com', roles: ['student'] });
+    const studentOwnerToken = await getAuthToken(app, studentOwner);
+    const otherStudent = await createTestUser({ email: 'other-student@example.com', roles: ['student'] });
+    const otherStudentToken = await getAuthToken(app, otherStudent);
+
+    for (const token of [studentOwnerToken, otherStudentToken]) {
+      const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+        token,
+        payload: { enrollmentCode: course.enrollmentCode },
+      });
+      expect(enrollRes.statusCode).toBe(200);
+    }
+
+    const questionRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: studentOwnerToken,
+      payload: {
+        type: 2,
+        courseId: course._id,
+        content: 'Owner question',
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      },
+    });
+    expect(questionRes.statusCode).toBe(201);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${questionRes.json().question._id}`, {
+      token: otherStudentToken,
+      payload: { content: 'Not allowed' },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
   it('admin can update any question', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -998,6 +1042,40 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
     expect(res.json().tags).toEqual([
       { value: 'algebra', label: 'Algebra' },
       { value: 'algorithms', label: 'Algorithms' },
+    ]);
+  });
+
+  it('returns only course topics to students for question tags', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'student-tags-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        allowStudentQuestions: true,
+        tags: [{ value: 'algebra', label: 'Algebra' }],
+      },
+    });
+    await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      tags: [{ value: 'algorithms', label: 'Algorithms' }],
+    });
+
+    const student = await createTestUser({ email: 'student-tags@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/question-tags?q=alg`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().tags).toEqual([
+      { value: 'algebra', label: 'Algebra' },
     ]);
   });
 });

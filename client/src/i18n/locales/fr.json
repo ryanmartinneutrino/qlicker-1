@@ -344,6 +344,9 @@
       "regenerate": "Régénérer",
       "requireVerifiedEnroll": "Exiger un courriel vérifié pour l'inscription",
       "allowStudentQuestions": "Permettre aux étudiants de soumettre des questions",
+      "topics": "Sujets du cours",
+      "topicsPlaceholder": "Ajouter un sujet du cours",
+      "topicsHelp": "Les étudiants ne peuvent utiliser que ces sujets du cours sur leurs propres questions.",
       "quizTimeFormat": "Format d'heure des questionnaires",
       "quizTimeFormatInherit": "Utiliser le format administrateur ({{defaultFormat}})",
       "quizTimeFormatOptions": {
@@ -1039,7 +1042,13 @@
       "visibilitySaved_other": "Visibilité des questions mise à jour.",
       "visibilitySessionWarning": "Certaines questions sélectionnées sont déjà utilisées dans {{count}} question(s) de séance. Normalement, les étudiants voient les questions de séance en rendant ces séances révisables plutôt qu'en rendant la question individuelle publique.",
       "copy": "Copier vers un cours/une séance",
-      "export": "Exporter JSON"
+      "export": "Exporter JSON",
+      "addToPracticeSession": "Ajouter à une séance de pratique",
+      "addToPracticeSessionConfirm": "Ajouter les questions",
+      "practiceSessionHelp": "Choisissez une de vos séances de pratique pour y ajouter les questions sélectionnées.",
+      "practiceSessionEmpty": "Créez d'abord une séance de pratique pour y réutiliser les questions sélectionnées.",
+      "practiceSessionSaved_one": "Question ajoutée à la séance de pratique.",
+      "practiceSessionSaved_other": "Questions ajoutées à la séance de pratique."
     },
     "selection": {
       "pageSummary_one": "1 question correspondante",

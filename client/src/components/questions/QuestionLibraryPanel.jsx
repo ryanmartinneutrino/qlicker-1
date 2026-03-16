@@ -410,6 +410,8 @@ export default function QuestionLibraryPanel({
   const [editingQuestionBaseline, setEditingQuestionBaseline] = useState(null);
   const [creatingQuestion, setCreatingQuestion] = useState(false);
   const [copyDialogState, setCopyDialogState] = useState({ open: false, questionIds: [] });
+  const [practiceSessionDialogOpen, setPracticeSessionDialogOpen] = useState(false);
+  const [selectedPracticeSessionIds, setSelectedPracticeSessionIds] = useState([]);
   const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
   const [bulkVisibilityForm, setBulkVisibilityForm] = useState(createVisibilityForm());
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -431,10 +433,20 @@ export default function QuestionLibraryPanel({
   const allPageSelected = questions.length > 0 && questions.every((question) => selectedIdSet.has(String(question._id)));
   const somePageSelected = questions.some((question) => selectedIdSet.has(String(question._id))) && !allPageSelected;
   const selectedQuestions = questions.filter((question) => selectedIdSet.has(String(question._id)));
+  const studentPracticeSessions = useMemo(() => (
+    (availableSessions || []).filter((session) => !!session?.studentCreated && !!session?.practiceQuiz)
+  ), [availableSessions]);
   const selectedSourceCourse = useMemo(() => (
     courses.find((course) => String(course._id) === String(sourceCourseId)) || null
   ), [courses, sourceCourseId]);
   const currentUserId = String(user?._id || '');
+  const selectedOwnedQuestions = useMemo(() => (
+    selectedQuestions.filter((question) => String(question?.owner || '') === currentUserId && !question?.hasResponses)
+  ), [currentUserId, selectedQuestions]);
+  const hasSelectedUndeletableQuestions = selectedQuestionIds.length !== selectedQuestions.length
+    || selectedQuestions.some((question) => (
+      String(question?.owner || '') !== currentUserId || !!question?.hasResponses
+    ));
 
   const fetchCourses = useCallback(async () => {
     if (isStudentLibrary) {
@@ -462,9 +474,14 @@ export default function QuestionLibraryPanel({
       setTagOptions([]);
       return;
     }
+    if (isStudentLibrary) {
+      const nextTags = normalizeTagValues(currentCourse?.tags || []).map((tag) => ({ value: tag, label: tag }));
+      setTagOptions(nextTags);
+      return;
+    }
     const { data } = await apiClient.get(`/courses/${nextCourseId}/question-tags?limit=100`);
     setTagOptions(data.tags || []);
-  }, []);
+  }, [currentCourse?.tags, isStudentLibrary]);
 
   const fetchQuestions = useCallback(async () => {
     setLoading(true);
@@ -690,6 +707,37 @@ export default function QuestionLibraryPanel({
       if (String(targetCourseId) === String(sourceCourseId)) {
         await refreshQuestions();
       }
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('questionLibrary.errors.copy', { defaultValue: 'Failed to copy questions.' }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddQuestionsToPracticeSession = async () => {
+    const targetSessionId = String(selectedPracticeSessionIds[0] || '').trim();
+    if (!targetSessionId || !selectedQuestionIds.length) return;
+
+    setSaving(true);
+    try {
+      const { data } = await apiClient.get(`/sessions/${targetSessionId}`);
+      const existingQuestionIds = (data?.session?.questions || data?.questions || []).map((questionId) => String(questionId));
+      const mergedQuestionIds = [...new Set([...existingQuestionIds, ...selectedQuestionIds])];
+      await apiClient.patch(`/sessions/${targetSessionId}/practice-questions`, {
+        questionIds: mergedQuestionIds,
+      });
+      setPracticeSessionDialogOpen(false);
+      setSelectedPracticeSessionIds([]);
+      setMessage({
+        severity: 'success',
+        text: t('questionLibrary.bulk.practiceSessionSaved', {
+          count: selectedQuestionIds.length,
+          defaultValue: selectedQuestionIds.length === 1 ? 'Question added to the practice session.' : 'Questions added to the practice session.',
+        }),
+      });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -1007,25 +1055,25 @@ export default function QuestionLibraryPanel({
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
-          {!isStudentLibrary ? (
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Checkbox
-                  checked={allPageSelected}
-                  indeterminate={somePageSelected}
-                  onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
-                />
-                <Typography variant="body2" color="text.secondary">
-                  {t('questionLibrary.selection.pageSummary', {
-                    count: total,
-                    defaultValue: `${total} matching questions`,
-                  })}
-                </Typography>
-                <Button size="small" onClick={selectAllFilteredQuestions}>
-                  {t('questionLibrary.bulk.selectAllFiltered', { defaultValue: 'Select all filtered' })}
-                </Button>
-              </Box>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Checkbox
+                checked={allPageSelected}
+                indeterminate={somePageSelected}
+                onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
+              />
+              <Typography variant="body2" color="text.secondary">
+                {t('questionLibrary.selection.pageSummary', {
+                  count: total,
+                  defaultValue: `${total} matching questions`,
+                })}
+              </Typography>
+              <Button size="small" onClick={selectAllFilteredQuestions}>
+                {t('questionLibrary.bulk.selectAllFiltered', { defaultValue: 'Select all filtered' })}
+              </Button>
+            </Box>
+            <Stack direction="row" spacing={1} flexWrap="wrap">
+              {!isStudentLibrary ? (
                 <Button
                   size="small"
                   startIcon={<EditIcon />}
@@ -1034,41 +1082,42 @@ export default function QuestionLibraryPanel({
                 >
                   {t('questionLibrary.bulk.visibility', { defaultValue: 'Change visibility' })}
                 </Button>
-                <Button
-                  size="small"
-                  startIcon={<CopyIcon />}
-                  disabled={selectedQuestionIds.length === 0 || saving}
-                  onClick={() => setCopyDialogState({ open: true, questionIds: selectedQuestionIds })}
-                >
-                  {t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={<DownloadIcon />}
-                  disabled={selectedQuestionIds.length === 0}
-                  onClick={handleExportQuestions}
-                >
-                  {t('questionLibrary.bulk.export', { defaultValue: 'Export JSON' })}
-                </Button>
-                <Button
-                  size="small"
-                  color="error"
-                  startIcon={<DeleteIcon />}
-                  disabled={selectedQuestionIds.length === 0 || saving}
-                  onClick={() => handleDeleteQuestions(selectedQuestionIds)}
-                >
-                  {t('common.delete')}
-                </Button>
-              </Stack>
-            </Box>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              {t('questionLibrary.selection.pageSummary', {
-                count: total,
-                defaultValue: `${total} matching questions`,
-              })}
-            </Typography>
-          )}
+              ) : null}
+              <Button
+                size="small"
+                startIcon={<CopyIcon />}
+                disabled={selectedQuestionIds.length === 0 || saving || (isStudentLibrary && studentPracticeSessions.length === 0)}
+                onClick={() => {
+                  if (isStudentLibrary) {
+                    setPracticeSessionDialogOpen(true);
+                    return;
+                  }
+                  setCopyDialogState({ open: true, questionIds: selectedQuestionIds });
+                }}
+              >
+                {isStudentLibrary
+                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })
+                  : t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
+              </Button>
+              <Button
+                size="small"
+                startIcon={<DownloadIcon />}
+                disabled={selectedQuestionIds.length === 0}
+                onClick={handleExportQuestions}
+              >
+                {t('questionLibrary.bulk.export', { defaultValue: 'Export JSON' })}
+              </Button>
+              <Button
+                size="small"
+                color="error"
+                startIcon={<DeleteIcon />}
+                disabled={selectedQuestionIds.length === 0 || saving || (isStudentLibrary && hasSelectedUndeletableQuestions)}
+                onClick={() => handleDeleteQuestions(isStudentLibrary ? selectedOwnedQuestions.map((question) => String(question._id)) : selectedQuestionIds)}
+              >
+                {t('common.delete')}
+              </Button>
+            </Stack>
+          </Box>
 
           {creatingQuestion ? (
             <Card variant="outlined">
@@ -1113,9 +1162,7 @@ export default function QuestionLibraryPanel({
                 return (
                     <Card key={questionId} variant="outlined">
                       <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
-                        {!isStudentLibrary ? (
-                          <Checkbox checked={checked} onChange={() => toggleQuestionSelection(questionId)} />
-                        ) : null}
+                        <Checkbox checked={checked} onChange={() => toggleQuestionSelection(questionId)} />
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mb: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
@@ -1205,15 +1252,19 @@ export default function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
-                            {(!isStudentLibrary || ownsQuestion) ? (
-                              <Tooltip title={t('common.delete')}>
-                                <span>
-                                  <IconButton size="small" color="error" disabled={saving || question.hasResponses} onClick={() => handleDeleteQuestions([questionId])}>
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
-                                </span>
-                              </Tooltip>
-                            ) : null}
+                            <Tooltip title={t('common.delete')}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  aria-label={t('common.delete')}
+                                  disabled={saving || question.hasResponses || (isStudentLibrary && !ownsQuestion)}
+                                  onClick={() => handleDeleteQuestions([questionId])}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
                           </Stack>
                         </Box>
 
@@ -1331,6 +1382,31 @@ export default function QuestionLibraryPanel({
         defaultCourseId={courseId}
         onClose={() => setCopyDialogState({ open: false, questionIds: [] })}
         onConfirm={handleCopyQuestions}
+      />
+
+      <SessionSelectorDialog
+        open={practiceSessionDialogOpen}
+        title={t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })}
+        sessions={studentPracticeSessions}
+        selectedIds={selectedPracticeSessionIds}
+        headerContent={(
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25 }}>
+            {studentPracticeSessions.length > 0
+              ? t('questionLibrary.bulk.practiceSessionHelp', {
+                defaultValue: 'Choose one of your practice sessions to receive the selected questions.',
+              })
+              : t('questionLibrary.bulk.practiceSessionEmpty', {
+                defaultValue: 'Create a practice session first to reuse selected questions there.',
+              })}
+          </Typography>
+        )}
+        onChange={(ids) => setSelectedPracticeSessionIds(ids.length > 0 ? [ids[ids.length - 1]] : [])}
+        onClose={() => {
+          setPracticeSessionDialogOpen(false);
+          setSelectedPracticeSessionIds([]);
+        }}
+        onConfirm={handleAddQuestionsToPracticeSession}
+        confirmLabel={t('questionLibrary.bulk.addToPracticeSessionConfirm', { defaultValue: 'Add questions' })}
       />
 
       <Dialog open={visibilityDialogOpen} onClose={() => setVisibilityDialogOpen(false)} maxWidth="sm" fullWidth>

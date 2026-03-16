@@ -344,6 +344,9 @@
       "regenerate": "Regenerate",
       "requireVerifiedEnroll": "Require verified email to enroll",
       "allowStudentQuestions": "Allow students to submit questions",
+      "topics": "Course topics",
+      "topicsPlaceholder": "Add a course topic",
+      "topicsHelp": "Students can only use these course topics on their own questions.",
       "quizTimeFormat": "Quiz time format",
       "quizTimeFormatInherit": "Use admin default ({{defaultFormat}})",
       "quizTimeFormatOptions": {
@@ -1039,7 +1042,13 @@
       "visibilitySaved_other": "Question visibility updated.",
       "visibilitySessionWarning": "Some selected questions are already used in {{count}} session question(s). Students normally see session questions by making those sessions reviewable instead of making the individual question public.",
       "copy": "Copy to course/session",
-      "export": "Export JSON"
+      "export": "Export JSON",
+      "addToPracticeSession": "Add to practice session",
+      "addToPracticeSessionConfirm": "Add questions",
+      "practiceSessionHelp": "Choose one of your practice sessions to receive the selected questions.",
+      "practiceSessionEmpty": "Create a practice session first to reuse selected questions there.",
+      "practiceSessionSaved_one": "Question added to the practice session.",
+      "practiceSessionSaved_other": "Questions added to the practice session."
     },
     "selection": {
       "pageSummary_one": "1 matching question",

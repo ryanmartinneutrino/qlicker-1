@@ -1296,7 +1296,9 @@ export default async function sessionRoutes(app) {
         }
       }
 
-      const courses = await Course.find(courseFilter).lean();
+      const courses = await Course.find(courseFilter)
+        .select('_id deptCode courseNumber name')
+        .lean();
       if (courses.length === 0) return { liveSessions: [] };
 
       const courseIds = courses.map((c) => String(c._id));
@@ -1304,8 +1306,19 @@ export default async function sessionRoutes(app) {
 
       const sessions = await Session.find({
         courseId: { $in: courseIds },
-        status: { $in: ['running', 'visible'] },
-      }).lean();
+        $or: [
+          { status: 'running' },
+          {
+            status: 'visible',
+            $or: [
+              { quiz: true },
+              { practiceQuiz: true },
+            ],
+          },
+        ],
+      })
+        .select('_id name courseId status quiz practiceQuiz quizStart quizEnd extensions submittedQuiz joined studentCreated creator questions')
+        .lean();
 
       const normalizedSessions = sessions
         .map((session) => buildSessionForUser(session, request.user, {
