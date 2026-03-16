@@ -1279,7 +1279,10 @@ export default async function sessionRoutes(app) {
   // GET /sessions/live - List running sessions across all courses for the current user
   app.get(
     '/sessions/live',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
     async (request, reply) => {
       const roles = request.user.roles || [];
       const userId = request.user.userId;
