@@ -140,12 +140,14 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Priority 2: Question Library UI
 
-- [ ] Implement question library browsing interface for professors
-  - Browse personal, public, and course question libraries
-  - Search/filter by tags, type, content
-  - Preview questions before copying to session
-  - Copy from library to session (API exists: `POST /questions/:id/copy-to-session`)
-  - Copy from session to library (API exists: `POST /questions/:id/copy`)
+- [x] Implement an initial course question library for professors
+  - Browse instructor-owned course libraries from the course management page
+  - Search/filter by course, type, tags, session membership, content, and approval state
+  - Preview and inline-edit questions with response-aware edit locks
+  - Copy single or bulk questions to another instructor course and optional session
+  - Export/import question JSON for course/session reuse
+  - Preserve creator/original course/original question lineage metadata when copying or importing
+- [ ] Extend the question library to cover personal/public libraries and deeper session-editor integration
 - [ ] Student question submission and approval workflow (if `allowStudentQuestions` is enabled)
 
 ### Priority 3: Remaining Security Hardening

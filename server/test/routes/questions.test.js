@@ -617,10 +617,272 @@ describe('POST /api/v1/questions/:id/copy', () => {
     const body = res.json();
     expect(body.question.content).toBe('Original Q');
     expect(body.question._id).not.toBe(question._id);
-    expect(body.question.creator).toBe(other._id.toString());
+    expect(body.question.creator).toBe(prof._id.toString());
     expect(body.question.owner).toBe(other._id.toString());
     expect(body.question.sessionId).toBe('');
-    expect(body.question.courseId).toBe('');
+    expect(body.question.courseId).toBe(question.courseId);
+    expect(body.question.originalQuestion).toBe(question._id);
+    expect(body.question.originalCourse).toBe(question.courseId);
+  });
+});
+
+// ---------- GET /api/v1/courses/:courseId/questions ----------
+describe('GET /api/v1/courses/:courseId/questions', () => {
+  it('lists filtered course questions with linked-session and response metadata', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    const olderRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Older algebra prompt',
+      plainText: 'Older algebra prompt',
+      courseId: course._id,
+      tags: [{ value: 'algebra', label: 'algebra' }],
+    });
+    const newerRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Session algebra prompt',
+      plainText: 'Session algebra prompt',
+      courseId: course._id,
+      sessionId: session._id,
+      tags: [{ value: 'algebra', label: 'algebra' }],
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const hiddenRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Hidden calculus prompt',
+      plainText: 'Hidden calculus prompt',
+      courseId: course._id,
+      tags: [{ value: 'calculus', label: 'calculus' }],
+    });
+
+    const olderQuestion = olderRes.json().question;
+    const newerQuestion = newerRes.json().question;
+    const hiddenQuestion = hiddenRes.json().question;
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: { questions: [newerQuestion._id] },
+    });
+    await Question.findByIdAndUpdate(olderQuestion._id, {
+      $set: { createdAt: new Date('2024-01-01T00:00:00.000Z') },
+    });
+    await Question.findByIdAndUpdate(newerQuestion._id, {
+      $set: { createdAt: new Date('2025-01-01T00:00:00.000Z') },
+    });
+    await Question.findByIdAndUpdate(hiddenQuestion._id, {
+      $set: { approved: false },
+    });
+    await Response.create({
+      attempt: 1,
+      questionId: newerQuestion._id,
+      studentUserId: 'student-1',
+      answer: '0',
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/questions?tags=algebra&approved=true`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.total).toBe(2);
+    expect(body.questions.map((question) => question._id)).toEqual([newerQuestion._id, olderQuestion._id]);
+    expect(body.questions[0].hasResponses).toBe(true);
+    expect(body.questions[0].linkedSessions).toEqual([
+      expect.objectContaining({ _id: session._id, name: session.name }),
+    ]);
+    expect(body.questionTypes).toEqual(expect.arrayContaining([0, 2]));
+  });
+
+  it('returns autocomplete tag suggestions for a course library', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+
+    await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      tags: [
+        { value: 'algebra', label: 'Algebra' },
+        { value: 'imported', label: 'imported' },
+      ],
+    });
+    await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      tags: [{ value: 'algorithms', label: 'Algorithms' }],
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/question-tags?q=alg`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().tags).toEqual([
+      { value: 'algebra', label: 'Algebra' },
+      { value: 'algorithms', label: 'Algorithms' },
+    ]);
+  });
+});
+
+// ---------- POST /api/v1/questions/:id/approve ----------
+describe('POST /api/v1/questions/:id/approve', () => {
+  it('approves an unapproved course question', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+
+    const qRes = await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      content: 'Needs approval',
+    });
+    const question = qRes.json().question;
+    await Question.findByIdAndUpdate(question._id, { $set: { approved: false } });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/questions/${question._id}/approve`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.approved).toBe(true);
+  });
+});
+
+// ---------- POST /api/v1/questions/bulk-copy ----------
+describe('POST /api/v1/questions/bulk-copy', () => {
+  it('copies selected questions into another course session while preserving lineage metadata', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'bulkcopy@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+
+    const sourceCourse = (await createCourseAsProf(profToken, { name: 'Source Course' })).json().course;
+    const sourceSession = (await createSessionInCourse(profToken, sourceCourse._id, { name: 'Source Session' })).json().session;
+    const targetCourse = (await createCourseAsProf(profToken, { name: 'Target Course' })).json().course;
+    const targetSession = (await createSessionInCourse(profToken, targetCourse._id, { name: 'Target Session' })).json().session;
+
+    const questionRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      courseId: sourceCourse._id,
+      sessionId: sourceSession._id,
+      content: 'Copy me',
+      plainText: 'Copy me',
+      options: [
+        { answer: 'Yes', correct: true },
+        { answer: 'No', correct: false },
+      ],
+    });
+    const question = questionRes.json().question;
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/questions/bulk-copy', {
+      token: profToken,
+      payload: {
+        questionIds: [question._id],
+        targetCourseId: targetCourse._id,
+        targetSessionId: targetSession._id,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const copiedQuestion = res.json().questions[0];
+    expect(copiedQuestion._id).not.toBe(question._id);
+    expect(copiedQuestion.creator).toBe(prof._id.toString());
+    expect(copiedQuestion.owner).toBe(prof._id.toString());
+    expect(copiedQuestion.originalQuestion).toBe(question._id);
+    expect(copiedQuestion.originalCourse).toBe(sourceCourse._id);
+    expect(copiedQuestion.courseId).toBe(targetCourse._id);
+    expect(copiedQuestion.sessionId).toBe(targetSession._id);
+
+    const updatedTargetSession = await Session.findById(targetSession._id).lean();
+    expect(updatedTargetSession.questions).toContain(copiedQuestion._id);
+  });
+});
+
+// ---------- POST /api/v1/questions/export + POST /api/v1/courses/:courseId/questions/import ----------
+describe('question import/export endpoints', () => {
+  it('exports selected questions and re-imports them into another course session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course } = await setupCourseAndSession();
+    const targetCourse = (await createCourseAsProf(profToken, { name: 'Imported Course' })).json().course;
+    const targetSession = (await createSessionInCourse(profToken, targetCourse._id, { name: 'Imported Session' })).json().session;
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      courseId: course._id,
+      content: 'Exportable question',
+      plainText: 'Exportable question',
+      tags: [{ value: 'review', label: 'Review' }],
+      solution: '<p>Worked solution</p>',
+      solution_plainText: 'Worked solution',
+    });
+    const question = qRes.json().question;
+
+    const exportRes = await authenticatedRequest(app, 'POST', '/api/v1/questions/export', {
+      token: profToken,
+      payload: { questionIds: [question._id] },
+    });
+
+    expect(exportRes.statusCode).toBe(200);
+    const [exportedQuestion] = exportRes.json().questions;
+    expect(exportedQuestion._id).toBeUndefined();
+
+    const importRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${targetCourse._id}/questions/import`, {
+      token: profToken,
+      payload: {
+        questions: [exportedQuestion],
+        sessionId: targetSession._id,
+      },
+    });
+
+    expect(importRes.statusCode).toBe(201);
+    const importedQuestion = importRes.json().questions[0];
+    expect(importedQuestion.courseId).toBe(targetCourse._id);
+    expect(importedQuestion.sessionId).toBe(targetSession._id);
+    expect(importedQuestion.owner).toBe(prof._id.toString());
+    expect(importedQuestion.approved).toBe(true);
+    expect(importedQuestion.tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'review', label: 'Review' }),
+      expect.objectContaining({ value: 'imported', label: 'imported' }),
+    ]));
+
+    const importedSession = await Session.findById(targetSession._id).lean();
+    expect(importedSession.questions).toContain(importedQuestion._id);
+  });
+});
+
+// ---------- POST /api/v1/questions/bulk-delete ----------
+describe('POST /api/v1/questions/bulk-delete', () => {
+  it('blocks deleting any selected question that has responses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+
+    const removable = (await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      content: 'Removable',
+    })).json().question;
+    const responseBacked = (await createQuestionAsProf(profToken, {
+      type: 0,
+      courseId: course._id,
+      content: 'Locked',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    })).json().question;
+
+    await Response.create({
+      attempt: 1,
+      questionId: responseBacked._id,
+      studentUserId: 'student-1',
+      answer: '0',
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/questions/bulk-delete', {
+      token: profToken,
+      payload: { questionIds: [removable._id, responseBacked._id] },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().questionIds).toEqual([responseBacked._id]);
+    expect(await Question.findById(removable._id)).not.toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Box, IconButton, FormControlLabel, Typography, Divider, Paper,
-  Checkbox, FormGroup,
+  Checkbox, FormGroup, Autocomplete, Chip,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -74,6 +74,7 @@ const emptyForm = () => ({
   toleranceNumerical: '',
   solution: '',
   points: 1,
+  tags: [],
 });
 
 function cloneFormState(form) {
@@ -88,6 +89,7 @@ function cloneFormState(form) {
     toleranceNumerical: form.toleranceNumerical ?? '',
     solution: form.solution || '',
     points: form.points ?? 1,
+    tags: [...new Set((form.tags || []).map((tag) => String(tag || '').trim()).filter(Boolean))],
   };
 }
 
@@ -112,6 +114,8 @@ function buildQuestionPayload(form) {
     solution: solution || undefined,
     solution_plainText: solution ? extractPlainTextFromHtml(solution) : undefined,
     sessionOptions: { points },
+    tags: [...new Set((form.tags || []).map((tag) => String(tag || '').trim()).filter(Boolean))]
+      .map((tag) => ({ value: tag, label: tag })),
   };
 
   if (isOptionBasedQuestionType(form.type) || form.type === QUESTION_TYPES.TRUE_FALSE) {
@@ -185,6 +189,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   disableOptionCountChanges = false,
   optionCountLockReason = 'Option count is locked for this question.',
   typeSelectionLockReason = 'Question type is locked for this question.',
+  tagSuggestions = [],
 }, ref) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
@@ -291,6 +296,9 @@ const QuestionEditor = forwardRef(function QuestionEditor({
           toleranceNumerical: question.toleranceNumerical ?? '',
           solution: prepareRichTextInput(question.solution || '', question.solution_plainText || ''),
           points: normalizedType === QUESTION_TYPES.SLIDE ? 0 : (question.sessionOptions?.points ?? 1),
+          tags: [...new Set((question.tags || [])
+            .map((tag) => String(tag?.label || tag?.value || '').trim())
+            .filter(Boolean))],
         }
         : emptyForm();
     };
@@ -522,6 +530,44 @@ const QuestionEditor = forwardRef(function QuestionEditor({
             />
           )}
         </Box>
+
+        <Autocomplete
+          multiple
+          freeSolo
+          options={[...new Set(
+            (tagSuggestions || [])
+              .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+              .filter(Boolean)
+          )]}
+          value={form.tags || []}
+          onChange={(_event, nextValue) => {
+            updateForm((prev) => ({
+              ...prev,
+              tags: [...new Set(
+                (nextValue || [])
+                  .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+                  .filter(Boolean)
+              )],
+            }));
+          }}
+          renderTags={(value, getTagProps) => value.map((tag, index) => (
+            <Chip
+              {...getTagProps({ index })}
+              key={`${tag}-${index}`}
+              label={tag}
+              size="small"
+            />
+          ))}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label={t('questions.editor.tags', { defaultValue: 'Tags' })}
+              placeholder={t('questions.editor.tagsPlaceholder', { defaultValue: 'Add a tag' })}
+              size="small"
+            />
+          )}
+          sx={{ mb: 2 }}
+        />
 
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>
