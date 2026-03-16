@@ -105,10 +105,11 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ WebSocket delta messages — ~98% reduction in DB queries during live sessions
 - ✅ Course page WebSocket push — replaced polling for session status events
 - ✅ Legacy DB indexes — all models indexed
-- ✅ i18n — react-i18next with 1073 translation keys (en/fr), all 30+ components wired
+- ✅ i18n — react-i18next with 1085 translation keys (en/fr), all 30+ components wired
 - ✅ CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
 - ✅ JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
 - ✅ SAML logout validation — node-saml crypto validation with XML fallback
+- ✅ SSO account controls — SSO-created accounts are tracked separately, profile name/password edits are disabled when SSO governs them, password reset/email login stay blocked until an admin explicitly approves local email login, and the admin users table now includes a per-user properties modal for toggles such as `canPromote`
 - ✅ File upload content validation — magic bytes via `file-type` library
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
@@ -122,8 +123,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 248 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 21 tests across 10 files
+- **Server:** 256 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
+- **Client:** 22 tests across 11 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)

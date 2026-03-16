@@ -6,8 +6,23 @@ import { stringParamsSchema } from '../utils/apiDocs.js';
 
 function sanitizeUser(user) {
   const obj = user.toObject();
+  obj.isSSOUser = !!user.services?.sso?.id;
+  obj.isSSOCreatedUser = !!user.ssoCreated;
+  obj.allowEmailLogin = !user.ssoCreated || user.allowEmailLogin !== false;
+  obj.lastAuthProvider = user.lastAuthProvider || '';
   delete obj.services;
   return obj;
+}
+
+function sanitizeRawUser(user = {}) {
+  return {
+    ...user,
+    isSSOUser: !!user.services?.sso?.id,
+    isSSOCreatedUser: !!user.ssoCreated,
+    allowEmailLogin: !user.ssoCreated || user.allowEmailLogin !== false,
+    lastAuthProvider: user.lastAuthProvider || '',
+    services: undefined,
+  };
 }
 
 const updateProfileSchema = {
@@ -64,6 +79,18 @@ const updateRoleSchema = {
   },
 };
 
+const updateUserPropertiesSchema = {
+  ...userIdParamsSchema,
+  body: {
+    type: 'object',
+    properties: {
+      canPromote: { type: 'boolean' },
+      allowEmailLogin: { type: 'boolean' },
+    },
+    additionalProperties: false,
+  },
+};
+
 export default async function userRoutes(app) {
   const { authenticate, requireRole } = app;
   const userMutationRateLimit = {
@@ -78,9 +105,7 @@ export default async function userRoutes(app) {
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    const sanitized = sanitizeUser(user);
-    sanitized.isSSOUser = !!user.services?.sso?.id;
-    return { user: sanitized };
+    return { user: sanitizeUser(user) };
   });
 
   // PATCH /me
@@ -93,11 +118,11 @@ export default async function userRoutes(app) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
 
-    const isSSOUser = !!user.services?.sso?.id;
+    const isSSONameLocked = !!user.ssoCreated || user.lastAuthProvider === 'sso';
 
     for (const key of profileAllowed) {
       if (request.body?.[key] !== undefined) {
-        if (isSSOUser && (key === 'firstname' || key === 'lastname')) {
+        if (isSSONameLocked && (key === 'firstname' || key === 'lastname')) {
           continue; // SSO users cannot change name fields
         }
         updates[`profile.${key}`] = request.body[key];
@@ -142,6 +167,14 @@ export default async function userRoutes(app) {
       const user = await User.findById(request.user.userId);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      if (user.lastAuthProvider === 'sso') {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          code: 'SSO_PASSWORD_CHANGE_DISABLED',
+          message: 'Password changes are unavailable while signed in through SSO.',
+        });
       }
 
       const valid = await user.verifyPassword(currentPassword);
@@ -233,8 +266,7 @@ export default async function userRoutes(app) {
 
       // Remove services from each user
       const sanitized = users.map((u) => {
-        delete u.services;
-        return u;
+        return sanitizeRawUser(u);
       });
 
       return {
@@ -252,6 +284,45 @@ export default async function userRoutes(app) {
       { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
       const user = await User.findById(request.params.id);
+      if (!user) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+      return sanitizeUser(user);
+    }
+  );
+
+  // PATCH /:id/properties (admin only)
+  app.patch(
+    '/:id/properties',
+    { preHandler: requireRole(['admin']), schema: updateUserPropertiesSchema },
+    async (request, reply) => {
+      const updates = {};
+
+      if (request.body?.canPromote !== undefined) {
+        updates['profile.canPromote'] = !!request.body.canPromote;
+      }
+      if (request.body?.allowEmailLogin !== undefined) {
+        updates.allowEmailLogin = !!request.body.allowEmailLogin;
+        if (!request.body.allowEmailLogin) {
+          updates['services.resetPassword'] = undefined;
+        }
+      }
+
+      const updateDoc = {};
+      if (Object.keys(updates).length > 0) {
+        updateDoc.$set = Object.fromEntries(
+          Object.entries(updates).filter(([, value]) => value !== undefined)
+        );
+      }
+      if (request.body?.allowEmailLogin === false) {
+        updateDoc.$unset = { 'services.resetPassword': 1 };
+      }
+
+      const user = await User.findByIdAndUpdate(
+        request.params.id,
+        updateDoc,
+        { new: true }
+      );
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }

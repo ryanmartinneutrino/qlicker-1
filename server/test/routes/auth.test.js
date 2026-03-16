@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
+import Settings from '../../src/models/Settings.js';
 
 let app;
 
@@ -338,6 +339,38 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.token).toBeDefined();
     expect(body.user).toBeDefined();
   });
+
+  it('blocks email login for SSO-created users until admin approval is enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    const hashedPassword = await User.hashPassword('password123');
+    await User.create({
+      emails: [{ address: 'sso-only@example.com', verified: true }],
+      services: {
+        password: { hash: hashedPassword },
+        sso: { id: 'sso-user-1', email: 'sso-only@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Only', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'sso-only@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.code).toBe('SSO_EMAIL_LOGIN_DISABLED');
+    expect(body.message).toMatch(/SSO/i);
+  });
 });
 
 // ---------- POST /api/v1/auth/logout ----------
@@ -353,6 +386,115 @@ describe('POST /api/v1/auth/logout', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.success).toBe(true);
+  });
+});
+
+// ---------- POST /api/v1/auth/forgot-password ----------
+describe('POST /api/v1/auth/forgot-password', () => {
+  it('does not create a reset token for unapproved SSO-created users', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    await User.create({
+      emails: [{ address: 'sso-forgot@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-forgot-1', email: 'sso-forgot@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Forgot', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/forgot-password',
+      headers: { ...csrfHeaders },
+      payload: { email: 'sso-forgot@example.com' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+
+    const stored = await User.findOne({ 'emails.address': 'sso-forgot@example.com' });
+    expect(stored.services?.resetPassword).toBeUndefined();
+  });
+});
+
+// ---------- POST /api/v1/auth/reset-password ----------
+describe('POST /api/v1/auth/reset-password', () => {
+  it('rejects password resets for unapproved SSO-created users', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const User = (await import('../../src/models/User.js')).default;
+    await User.create({
+      emails: [{ address: 'sso-reset@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resetPassword: {
+          token: 'blocked-reset-token',
+          email: 'sso-reset@example.com',
+          when: new Date(),
+          reason: 'reset',
+        },
+        sso: { id: 'sso-reset-1', email: 'sso-reset@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Reset', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset-password',
+      headers: { ...csrfHeaders },
+      payload: { token: 'blocked-reset-token', newPassword: 'newpassword456' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('SSO_EMAIL_LOGIN_DISABLED');
+  });
+});
+
+// ---------- POST /api/v1/auth/sso/callback ----------
+describe('POST /api/v1/auth/sso/callback', () => {
+  it('marks newly created SSO users as SSO-created and disables email login by default', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_emailIdentifier: 'mail',
+      SSO_firstNameIdentifier: 'givenName',
+      SSO_lastNameIdentifier: 'sn',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+    });
+    app.getSamlProvider = async () => ({
+      validatePostResponseAsync: async () => ({
+        profile: {
+          nameID: 'sso-created-user',
+          attributes: {
+            mail: 'created-via-sso@example.com',
+            givenName: 'Created',
+            sn: 'FromSSO',
+          },
+        },
+      }),
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/sso/callback',
+      payload: { SAMLResponse: 'stub' },
+    });
+
+    expect(res.statusCode).toBe(302);
+    const User = (await import('../../src/models/User.js')).default;
+    const created = await User.findOne({ 'emails.address': 'created-via-sso@example.com' });
+    expect(created).toBeTruthy();
+    expect(created.ssoCreated).toBe(true);
+    expect(created.allowEmailLogin).toBe(false);
+    expect(created.lastAuthProvider).toBe('sso');
   });
 });
 

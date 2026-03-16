@@ -49,6 +49,8 @@ export default function Profile() {
 
   const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
   const numberLabel = isStaff ? t('profile.employeeNumber') : t('profile.studentNumber');
+  const nameLocked = !!user?.isSSOCreatedUser || user?.lastAuthProvider === 'sso';
+  const passwordLocked = user?.lastAuthProvider === 'sso';
 
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {
@@ -240,12 +242,12 @@ export default function Profile() {
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.personalInfo')}</Typography>
         <AutoSaveStatus status={profileSaveStatus} errorText={profileSaveError} />
-        {user?.isSSOUser && (
-          <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoManagedNote')}</Alert>
+        {nameLocked && (
+          <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoNameManagedNote')}</Alert>
         )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label={t('profile.firstName')} value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
-          <TextField label={t('profile.lastName')} value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth disabled={!!user?.isSSOUser} />
+          <TextField label={t('profile.firstName')} value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth disabled={nameLocked} />
+          <TextField label={t('profile.lastName')} value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth disabled={nameLocked} />
           <TextField label={numberLabel} value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
           {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
         </Box>
@@ -253,11 +255,17 @@ export default function Profile() {
 
       <Paper variant="outlined" sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.changePassword')}</Typography>
+        {passwordLocked && (
+          <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoPasswordManagedNote')}</Alert>
+        )}
+        {user?.isSSOCreatedUser && !user?.allowEmailLogin && (
+          <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoEmailLoginApprovalNote')}</Alert>
+        )}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label={t('profile.currentPassword')} type="password" value={passwords.currentPassword} onChange={(e) => setPasswords((s) => ({ ...s, currentPassword: e.target.value }))} fullWidth />
-          <TextField label={t('profile.newPassword')} type="password" value={passwords.newPassword} onChange={(e) => setPasswords((s) => ({ ...s, newPassword: e.target.value }))} fullWidth />
-          <TextField label={t('profile.confirmNewPassword')} type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords((s) => ({ ...s, confirmPassword: e.target.value }))} fullWidth />
-          <Button variant="contained" onClick={handleChangePassword} disabled={changingPw}>
+          <TextField label={t('profile.currentPassword')} type="password" value={passwords.currentPassword} onChange={(e) => setPasswords((s) => ({ ...s, currentPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
+          <TextField label={t('profile.newPassword')} type="password" value={passwords.newPassword} onChange={(e) => setPasswords((s) => ({ ...s, newPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
+          <TextField label={t('profile.confirmNewPassword')} type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords((s) => ({ ...s, confirmPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
+          <Button variant="contained" onClick={handleChangePassword} disabled={changingPw || passwordLocked}>
             {changingPw ? t('profile.changingPassword') : t('profile.changePassword')}
           </Button>
           {pwMsg && <Alert severity={pwMsg.severity} onClose={() => setPwMsg(null)}>{pwMsg.text}</Alert>}
