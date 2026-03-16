@@ -40,6 +40,15 @@ const GroupCategorySchema = new mongoose.Schema(
   { _id: false }
 );
 
+const TagSchema = new mongoose.Schema(
+  {
+    value: { type: String },
+    label: { type: String },
+    className: { type: String },
+  },
+  { _id: false }
+);
+
 const CourseSchema = new mongoose.Schema(
   {
     _id: { type: String, default: () => generateMeteorId() },
@@ -58,6 +67,7 @@ const CourseSchema = new mongoose.Schema(
     requireVerified: { type: Boolean, default: false },
     allowStudentQuestions: { type: Boolean, default: false },
     quizTimeFormat: { type: String, enum: ['inherit', '24h', '12h'], default: 'inherit' },
+    tags: { type: [TagSchema], default: [] },
     groupCategories: { type: [GroupCategorySchema], default: [] },
     videoChatOptions: { type: VideoChatOptionsSchema, default: undefined },
   },

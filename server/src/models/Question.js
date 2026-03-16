@@ -58,6 +58,8 @@ const QuestionSchema = new mongoose.Schema(
     sessionId: { type: String, default: '' },
     courseId: { type: String, default: '' },
     public: { type: Boolean, default: false },
+    publicOnQlicker: { type: Boolean, default: false },
+    publicOnQlickerForStudents: { type: Boolean, default: false },
     solution: { type: String, default: '' },
     solution_plainText: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },

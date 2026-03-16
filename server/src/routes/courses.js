@@ -1,5 +1,6 @@
 import Course from '../models/Course.js';
 import User from '../models/User.js';
+import { normalizeTags } from '../services/questionImportExport.js';
 import { escapeForRegex } from '../utils/regex.js';
 
 function generateEnrollmentCode() {
@@ -47,6 +48,18 @@ const updateCourseSchema = {
       requireVerified: { type: 'boolean' },
       allowStudentQuestions: { type: 'boolean' },
       quizTimeFormat: { type: 'string', enum: ['inherit', '24h', '12h'] },
+      tags: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            label: { type: 'string' },
+            className: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
     },
     additionalProperties: false,
   },
@@ -242,12 +255,16 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions', 'quizTimeFormat'];
+      const allowed = ['name', 'deptCode', 'courseNumber', 'section', 'semester', 'inactive', 'requireVerified', 'allowStudentQuestions', 'quizTimeFormat', 'tags'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
           updates[key] = request.body[key];
         }
+      }
+
+      if (updates.tags !== undefined) {
+        updates.tags = normalizeTags(updates.tags);
       }
 
       const updated = await Course.findByIdAndUpdate(

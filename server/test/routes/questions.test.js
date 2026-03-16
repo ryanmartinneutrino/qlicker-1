@@ -60,6 +60,27 @@ async function createQuestionAsProf(profToken, overrides = {}) {
   return res;
 }
 
+async function createQuestionInSession(profToken, {
+  sessionId,
+  courseId,
+  ...payload
+}) {
+  const qRes = await createQuestionAsProf(profToken, {
+    sessionId,
+    courseId,
+    ...payload,
+  });
+  expect(qRes.statusCode).toBe(201);
+
+  const question = qRes.json().question;
+  const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${sessionId}/questions`, {
+    token: profToken,
+    payload: { questionId: question._id },
+  });
+  expect(addRes.statusCode).toBe(200);
+  return question;
+}
+
 // Helper: prof + course + session
 async function setupCourseAndSession() {
   const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -180,6 +201,179 @@ describe('GET /api/v1/questions/:id', () => {
     const body = res.json();
     expect(body.question).toBeDefined();
     expect(body.question.content).toBe('My Q');
+  });
+
+  it('course instructors can get private course questions they did not create', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const ownerProf = await createTestUser({ email: 'owner-prof@example.com', roles: ['professor'] });
+    const ownerToken = await getAuthToken(app, ownerProf);
+    const course = (await createCourseAsProf(ownerToken)).json().course;
+
+    const otherProf = await createTestUser({ email: 'other-prof@example.com', roles: ['professor'] });
+    const otherToken = await getAuthToken(app, otherProf);
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: ownerToken,
+      payload: { userId: otherProf._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const question = (await createQuestionAsProf(ownerToken, {
+      courseId: course._id,
+      content: 'Private instructor question',
+      public: false,
+    })).json().question;
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/questions/${question._id}`, {
+      token: otherToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('Private instructor question');
+  });
+
+  it('blocks students from getting private course questions directly', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'private-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const student = await createTestUser({ email: 'private-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const question = (await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      content: 'Private to instructors',
+      solution: 'secret',
+      public: false,
+    })).json().question;
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/questions/${question._id}`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('allows enrolled students to view course-public questions without answer reveals', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'public-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const student = await createTestUser({ email: 'public-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const question = (await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      type: 0,
+      content: 'Visible to the course',
+      solution: 'hidden solution',
+      public: true,
+      options: [
+        { answer: 'A', correct: false },
+        { answer: 'B', correct: true },
+      ],
+    })).json().question;
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/questions/${question._id}`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.solution).toBeUndefined();
+    expect(res.json().question.options[1].correct).toBeUndefined();
+  });
+
+  it('allows Qlicker-wide public questions to include or exclude student viewers', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'global-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const student = await createTestUser({ email: 'global-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    const profOnlyQuestion = (await createQuestionAsProf(profToken, {
+      content: 'Prof-only global question',
+      publicOnQlicker: true,
+      publicOnQlickerForStudents: false,
+    })).json().question;
+    const studentVisibleQuestion = (await createQuestionAsProf(profToken, {
+      content: 'Student-visible global question',
+      publicOnQlicker: true,
+      publicOnQlickerForStudents: true,
+    })).json().question;
+
+    const blockedRes = await authenticatedRequest(app, 'GET', `/api/v1/questions/${profOnlyQuestion._id}`, {
+      token: studentToken,
+    });
+    const allowedRes = await authenticatedRequest(app, 'GET', `/api/v1/questions/${studentVisibleQuestion._id}`, {
+      token: studentToken,
+    });
+
+    expect(blockedRes.statusCode).toBe(403);
+    expect(allowedRes.statusCode).toBe(200);
+    expect(allowedRes.json().question.content).toBe('Student-visible global question');
+  });
+
+  it('allows enrolled students to get reviewable-session and live-quiz questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'review-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const student = await createTestUser({ email: 'review-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const reviewSession = (await createSessionInCourse(profToken, course._id)).json().session;
+    const reviewPatchRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${reviewSession._id}`, {
+      token: profToken,
+      payload: { status: 'done', reviewable: true },
+    });
+    expect(reviewPatchRes.statusCode).toBe(200);
+    const reviewQuestion = await createQuestionInSession(profToken, {
+      sessionId: reviewSession._id,
+      courseId: course._id,
+      content: 'Reviewable question',
+      type: 2,
+    });
+
+    const liveSession = (await createSessionInCourse(profToken, course._id, {
+      quiz: true,
+      quizStart: new Date(Date.now() - 60_000).toISOString(),
+      quizEnd: new Date(Date.now() + 60_000).toISOString(),
+    })).json().session;
+    const livePatchRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${liveSession._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+    expect(livePatchRes.statusCode).toBe(200);
+    const liveQuestion = await createQuestionInSession(profToken, {
+      sessionId: liveSession._id,
+      courseId: course._id,
+      content: 'Live quiz question',
+      type: 2,
+    });
+
+    const reviewRes = await authenticatedRequest(app, 'GET', `/api/v1/questions/${reviewQuestion._id}`, {
+      token: studentToken,
+    });
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/questions/${liveQuestion._id}`, {
+      token: studentToken,
+    });
+
+    expect(reviewRes.statusCode).toBe(200);
+    expect(liveRes.statusCode).toBe(200);
   });
 
   it('returns 404 for non-existent question', async (ctx) => {

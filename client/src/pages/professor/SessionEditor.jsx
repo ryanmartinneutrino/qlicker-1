@@ -86,6 +86,18 @@ function buildTodayQuizWindow() {
   };
 }
 
+function normalizeTagValues(tags = []) {
+  return [...new Set(
+    (tags || [])
+      .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+      .filter(Boolean)
+  )];
+}
+
+function toTagObjects(tags = []) {
+  return normalizeTagValues(tags).map((tag) => ({ value: tag, label: tag }));
+}
+
 function buildExtendedQuizEnd(endValue = '', startValue = '') {
   const parsedEnd = endValue ? new Date(endValue) : null;
   const parsedStart = startValue ? new Date(startValue) : null;
@@ -162,6 +174,7 @@ export default function SessionEditor() {
   const [status, setStatus] = useState('hidden');
   const [sessionDate, setSessionDate] = useState('');
   const [use24HourTime, setUse24HourTime] = useState(true);
+  const [sessionTags, setSessionTags] = useState([]);
 
   // Join code settings
   const [joinCodeEnabled, setJoinCodeEnabled] = useState(false);
@@ -210,6 +223,7 @@ export default function SessionEditor() {
       setReviewable(!!s.reviewable);
       setStatus(s.status || 'hidden');
       setSessionDate(toDateTimeLocalString(s.date));
+      setSessionTags(normalizeTagValues(s.tags || []));
       setJoinCodeEnabled(!!s.joinCodeEnabled);
       setJoinCodeInterval(s.joinCodeInterval || 10);
       setExtensionDrafts((s.quizExtensions || []).map((extension) => ({
@@ -1344,6 +1358,28 @@ export default function SessionEditor() {
               {t('professor.sessionEditor.msScoringHelp')}
             </Typography>
           </FormControl>
+
+          <Autocomplete
+            multiple
+            freeSolo
+            options={sessionTags}
+            value={sessionTags}
+            onChange={(_event, nextValue) => {
+              const normalizedTags = normalizeTagValues(nextValue);
+              setSessionTags(normalizedTags);
+              saveSessionPatch({ tags: toTagObjects(normalizedTags) });
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
+                placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
+                helperText={t('professor.sessionEditor.tagsHelp', {
+                  defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
+                })}
+              />
+            )}
+          />
 
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>

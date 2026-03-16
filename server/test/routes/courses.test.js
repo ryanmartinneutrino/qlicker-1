@@ -261,6 +261,29 @@ describe('PATCH /api/v1/courses/:id', () => {
     expect(body.course.name).toBe('Updated Course');
   });
 
+  it('persists normalized course tags from settings updates', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'course-tags-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/courses/${course._id}`, {
+      token: profToken,
+      payload: {
+        tags: [
+          { value: 'physics', label: 'physics' },
+          { value: 'first-year', label: 'first-year' },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().course.tags).toEqual([
+      { value: 'physics', label: 'physics' },
+      { value: 'first-year', label: 'first-year' },
+    ]);
+  });
+
   it('non-instructor gets 403', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });

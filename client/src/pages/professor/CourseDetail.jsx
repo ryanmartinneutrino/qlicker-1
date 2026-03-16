@@ -128,6 +128,11 @@ function getCourseEditFields(course = {}) {
     courseNumber: toText(course.courseNumber),
     section: toText(course.section),
     semester: toText(course.semester),
+    tags: [...new Set(
+      (course.tags || [])
+        .map((tag) => toText(tag?.label || tag?.value || tag).trim())
+        .filter(Boolean)
+    )],
   };
 }
 
@@ -137,6 +142,7 @@ const EMPTY_COURSE_EDIT_FIELDS = {
   courseNumber: '',
   section: '',
   semester: '',
+  tags: [],
 };
 const EMPTY_COURSE_EDIT_FIELDS_HASH = JSON.stringify(EMPTY_COURSE_EDIT_FIELDS);
 const COMPACT_CHIP_SX = {
@@ -156,6 +162,11 @@ function parseFieldsHash(hashValue) {
       courseNumber: toText(parsed.courseNumber),
       section: toText(parsed.section),
       semester: toText(parsed.semester),
+      tags: [...new Set(
+        (parsed.tags || [])
+          .map((tag) => toText(tag?.label || tag?.value || tag).trim())
+          .filter(Boolean)
+      )],
     };
   } catch {
     return { ...EMPTY_COURSE_EDIT_FIELDS };
@@ -174,7 +185,8 @@ function diffCourseEditFields(previousFields, nextFields) {
 }
 
 function hasAllCourseEditFields(fields) {
-  return Object.values(fields).every((value) => String(value || '').trim().length > 0);
+  return ['name', 'deptCode', 'courseNumber', 'section', 'semester']
+    .every((key) => String(fields?.[key] || '').trim().length > 0);
 }
 
 function isEmptyField(value) {
@@ -563,6 +575,9 @@ export default function CourseDetail() {
       const requestedHash = JSON.stringify(pendingFields);
       const lastSavedFields = parseFieldsHash(lastSavedEditFieldsHashRef.current);
       const patchPayload = diffCourseEditFields(lastSavedFields, pendingFields);
+      if (Array.isArray(patchPayload.tags)) {
+        patchPayload.tags = patchPayload.tags.map((tag) => ({ value: tag, label: tag }));
+      }
 
       if (Object.keys(patchPayload).length === 0) {
         settingsSaveInFlightRef.current = false;
@@ -1313,6 +1328,30 @@ export default function CourseDetail() {
               sx={{ flex: 1 }}
             />
           </Box>
+          <Autocomplete
+            multiple
+            freeSolo
+            options={editFields.tags}
+            value={editFields.tags}
+            onChange={(_event, nextValue) => {
+              const normalizedTags = [...new Set(
+                (nextValue || [])
+                  .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+                  .filter(Boolean)
+              )];
+              setEditFields((current) => ({ ...current, tags: normalizedTags }));
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('professor.course.tags', { defaultValue: 'Course tags' })}
+                placeholder={t('professor.course.tagsPlaceholder', { defaultValue: 'Add a course topic tag' })}
+                helperText={t('professor.course.tagsHelp', {
+                  defaultValue: 'Use tags that describe the course content, such as “first year physics”.',
+                })}
+              />
+            )}
+          />
           <Divider sx={{ my: 1 }} />
           <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteOpen(true)}>
             {t('professor.course.deleteCourse')}

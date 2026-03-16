@@ -439,7 +439,7 @@
       "rightMinusWrong": "Bonnes moins mauvaises (par défaut)",
       "allOrNothing": "Tout ou rien",
       "correctnessRatio": "Ratio de correction",
-      "msScoringHelp": "S'applique à tous les types de séances. Pour la sélection multiple : Bonnes moins mauvaises = max(0, (2C - S) / K) ; Tout ou rien = correspondance exacte uniquement ; Ratio de correction = options correctement étiquetées / total des options.",
+      "msScoringHelp": "Pour la sélection multiple : Bonnes moins mauvaises = max(0, (2C - S) / K) ; Tout ou rien = correspondance exacte uniquement ; Ratio de correction = options correctement étiquetées / total des options.",
       "quizStart": "Début du questionnaire",
       "quizEnd": "Fin du questionnaire",
       "today": "Aujourd'hui",

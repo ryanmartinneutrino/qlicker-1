@@ -6,7 +6,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
   Box, IconButton, FormControlLabel, Typography, Divider, Paper,
-  Checkbox, FormGroup, Autocomplete, Chip,
+  Checkbox, FormGroup, Autocomplete, Chip, Switch,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -76,6 +76,9 @@ const emptyForm = () => ({
   solution: '',
   points: 1,
   tags: [],
+  public: false,
+  publicOnQlicker: false,
+  publicOnQlickerForStudents: false,
 });
 
 function cloneFormState(form) {
@@ -91,6 +94,9 @@ function cloneFormState(form) {
     solution: form.solution || '',
     points: form.points ?? 1,
     tags: [...new Set((form.tags || []).map((tag) => String(tag || '').trim()).filter(Boolean))],
+    public: !!form.public,
+    publicOnQlicker: !!form.publicOnQlicker,
+    publicOnQlickerForStudents: !!form.publicOnQlickerForStudents,
   };
 }
 
@@ -108,6 +114,7 @@ function buildQuestionPayload(form) {
   const isSlide = isSlideType(form.type);
   const solution = isSlide ? '' : normalizeStoredHtml(form.solution);
   const points = isSlide ? 0 : Number(form.points) || 1;
+  const publicOnQlicker = !!form.publicOnQlicker;
   const payload = {
     type: form.type,
     content,
@@ -115,6 +122,9 @@ function buildQuestionPayload(form) {
     solution: solution || undefined,
     solution_plainText: solution ? extractPlainTextFromHtml(solution) : undefined,
     sessionOptions: { points },
+    public: publicOnQlicker ? true : !!form.public,
+    publicOnQlicker,
+    publicOnQlickerForStudents: publicOnQlicker ? !!form.publicOnQlickerForStudents : false,
     tags: [...new Set((form.tags || []).map((tag) => String(tag || '').trim()).filter(Boolean))]
       .map((tag) => ({ value: tag, label: tag })),
   };
@@ -300,7 +310,10 @@ const QuestionEditor = forwardRef(function QuestionEditor({
           tags: [...new Set((question.tags || [])
             .map((tag) => String(tag?.label || tag?.value || '').trim())
             .filter(Boolean))],
-        }
+          public: !!question.public,
+          publicOnQlicker: !!question.publicOnQlicker,
+          publicOnQlickerForStudents: !!question.publicOnQlickerForStudents,
+         }
         : emptyForm();
     };
 
@@ -569,6 +582,63 @@ const QuestionEditor = forwardRef(function QuestionEditor({
           )}
           sx={{ mb: 2 }}
         />
+
+        <FormGroup sx={{ mb: 2, gap: 0.5 }}>
+          <FormControlLabel
+            control={(
+              <Switch
+                checked={!!form.public}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  updateForm((prev) => ({
+                    ...prev,
+                    public: checked,
+                    ...(checked ? {} : {
+                      publicOnQlicker: false,
+                      publicOnQlickerForStudents: false,
+                    }),
+                  }));
+                }}
+              />
+            )}
+            label={t('questions.editor.coursePublic', { defaultValue: 'Visible to students in this course' })}
+          />
+          <FormControlLabel
+            control={(
+              <Switch
+                checked={!!form.publicOnQlicker}
+                onChange={(event) => {
+                  const checked = event.target.checked;
+                  updateForm((prev) => ({
+                    ...prev,
+                    public: checked ? true : prev.public,
+                    publicOnQlicker: checked,
+                    publicOnQlickerForStudents: checked ? prev.publicOnQlickerForStudents : false,
+                  }));
+                }}
+              />
+            )}
+            label={t('questions.editor.qlickerPublic', { defaultValue: 'Visible to anyone on Qlicker' })}
+          />
+          {form.publicOnQlicker ? (
+            <FormControlLabel
+              sx={{ ml: 3 }}
+              control={(
+                <Switch
+                  checked={!!form.publicOnQlickerForStudents}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    updateForm((prev) => ({
+                      ...prev,
+                      publicOnQlickerForStudents: checked,
+                    }));
+                  }}
+                />
+              )}
+              label={t('questions.editor.qlickerPublicStudents', { defaultValue: 'Allow student accounts to view it outside this course' })}
+            />
+          ) : null}
+        </FormGroup>
 
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>

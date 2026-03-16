@@ -40,6 +40,8 @@ const createQuestionSchema = {
       solution: { type: 'string' },
       solution_plainText: { type: 'string' },
       public: { type: 'boolean' },
+      publicOnQlicker: { type: 'boolean' },
+      publicOnQlickerForStudents: { type: 'boolean' },
       sessionOptions: {
         type: 'object',
         properties: {
@@ -108,6 +110,8 @@ const updateQuestionSchema = {
       solution: { type: 'string' },
       solution_plainText: { type: 'string' },
       public: { type: 'boolean' },
+      publicOnQlicker: { type: 'boolean' },
+      publicOnQlickerForStudents: { type: 'boolean' },
       approved: { type: 'boolean' },
       tags: {
         type: 'array',
@@ -280,6 +284,8 @@ const importQuestionsSchema = {
             solution: { type: 'string' },
             solution_plainText: { type: 'string' },
             public: { type: 'boolean' },
+            publicOnQlicker: { type: 'boolean' },
+            publicOnQlickerForStudents: { type: 'boolean' },
             tags: {
               type: 'array',
               items: {
@@ -372,6 +378,34 @@ function parseDelimitedValues(value) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function isQuestionOpenInLinkedQuiz(session, requestingUserId) {
+  if (!session || (!session.quiz && !session.practiceQuiz)) return false;
+  if (session.status === 'running') return true;
+  if (session.status !== 'visible') return false;
+
+  const nowMs = Date.now();
+  const quizStart = toDateOrNull(session.quizStart);
+  const quizEnd = toDateOrNull(session.quizEnd);
+  const baseWindowActive = quizStart && quizEnd
+    ? nowMs >= quizStart.getTime() && nowMs <= quizEnd.getTime()
+    : false;
+  if (baseWindowActive) return true;
+
+  const userExtension = (session.quizExtensions || []).find((extension) => String(extension?.userId || '') === String(requestingUserId));
+  const extensionStart = toDateOrNull(userExtension?.quizStart);
+  const extensionEnd = toDateOrNull(userExtension?.quizEnd);
+  return extensionStart && extensionEnd
+    ? nowMs >= extensionStart.getTime() && nowMs <= extensionEnd.getTime()
+    : false;
 }
 
 async function createLibraryQuestionCopy({ sourceQuestion, targetCourseId, userId }) {
@@ -641,6 +675,56 @@ async function userCanManageQuestion(question, user) {
   return false;
 }
 
+function isStudentAccount(user) {
+  const roles = user?.roles || [];
+  return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
+}
+
+function isQuestionVisibleOutsideCourse(question, user) {
+  if (!question?.publicOnQlicker) return false;
+  if (!isStudentAccount(user)) return true;
+  return !!question?.publicOnQlickerForStudents;
+}
+
+async function userCanViewQuestion(question, user) {
+  if (!question || !user) return false;
+  if (await userCanManageQuestion(question, user)) return true;
+  if (question.creator === user.userId || question.owner === user.userId) return true;
+  if (isQuestionVisibleOutsideCourse(question, user)) return true;
+
+  const linkedSessions = await getLinkedSessionsForQuestion(question);
+  const normalizedCourseIds = [...new Set([
+    String(question.courseId || '').trim(),
+    ...linkedSessions.map((session) => String(session?.courseId || '').trim()),
+  ].filter(Boolean))];
+  const courses = normalizedCourseIds.length > 0
+    ? await Course.find({ _id: { $in: normalizedCourseIds } }).lean()
+    : [];
+  const courseById = new Map(courses.map((course) => [String(course._id), course]));
+  const isMemberOfLinkedCourse = normalizedCourseIds.some((courseId) => {
+    const course = courseById.get(courseId);
+    if (!course) return false;
+    return (course.students || []).includes(user.userId) || (course.instructors || []).includes(user.userId);
+  });
+
+  if (question.public && isMemberOfLinkedCourse) return true;
+
+  for (const session of linkedSessions) {
+    const course = courseById.get(String(session?.courseId || '').trim());
+    if (!course) continue;
+    const isMember = (course.students || []).includes(user.userId) || (course.instructors || []).includes(user.userId);
+    if (!isMember) continue;
+
+    const fullSession = await Session.findById(session._id).lean();
+    if (!fullSession) continue;
+    if (fullSession.reviewable) return true;
+
+    if (isQuestionOpenInLinkedQuiz(fullSession, user.userId)) return true;
+  }
+
+  return false;
+}
+
 async function notifyLinkedSessionQuestionUpdated(app, question) {
   const linkedSessions = await getLinkedSessionsForQuestion(question);
   if (linkedSessions.length === 0) return;
@@ -891,7 +975,9 @@ export default async function questionRoutes(app) {
         solution: solution || '',
         solution_plainText: solution_plainText || '',
         sessionOptions,
-        public: request.body.public || false,
+        public: request.body.public || request.body.publicOnQlicker || false,
+        publicOnQlicker: request.body.publicOnQlicker || false,
+        publicOnQlickerForStudents: request.body.publicOnQlicker ? !!request.body.publicOnQlickerForStudents : false,
         tags: normalizeTags(tags || []),
         imagePath: imagePath || '',
         approved: true,
@@ -917,7 +1003,18 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      return { question: question.toObject() };
+      const hasPermission = await userCanViewQuestion(question, request.user);
+      if (!hasPermission) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const canManage = await userCanManageQuestion(question, request.user);
+      const ownsQuestion = question.creator === request.user.userId || question.owner === request.user.userId;
+      const questionPayload = canManage || ownsQuestion
+        ? question.toObject()
+        : stripAnswerRevealFields(question.toObject(), { revealCorrectAnswers: false });
+
+      return { question: questionPayload };
     }
   );
 
@@ -971,13 +1068,24 @@ export default async function questionRoutes(app) {
 
       const allowed = [
         'content', 'plainText', 'options', 'type', 'toleranceNumerical', 'correctNumerical',
-        'solution', 'solution_plainText', 'public', 'approved', 'tags', 'imagePath', 'sessionOptions',
+        'solution', 'solution_plainText', 'public', 'publicOnQlicker', 'publicOnQlickerForStudents',
+        'approved', 'tags', 'imagePath', 'sessionOptions',
       ];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
           updates[key] = request.body[key];
         }
+      }
+      if (updates.publicOnQlicker === true) {
+        updates.public = true;
+      }
+      if (updates.public === false) {
+        updates.publicOnQlicker = false;
+        updates.publicOnQlickerForStudents = false;
+      }
+      if (updates.publicOnQlicker === false) {
+        updates.publicOnQlickerForStudents = false;
       }
 
       const updated = await Question.findByIdAndUpdate(
