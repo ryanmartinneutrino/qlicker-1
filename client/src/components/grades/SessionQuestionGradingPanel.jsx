@@ -1036,7 +1036,7 @@ export default function SessionQuestionGradingPanel({
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
           {t('grades.questionPanel.bulkUpdateSelected', {
             selected: selectedFilteredCount,
-            filtered: sortedRows.length,
+            filtered: filteredRows.length,
           })}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1144,7 +1144,7 @@ export default function SessionQuestionGradingPanel({
                   disabled={filteredStudentIds.length === 0}
                   onChange={(event) => handleToggleSelectAllFiltered(event.target.checked)}
                   inputProps={{
-                    'aria-label': t('grades.questionPanel.selectAllFiltered', { count: sortedRows.length }),
+                    'aria-label': t('grades.questionPanel.selectAllFiltered', { count: filteredStudentIds.length }),
                   }}
                 />
               </TableCell>

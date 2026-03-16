@@ -1,14 +1,15 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 
-function buildCopiedSessionOptions(sessionOptions = {}) {
-  if (!sessionOptions || typeof sessionOptions !== 'object') return undefined;
+function buildCopiedSessionOptions(sessionOptions) {
+  if (sessionOptions == null) return undefined;
+  if (typeof sessionOptions !== 'object') return undefined;
 
   const next = {};
 
   if (sessionOptions.points !== undefined) next.points = sessionOptions.points;
   if (sessionOptions.maxAttempts !== undefined) next.maxAttempts = sessionOptions.maxAttempts;
-  if (Array.isArray(sessionOptions.attemptWeights)) next.attemptWeights = sessionOptions.attemptWeights;
+  if (Array.isArray(sessionOptions.attemptWeights)) next.attemptWeights = [...sessionOptions.attemptWeights];
 
   next.hidden = true;
   next.stats = false;
