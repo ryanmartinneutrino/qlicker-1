@@ -38,7 +38,7 @@ export default function PracticeSessionEditor() {
     try {
       const [courseRes, questionRes, sessionRes] = await Promise.all([
         apiClient.get(`/courses/${courseId}`),
-        apiClient.get(`/courses/${courseId}/questions?limit=100`),
+        apiClient.get(`/courses/${courseId}/questions?limit=500`),
         sessionId ? apiClient.get(`/sessions/${sessionId}`) : Promise.resolve(null),
       ]);
 

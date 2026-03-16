@@ -897,6 +897,8 @@ describe('POST /api/v1/questions/:id/copy', () => {
     expect(body.question.courseId).toBe(question.courseId);
     expect(body.question.originalQuestion).toBe(question._id);
     expect(body.question.originalCourse).toBe(question.courseId);
+    expect(body.question.publicOnQlicker).toBe(true);
+    expect(body.question.publicOnQlickerForStudents).toBe(true);
     expect(body.question.sessionOptions).toBeUndefined();
   });
 });

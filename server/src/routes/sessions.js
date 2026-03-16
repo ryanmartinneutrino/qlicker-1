@@ -1754,6 +1754,7 @@ export default async function sessionRoutes(app) {
     {
       preHandler: authenticate,
       schema: replacePracticeQuestionsSchema,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
     },
     async (request, reply) => {
       const session = await Session.findById(request.params.id);
@@ -1778,12 +1779,11 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'One or more questions were not found' });
       }
 
-      for (const question of questions) {
-        // eslint-disable-next-line no-await-in-loop
-        const canView = await userCanViewQuestion(question, request.user);
-        if (!canView) {
-          return reply.code(403).send({ error: 'Forbidden', message: 'One or more questions are not available to this student' });
-        }
+      const visibilityResults = await Promise.all(
+        questions.map((question) => userCanViewQuestion(question, request.user))
+      );
+      if (visibilityResults.some((canView) => !canView)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'One or more questions are not available to this student' });
       }
 
       const updated = await Session.findByIdAndUpdate(

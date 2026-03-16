@@ -846,6 +846,7 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: listCourseQuestionsSchema,
+      rateLimit: { max: 60, timeWindow: '1 minute' },
       config: {
         rateLimit: { max: 60, timeWindow: '1 minute' },
       },
@@ -934,13 +935,10 @@ export default async function questionRoutes(app) {
         const studentCandidates = await Question.find(query)
           .sort(sort)
           .lean();
-        const visibleQuestions = [];
-        for (const question of studentCandidates) {
-          // eslint-disable-next-line no-await-in-loop
-          if (await userCanViewQuestion(question, request.user)) {
-            visibleQuestions.push(question);
-          }
-        }
+        const visibilityResults = await Promise.all(
+          studentCandidates.map((question) => userCanViewQuestion(question, request.user))
+        );
+        const visibleQuestions = studentCandidates.filter((_question, index) => visibilityResults[index]);
 
         if (idsOnly) {
           const questionIds = visibleQuestions.map((question) => String(question._id));
@@ -1040,6 +1038,7 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: createQuestionSchema,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
     },
     async (request, reply) => {
       const userId = request.user.userId;
@@ -1152,6 +1151,7 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: updateQuestionSchema,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
     },
     async (request, reply) => {
       const question = await Question.findById(request.params.id);
@@ -1318,6 +1318,7 @@ export default async function questionRoutes(app) {
     '/questions/:id/approve',
     {
       preHandler: authenticate,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
       config: {
         rateLimit: { max: 30, timeWindow: '1 minute' },
       },
@@ -1357,6 +1358,7 @@ export default async function questionRoutes(app) {
     '/questions/:id/make-public',
     {
       preHandler: authenticate,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
       config: {
         rateLimit: { max: 30, timeWindow: '1 minute' },
       },
