@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Autocomplete,
@@ -50,6 +50,23 @@ function downloadJson(filename, payload) {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+function slugifyFilenamePart(value, fallback = 'question-library') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+}
+
+function normalizeTagValues(tags = []) {
+  return [...new Set(
+    (tags || [])
+      .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+      .filter(Boolean)
+  )];
 }
 
 function buildQueryString(params = {}) {
@@ -318,7 +335,8 @@ export default function QuestionLibraryPanel({
   availableSessions = [],
 }) {
   const { t } = useTranslation();
-  const loadErrorText = 'Failed to load question library.';
+  const loadErrorTextRef = useRef('');
+  loadErrorTextRef.current = t('questionLibrary.errors.load', { defaultValue: 'Failed to load question library.' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [questions, setQuestions] = useState([]);
@@ -360,6 +378,9 @@ export default function QuestionLibraryPanel({
   const allPageSelected = questions.length > 0 && questions.every((question) => selectedIdSet.has(String(question._id)));
   const somePageSelected = questions.some((question) => selectedIdSet.has(String(question._id))) && !allPageSelected;
   const selectedQuestions = questions.filter((question) => selectedIdSet.has(String(question._id)));
+  const selectedSourceCourse = useMemo(() => (
+    courses.find((course) => String(course._id) === String(sourceCourseId)) || null
+  ), [courses, sourceCourseId]);
 
   const fetchCourses = useCallback(async () => {
     const { data } = await apiClient.get('/courses');
@@ -396,12 +417,12 @@ export default function QuestionLibraryPanel({
     } catch (err) {
       setMessage({
         severity: 'error',
-        text: err.response?.data?.message || loadErrorText,
+        text: err.response?.data?.message || loadErrorTextRef.current,
       });
     } finally {
       setLoading(false);
     }
-  }, [loadErrorText, queryParams, sourceCourseId]);
+  }, [queryParams, sourceCourseId]);
 
   useEffect(() => {
     let active = true;
@@ -413,13 +434,13 @@ export default function QuestionLibraryPanel({
       if (!active) return;
       setMessage({
         severity: 'error',
-        text: err.response?.data?.message || loadErrorText,
+        text: err.response?.data?.message || loadErrorTextRef.current,
       });
     });
     return () => {
       active = false;
     };
-  }, [fetchCourses, fetchSourceSessions, fetchTagOptions, loadErrorText, sourceCourseId]);
+  }, [fetchCourses, fetchSourceSessions, fetchTagOptions, sourceCourseId]);
 
   useEffect(() => {
     fetchQuestions();
@@ -558,7 +579,8 @@ export default function QuestionLibraryPanel({
     if (!selectedQuestionIds.length) return;
     try {
       const { data } = await apiClient.post('/questions/export', { questionIds: selectedQuestionIds });
-      downloadJson(`course-${courseId}-question-library.json`, { questions: data.questions || [] });
+      const filenamePrefix = slugifyFilenamePart(selectedSourceCourse?.name || courseId, `course-${courseId}`);
+      downloadJson(`${filenamePrefix}-question-library.json`, { questions: data.questions || [] });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -667,7 +689,7 @@ export default function QuestionLibraryPanel({
             <Autocomplete
               sx={{ minWidth: 220, flex: 1 }}
               options={courses}
-              value={courses.find((course) => String(course._id) === String(sourceCourseId)) || null}
+              value={selectedSourceCourse}
               onChange={async (_event, nextValue) => {
                 const nextCourseId = nextValue?._id || courseId;
                 setSourceCourseId(nextCourseId);
@@ -713,7 +735,7 @@ export default function QuestionLibraryPanel({
               options={tagOptions.map((tag) => tag.label || tag.value)}
               value={currentTagValues}
               onChange={(_event, nextValue) => {
-                setSelectedTags([...new Set((nextValue || []).map((tag) => String(tag?.label || tag?.value || tag || '').trim()).filter(Boolean))]);
+                setSelectedTags(normalizeTagValues(nextValue));
                 setPage(1);
               }}
               renderInput={(params) => (

@@ -453,6 +453,28 @@ function sanitizeImportedQuestion(question, { courseId, sessionId, userId }) {
   return payload;
 }
 
+async function createLibraryQuestionCopy({ sourceQuestion, targetCourseId, userId }) {
+  const sourceObject = sourceQuestion.toObject ? sourceQuestion.toObject() : sourceQuestion;
+  const copiedPayload = { ...sourceObject };
+  delete copiedPayload._id;
+  delete copiedPayload.__v;
+  delete copiedPayload.updatedAt;
+  delete copiedPayload.sessionOptions;
+
+  return Question.create({
+    ...copiedPayload,
+    creator: String(sourceObject.creator || userId),
+    owner: userId,
+    sessionId: '',
+    courseId: String(targetCourseId || sourceObject.courseId || ''),
+    originalQuestion: String(sourceObject.originalQuestion || sourceObject._id || ''),
+    originalCourse: String(sourceObject.originalCourse || sourceObject.courseId || targetCourseId || ''),
+    createdAt: new Date(),
+    lastEditedAt: new Date(),
+    approved: true,
+  });
+}
+
 function countCorrectOptions(options = []) {
   if (!Array.isArray(options)) return 0;
   return options.reduce((count, option) => (option?.correct ? count + 1 : count), 0);
@@ -756,6 +778,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: listCourseQuestionsSchema,
+      config: {
+        rateLimit: { max: 60, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const course = await Course.findById(request.params.courseId).lean();
@@ -805,9 +830,13 @@ export default async function questionRoutes(app) {
         }
       }
 
+      const sort = content
+        ? { score: { $meta: 'textScore' }, createdAt: -1, _id: 1 }
+        : { createdAt: -1, _id: 1 };
+
       if (idsOnly) {
         const questionIds = (await Question.find(query)
-          .sort(content ? { score: { $meta: 'textScore' }, createdAt: -1, _id: 1 } : { createdAt: -1, _id: 1 })
+          .sort(sort)
           .select('_id')
           .lean())
           .map((question) => String(question._id));
@@ -816,10 +845,6 @@ export default async function questionRoutes(app) {
           total: questionIds.length,
         };
       }
-
-      const sort = content
-        ? { score: { $meta: 'textScore' }, createdAt: -1, _id: 1 }
-        : { createdAt: -1, _id: 1 };
 
       const [total, questionDocs, questionTypes] = await Promise.all([
         Question.countDocuments(query),
@@ -852,6 +877,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: courseQuestionTagsSchema,
+      config: {
+        rateLimit: { max: 60, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const course = await Course.findById(request.params.courseId).lean();
@@ -1121,7 +1149,12 @@ export default async function questionRoutes(app) {
   // POST /questions/:id/approve - Approve a question in a course library
   app.post(
     '/questions/:id/approve',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
     async (request, reply) => {
       const question = await Question.findById(request.params.id);
       if (!question) {
@@ -1155,6 +1188,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: bulkCopyQuestionsSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const { questionIds, targetCourseId, targetSessionId = '' } = request.body;
@@ -1203,25 +1239,11 @@ export default async function questionRoutes(app) {
             userId: request.user.userId,
           });
         } else {
-          const sourceObject = question.toObject();
-          const copiedPayload = { ...sourceObject };
-          delete copiedPayload._id;
-          delete copiedPayload.__v;
-          delete copiedPayload.updatedAt;
-          delete copiedPayload.sessionOptions;
-
           // eslint-disable-next-line no-await-in-loop
-          copy = await Question.create({
-            ...copiedPayload,
-            creator: String(sourceObject.creator || request.user.userId),
-            owner: request.user.userId,
-            sessionId: '',
-            courseId: String(targetCourse._id),
-            originalQuestion: String(sourceObject.originalQuestion || sourceObject._id || ''),
-            originalCourse: String(sourceObject.originalCourse || sourceObject.courseId || targetCourse._id),
-            createdAt: new Date(),
-            lastEditedAt: new Date(),
-            approved: true,
+          copy = await createLibraryQuestionCopy({
+            sourceQuestion: question,
+            targetCourseId: String(targetCourse._id),
+            userId: request.user.userId,
           });
         }
         copiedQuestions.push(copy.toObject());
@@ -1237,6 +1259,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: bulkDeleteQuestionsSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const questionIds = [...new Set(request.body.questionIds.map((questionId) => String(questionId)))];
@@ -1279,6 +1304,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: exportQuestionsSchema,
+      config: {
+        rateLimit: { max: 60, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const questionIds = [...new Set(request.body.questionIds.map((questionId) => String(questionId)))];
@@ -1311,6 +1339,9 @@ export default async function questionRoutes(app) {
     {
       preHandler: authenticate,
       schema: importQuestionsSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const course = await Course.findById(request.params.courseId);
