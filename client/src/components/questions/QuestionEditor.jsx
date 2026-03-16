@@ -305,14 +305,14 @@ const QuestionEditor = forwardRef(function QuestionEditor({
               : normalizeOptions(question.options),
           correctNumerical: question.correctNumerical ?? '',
           toleranceNumerical: question.toleranceNumerical ?? '',
-           solution: prepareRichTextInput(question.solution || '', question.solution_plainText || ''),
-           points: normalizedType === QUESTION_TYPES.SLIDE ? 0 : (question.sessionOptions?.points ?? 1),
-           tags: [...new Set((question.tags || [])
-             .map((tag) => String(tag?.label || tag?.value || '').trim())
-             .filter(Boolean))],
-           public: !!question.public,
-           publicOnQlicker: !!question.publicOnQlicker,
-           publicOnQlickerForStudents: !!question.publicOnQlickerForStudents,
+          solution: prepareRichTextInput(question.solution || '', question.solution_plainText || ''),
+          points: normalizedType === QUESTION_TYPES.SLIDE ? 0 : (question.sessionOptions?.points ?? 1),
+          tags: [...new Set((question.tags || [])
+            .map((tag) => String(tag?.label || tag?.value || '').trim())
+            .filter(Boolean))],
+          public: !!question.public,
+          publicOnQlicker: !!question.publicOnQlicker,
+          publicOnQlickerForStudents: !!question.publicOnQlickerForStudents,
          }
         : emptyForm();
     };

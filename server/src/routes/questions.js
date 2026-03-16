@@ -387,7 +387,7 @@ function toDateOrNull(value) {
   return parsed;
 }
 
-function isQuestionOpenInLinkedQuiz(session, userId) {
+function isQuestionOpenInLinkedQuiz(session, requestingUserId) {
   if (!session || (!session.quiz && !session.practiceQuiz)) return false;
   if (session.status === 'running') return true;
   if (session.status !== 'visible') return false;
@@ -400,7 +400,7 @@ function isQuestionOpenInLinkedQuiz(session, userId) {
     : false;
   if (baseWindowActive) return true;
 
-  const userExtension = (session.quizExtensions || []).find((extension) => String(extension?.userId || '') === String(userId));
+  const userExtension = (session.quizExtensions || []).find((extension) => String(extension?.userId || '') === String(requestingUserId));
   const extensionStart = toDateOrNull(userExtension?.quizStart);
   const extensionEnd = toDateOrNull(userExtension?.quizEnd);
   return extensionStart && extensionEnd

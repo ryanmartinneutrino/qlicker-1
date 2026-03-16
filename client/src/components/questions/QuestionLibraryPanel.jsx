@@ -73,6 +73,9 @@ function normalizeTagValues(tags = []) {
 
 function cloneQuestionForBaseline(question) {
   if (!question) return null;
+  if (typeof structuredClone === 'function') {
+    return structuredClone(question);
+  }
   return JSON.parse(JSON.stringify(question));
 }
 
