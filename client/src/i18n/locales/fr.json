@@ -220,6 +220,7 @@
       "failedUpdateUserProperties": "Échec de la mise à jour des propriétés de l'utilisateur",
       "openUserProperties": "Ouvrir les propriétés de l'utilisateur {{name}}",
       "canPromote": "Peut promouvoir d'autres professeurs",
+      "canPromoteStudentDisabled": "Les comptes étudiants ne peuvent pas conserver la permission de promotion.",
       "allowEmailLogin": "Autoriser la connexion par courriel",
       "allowEmailLoginHelp": "Active la connexion par courriel et la réinitialisation du mot de passe pour ce compte créé par SSO.",
       "allowEmailLoginNotNeeded": "L'approbation de la connexion par courriel s'applique seulement aux comptes créés par SSO.",
@@ -924,7 +925,11 @@
       "autosaveFailed": "Échec de la sauvegarde automatique",
       "editQuestion": "Modifier la question",
       "newQuestion": "Nouvelle question",
-      "closing": "Fermeture…"
+      "closing": "Fermeture…",
+      "coursePublic": "Visible aux étudiants de ce cours",
+      "qlickerPublic": "Visible à tout prof sur Qlicker",
+      "qlickerPublicStudents": "Permettre aux comptes étudiants de la voir en dehors de ce cours",
+      "sessionVisibilityWarning": "Cette question est déjà utilisée dans {{count}} séance(s). En général, les étudiants voient les questions de séance en rendant la séance révisable plutôt qu'en rendant la question individuelle publique."
     },
     "richText": {
       "editorLabel": "Éditeur {{label}}",
@@ -1010,6 +1015,13 @@
       "selectAll": "Tout sélectionner ({{count}})",
       "clearSelection": "Effacer la sélection",
       "selectAllFiltered": "Tout sélectionner dans les résultats filtrés",
+      "visibility": "Changer la visibilité",
+      "visibilityTitle_one": "Changer la visibilité de la question",
+      "visibilityTitle_other": "Changer la visibilité de {{count}} questions",
+      "visibilityHelp": "Choisissez qui peut trouver les questions sélectionnées en dehors de la révision normale de séance.",
+      "visibilitySaved_one": "Visibilité de la question mise à jour.",
+      "visibilitySaved_other": "Visibilité des questions mise à jour.",
+      "visibilitySessionWarning": "Certaines questions sélectionnées sont déjà utilisées dans {{count}} question(s) de séance. Normalement, les étudiants voient les questions de séance en rendant ces séances révisables plutôt qu'en rendant la question individuelle publique.",
       "copy": "Copier vers un cours/une séance",
       "export": "Exporter JSON"
     },
@@ -1038,6 +1050,7 @@
       "approve": "Échec de l'approbation de la question.",
       "delete": "Échec de la suppression des questions.",
       "copy": "Échec de la copie des questions.",
+      "visibility": "Échec de la mise à jour de la visibilité des questions.",
       "export": "Échec de l'exportation des questions.",
       "importParse": "Le fichier sélectionné n'est pas un JSON valide de bibliothèque de questions.",
       "import": "Échec de l'importation des questions."

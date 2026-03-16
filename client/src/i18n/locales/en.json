@@ -220,6 +220,7 @@
       "failedUpdateUserProperties": "Failed to update user properties",
       "openUserProperties": "Open user properties for {{name}}",
       "canPromote": "Can promote other professors",
+      "canPromoteStudentDisabled": "Student-only accounts cannot keep the can-promote permission.",
       "allowEmailLogin": "Allow email login",
       "allowEmailLoginHelp": "Enable email login and password reset for this SSO-created account.",
       "allowEmailLoginNotNeeded": "Email login approval only applies to accounts that were created through SSO.",
@@ -924,7 +925,11 @@
       "autosaveFailed": "Autosave failed",
       "editQuestion": "Edit Question",
       "newQuestion": "New Question",
-      "closing": "Closing…"
+      "closing": "Closing…",
+      "coursePublic": "Visible to students in this course",
+      "qlickerPublic": "Visible to any prof on Qlicker",
+      "qlickerPublicStudents": "Allow student accounts to view it outside this course",
+      "sessionVisibilityWarning": "This question is already used in {{count}} session(s). Students usually see session questions by making the session reviewable rather than making the individual question public."
     },
     "richText": {
       "editorLabel": "{{label}} editor",
@@ -1010,6 +1015,13 @@
       "selectAll": "Select all ({{count}})",
       "clearSelection": "Clear selection",
       "selectAllFiltered": "Select all filtered",
+      "visibility": "Change visibility",
+      "visibilityTitle_one": "Change question visibility",
+      "visibilityTitle_other": "Change visibility for {{count}} questions",
+      "visibilityHelp": "Choose who can find the selected questions outside normal session review.",
+      "visibilitySaved_one": "Question visibility updated.",
+      "visibilitySaved_other": "Question visibility updated.",
+      "visibilitySessionWarning": "Some selected questions are already used in {{count}} session question(s). Students normally see session questions by making those sessions reviewable instead of making the individual question public.",
       "copy": "Copy to course/session",
       "export": "Export JSON"
     },
@@ -1038,6 +1050,7 @@
       "approve": "Failed to approve question.",
       "delete": "Failed to delete questions.",
       "copy": "Failed to copy questions.",
+      "visibility": "Failed to update question visibility.",
       "export": "Failed to export questions.",
       "importParse": "The selected file is not valid question-library JSON.",
       "import": "Failed to import questions."

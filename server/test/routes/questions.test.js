@@ -389,6 +389,38 @@ describe('GET /api/v1/questions/:id', () => {
   });
 });
 
+describe('POST /api/v1/questions/bulk-visibility', () => {
+  it('updates selected question visibility states for manageable questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+    const question = await createQuestionInSession(profToken, {
+      courseId: course._id,
+      sessionId: session._id,
+      content: 'Bulk visibility question',
+      public: false,
+      publicOnQlicker: false,
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/questions/bulk-visibility', {
+      token: profToken,
+      payload: {
+        questionIds: [question._id],
+        public: true,
+        publicOnQlicker: true,
+        publicOnQlickerForStudents: true,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().updatedQuestionIds).toEqual([question._id]);
+
+    const updated = await Question.findById(question._id).lean();
+    expect(updated.public).toBe(true);
+    expect(updated.publicOnQlicker).toBe(true);
+    expect(updated.publicOnQlickerForStudents).toBe(true);
+  });
+});
+
 // ---------- PATCH /api/v1/questions/:id ----------
 describe('PATCH /api/v1/questions/:id', () => {
   it('creator can update a question', async (ctx) => {

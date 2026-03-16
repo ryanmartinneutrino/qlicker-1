@@ -10,6 +10,7 @@ const {
   buildPrintableSessionHtmlMock,
   downloadPdfMock,
   downloadJsonMock,
+  lastQuestionEditorProps,
 } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   requestCloseMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   buildPrintableSessionHtmlMock: vi.fn(() => '<html><body>PDF</body></html>'),
   downloadPdfMock: vi.fn().mockResolvedValue(undefined),
   downloadJsonMock: vi.fn(),
+  lastQuestionEditorProps: { current: null },
 }));
 
 vi.mock('react-i18next', () => ({
@@ -46,7 +48,8 @@ vi.mock('../../api/client', () => ({
 }));
 
 vi.mock('../../components/questions/QuestionEditor', () => ({
-  default: React.forwardRef(function MockQuestionEditor(_props, ref) {
+  default: React.forwardRef(function MockQuestionEditor(props, ref) {
+    lastQuestionEditorProps.current = props;
     React.useImperativeHandle(ref, () => ({
       requestClose: requestCloseMock,
     }));
@@ -171,6 +174,7 @@ describe('SessionEditor inline close behavior', () => {
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'common.edit' }))[0]);
     expect(screen.getByText('Mock Question Editor')).toBeInTheDocument();
+    expect(lastQuestionEditorProps.current?.showVisibilityControls).toBe(false);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'professor.sessionEditor.closeEditor' })[0]);
 

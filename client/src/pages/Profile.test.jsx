@@ -20,6 +20,8 @@ vi.mock('react-i18next', () => ({
     t: (key) => ({
       'profile.firstName': 'First Name',
       'profile.lastName': 'Last Name',
+      'profile.language': 'Language',
+      'profile.personalInfo': 'Personal Information',
       'profile.currentPassword': 'Current Password',
       'profile.newPassword': 'New Password',
       'profile.confirmNewPassword': 'Confirm New Password',
@@ -103,5 +105,8 @@ describe('Profile', () => {
     expect(screen.getByText('Your name is managed by your SSO provider and cannot be changed here.')).toBeInTheDocument();
     expect(screen.getByText('Password changes are unavailable while you are signed in through SSO.')).toBeInTheDocument();
     expect(screen.getByText('This account was created through SSO. An administrator must approve email login before password reset or email-based sign-in can be used.')).toBeInTheDocument();
+    const [languageHeading] = screen.getAllByText('Language', { selector: 'h6' });
+    const personalInfoHeading = screen.getByText('Personal Information', { selector: 'h6' });
+    expect(languageHeading.compareDocumentPosition(personalInfoHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

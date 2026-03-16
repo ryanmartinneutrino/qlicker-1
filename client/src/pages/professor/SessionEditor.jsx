@@ -1065,6 +1065,7 @@ export default function SessionEditor() {
             disableOptionCountChanges={questionHasResponses}
             optionCountLockReason={t('professor.sessionEditor.questionOptionsLocked')}
             typeSelectionLockReason={t('professor.sessionEditor.questionTypeLocked')}
+            showVisibilityControls={false}
           />
         </Box>
 

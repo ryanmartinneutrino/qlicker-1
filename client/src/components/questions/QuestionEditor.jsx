@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   Button, TextField, Select, MenuItem, FormControl, InputLabel,
-  Box, IconButton, FormControlLabel, Typography, Divider, Paper,
+  Alert, Box, IconButton, FormControlLabel, Typography, Divider, Paper,
   Checkbox, FormGroup, Autocomplete, Chip, Switch,
 } from '@mui/material';
 import {
@@ -201,6 +201,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   optionCountLockReason = 'Option count is locked for this question.',
   typeSelectionLockReason = 'Question type is locked for this question.',
   tagSuggestions = [],
+  showVisibilityControls = true,
 }, ref) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
@@ -369,10 +370,22 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   const currentPayloadHash = useMemo(() => JSON.stringify(buildQuestionPayload(form)), [form]);
   const deferredPreviewForm = useDeferredValue(form);
   const previewPayload = useMemo(() => buildQuestionPayload(deferredPreviewForm), [deferredPreviewForm]);
+  const linkedSessionCount = useMemo(() => {
+    if (Array.isArray(initial?.linkedSessions) && initial.linkedSessions.length > 0) {
+      return initial.linkedSessions.length;
+    }
+    if (Array.isArray(initialBaseline?.linkedSessions) && initialBaseline.linkedSessions.length > 0) {
+      return initialBaseline.linkedSessions.length;
+    }
+    return initial?.sessionId ? 1 : 0;
+  }, [initial, initialBaseline]);
   const hasChangesSinceOpen = useMemo(() => {
     if (!open) return false;
     return currentPayloadHash !== initialSnapshotHash;
   }, [currentPayloadHash, initialSnapshotHash, open]);
+  const showVisibilityReviewableWarning = showVisibilityControls
+    && linkedSessionCount > 0
+    && (form.public || form.publicOnQlicker);
 
   // Warn before erasing option content when leaving option-based types.
   const handleTypeChange = (type) => {
@@ -583,62 +596,74 @@ const QuestionEditor = forwardRef(function QuestionEditor({
           sx={{ mb: 2 }}
         />
 
-        <FormGroup sx={{ mb: 2, gap: 0.5 }}>
-          <FormControlLabel
-            control={(
-              <Switch
-                checked={!!form.public}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  updateForm((prev) => ({
-                    ...prev,
-                    public: checked,
-                    ...(checked ? {} : {
-                      publicOnQlicker: false,
-                      publicOnQlickerForStudents: false,
-                    }),
-                  }));
-                }}
+        {showVisibilityControls ? (
+          <>
+            <FormGroup sx={{ mb: 2, gap: 0.5 }}>
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={!!form.public}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      updateForm((prev) => ({
+                        ...prev,
+                        public: checked,
+                        ...(checked ? {} : {
+                          publicOnQlicker: false,
+                          publicOnQlickerForStudents: false,
+                        }),
+                      }));
+                    }}
+                  />
+                )}
+                label={t('questions.editor.coursePublic', { defaultValue: 'Visible to students in this course' })}
               />
-            )}
-            label={t('questions.editor.coursePublic', { defaultValue: 'Visible to students in this course' })}
-          />
-          <FormControlLabel
-            control={(
-              <Switch
-                checked={!!form.publicOnQlicker}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  updateForm((prev) => ({
-                    ...prev,
-                    public: checked ? true : prev.public,
-                    publicOnQlicker: checked,
-                    publicOnQlickerForStudents: checked ? prev.publicOnQlickerForStudents : false,
-                  }));
-                }}
+              <FormControlLabel
+                control={(
+                  <Switch
+                    checked={!!form.publicOnQlicker}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      updateForm((prev) => ({
+                        ...prev,
+                        public: checked ? true : prev.public,
+                        publicOnQlicker: checked,
+                        publicOnQlickerForStudents: checked ? prev.publicOnQlickerForStudents : false,
+                      }));
+                    }}
+                  />
+                )}
+                label={t('questions.editor.qlickerPublic', { defaultValue: 'Visible to any prof on Qlicker' })}
               />
-            )}
-            label={t('questions.editor.qlickerPublic', { defaultValue: 'Visible to anyone on Qlicker' })}
-          />
-          {form.publicOnQlicker ? (
-            <FormControlLabel
-              sx={{ ml: 3 }}
-              control={(
-                <Switch
-                  checked={!!form.publicOnQlickerForStudents}
-                  onChange={(event) => {
-                    const checked = event.target.checked;
-                    updateForm((prev) => ({
-                      ...prev,
-                      publicOnQlickerForStudents: checked,
-                    }));
-                  }}
+              {form.publicOnQlicker ? (
+                <FormControlLabel
+                  sx={{ ml: 3 }}
+                  control={(
+                    <Switch
+                      checked={!!form.publicOnQlickerForStudents}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        updateForm((prev) => ({
+                          ...prev,
+                          publicOnQlickerForStudents: checked,
+                        }));
+                      }}
+                    />
+                  )}
+                  label={t('questions.editor.qlickerPublicStudents', { defaultValue: 'Allow student accounts to view it outside this course' })}
                 />
-              )}
-              label={t('questions.editor.qlickerPublicStudents', { defaultValue: 'Allow student accounts to view it outside this course' })}
-            />
-          ) : null}
-        </FormGroup>
+              ) : null}
+            </FormGroup>
+            {showVisibilityReviewableWarning ? (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {t('questions.editor.sessionVisibilityWarning', {
+                  count: linkedSessionCount,
+                  defaultValue: 'This question is already used in a session. Students usually see session questions by making the session reviewable rather than making the individual question public.',
+                })}
+              </Alert>
+            ) : null}
+          </>
+        ) : null}
 
         <Box sx={{ mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, minHeight: 24 }}>

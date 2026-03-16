@@ -236,6 +236,24 @@ const bulkDeleteQuestionsSchema = {
   },
 };
 
+const bulkVisibilityQuestionsSchema = {
+  body: {
+    type: 'object',
+    required: ['questionIds'],
+    properties: {
+      questionIds: {
+        type: 'array',
+        minItems: 1,
+        items: { type: 'string', minLength: 1 },
+      },
+      public: { type: 'boolean' },
+      publicOnQlicker: { type: 'boolean' },
+      publicOnQlickerForStudents: { type: 'boolean' },
+    },
+    additionalProperties: false,
+  },
+};
+
 const exportQuestionsSchema = {
   body: {
     type: 'object',
@@ -1312,6 +1330,69 @@ export default async function questionRoutes(app) {
       await Question.deleteMany({ _id: { $in: questionIds } });
 
       return { deletedQuestionIds: questionIds };
+    }
+  );
+
+  // POST /questions/bulk-visibility - Update library visibility for selected questions
+  app.post(
+    '/questions/bulk-visibility',
+    {
+      preHandler: requireRole(['professor', 'admin']),
+      schema: bulkVisibilityQuestionsSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const questionIds = [...new Set(request.body.questionIds.map((questionId) => String(questionId)))];
+      if (
+        request.body?.public === undefined
+        && request.body?.publicOnQlicker === undefined
+        && request.body?.publicOnQlickerForStudents === undefined
+      ) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'At least one visibility field is required' });
+      }
+
+      const questions = await Question.find({ _id: { $in: questionIds } });
+      if (questions.length !== questionIds.length) {
+        return reply.code(404).send({ error: 'Not Found', message: 'One or more questions were not found' });
+      }
+
+      for (const question of questions) {
+        // eslint-disable-next-line no-await-in-loop
+        const hasPermission = await userCanManageQuestion(question, request.user);
+        if (!hasPermission) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+        }
+      }
+
+      const updates = {};
+      if (request.body?.public !== undefined) {
+        updates.public = !!request.body.public;
+      }
+      if (request.body?.publicOnQlicker !== undefined) {
+        updates.publicOnQlicker = !!request.body.publicOnQlicker;
+      }
+      if (request.body?.publicOnQlickerForStudents !== undefined) {
+        updates.publicOnQlickerForStudents = !!request.body.publicOnQlickerForStudents;
+      }
+      if (updates.publicOnQlicker === true) {
+        updates.public = true;
+      }
+      if (updates.public === false) {
+        updates.publicOnQlicker = false;
+        updates.publicOnQlickerForStudents = false;
+      }
+      if (updates.publicOnQlicker === false) {
+        updates.publicOnQlickerForStudents = false;
+      }
+
+      await Question.updateMany(
+        { _id: { $in: questionIds } },
+        { $set: updates }
+      );
+
+      return { updatedQuestionIds: questionIds };
     }
   );
 

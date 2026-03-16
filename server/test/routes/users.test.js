@@ -422,6 +422,50 @@ describe('Admin user management', () => {
     expect(updated.allowEmailLogin).toBe(false);
     expect(updated.services?.resetPassword).toBeUndefined();
   });
+
+  it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-student-props@example.com', roles: ['admin'] });
+    const target = await User.create({
+      emails: [{ address: 'student-props@example.com', verified: true }],
+      services: { password: { hash: await User.hashPassword('password123') } },
+      profile: { firstname: 'Student', lastname: 'Props', roles: ['student'], canPromote: true },
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const propsRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { canPromote: true },
+    });
+    expect(propsRes.statusCode).toBe(200);
+    expect(propsRes.json().profile.canPromote).toBe(false);
+
+    const professorRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/role`, {
+      token,
+      payload: { role: 'professor' },
+    });
+    expect(professorRes.statusCode).toBe(200);
+
+    const promoteRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { canPromote: true },
+    });
+    expect(promoteRes.statusCode).toBe(200);
+    expect(promoteRes.json().profile.canPromote).toBe(true);
+
+    const demoteRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/role`, {
+      token,
+      payload: { role: 'student' },
+    });
+    expect(demoteRes.statusCode).toBe(200);
+    expect(demoteRes.json().profile.roles).toEqual(['student']);
+    expect(demoteRes.json().profile.canPromote).toBe(false);
+
+    const updated = await User.findById(target._id);
+    expect(updated.profile.roles).toEqual(['student']);
+    expect(updated.profile.canPromote).toBe(false);
+  });
 });
 
 // ---------- Legacy database compatibility ----------

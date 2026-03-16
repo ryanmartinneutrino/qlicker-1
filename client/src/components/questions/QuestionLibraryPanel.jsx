@@ -13,10 +13,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   MenuItem,
   Paper,
   Stack,
+  Switch,
   TextField,
   Tooltip,
   Typography,
@@ -86,6 +88,35 @@ function buildQueryString(params = {}) {
     searchParams.set(key, String(value));
   });
   return searchParams.toString();
+}
+
+function createVisibilityForm(source = {}) {
+  return {
+    public: !!source.public,
+    publicOnQlicker: !!source.publicOnQlicker,
+    publicOnQlickerForStudents: !!source.publicOnQlickerForStudents,
+  };
+}
+
+function buildVisibilityPayload(form = {}) {
+  const publicOnQlicker = !!form.publicOnQlicker;
+  return {
+    public: publicOnQlicker ? true : !!form.public,
+    publicOnQlicker,
+    publicOnQlickerForStudents: publicOnQlicker ? !!form.publicOnQlickerForStudents : false,
+  };
+}
+
+function resolveBulkVisibilityInitialForm(selectedQuestions = []) {
+  if (!selectedQuestions.length) return createVisibilityForm();
+  const first = buildVisibilityPayload(selectedQuestions[0]);
+  const allMatch = selectedQuestions.every((question) => {
+    const next = buildVisibilityPayload(question);
+    return next.public === first.public
+      && next.publicOnQlicker === first.publicOnQlicker
+      && next.publicOnQlickerForStudents === first.publicOnQlickerForStudents;
+  });
+  return allMatch ? createVisibilityForm(first) : createVisibilityForm();
 }
 
 function QuestionCopyDialog({
@@ -372,6 +403,8 @@ export default function QuestionLibraryPanel({
   const [editingQuestionBaseline, setEditingQuestionBaseline] = useState(null);
   const [creatingQuestion, setCreatingQuestion] = useState(false);
   const [copyDialogState, setCopyDialogState] = useState({ open: false, questionIds: [] });
+  const [visibilityDialogOpen, setVisibilityDialogOpen] = useState(false);
+  const [bulkVisibilityForm, setBulkVisibilityForm] = useState(createVisibilityForm());
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importPreviewQuestions, setImportPreviewQuestions] = useState([]);
   const [importSelectedIds, setImportSelectedIds] = useState([]);
@@ -634,6 +667,45 @@ export default function QuestionLibraryPanel({
     }
   };
 
+  const handleOpenVisibilityDialog = () => {
+    setBulkVisibilityForm(resolveBulkVisibilityInitialForm(selectedQuestions));
+    setVisibilityDialogOpen(true);
+  };
+
+  const handleBulkVisibilitySave = async () => {
+    if (!selectedQuestionIds.length) return;
+    setSaving(true);
+    try {
+      await apiClient.post('/questions/bulk-visibility', {
+        questionIds: selectedQuestionIds,
+        ...buildVisibilityPayload(bulkVisibilityForm),
+      });
+      setVisibilityDialogOpen(false);
+      await refreshQuestions();
+      setMessage({
+        severity: 'success',
+        text: t('questionLibrary.bulk.visibilitySaved', {
+          count: selectedQuestionIds.length,
+          defaultValue: selectedQuestionIds.length === 1 ? 'Question visibility updated.' : 'Question visibility updated.',
+        }),
+      });
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('questionLibrary.errors.visibility', { defaultValue: 'Failed to update question visibility.' }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedLinkedSessionCount = selectedQuestions.reduce(
+    (count, question) => count + (Array.isArray(question.linkedSessions) && question.linkedSessions.length > 0 ? 1 : 0),
+    0
+  );
+  const showBulkVisibilityWarning = selectedLinkedSessionCount > 0
+    && (bulkVisibilityForm.public || bulkVisibilityForm.publicOnQlicker);
+
   const handleExportQuestions = async () => {
     if (!selectedQuestionIds.length) return;
     try {
@@ -888,6 +960,14 @@ export default function QuestionLibraryPanel({
               </Button>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Button
+                size="small"
+                startIcon={<EditIcon />}
+                disabled={selectedQuestionIds.length === 0 || saving}
+                onClick={handleOpenVisibilityDialog}
+              >
+                {t('questionLibrary.bulk.visibility', { defaultValue: 'Change visibility' })}
+              </Button>
               <Button
                 size="small"
                 startIcon={<CopyIcon />}
@@ -1158,6 +1238,92 @@ export default function QuestionLibraryPanel({
         onClose={() => setCopyDialogState({ open: false, questionIds: [] })}
         onConfirm={handleCopyQuestions}
       />
+
+      <Dialog open={visibilityDialogOpen} onClose={() => setVisibilityDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {t('questionLibrary.bulk.visibilityTitle', {
+            count: selectedQuestionIds.length,
+            defaultValue: selectedQuestionIds.length === 1 ? 'Change question visibility' : `Change visibility for ${selectedQuestionIds.length} questions`,
+          })}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <Typography variant="body2" color="text.secondary">
+              {t('questionLibrary.bulk.visibilityHelp', {
+                defaultValue: 'Choose who can find the selected questions outside normal session review.',
+              })}
+            </Typography>
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={!!bulkVisibilityForm.public}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setBulkVisibilityForm((current) => ({
+                      ...current,
+                      public: checked,
+                      ...(checked ? {} : {
+                        publicOnQlicker: false,
+                        publicOnQlickerForStudents: false,
+                      }),
+                    }));
+                  }}
+                />
+              )}
+              label={t('questions.editor.coursePublic', { defaultValue: 'Visible to students in this course' })}
+            />
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={!!bulkVisibilityForm.publicOnQlicker}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setBulkVisibilityForm((current) => ({
+                      ...current,
+                      public: checked ? true : current.public,
+                      publicOnQlicker: checked,
+                      publicOnQlickerForStudents: checked ? current.publicOnQlickerForStudents : false,
+                    }));
+                  }}
+                />
+              )}
+              label={t('questions.editor.qlickerPublic', { defaultValue: 'Visible to any prof on Qlicker' })}
+            />
+            {bulkVisibilityForm.publicOnQlicker ? (
+              <FormControlLabel
+                sx={{ ml: 3 }}
+                control={(
+                  <Switch
+                    checked={!!bulkVisibilityForm.publicOnQlickerForStudents}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setBulkVisibilityForm((current) => ({
+                        ...current,
+                        publicOnQlickerForStudents: checked,
+                      }));
+                    }}
+                  />
+                )}
+                label={t('questions.editor.qlickerPublicStudents', { defaultValue: 'Allow student accounts to view it outside this course' })}
+              />
+            ) : null}
+            {showBulkVisibilityWarning ? (
+              <Alert severity="warning">
+                {t('questionLibrary.bulk.visibilitySessionWarning', {
+                  count: selectedLinkedSessionCount,
+                  defaultValue: 'Some selected questions are already used in a session. Students normally see session questions by making that session reviewable instead of making the individual question public.',
+                })}
+              </Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setVisibilityDialogOpen(false)}>{t('common.cancel')}</Button>
+          <Button variant="contained" onClick={handleBulkVisibilitySave} disabled={saving}>
+            {saving ? t('common.saving') : t('common.save')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ImportQuestionsDialog
         open={importDialogOpen}
