@@ -9,7 +9,7 @@ function canUseEmailLogin(user = {}) {
   return user.allowEmailLogin === true;
 }
 
-function isStudentOnlyRole(roles = []) {
+function hasOnlyStudentRole(roles = []) {
   return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
 }
 
@@ -319,7 +319,7 @@ export default async function userRoutes(app) {
       const setUpdates = {};
       const unsetUpdates = {};
       const existingRoles = existingUser.profile?.roles || [];
-      const targetIsStudentOnly = isStudentOnlyRole(existingRoles);
+      const targetIsStudentOnly = hasOnlyStudentRole(existingRoles);
 
       if (targetIsStudentOnly) {
         setUpdates['profile.canPromote'] = false;
