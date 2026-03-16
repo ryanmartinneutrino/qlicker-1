@@ -391,7 +391,20 @@
       "courseNotFound": "Cours introuvable",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
-      "video": "Vidéo"
+      "video": "Vidéo",
+      "failedLoadCourses": "Échec du chargement des cours",
+      "failedLoadSessionsForCopy": "Échec du chargement des séances à copier",
+      "copySessionsFromCourse": "Copier des séances depuis un autre cours",
+      "copySessionsDialogTitle": "Copier des séances dans ce cours",
+      "sourceCourse": "Cours source",
+      "copySelectedSessions": "Copier les séances sélectionnées",
+      "copyingSessions": "Copie des séances…",
+      "copySessionToCourse": "Copier la séance vers un cours",
+      "copySessionConfirm": "Choisissez le cours de destination pour « {{name}} ».",
+      "destinationCourse": "Cours de destination",
+      "copyingSession": "Copie de la séance…",
+      "sessionsCopied": "{{count}} séance copiée",
+      "sessionsCopied_other": "{{count}} séances copiées"
     },
     "sessionEditor": {
       "sessionSettings": "Paramètres de la séance",
@@ -1142,7 +1155,8 @@
       "showingStudentsSession": "Affichage de {{showing}} sur {{total}} étudiant(s) ayant rejoint cette session.",
       "response": "Réponse",
       "mark": "Note",
-      "pointsValue": "{{count}} pts"
+      "pointsValue": "{{count}} pts",
+      "onlyWithResponses": "Uniquement avec réponses"
     }
   },
   "pageTitles": {

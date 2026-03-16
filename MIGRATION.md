@@ -113,6 +113,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
 - ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
 - ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
+- ✅ Session/course workflow polish — instructor course pickers now use compact code+semester labels sorted newest-first; the course manage page can copy one or many sessions across instructor courses; live-session controls now include a page ribbon; session counts refresh after question-library changes; wrapped course tabs keep the active underline on the selected row; grading now accepts explicit zero scores and can filter to students with responses
 - ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
 - ✅ Session sequencing simplification — sessions once again use the ordered `questions` array as the single source of truth, matching the legacy Meteor database; slides are represented as question documents with `type: 6`, so interactive sessions and quizzes can mix slides and response-collecting questions without a second session-level array
 - ✅ Live session editing and delta sync — question/slide edits now save reliably from the session editor and live sessions, including rich-text image resizing; legacy session-linked questions authorize correctly through session/course fallback metadata; live websocket traffic now uses audience-scoped deltas (`session:question-updated`, `session:attempt-changed`, `session:participant-joined`, `session:join-code-changed`) and limits response-count updates to instructors plus joined students when visible stats need histogram refreshes
@@ -121,8 +122,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 241 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 15 tests across 7 files
+- **Server:** 248 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
+- **Client:** 21 tests across 10 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -179,7 +180,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Priority 6: Additional Items
 
-- [ ] Copy sessions between courses (Agent 3 remaining task)
+- [x] Copy sessions between courses (Agent 3 remaining task)
 - [ ] Extract WebSocket context from inline LiveSession pages to shared context
 - [ ] Add automated accessibility regression checks (axe-core in Playwright)
 - [ ] Question approval workflow (student submissions)
@@ -244,7 +245,7 @@ Work is divided into **8 parallel lanes**. Dependencies between agents are minim
 |-------|---------------|----------------|
 | 1 - Foundation | ✅ Phase 7 done | Phase 8: production Docker, backup scripts |
 | 2 - Auth | ✅ Phase 7 done | SSO production confirmation |
-| 3 - Courses | ✅ Phase 7 done | Copy sessions between courses |
+| 3 - Courses | ✅ Phase 7 done | — |
 | 4 - Sessions | ✅ Phase 7 done | Question approval workflow |
 | 5 - Responses | ✅ Phase 7 done | WebSocket rate limiting |
 | 6 - Grading | ✅ Phase 6 done | — |

@@ -2181,6 +2181,77 @@ describe('PATCH /api/v1/sessions/:id/current', () => {
   });
 });
 
+// ---------- POST /api/v1/courses/:courseId/sessions/copy ----------
+describe('POST /api/v1/courses/:courseId/sessions/copy', () => {
+  it('copies selected sessions into another instructor course and resets session dates/state', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-copy-bulk@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const sourceCourseRes = await createCourseAsProf(profToken, {
+      name: 'Source Course',
+      semester: 'Fall/Winter 2024/2025',
+    });
+    const targetCourseRes = await createCourseAsProf(profToken, {
+      name: 'Target Course',
+      semester: 'Fall/Winter 2025/2026',
+    });
+    const sourceCourse = sourceCourseRes.json().course;
+    const targetCourse = targetCourseRes.json().course;
+    const sourceSessionRes = await createSessionInCourse(profToken, sourceCourse._id, {
+      name: 'Import Me',
+      description: 'Original session description',
+      quiz: true,
+      quizStart: new Date('2025-01-10T12:00:00.000Z').toISOString(),
+      quizEnd: new Date('2025-01-10T14:00:00.000Z').toISOString(),
+      date: new Date('2025-01-10T12:00:00.000Z').toISOString(),
+    });
+    const sourceSession = sourceSessionRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${sourceSession._id}`, {
+      token: profToken,
+      payload: {
+        status: 'done',
+        reviewable: true,
+        joinCodeEnabled: true,
+      },
+    });
+
+    const sourceQuestion = await createQuestionInSession(profToken, {
+      type: 2,
+      content: '<p>Imported question</p>',
+      plainText: 'Imported question',
+      sessionId: sourceSession._id,
+      courseId: sourceCourse._id,
+      sessionOptions: { points: 3 },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/courses/${targetCourse._id}/sessions/copy`, {
+      token: profToken,
+      payload: { sessionIds: [sourceSession._id] },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const copiedSession = res.json().sessions[0];
+    expect(copiedSession.courseId).toBe(targetCourse._id);
+    expect(copiedSession.name).toBe('Import Me (copy)');
+    expect(copiedSession.status).toBe('hidden');
+    expect(copiedSession.reviewable).toBe(false);
+    expect(copiedSession.joinCodeEnabled).toBe(false);
+    expect(copiedSession).not.toHaveProperty('date');
+    expect(copiedSession).not.toHaveProperty('quizStart');
+    expect(copiedSession).not.toHaveProperty('quizEnd');
+
+    const targetCourseDoc = await Course.findById(targetCourse._id).lean();
+    expect(targetCourseDoc.sessions).toContain(copiedSession._id);
+
+    const copiedQuestion = await Question.findById(copiedSession.questions[0]).lean();
+    expect(copiedQuestion).toBeTruthy();
+    expect(copiedQuestion.sessionId).toBe(copiedSession._id);
+    expect(copiedQuestion.courseId).toBe(targetCourse._id);
+    expect(copiedQuestion.owner).toBe(prof._id);
+    expect(copiedQuestion.originalQuestion).toBe(sourceQuestion._id);
+  });
+});
+
 // ---------- POST /api/v1/sessions/:id/copy ----------
 describe('POST /api/v1/sessions/:id/copy', () => {
   it('instructor can copy a session', async (ctx) => {
@@ -2192,8 +2263,20 @@ describe('POST /api/v1/sessions/:id/copy', () => {
     const sessRes = await createSessionInCourse(profToken, course._id, {
       name: 'Original',
       description: 'Desc',
+      quiz: true,
+      quizStart: new Date('2025-01-10T12:00:00.000Z').toISOString(),
+      quizEnd: new Date('2025-01-10T14:00:00.000Z').toISOString(),
+      date: new Date('2025-01-10T12:00:00.000Z').toISOString(),
     });
     const session = sessRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: {
+        status: 'done',
+        reviewable: true,
+        joinCodeEnabled: true,
+      },
+    });
 
     const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
       token: profToken,
@@ -2204,6 +2287,11 @@ describe('POST /api/v1/sessions/:id/copy', () => {
     expect(body.session.name).toBe('Original (copy)');
     expect(body.session.description).toBe('Desc');
     expect(body.session.status).toBe('hidden');
+    expect(body.session.reviewable).toBe(false);
+    expect(body.session.joinCodeEnabled).toBe(false);
+    expect(body.session).not.toHaveProperty('date');
+    expect(body.session).not.toHaveProperty('quizStart');
+    expect(body.session).not.toHaveProperty('quizEnd');
     expect(body.session._id).not.toBe(session._id);
   });
 

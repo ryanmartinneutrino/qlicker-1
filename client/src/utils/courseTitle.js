@@ -18,3 +18,20 @@ export function buildCourseTitle(course = {}, variant = 'long') {
   if (variant === 'medium') return mediumTitle;
   return longTitle;
 }
+
+export function buildCourseSelectionLabel(course = {}) {
+  const shortTitle = buildCourseTitle(course, 'short');
+  const section = toText(course?.section);
+  const semester = toText(course?.semester);
+  const baseTitle = [shortTitle, section].filter(Boolean).join(' · ') || shortTitle;
+  return semester ? `${baseTitle} (${semester})` : baseTitle;
+}
+
+export function sortCoursesByRecent(courses = []) {
+  return [...courses].sort((a, b) => {
+    const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+    if (aTime !== bTime) return bTime - aTime;
+    return buildCourseSelectionLabel(a).localeCompare(buildCourseSelectionLabel(b));
+  });
+}
