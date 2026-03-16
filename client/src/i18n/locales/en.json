@@ -735,6 +735,7 @@
     "course": {
       "lectures": "Lectures",
       "quizzes": "Quizzes",
+      "practiceSessions": "Practice Sessions",
       "grades": "Grades",
       "settings": "Settings",
       "courseSettings": "Course Settings",
@@ -755,9 +756,23 @@
       "submitQuiz": "Submit quiz",
       "review": "Review",
       "failedLoadCourse": "Failed to load course",
+      "failedLoadPracticeEditor": "Failed to load the practice session editor.",
       "courseNotFound": "Course not found",
       "noLectures": "No lectures available.",
       "noQuizzes": "No quizzes available.",
+      "noPracticeSessions": "No practice sessions yet.",
+      "newPracticeSession": "New practice session",
+      "editPracticeSession": "Edit practice session",
+      "practiceSessionName": "Practice session name",
+      "practiceNameRequired": "Practice session name is required.",
+      "filterPracticeQuestions": "Filter questions",
+      "selectedPracticeQuestions": "{{count}} questions selected",
+      "selectedPracticeQuestions_one": "1 question selected",
+      "saveAndStartPractice": "Save and start practice",
+      "backToPracticeSessions": "Back to practice sessions",
+      "deletePracticeSessionConfirm": "Delete this practice session?",
+      "failedDeletePracticeSession": "Failed to delete practice session.",
+      "failedSavePracticeSession": "Failed to save the practice session.",
       "failedUnenroll": "Failed to unenroll",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
@@ -970,6 +985,7 @@
   "questionLibrary": {
     "title": "Question Library",
     "subtitle": "Browse, edit, copy, export, and import questions across your instructor courses.",
+    "studentSubtitle": "Browse course questions, copy them into your library, and create your own private practice questions.",
     "newQuestion": "New question",
     "previewHint": "Question {{number}}",
     "empty": "No questions match the current filters.",
@@ -1035,7 +1051,8 @@
       "hasResponses": "Has responses"
     },
     "actions": {
-      "approve": "Approve question"
+      "approve": "Approve question",
+      "makePublic": "Make question public to the course"
     },
     "editLocks": {
       "type": "Question type is locked because responses already exist.",
@@ -1048,6 +1065,7 @@
       "load": "Failed to load question library.",
       "selectAll": "Failed to select all filtered questions.",
       "approve": "Failed to approve question.",
+      "makePublic": "Failed to make question public.",
       "delete": "Failed to delete questions.",
       "copy": "Failed to copy questions.",
       "visibility": "Failed to update question visibility.",

@@ -823,7 +823,7 @@ export default function CourseDetail() {
 
   const students = sortPeopleByLastName(course.students || []);
   const instructors = sortPeopleByLastName(course.instructors || []);
-  const sortedSessions = sortSessions(sessions);
+  const sortedSessions = sortSessions((sessions || []).filter((session) => !session.studentCreated));
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
   const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);

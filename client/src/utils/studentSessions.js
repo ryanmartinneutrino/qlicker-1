@@ -45,6 +45,7 @@ export function isSubmittedLiveQuiz(session) {
 export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
   const isQuiz = isQuizSession(session);
   const submittedQuiz = isQuiz && session?.quizSubmittedByCurrentUser && !session?.practiceQuiz;
+  const isOwnedPracticeSession = !!session?.practiceQuiz && !!session?.studentCreated;
 
   if (session?.status === 'done' && session?.reviewable) {
     return {
@@ -76,7 +77,7 @@ export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
     };
   }
 
-  if (isQuiz && session?.status === 'running') {
+  if (isQuiz && (session?.status === 'running' || isOwnedPracticeSession)) {
     const hasResponses = !!session?.quizHasResponsesByCurrentUser;
     const allQuestionsAnswered = !!session?.quizAllQuestionsAnsweredByCurrentUser;
     let quizActionLabel = 'student.course.startQuiz';

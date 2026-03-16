@@ -689,7 +689,7 @@ export default function SessionReview() {
   const total = questions.length;
   const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
   const resolvedReturnTab = session && (session.quiz || session.practiceQuiz)
-    ? 1
+    ? (session.studentCreated ? 2 : 1)
     : requestedReturnTab;
   const courseBackLink = resolvedReturnTab === 0
     ? `/student/course/${courseId}`

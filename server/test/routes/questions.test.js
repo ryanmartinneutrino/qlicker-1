@@ -135,14 +135,50 @@ describe('POST /api/v1/questions', () => {
     expect(res.json().message).toBe('Multiple Choice questions can only have one correct option');
   });
 
-  it('student cannot create a question (403)', async (ctx) => {
+  it('student cannot create a question when student questions are disabled (403)', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course } = await setupCourseAndSession();
     const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
 
-    const res = await createQuestionAsProf(studentToken);
+    const res = await createQuestionAsProf(studentToken, { courseId: course._id });
 
     expect(res.statusCode).toBe(403);
+  });
+
+  it('student can create a private unapproved library question when enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'student-questions-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: true } });
+    const student = await createTestUser({ email: 'student-enabled@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: studentToken,
+      payload: {
+        type: 2,
+        courseId: course._id,
+        content: 'Student library question',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().question.approved).toBe(false);
+    expect(res.json().question.public).toBe(false);
+    expect(res.json().question.studentCreated).toBe(true);
+    expect(res.json().question.sessionId).toBe('');
   });
 
   it('creates question with sessionId and courseId', async (ctx) => {
@@ -831,6 +867,8 @@ describe('POST /api/v1/questions/:id/copy', () => {
     const profToken = await getAuthToken(app, prof);
     const qRes = await createQuestionAsProf(profToken, {
       content: 'Original Q',
+      publicOnQlicker: true,
+      publicOnQlickerForStudents: true,
       sessionId: 'session-source',
       sessionOptions: {
         points: 4,
@@ -981,6 +1019,47 @@ describe('POST /api/v1/questions/:id/approve', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().question.approved).toBe(true);
+  });
+
+  it('lets a professor make a student question public and take ownership', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'publicize-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: true } });
+    const student = await createTestUser({ email: 'publicize-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const studentQuestionRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: studentToken,
+      payload: {
+        type: 2,
+        courseId: course._id,
+        content: 'Student draft question',
+      },
+    });
+    expect(studentQuestionRes.statusCode).toBe(201);
+    const questionId = studentQuestionRes.json().question._id;
+
+    const publicizeRes = await authenticatedRequest(app, 'POST', `/api/v1/questions/${questionId}/make-public`, {
+      token: profToken,
+    });
+
+    expect(publicizeRes.statusCode).toBe(200);
+    expect(publicizeRes.json().question.public).toBe(true);
+    expect(publicizeRes.json().question.approved).toBe(true);
+    expect(publicizeRes.json().question.owner).toBe(prof._id.toString());
+
+    const studentPatchRes = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${questionId}`, {
+      token: studentToken,
+      payload: { content: 'Student edit should fail' },
+    });
+    expect(studentPatchRes.statusCode).toBe(403);
   });
 });
 

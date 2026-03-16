@@ -7,6 +7,7 @@ const {
   apiClientMock,
   tMock,
   requestCloseMock,
+  authState,
 } = vi.hoisted(() => ({
   apiClientMock: {
     get: vi.fn(),
@@ -16,6 +17,7 @@ const {
   },
   tMock: vi.fn((key, options) => options?.defaultValue ?? key),
   requestCloseMock: vi.fn(),
+  authState: { user: { _id: 'prof-1', roles: ['professor'] } },
 }));
 
 vi.mock('react-i18next', () => ({
@@ -26,6 +28,10 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('../../api/client', () => ({
   default: apiClientMock,
+}));
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => authState,
 }));
 
 vi.mock('./QuestionDisplay', () => ({
@@ -49,6 +55,7 @@ describe('QuestionLibraryPanel', () => {
     apiClientMock.delete.mockReset();
     tMock.mockClear();
     requestCloseMock.mockReset();
+    authState.user = { _id: 'prof-1', roles: ['professor'] };
 
     apiClientMock.get.mockImplementation((url) => {
       if (url === '/courses') {
@@ -189,5 +196,24 @@ describe('QuestionLibraryPanel', () => {
         publicOnQlickerForStudents: false,
       });
     });
+  });
+
+  it('hides professor-only controls for student libraries', async () => {
+    authState.user = { _id: 'student-1', roles: ['student'] };
+
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
+        availableSessions={[]}
+        allowQuestionCreate
+      />
+    );
+
+    await screen.findByText('Library question content');
+
+    expect(screen.queryByRole('button', { name: 'Approve question' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change visibility' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Import JSON' })).not.toBeInTheDocument();
   });
 });

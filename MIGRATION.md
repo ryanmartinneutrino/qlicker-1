@@ -125,8 +125,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 267 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 28 tests across 11 files
+- **Server:** 272 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
+- **Client:** 30 tests across 11 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -153,7 +153,14 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
   - Preserve creator/original course/original question lineage metadata when copying or importing
 - [ ] Extend the question library to cover personal/public libraries and deeper session-editor integration
   - Session editor now includes direct session export/import controls (portable JSON plus print-friendly PDF variants); remaining work here is broader personal/public library coverage
-- [ ] Student question submission and approval workflow (if `allowStudentQuestions` is enabled)
+- [x] Student question library and approval/publication workflow (when `allowStudentQuestions` is enabled)
+  - Students can browse the course question library from the student course page, copy visible questions, and create/edit only their own private unapproved questions
+  - Student-authored questions stay library-only (never session-attached), can only use existing course/session/question tags, and do not expose public-visibility controls in the editor
+  - Professors can still approve student questions, and can now promote a student question to course-public visibility in one action, which also transfers ownership to the professor
+- [x] Student practice sessions
+  - Students now have a dedicated “Practice Sessions” course tab with create/edit/delete flows for their own practice quizzes
+  - Practice sessions reuse the student quiz/review experience, including one-question-at-a-time navigation and “show solution” behavior after per-question submission
+  - Practice sessions can reference visible library questions directly, so student-authored questions remain unassociated with sessions
 
 ### Priority 3: Remaining Security Hardening
 

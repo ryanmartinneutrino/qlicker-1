@@ -426,7 +426,12 @@ function isQuestionOpenInLinkedQuiz(session, requestingUserId) {
     : false;
 }
 
-async function createLibraryQuestionCopy({ sourceQuestion, targetCourseId, userId }) {
+async function createLibraryQuestionCopy({
+  sourceQuestion,
+  targetCourseId,
+  userId,
+  forceStudentCopy = false,
+}) {
   const sourceObject = sourceQuestion.toObject ? sourceQuestion.toObject() : sourceQuestion;
   const copiedPayload = { ...sourceObject };
   delete copiedPayload._id;
@@ -444,7 +449,12 @@ async function createLibraryQuestionCopy({ sourceQuestion, targetCourseId, userI
     originalCourse: String(sourceObject.originalCourse || sourceObject.courseId || targetCourseId || ''),
     createdAt: new Date(),
     lastEditedAt: new Date(),
-    approved: true,
+    public: forceStudentCopy ? false : !!sourceObject.public,
+    publicOnQlicker: forceStudentCopy ? false : !!sourceObject.publicOnQlicker,
+    publicOnQlickerForStudents: forceStudentCopy ? false : !!sourceObject.publicOnQlickerForStudents,
+    approved: forceStudentCopy ? false : true,
+    studentCreated: forceStudentCopy ? true : !!sourceObject.studentCreated,
+    studentCopyOfPublic: forceStudentCopy ? true : !!sourceObject.studentCopyOfPublic,
   });
 }
 
@@ -660,7 +670,7 @@ async function userCanManageQuestion(question, user) {
   if (!question || !user) return false;
   const roles = user.roles || [];
   if (roles.includes('admin')) return true;
-  if (question.creator === user.userId || question.owner === user.userId) return true;
+  if (userOwnsQuestion(question, user)) return true;
 
   const candidateCourseIds = [
     question.courseId,
@@ -698,16 +708,51 @@ function isStudentAccount(user) {
   return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
 }
 
+function userOwnsQuestion(question, user) {
+  if (!question || !user) return false;
+  const ownerId = String(question.owner || '').trim();
+  const creatorId = String(question.creator || '').trim();
+  const userId = String(user.userId || '').trim();
+  if (!userId) return false;
+  if (isStudentAccount(user)) {
+    return ownerId === userId;
+  }
+  return ownerId === userId || creatorId === userId;
+}
+
 function isQuestionVisibleOutsideCourse(question, user) {
   if (!question?.publicOnQlicker) return false;
   if (!isStudentAccount(user)) return true;
   return !!question?.publicOnQlickerForStudents;
 }
 
-async function userCanViewQuestion(question, user) {
+async function getAllowedStudentTagValues(courseId) {
+  const normalizedCourseId = String(courseId || '').trim();
+  if (!normalizedCourseId) return new Set();
+
+  const [course, sessions, questions] = await Promise.all([
+    Course.findById(normalizedCourseId).select('tags').lean(),
+    Session.find({ courseId: normalizedCourseId }).select('tags').lean(),
+    Question.find({ courseId: normalizedCourseId }).select('tags').lean(),
+  ]);
+
+  const values = new Set();
+  const addTagValue = (tag) => {
+    const normalized = String(tag?.value || tag?.label || tag || '').trim().toLowerCase();
+    if (normalized) values.add(normalized);
+  };
+
+  (course?.tags || []).forEach(addTagValue);
+  sessions.forEach((session) => (session?.tags || []).forEach(addTagValue));
+  questions.forEach((question) => (question?.tags || []).forEach(addTagValue));
+
+  return values;
+}
+
+export async function userCanViewQuestion(question, user) {
   if (!question || !user) return false;
   if (await userCanManageQuestion(question, user)) return true;
-  if (question.creator === user.userId || question.owner === user.userId) return true;
+  if (userOwnsQuestion(question, user)) return true;
   if (isQuestionVisibleOutsideCourse(question, user)) return true;
 
   const linkedSessions = await getLinkedSessionsForQuestion(question);
@@ -810,7 +855,9 @@ export default async function questionRoutes(app) {
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
-      if (!isInstructorOrAdmin(course, request.user)) {
+      const isInstructor = isInstructorOrAdmin(course, request.user);
+      const isStudentMember = !isInstructor && (course.students || []).includes(request.user.userId);
+      if (!isInstructor && !isStudentMember) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -857,29 +904,65 @@ export default async function questionRoutes(app) {
         ? { score: { $meta: 'textScore' }, createdAt: -1, _id: 1 }
         : { createdAt: -1, _id: 1 };
 
-      if (idsOnly) {
-        const questionIds = (await Question.find(query)
+      let total;
+      let questionDocs;
+      let questionTypes;
+
+      if (isInstructor) {
+        if (idsOnly) {
+          const questionIds = (await Question.find(query)
+            .sort(sort)
+            .select('_id')
+            .lean())
+            .map((question) => String(question._id));
+          return {
+            questionIds,
+            total: questionIds.length,
+          };
+        }
+
+        [total, questionDocs, questionTypes] = await Promise.all([
+          Question.countDocuments(query),
+          Question.find(query)
+            .sort(sort)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+          Question.distinct('type', { courseId: String(course._id) }),
+        ]);
+      } else {
+        const studentCandidates = await Question.find(query)
           .sort(sort)
-          .select('_id')
-          .lean())
-          .map((question) => String(question._id));
-        return {
-          questionIds,
-          total: questionIds.length,
-        };
+          .lean();
+        const visibleQuestions = [];
+        for (const question of studentCandidates) {
+          // eslint-disable-next-line no-await-in-loop
+          if (await userCanViewQuestion(question, request.user)) {
+            visibleQuestions.push(question);
+          }
+        }
+
+        if (idsOnly) {
+          const questionIds = visibleQuestions.map((question) => String(question._id));
+          return {
+            questionIds,
+            total: questionIds.length,
+          };
+        }
+
+        total = visibleQuestions.length;
+        questionDocs = visibleQuestions.slice((page - 1) * limit, page * limit);
+        questionTypes = [...new Set(visibleQuestions.map((question) => Number(question.type)).filter(Number.isInteger))];
       }
 
-      const [total, questionDocs, questionTypes] = await Promise.all([
-        Question.countDocuments(query),
-        Question.find(query)
-          .sort(sort)
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
-        Question.distinct('type', { courseId: String(course._id) }),
-      ]);
-
-      const questions = await buildQuestionLibraryDetails(questionDocs, String(course._id));
+      let questions = await buildQuestionLibraryDetails(questionDocs || [], String(course._id));
+      if (!isInstructor) {
+        questions = questions.map((question) => (
+          userOwnsQuestion(question, request.user)
+            ? question
+            : stripAnswerRevealFields(question, { revealCorrectAnswers: false })
+        ));
+      }
 
       return {
         questions,
@@ -909,54 +992,44 @@ export default async function questionRoutes(app) {
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
-      if (!isInstructorOrAdmin(course, request.user)) {
+      const isInstructor = isInstructorOrAdmin(course, request.user);
+      const isStudentMember = !isInstructor && (course.students || []).includes(request.user.userId);
+      if (!isInstructor && !isStudentMember) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
       const search = String(request.query.q || '').trim().toLowerCase();
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
-      const pipeline = [
-        { $match: { courseId: String(course._id), tags: { $exists: true, $ne: [] } } },
-        { $unwind: '$tags' },
-        {
-          $project: {
-            value: '$tags.value',
-            label: '$tags.label',
-          },
-        },
-      ];
+      const [courseTags, sessionTags, questionTags] = await Promise.all([
+        Promise.resolve(course.tags || []),
+        Session.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
+        Question.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
+      ]);
 
-      if (search) {
-        pipeline.push({
-          $match: {
-            $or: [
-              { value: { $regex: search, $options: 'i' } },
-              { label: { $regex: search, $options: 'i' } },
-            ],
-          },
-        });
-      }
+      const tagMap = new Map();
+      const addTag = (tag) => {
+        const value = String(tag?.value || tag?.label || '').trim();
+        const label = String(tag?.label || tag?.value || '').trim();
+        if (!value || !label) return;
+        const matchesSearch = !search
+          || value.toLowerCase().includes(search)
+          || label.toLowerCase().includes(search);
+        if (!matchesSearch) return;
+        const key = value.toLowerCase();
+        if (!tagMap.has(key)) {
+          tagMap.set(key, { value, label });
+        }
+      };
 
-      pipeline.push(
-        {
-          $group: {
-            _id: '$value',
-            value: { $first: '$value' },
-            label: { $first: '$label' },
-          },
-        },
-        { $sort: { label: 1, value: 1 } },
-        { $limit: limit }
-      );
+      courseTags.forEach(addTag);
+      sessionTags.forEach((session) => (session?.tags || []).forEach(addTag));
+      questionTags.forEach((question) => (question?.tags || []).forEach(addTag));
 
-      const tags = await Question.aggregate(pipeline);
+      const tags = [...tagMap.values()]
+        .sort((a, b) => a.label.localeCompare(b.label) || a.value.localeCompare(b.value))
+        .slice(0, limit);
       return {
-        tags: tags
-          .map((tag) => ({
-            value: String(tag?.value || '').trim(),
-            label: String(tag?.label || tag?.value || '').trim(),
-          }))
-          .filter((tag) => tag.value && tag.label),
+        tags,
       };
     }
   );
@@ -965,7 +1038,7 @@ export default async function questionRoutes(app) {
   app.post(
     '/questions',
     {
-      preHandler: requireRole(['professor', 'admin']),
+      preHandler: authenticate,
       schema: createQuestionSchema,
     },
     async (request, reply) => {
@@ -980,6 +1053,43 @@ export default async function questionRoutes(app) {
         return reply.code(400).send(createValidationError);
       }
 
+      const normalizedCourseId = String(courseId || '').trim();
+      const normalizedSessionId = String(sessionId || '').trim();
+      const roles = request.user.roles || [];
+      const isStudent = isStudentAccount(request.user);
+      let course = null;
+      if (normalizedCourseId) {
+        course = await Course.findById(normalizedCourseId).lean();
+        if (!course) {
+          return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+        }
+      }
+
+      if (!isStudent && !roles.includes('professor') && !roles.includes('admin')) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      if (isStudent) {
+        if (!course || !(course.students || []).includes(userId)) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+        }
+        if (!course.allowStudentQuestions) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
+        }
+        if (normalizedSessionId) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Student library questions cannot be attached to a session' });
+        }
+
+        const normalizedTags = normalizeTags(tags || []);
+        const allowedTagValues = await getAllowedStudentTagValues(normalizedCourseId);
+        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
+        if (hasInvalidTag) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use existing course tags' });
+        }
+      } else if (course && !isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
       const questionData = {
         type,
         content: content || '',
@@ -987,19 +1097,19 @@ export default async function questionRoutes(app) {
         options: options || [],
         creator: userId,
         owner: userId,
-        sessionId: sessionId || '',
-        courseId: courseId || '',
-        originalCourse: courseId || '',
+        sessionId: isStudent ? '' : normalizedSessionId,
+        courseId: normalizedCourseId,
+        originalCourse: normalizedCourseId,
         solution: solution || '',
         solution_plainText: solution_plainText || '',
         sessionOptions,
-        public: request.body.public || request.body.publicOnQlicker || false,
-        publicOnQlicker: request.body.publicOnQlicker || false,
-        publicOnQlickerForStudents: request.body.publicOnQlicker ? !!request.body.publicOnQlickerForStudents : false,
+        public: isStudent ? false : (request.body.public || request.body.publicOnQlicker || false),
+        publicOnQlicker: isStudent ? false : (request.body.publicOnQlicker || false),
+        publicOnQlickerForStudents: isStudent ? false : (request.body.publicOnQlicker ? !!request.body.publicOnQlickerForStudents : false),
         tags: normalizeTags(tags || []),
         imagePath: imagePath || '',
-        approved: true,
-        studentCreated: false,
+        approved: !isStudent,
+        studentCreated: isStudent,
       };
 
       if (toleranceNumerical !== undefined) questionData.toleranceNumerical = toleranceNumerical;
@@ -1027,7 +1137,7 @@ export default async function questionRoutes(app) {
       }
 
       const canManage = await userCanManageQuestion(question, request.user);
-      const ownsQuestion = question.creator === request.user.userId || question.owner === request.user.userId;
+      const ownsQuestion = userOwnsQuestion(question, request.user);
       const questionPayload = canManage || ownsQuestion
         ? question.toObject()
         : stripAnswerRevealFields(question.toObject(), { revealCorrectAnswers: false });
@@ -1052,6 +1162,16 @@ export default async function questionRoutes(app) {
       const hasPermission = await userCanManageQuestion(question, request.user);
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const isStudent = isStudentAccount(request.user);
+      if (isStudent) {
+        const normalizedTags = request.body.tags !== undefined ? normalizeTags(request.body.tags) : question.tags;
+        const allowedTagValues = await getAllowedStudentTagValues(question.courseId);
+        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
+        if (hasInvalidTag) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use existing course tags' });
+        }
       }
 
       const requestedType = request.body.type;
@@ -1094,6 +1214,12 @@ export default async function questionRoutes(app) {
         if (request.body[key] !== undefined) {
           updates[key] = request.body[key];
         }
+      }
+      if (isStudent) {
+        delete updates.public;
+        delete updates.publicOnQlicker;
+        delete updates.publicOnQlickerForStudents;
+        delete updates.approved;
       }
       if (updates.publicOnQlicker === true) {
         updates.public = true;
@@ -1171,10 +1297,16 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
+      const hasPermission = await userCanViewQuestion(question, request.user);
+      if (!hasPermission) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
       const copy = await createLibraryQuestionCopy({
         sourceQuestion: question,
         targetCourseId: String(question.courseId || ''),
         userId,
+        forceStudentCopy: isStudentAccount(request.user),
       });
 
       return reply.code(201).send({ question: copy.toObject() });
@@ -1196,6 +1328,10 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
+      if (isStudentAccount(request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
       const hasPermission = await userCanManageQuestion(question, request.user);
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
@@ -1205,6 +1341,47 @@ export default async function questionRoutes(app) {
         request.params.id,
         {
           $set: {
+            approved: true,
+            owner: request.user.userId,
+            lastEditedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      return { question: updated.toObject() };
+    }
+  );
+
+  app.post(
+    '/questions/:id/make-public',
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const question = await Question.findById(request.params.id);
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+      if (isStudentAccount(request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const hasPermission = await userCanManageQuestion(question, request.user);
+      if (!hasPermission) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const updated = await Question.findByIdAndUpdate(
+        request.params.id,
+        {
+          $set: {
+            public: true,
+            publicOnQlicker: false,
+            publicOnQlickerForStudents: false,
             approved: true,
             owner: request.user.userId,
             lastEditedAt: new Date(),

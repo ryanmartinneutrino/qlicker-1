@@ -21,9 +21,10 @@ import SessionListCard from '../../components/common/SessionListCard';
 import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
+import QuestionLibraryPanel from '../../components/questions/QuestionLibraryPanel';
 export { getStudentSessionAction, sortStudentSessions as sortSessions };
 
-const MAX_STUDENT_TAB_INDEX = 4;
+const MAX_STUDENT_TAB_INDEX = 6;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -220,10 +221,14 @@ export default function StudentCourseDetail() {
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortStudentSessions(sessions);
-  const interactiveSessions = sortedSessions.filter((s) => !isQuizSession(s));
-  const quizSessions = sortedSessions.filter(isQuizSession);
+  const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
+  const interactiveSessions = sortedSessions.filter((session) => !isQuizSession(session) && !session.studentCreated);
+  const quizSessions = sortedSessions.filter((session) => isQuizSession(session) && !session.studentCreated);
   const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
+  const practiceTabIndex = 2;
+  const questionLibraryTabIndex = 3;
+  const gradesTabIndex = 4;
 
   const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
@@ -298,8 +303,23 @@ export default function StudentCourseDetail() {
     (course?.groupCategories || []).some((cat) => cat.catVideoChatOptions && cat.catVideoChatOptions.urlId)
   );
 
-  const videoTabIndex = courseHasVideo ? 3 : -1;
-  const settingsTabIndex = courseHasVideo ? 4 : 3;
+  const videoTabIndex = courseHasVideo ? 5 : -1;
+  const settingsTabIndex = courseHasVideo ? 6 : 5;
+
+  const deletePracticeSession = async (sessionId) => {
+    if (!window.confirm(t('student.course.deletePracticeSessionConfirm', { defaultValue: 'Delete this practice session?' }))) {
+      return;
+    }
+    try {
+      await apiClient.delete(`/sessions/${sessionId}`);
+      await fetchSessions();
+    } catch (err) {
+      setMsg({
+        severity: 'error',
+        text: err.response?.data?.message || t('student.course.failedDeletePracticeSession', { defaultValue: 'Failed to delete practice session.' }),
+      });
+    }
+  };
 
   return (
     <Box sx={{ p: 2.5, maxWidth: 980 }}>
@@ -333,6 +353,8 @@ export default function StudentCourseDetail() {
       >
         <Tab label={`${t('student.course.lectures')} (${interactiveSessions.length})`} />
         <Tab label={`${t('student.course.quizzes')} (${quizSessions.length})`} />
+        <Tab label={`${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length})`} />
+        <Tab label={t('questionLibrary.title', { defaultValue: 'Question Library' })} />
         <Tab label={t('student.course.grades')} />
         {courseHasVideo && <Tab label={t('student.course.video')} />}
         <Tab label={t('student.course.settings')} />
@@ -348,12 +370,73 @@ export default function StudentCourseDetail() {
         {renderSessionList(quizSessions, t('student.course.noQuizzes'), 1)}
       </TabPanel>
 
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={practiceTabIndex}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          <Typography variant="h6">{t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })}</Typography>
+          <Button variant="contained" onClick={() => navigate(`/student/course/${id}/practice-sessions/new`)}>
+            {t('student.course.newPracticeSession', { defaultValue: 'New practice session' })}
+          </Button>
+        </Box>
+        {sessionsLoading ? <CircularProgress size={24} /> : practiceSessions.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('student.course.noPracticeSessions', { defaultValue: 'No practice sessions yet.' })}
+          </Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            {practiceSessions.map((session) => {
+              const action = getStudentSessionAction(session, id, practiceTabIndex);
+              return (
+                <SessionListCard
+                  key={session._id}
+                  title={session.name}
+                  onClick={action.path ? () => navigate(action.path) : undefined}
+                  subtitle={t('student.course.questionCount', { count: (session.questions || []).length })}
+                  badges={(
+                    <>
+                      <Chip label={t('student.course.practice', { defaultValue: 'Practice' })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />
+                      {action.label ? (
+                        <Chip
+                          label={t(action.label)}
+                          size="small"
+                          color={action.chipColor}
+                          variant={action.chipVariant}
+                          sx={COMPACT_CHIP_SX}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                  actions={(
+                    <>
+                      <Button size="small" onClick={() => navigate(`/student/course/${id}/practice-sessions/${session._id}`)}>
+                        {t('common.edit')}
+                      </Button>
+                      <Button size="small" color="error" onClick={() => deletePracticeSession(session._id)}>
+                        {t('common.delete')}
+                      </Button>
+                    </>
+                  )}
+                />
+              );
+            })}
+          </Box>
+        )}
+      </TabPanel>
+
+      <TabPanel value={tab} index={questionLibraryTabIndex}>
+        <QuestionLibraryPanel
+          courseId={id}
+          currentCourse={course}
+          availableSessions={sortedSessions}
+          allowQuestionCreate={!!course.allowStudentQuestions}
+        />
+      </TabPanel>
+
+      <TabPanel value={tab} index={gradesTabIndex}>
         <Typography variant="h6" sx={{ mb: 1.5 }}>{t('student.course.grades')}</Typography>
         <CourseGradesPanel
           courseId={id}
           instructorView={false}
-          onOpenSession={(sessionReviewId) => navigate(`/student/course/${id}/session/${sessionReviewId}/review?returnTab=2`)}
+          onOpenSession={(sessionReviewId) => navigate(`/student/course/${id}/session/${sessionReviewId}/review?returnTab=${gradesTabIndex}`)}
         />
       </TabPanel>
 

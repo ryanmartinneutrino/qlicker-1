@@ -26,6 +26,7 @@ const PresentationWindow = lazy(() => import('./pages/professor/SecondDesktop'))
 const ProfSessionReview = lazy(() => import('./pages/professor/SessionReview'));
 const StudentDashboard = lazy(() => import('./pages/student/StudentDashboard'));
 const StudentCourseDetail = lazy(() => import('./pages/student/CourseDetail'));
+const StudentPracticeSessionEditor = lazy(() => import('./pages/student/PracticeSessionEditor'));
 const SessionReview = lazy(() => import('./pages/student/SessionReview'));
 const StudentLiveSession = lazy(() => import('./pages/student/LiveSession'));
 const StudentQuizSession = lazy(() => import('./pages/student/QuizSession'));
@@ -52,6 +53,8 @@ function RouteAccessibility() {
       [/^\/manage\/course\/[^/]+\/session\/[^/]+\/present$/, t('pageTitles.presentationView')],
       [/^\/student$/, t('pageTitles.studentDashboard')],
       [/^\/student\/course\/[^/]+$/, t('pageTitles.course')],
+      [/^\/student\/course\/[^/]+\/practice-sessions\/new$/, t('pageTitles.sessionEditor')],
+      [/^\/student\/course\/[^/]+\/practice-sessions\/[^/]+$/, t('pageTitles.sessionEditor')],
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, t('pageTitles.sessionReview')],
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, t('pageTitles.liveSession')],
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/quiz$/, t('pageTitles.quiz')],
@@ -111,6 +114,8 @@ export default function App() {
                 <Route path="/manage/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
                 <Route path="/student" element={<RequireRole role="student" allowAdmin={false}><StudentDashboard /></RequireRole>} />
                 <Route path="/student/course/:id" element={<RequireRole role="student" allowAdmin={false}><StudentCourseDetail /></RequireRole>} />
+                <Route path="/student/course/:courseId/practice-sessions/new" element={<RequireRole role="student" allowAdmin={false}><StudentPracticeSessionEditor /></RequireRole>} />
+                <Route path="/student/course/:courseId/practice-sessions/:sessionId" element={<RequireRole role="student" allowAdmin={false}><StudentPracticeSessionEditor /></RequireRole>} />
                 <Route path="/student/course/:courseId/session/:sessionId/review" element={<RequireRole role="student" allowAdmin={false}><SessionReview /></RequireRole>} />
                 <Route path="/student/course/:courseId/session/:sessionId/live" element={<RequireRole role="student" allowAdmin={false}><StudentLiveSession /></RequireRole>} />
                 <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<RequireRole role="student" allowAdmin={false}><StudentQuizSession /></RequireRole>} />

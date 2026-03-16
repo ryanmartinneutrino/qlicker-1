@@ -30,6 +30,7 @@ import {
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Public as PublicIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
   FilterList as FilterListIcon,
@@ -37,6 +38,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { buildCourseSelectionLabel, sortCoursesByRecent } from '../../utils/courseTitle';
+import { useAuth } from '../../contexts/AuthContext';
 import QuestionDisplay from './QuestionDisplay';
 import QuestionEditor from './QuestionEditor';
 import { TYPE_COLORS, getQuestionTypeLabel, normalizeQuestionType } from './constants';
@@ -375,8 +377,13 @@ export default function QuestionLibraryPanel({
   courseId,
   availableSessions = [],
   onSessionsChanged,
+  currentCourse = null,
+  allowQuestionCreate = true,
 }) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const roles = user?.roles || [];
+  const isStudentLibrary = roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
   const loadErrorTextRef = useRef('');
   loadErrorTextRef.current = t('questionLibrary.errors.load', { defaultValue: 'Failed to load question library.' });
   const [loading, setLoading] = useState(true);
@@ -387,7 +394,7 @@ export default function QuestionLibraryPanel({
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [message, setMessage] = useState(null);
   const [sourceCourseId, setSourceCourseId] = useState(courseId);
-  const [courses, setCourses] = useState([]);
+  const [courses, setCourses] = useState(currentCourse ? [currentCourse] : []);
   const [sourceSessions, setSourceSessions] = useState(availableSessions);
   const [availableTypes, setAvailableTypes] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -427,14 +434,19 @@ export default function QuestionLibraryPanel({
   const selectedSourceCourse = useMemo(() => (
     courses.find((course) => String(course._id) === String(sourceCourseId)) || null
   ), [courses, sourceCourseId]);
+  const currentUserId = String(user?._id || '');
 
   const fetchCourses = useCallback(async () => {
+    if (isStudentLibrary) {
+      setCourses(currentCourse ? [currentCourse] : []);
+      return;
+    }
     const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
     const nextCourses = sortCoursesByRecent(
       (data.courses || []).filter((course) => Array.isArray(course.instructors))
     );
     setCourses(nextCourses);
-  }, []);
+  }, [currentCourse, isStudentLibrary]);
 
   const fetchSourceSessions = useCallback(async (nextCourseId) => {
     if (!nextCourseId) {
@@ -489,6 +501,12 @@ export default function QuestionLibraryPanel({
       active = false;
     };
   }, [fetchCourses, fetchSourceSessions, fetchTagOptions, sourceCourseId]);
+
+  useEffect(() => {
+    if (!isStudentLibrary || !currentCourse?._id) return;
+    setCourses([currentCourse]);
+    setSourceCourseId(String(currentCourse._id));
+  }, [currentCourse, isStudentLibrary]);
 
   useEffect(() => {
     fetchQuestions();
@@ -614,6 +632,21 @@ export default function QuestionLibraryPanel({
     }
   };
 
+  const handleMakeQuestionPublic = async (questionId) => {
+    setSaving(true);
+    try {
+      await apiClient.post(`/questions/${questionId}/make-public`);
+      await refreshQuestions();
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('questionLibrary.errors.makePublic', { defaultValue: 'Failed to make question public.' }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDeleteQuestions = async (questionIds) => {
     if (!questionIds.length) return;
     if (!window.confirm(t('questionLibrary.deleteConfirm', {
@@ -657,6 +690,26 @@ export default function QuestionLibraryPanel({
       if (String(targetCourseId) === String(sourceCourseId)) {
         await refreshQuestions();
       }
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('questionLibrary.errors.copy', { defaultValue: 'Failed to copy questions.' }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopyQuestionSingle = async (questionId) => {
+    setSaving(true);
+    try {
+      if (isStudentLibrary) {
+        await apiClient.post(`/questions/${questionId}/copy`);
+      } else {
+        setCopyDialogState({ open: true, questionIds: [questionId] });
+        return;
+      }
+      await refreshQuestions();
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -801,48 +854,58 @@ export default function QuestionLibraryPanel({
                 {t('questionLibrary.title', { defaultValue: 'Question Library' })}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {t('questionLibrary.subtitle', {
-                  defaultValue: 'Browse, edit, copy, export, and import questions across your instructor courses.',
-                })}
+                {isStudentLibrary
+                  ? t('questionLibrary.studentSubtitle', {
+                    defaultValue: 'Browse course questions, copy them into your library, and create your own private practice questions.',
+                  })
+                  : t('questionLibrary.subtitle', {
+                    defaultValue: 'Browse, edit, copy, export, and import questions across your instructor courses.',
+                  })}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => setImportDialogOpen(true)}>
-                {t('questionLibrary.import.action', { defaultValue: 'Import JSON' })}
-              </Button>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
-                setCreatingQuestion(true);
-                setEditingQuestionId('');
-              }}>
-                {t('questionLibrary.newQuestion', { defaultValue: 'New question' })}
-              </Button>
+              {!isStudentLibrary ? (
+                <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => setImportDialogOpen(true)}>
+                  {t('questionLibrary.import.action', { defaultValue: 'Import JSON' })}
+                </Button>
+              ) : null}
+              {allowQuestionCreate ? (
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => {
+                  setCreatingQuestion(true);
+                  setEditingQuestionId('');
+                }}>
+                  {t('questionLibrary.newQuestion', { defaultValue: 'New question' })}
+                </Button>
+              ) : null}
             </Stack>
           </Box>
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}>
-            <Autocomplete
-              sx={{ minWidth: 220, flex: 1 }}
-              options={courses}
-              value={selectedSourceCourse}
-              onChange={async (_event, nextValue) => {
-                const nextCourseId = nextValue?._id || courseId;
-                setSourceCourseId(nextCourseId);
-                setSelectedSessionIds([]);
-                setSelectedQuestionIds([]);
-                setPage(1);
-                await Promise.all([
-                  fetchSourceSessions(nextCourseId),
-                  fetchTagOptions(nextCourseId),
-                ]);
-              }}
-              getOptionLabel={(option) => buildCourseSelectionLabel(option)}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t('questionLibrary.filters.course', { defaultValue: 'Course' })}
-                />
-              )}
-            />
+            {!isStudentLibrary ? (
+              <Autocomplete
+                sx={{ minWidth: 220, flex: 1 }}
+                options={courses}
+                value={selectedSourceCourse}
+                onChange={async (_event, nextValue) => {
+                  const nextCourseId = nextValue?._id || courseId;
+                  setSourceCourseId(nextCourseId);
+                  setSelectedSessionIds([]);
+                  setSelectedQuestionIds([]);
+                  setPage(1);
+                  await Promise.all([
+                    fetchSourceSessions(nextCourseId),
+                    fetchTagOptions(nextCourseId),
+                  ]);
+                }}
+                getOptionLabel={(option) => buildCourseSelectionLabel(option)}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={t('questionLibrary.filters.course', { defaultValue: 'Course' })}
+                  />
+                )}
+              />
+            ) : null}
 
             <TextField
               select
@@ -864,7 +927,7 @@ export default function QuestionLibraryPanel({
 
             <Autocomplete
               multiple
-              freeSolo
+              freeSolo={!isStudentLibrary}
               sx={{ minWidth: 240, flex: 1 }}
               options={tagOptions.map((tag) => tag.label || tag.value)}
               value={currentTagValues}
@@ -881,18 +944,20 @@ export default function QuestionLibraryPanel({
               )}
             />
 
-            <Button
-              variant="outlined"
-              startIcon={<FilterListIcon />}
-              onClick={() => setSessionDialogOpen(true)}
-            >
-              {selectedSessionIds.length > 0
-                ? t('questionLibrary.filters.sessionsButtonSelected', {
-                  count: selectedSessionIds.length,
-                  defaultValue: `Sessions (${selectedSessionIds.length})`,
-                })
-                : t('questionLibrary.filters.sessionsButton', { defaultValue: 'Sessions' })}
-            </Button>
+            {!isStudentLibrary ? (
+              <Button
+                variant="outlined"
+                startIcon={<FilterListIcon />}
+                onClick={() => setSessionDialogOpen(true)}
+              >
+                {selectedSessionIds.length > 0
+                  ? t('questionLibrary.filters.sessionsButtonSelected', {
+                    count: selectedSessionIds.length,
+                    defaultValue: `Sessions (${selectedSessionIds.length})`,
+                  })
+                  : t('questionLibrary.filters.sessionsButton', { defaultValue: 'Sessions' })}
+              </Button>
+            ) : null}
           </Stack>
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.25}>
@@ -942,59 +1007,68 @@ export default function QuestionLibraryPanel({
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack spacing={1.5}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-              <Checkbox
-                checked={allPageSelected}
-                indeterminate={somePageSelected}
-                onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
-              />
-              <Typography variant="body2" color="text.secondary">
-                {t('questionLibrary.selection.pageSummary', {
-                  count: total,
-                  defaultValue: `${total} matching questions`,
-                })}
-              </Typography>
-              <Button size="small" onClick={selectAllFilteredQuestions}>
-                {t('questionLibrary.bulk.selectAllFiltered', { defaultValue: 'Select all filtered' })}
-              </Button>
+          {!isStudentLibrary ? (
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Checkbox
+                  checked={allPageSelected}
+                  indeterminate={somePageSelected}
+                  onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  {t('questionLibrary.selection.pageSummary', {
+                    count: total,
+                    defaultValue: `${total} matching questions`,
+                  })}
+                </Typography>
+                <Button size="small" onClick={selectAllFilteredQuestions}>
+                  {t('questionLibrary.bulk.selectAllFiltered', { defaultValue: 'Select all filtered' })}
+                </Button>
+              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  size="small"
+                  startIcon={<EditIcon />}
+                  disabled={selectedQuestionIds.length === 0 || saving}
+                  onClick={handleOpenVisibilityDialog}
+                >
+                  {t('questionLibrary.bulk.visibility', { defaultValue: 'Change visibility' })}
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<CopyIcon />}
+                  disabled={selectedQuestionIds.length === 0 || saving}
+                  onClick={() => setCopyDialogState({ open: true, questionIds: selectedQuestionIds })}
+                >
+                  {t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
+                </Button>
+                <Button
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  disabled={selectedQuestionIds.length === 0}
+                  onClick={handleExportQuestions}
+                >
+                  {t('questionLibrary.bulk.export', { defaultValue: 'Export JSON' })}
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  startIcon={<DeleteIcon />}
+                  disabled={selectedQuestionIds.length === 0 || saving}
+                  onClick={() => handleDeleteQuestions(selectedQuestionIds)}
+                >
+                  {t('common.delete')}
+                </Button>
+              </Stack>
             </Box>
-            <Stack direction="row" spacing={1} flexWrap="wrap">
-              <Button
-                size="small"
-                startIcon={<EditIcon />}
-                disabled={selectedQuestionIds.length === 0 || saving}
-                onClick={handleOpenVisibilityDialog}
-              >
-                {t('questionLibrary.bulk.visibility', { defaultValue: 'Change visibility' })}
-              </Button>
-              <Button
-                size="small"
-                startIcon={<CopyIcon />}
-                disabled={selectedQuestionIds.length === 0 || saving}
-                onClick={() => setCopyDialogState({ open: true, questionIds: selectedQuestionIds })}
-              >
-                {t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
-              </Button>
-              <Button
-                size="small"
-                startIcon={<DownloadIcon />}
-                disabled={selectedQuestionIds.length === 0}
-                onClick={handleExportQuestions}
-              >
-                {t('questionLibrary.bulk.export', { defaultValue: 'Export JSON' })}
-              </Button>
-              <Button
-                size="small"
-                color="error"
-                startIcon={<DeleteIcon />}
-                disabled={selectedQuestionIds.length === 0 || saving}
-                onClick={() => handleDeleteQuestions(selectedQuestionIds)}
-              >
-                {t('common.delete')}
-              </Button>
-            </Stack>
-          </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              {t('questionLibrary.selection.pageSummary', {
+                count: total,
+                defaultValue: `${total} matching questions`,
+              })}
+            </Typography>
+          )}
 
           {creatingQuestion ? (
             <Card variant="outlined">
@@ -1004,6 +1078,8 @@ export default function QuestionLibraryPanel({
                   inline
                   initial={null}
                   tagSuggestions={tagOptions}
+                  showVisibilityControls={!isStudentLibrary}
+                  allowCustomTags={!isStudentLibrary}
                   onAutoSave={handleEditorSave}
                   onClose={async () => {
                     setCreatingQuestion(false);
@@ -1026,6 +1102,7 @@ export default function QuestionLibraryPanel({
             <Stack spacing={1.5}>
               {questions.map((question, index) => {
                 const questionId = String(question._id);
+                const ownsQuestion = String(question.owner || '') === currentUserId;
                 const checked = selectedIdSet.has(questionId);
                 const expanded = !!expandedQuestionIds[questionId];
                 const editing = editingQuestionId === questionId;
@@ -1034,10 +1111,12 @@ export default function QuestionLibraryPanel({
                 const disableOptionCountChanges = !!question.hasResponses;
 
                 return (
-                  <Card key={questionId} variant="outlined">
-                    <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
-                      <Checkbox checked={checked} onChange={() => toggleQuestionSelection(questionId)} />
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Card key={questionId} variant="outlined">
+                      <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                        {!isStudentLibrary ? (
+                          <Checkbox checked={checked} onChange={() => toggleQuestionSelection(questionId)} />
+                        ) : null}
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mb: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                             <Chip
@@ -1081,7 +1160,7 @@ export default function QuestionLibraryPanel({
                             ))}
                           </Box>
                           <Stack direction="row" spacing={0.25}>
-                            {!question.approved ? (
+                            {!isStudentLibrary && !question.approved ? (
                               <Tooltip title={t('questionLibrary.actions.approve', { defaultValue: 'Approve question' })}>
                                 <span>
                                   <IconButton size="small" disabled={saving} onClick={() => handleApproveQuestion(questionId)}>
@@ -1090,38 +1169,51 @@ export default function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
+                            {!isStudentLibrary && !!question.studentCreated && !question.public ? (
+                              <Tooltip title={t('questionLibrary.actions.makePublic', { defaultValue: 'Make question public to the course' })}>
+                                <span>
+                                  <IconButton size="small" disabled={saving} onClick={() => handleMakeQuestionPublic(questionId)}>
+                                    <PublicIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            ) : null}
                             <Tooltip title={t('common.copy', { defaultValue: 'Copy' })}>
                               <span>
-                                <IconButton size="small" disabled={saving} onClick={() => setCopyDialogState({ open: true, questionIds: [questionId] })}>
+                                <IconButton size="small" disabled={saving} onClick={() => handleCopyQuestionSingle(questionId)}>
                                   <CopyIcon fontSize="small" />
                                 </IconButton>
                               </span>
                             </Tooltip>
-                            <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
-                              <span>
-                                <IconButton
-                                  size="small"
-                                  disabled={saving}
-                                  aria-label={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}
-                                  onClick={() => {
-                                    if (editing) {
-                                      requestInlineEditorClose();
-                                      return;
-                                    }
-                                    openEditEditor(question);
-                                  }}
-                                >
-                                  {editing ? <CloseIcon fontSize="small" /> : <EditIcon fontSize="small" />}
-                                </IconButton>
-                              </span>
-                            </Tooltip>
-                            <Tooltip title={t('common.delete')}>
-                              <span>
-                                <IconButton size="small" color="error" disabled={saving || question.hasResponses} onClick={() => handleDeleteQuestions([questionId])}>
-                                  <DeleteIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
+                            {(!isStudentLibrary || ownsQuestion) ? (
+                              <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    disabled={saving}
+                                    aria-label={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}
+                                    onClick={() => {
+                                      if (editing) {
+                                        requestInlineEditorClose();
+                                        return;
+                                      }
+                                      openEditEditor(question);
+                                    }}
+                                  >
+                                    {editing ? <CloseIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            ) : null}
+                            {(!isStudentLibrary || ownsQuestion) ? (
+                              <Tooltip title={t('common.delete')}>
+                                <span>
+                                  <IconButton size="small" color="error" disabled={saving || question.hasResponses} onClick={() => handleDeleteQuestions([questionId])}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            ) : null}
                           </Stack>
                         </Box>
 
@@ -1133,6 +1225,8 @@ export default function QuestionLibraryPanel({
                             initial={question}
                             initialBaseline={editingQuestionBaseline}
                             tagSuggestions={tagOptions}
+                            showVisibilityControls={!isStudentLibrary}
+                            allowCustomTags={!isStudentLibrary}
                             onAutoSave={handleEditorSave}
                             onClose={closeInlineEditor}
                             disableTypeSelection={disableTypeSelection}

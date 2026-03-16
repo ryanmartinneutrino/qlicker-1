@@ -735,6 +735,7 @@
     "course": {
       "lectures": "Cours magistraux",
       "quizzes": "Questionnaires",
+      "practiceSessions": "Séances de pratique",
       "grades": "Notes",
       "settings": "Paramètres",
       "courseSettings": "Paramètres du cours",
@@ -755,9 +756,23 @@
       "submitQuiz": "Soumettre le questionnaire",
       "review": "Réviser",
       "failedLoadCourse": "Échec du chargement du cours",
+      "failedLoadPracticeEditor": "Échec du chargement de l’éditeur de séance de pratique.",
       "courseNotFound": "Cours non trouvé",
       "noLectures": "Aucun cours magistral disponible.",
       "noQuizzes": "Aucun questionnaire disponible.",
+      "noPracticeSessions": "Aucune séance de pratique pour l’instant.",
+      "newPracticeSession": "Nouvelle séance de pratique",
+      "editPracticeSession": "Modifier la séance de pratique",
+      "practiceSessionName": "Nom de la séance de pratique",
+      "practiceNameRequired": "Le nom de la séance de pratique est requis.",
+      "filterPracticeQuestions": "Filtrer les questions",
+      "selectedPracticeQuestions": "{{count}} questions sélectionnées",
+      "selectedPracticeQuestions_one": "1 question sélectionnée",
+      "saveAndStartPractice": "Enregistrer et commencer la pratique",
+      "backToPracticeSessions": "Retour aux séances de pratique",
+      "deletePracticeSessionConfirm": "Supprimer cette séance de pratique ?",
+      "failedDeletePracticeSession": "Échec de la suppression de la séance de pratique.",
+      "failedSavePracticeSession": "Échec de l’enregistrement de la séance de pratique.",
       "failedUnenroll": "Échec de la désinscription",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
@@ -970,6 +985,7 @@
   "questionLibrary": {
     "title": "Bibliothèque de questions",
     "subtitle": "Parcourez, modifiez, copiez, exportez et importez des questions dans vos cours d'enseignement.",
+    "studentSubtitle": "Parcourez les questions du cours, copiez-les dans votre bibliothèque et créez vos propres questions privées de pratique.",
     "newQuestion": "Nouvelle question",
     "previewHint": "Question {{number}}",
     "empty": "Aucune question ne correspond aux filtres actuels.",
@@ -1035,7 +1051,8 @@
       "hasResponses": "A des réponses"
     },
     "actions": {
-      "approve": "Approuver la question"
+      "approve": "Approuver la question",
+      "makePublic": "Rendre la question publique pour le cours"
     },
     "editLocks": {
       "type": "Le type de question est verrouillé parce que des réponses existent déjà.",
@@ -1048,6 +1065,7 @@
       "load": "Échec du chargement de la bibliothèque de questions.",
       "selectAll": "Échec de la sélection de toutes les questions filtrées.",
       "approve": "Échec de l'approbation de la question.",
+      "makePublic": "Échec de la mise en visibilité publique de la question.",
       "delete": "Échec de la suppression des questions.",
       "copy": "Échec de la copie des questions.",
       "visibility": "Échec de la mise à jour de la visibilité des questions.",
