@@ -124,14 +124,14 @@ export function buildPrintableSessionHtml({
       <meta charset="utf-8" />
       <title>${escapeHtml(session?.name || 'Session export')}</title>
       <style>
-        body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 24px; font-size: 12px; line-height: 1.35; }
+        body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 24px; font-size: 14px; line-height: 1.5; }
         h1, h2, h3, p { margin: 0; }
         .page-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #333; }
         .page-header h1 { font-size: 20px; margin-bottom: 4px; }
-        .page-header p { color: #555; }
+        .page-header p { color: #555; font-size: 12px; }
         .question { break-inside: avoid; page-break-inside: avoid; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #ddd; }
         .question-header { margin-bottom: 8px; }
-        .question-header h2 { font-size: 14px; }
+        .question-header h2 { font-size: 16px; }
         .question-body p, .question-body ul, .question-body ol, .option-content p, .option-content ul, .option-content ol, .solution p, .solution ul, .solution ol { margin: 0 0 4px 0; }
         .question-body img, .option-content img, .solution img { max-width: 100%; height: auto; }
         .options { list-style: none; padding: 0; margin: 8px 0 0; }

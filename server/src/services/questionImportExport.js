@@ -42,7 +42,7 @@ function sanitizeSessionOptionsForExport(sessionOptions = {}) {
   }
   if (sessionOptions.maxAttempts !== undefined) {
     const maxAttempts = Number(sessionOptions.maxAttempts) || 0;
-    if (maxAttempts !== 1) {
+    if (maxAttempts > 0 && maxAttempts !== 1) {
       sanitized.maxAttempts = maxAttempts;
     }
   }

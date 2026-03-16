@@ -249,13 +249,15 @@ function getParticipationQuestionPoints(question) {
   return points;
 }
 
+const QUESTION_TYPE_MULTIPLE_CHOICE = 0;
+
 function countCorrectOptions(options = []) {
   if (!Array.isArray(options)) return 0;
   return options.reduce((count, option) => (option?.correct ? count + 1 : count), 0);
 }
 
 function multipleChoiceValidationError(type, options) {
-  if (Number(type) !== 0) return null;
+  if (Number(type) !== QUESTION_TYPE_MULTIPLE_CHOICE) return null;
   if (countCorrectOptions(options) <= 1) return null;
   return {
     error: 'Bad Request',
@@ -283,7 +285,7 @@ function sanitizeExportedSession(session, orderedQuestions = []) {
 
 function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
   const isPracticeQuiz = !!sourceSession?.practiceQuiz;
-  const isQuiz = isPracticeQuiz ? true : !!sourceSession?.quiz;
+  const isQuiz = isPracticeQuiz || !!sourceSession?.quiz;
 
   return {
     name: String(sourceSession?.name || '').trim(),
@@ -2117,6 +2119,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/export',
     {
       preHandler: authenticate,
+      rateLimit: { max: 60, timeWindow: '1 minute' },
       config: {
         rateLimit: { max: 60, timeWindow: '1 minute' },
       },
@@ -2154,6 +2157,7 @@ export default async function sessionRoutes(app) {
     {
       preHandler: authenticate,
       schema: importSessionSchema,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
       config: {
         rateLimit: { max: 20, timeWindow: '1 minute' },
       },

@@ -2427,6 +2427,10 @@ describe('session import/export endpoints', () => {
       maxAttempts: 2,
       attemptWeights: [1, 0.5],
     });
+    const shortAnswerQuestion = importedQuestions.find((question) => question.plainText === 'Imported SA');
+    expect(shortAnswerQuestion.tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'imported', label: 'imported' }),
+    ]));
   });
 });
 
