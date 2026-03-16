@@ -15,6 +15,10 @@ function getAttr(profile, key) {
 
 function sanitizeUser(user) {
   const obj = user.toObject();
+  obj.isSSOUser = user.isSSOLinked();
+  obj.isSSOCreatedUser = user.isSSOCreatedUser();
+  obj.allowEmailLogin = user.canUseEmailLogin();
+  obj.lastAuthProvider = user.lastAuthProvider || '';
   delete obj.services;
   return obj;
 }
@@ -77,15 +81,11 @@ const loginSchema = {
 };
 
 export default async function authRoutes(app) {
-  // Shared rate-limit config for sensitive auth endpoints
-  const authRateLimit = {
-    config: {
-      rateLimit: { max: 10, timeWindow: '15 minutes' },
-    },
-  };
-
   // POST /register
-  app.post('/register', { schema: registerSchema, ...authRateLimit }, async (request, reply) => {
+  app.post('/register', {
+    schema: registerSchema,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { email, password, firstname, lastname } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -155,7 +155,10 @@ export default async function authRoutes(app) {
   });
 
   // POST /login
-  app.post('/login', { schema: loginSchema, ...authRateLimit }, async (request, reply) => {
+  app.post('/login', {
+    schema: loginSchema,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { email, password } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -164,6 +167,15 @@ export default async function authRoutes(app) {
     if (!user) {
       request.log.warn({ email: normalizedEmail }, 'Login failed: unknown email');
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
+    }
+
+    if (!user.canUseEmailLogin()) {
+      request.log.warn({ email: normalizedEmail, userId: user._id }, 'Login blocked: SSO-only account');
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'SSO_EMAIL_LOGIN_DISABLED',
+        message: 'This account must sign in through SSO until email login is approved by an administrator.',
+      });
     }
 
     if (user.passwordResetRequired()) {
@@ -187,6 +199,7 @@ export default async function authRoutes(app) {
     }
 
     user.lastLogin = new Date();
+    user.lastAuthProvider = 'password';
     await user.save();
 
     const token = await signAccessToken(app, user);
@@ -240,7 +253,7 @@ export default async function authRoutes(app) {
   app.post(
     '/forgot-password',
     {
-      ...authRateLimit,
+      config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
       schema: {
         body: {
           type: 'object',
@@ -255,7 +268,7 @@ export default async function authRoutes(app) {
 
       // Always return success to avoid user enumeration
       const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
-      if (user) {
+      if (user && user.canUseEmailLogin()) {
         const token = crypto.randomBytes(32).toString('hex');
         user.services.resetPassword = {
           token,
@@ -280,7 +293,7 @@ export default async function authRoutes(app) {
   app.post(
     '/reset-password',
     {
-      ...authRateLimit,
+      config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
       schema: {
         body: {
           type: 'object',
@@ -298,6 +311,14 @@ export default async function authRoutes(app) {
       const user = await User.findOne({ 'services.resetPassword.token': token });
       if (!user) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Invalid or expired token' });
+      }
+
+      if (!user.canUseEmailLogin()) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          code: 'SSO_EMAIL_LOGIN_DISABLED',
+          message: 'This account must sign in through SSO until email login is approved by an administrator.',
+        });
       }
 
       const hashedPassword = await User.hashPassword(newPassword);
@@ -423,6 +444,9 @@ export default async function authRoutes(app) {
           roles,
           studentNumber,
         },
+        ssoCreated: true,
+        allowEmailLogin: false,
+        lastAuthProvider: 'sso',
         createdAt: new Date(),
       });
       user.lastLogin = new Date();
@@ -455,6 +479,7 @@ export default async function authRoutes(app) {
       }
 
       user.lastLogin = new Date();
+      user.lastAuthProvider = 'sso';
       await user.save();
     }
 

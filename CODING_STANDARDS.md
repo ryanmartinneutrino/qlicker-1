@@ -261,6 +261,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | POST | `/users` | Admin | Create user |
 | DELETE | `/users/:id` | Admin | Delete user |
 | PATCH | `/users/:id/role` | Admin | Change user role |
+| PATCH | `/users/:id/properties` | Admin | Toggle user properties such as `canPromote` and SSO email-login approval |
 | PATCH | `/users/:id/verify-email` | Admin | Admin-verify email |
 | **Settings** | | | |
 | GET | `/settings` | Admin | Get all settings |

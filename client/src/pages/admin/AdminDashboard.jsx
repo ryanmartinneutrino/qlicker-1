@@ -286,6 +286,11 @@ function UsersTab({ currentUserId }) {
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [imageViewUser, setImageViewUser] = useState(null);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userProperties, setUserProperties] = useState({ canPromote: false, allowEmailLogin: true });
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
+  const [propertiesSaving, setPropertiesSaving] = useState(false);
 
   const getFullName = (u) => `${u.profile?.firstname || ''} ${u.profile?.lastname || ''}`.trim() || 'Unknown';
   const getInitials = (u) => {
@@ -356,6 +361,55 @@ function UsersTab({ currentUserId }) {
     }
   };
 
+  const openPropertiesModal = async (userSummary) => {
+    setSelectedUser(userSummary);
+    setUserProperties({
+      canPromote: !!userSummary?.profile?.canPromote,
+      allowEmailLogin: userSummary?.allowEmailLogin !== false,
+    });
+    setPropertiesOpen(true);
+    setPropertiesLoading(true);
+    try {
+      const { data } = await apiClient.get(`/users/${userSummary._id}`);
+      setSelectedUser(data);
+      setUserProperties({
+        canPromote: !!data?.profile?.canPromote,
+        allowEmailLogin: data?.allowEmailLogin !== false,
+      });
+    } catch {
+      setMsg({ severity: 'error', text: t('admin.users.failedLoadUserProperties') });
+      setPropertiesOpen(false);
+    } finally {
+      setPropertiesLoading(false);
+    }
+  };
+
+  const closePropertiesModal = () => {
+    setPropertiesOpen(false);
+    setSelectedUser(null);
+    setPropertiesLoading(false);
+    setPropertiesSaving(false);
+  };
+
+  const handleSaveProperties = async () => {
+    if (!selectedUser?._id) return;
+    setPropertiesSaving(true);
+    try {
+      const { data } = await apiClient.patch(`/users/${selectedUser._id}/properties`, userProperties);
+      setSelectedUser(data);
+      setUserProperties({
+        canPromote: !!data?.profile?.canPromote,
+        allowEmailLogin: data?.allowEmailLogin !== false,
+      });
+      setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
+      setMsg({ severity: 'success', text: t('admin.users.userPropertiesUpdated') });
+      closePropertiesModal();
+    } catch {
+      setMsg({ severity: 'error', text: t('admin.users.failedUpdateUserProperties') });
+      setPropertiesSaving(false);
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -400,7 +454,9 @@ function UsersTab({ currentUserId }) {
             ) : users.length === 0 ? (
               <TableRow><TableCell colSpan={6} align="center">{t('admin.users.noUsersFound')}</TableCell></TableRow>
             ) : (
-              users.map((u) => (
+               users.map((u) => {
+                 const userPropertiesLabel = t('admin.users.openUserProperties', { name: getFullName(u) });
+                 return (
                 <TableRow key={u._id}>
                   <TableCell component="th" scope="row">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -435,11 +491,25 @@ function UsersTab({ currentUserId }) {
                           {getInitials(u)}
                         </Avatar>
                       </Box>
-                      <Typography variant="body2" sx={{ color: 'text.primary', fontWeight: 400 }}>
-                        {getFullName(u)}
-                      </Typography>
-                    </Box>
-                  </TableCell>
+                       <Tooltip title={userPropertiesLabel}>
+                         <ButtonBase
+                           onClick={() => openPropertiesModal(u)}
+                           aria-label={userPropertiesLabel}
+                           sx={{
+                             justifyContent: 'flex-start',
+                             color: 'text.primary',
+                             typography: 'body2',
+                             fontWeight: 400,
+                             borderRadius: 1,
+                             px: 0.5,
+                             py: 0.25,
+                           }}
+                         >
+                           {getFullName(u)}
+                         </ButtonBase>
+                       </Tooltip>
+                     </Box>
+                   </TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
                   <TableCell>
                     {u.emails?.[0]?.verified ? (
@@ -481,8 +551,9 @@ function UsersTab({ currentUserId }) {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+                 );
+               })
+             )}
           </TableBody>
         </Table>
       </TableContainer>
@@ -555,6 +626,64 @@ function UsersTab({ currentUserId }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setImageViewUser(null)}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={propertiesOpen} onClose={closePropertiesModal} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('admin.users.userPropertiesTitle', { name: getFullName(selectedUser || {}) })}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          {propertiesLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                {selectedUser?.emails?.[0]?.address}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t('admin.users.userPropertiesHelp')}
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {selectedUser?.isSSOCreatedUser && (
+                  <Chip size="small" label={t('admin.users.ssoCreatedAccount')} color="info" variant="outlined" />
+                )}
+                {selectedUser?.allowEmailLogin === false && (
+                  <Chip size="small" label={t('admin.users.emailLoginDisabled')} color="warning" variant="outlined" />
+                )}
+              </Box>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={!!userProperties.canPromote}
+                    onChange={(event) => setUserProperties((current) => ({ ...current, canPromote: event.target.checked }))}
+                  />
+                )}
+                label={t('admin.users.canPromote')}
+              />
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={!!userProperties.allowEmailLogin}
+                    disabled={!selectedUser?.isSSOCreatedUser}
+                    onChange={(event) => setUserProperties((current) => ({ ...current, allowEmailLogin: event.target.checked }))}
+                  />
+                )}
+                label={t('admin.users.allowEmailLogin')}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {selectedUser?.isSSOCreatedUser
+                  ? t('admin.users.allowEmailLoginHelp')
+                  : t('admin.users.allowEmailLoginNotNeeded')}
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePropertiesModal}>{t('common.cancel')}</Button>
+          <Button variant="contained" onClick={handleSaveProperties} disabled={propertiesLoading || propertiesSaving}>
+            {propertiesSaving ? t('common.saving') : t('common.save')}
+          </Button>
         </DialogActions>
       </Dialog>
 

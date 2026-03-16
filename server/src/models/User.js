@@ -108,6 +108,9 @@ const UserSchema = new mongoose.Schema(
     emails: { type: [EmailSchema], default: [] },
     services: { type: ServicesSchema, default: () => ({}) },
     profile: { type: ProfileSchema, default: () => ({}) },
+    ssoCreated: { type: Boolean, default: false },
+    allowEmailLogin: { type: Boolean, default: true },
+    lastAuthProvider: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date },
     // Per-user locale preference (overrides app default from Settings).
@@ -127,6 +130,19 @@ UserSchema.index({ 'emails.address': 1 });
 UserSchema.virtual('email').get(function () {
   return this.emails?.[0]?.address;
 });
+
+UserSchema.methods.isSSOLinked = function () {
+  return !!this.services?.sso?.id;
+};
+
+UserSchema.methods.isSSOCreatedUser = function () {
+  return !!this.ssoCreated;
+};
+
+UserSchema.methods.canUseEmailLogin = function () {
+  if (!this.ssoCreated) return true;
+  return this.allowEmailLogin === true;
+};
 
 // Instance method: verify password
 UserSchema.methods.verifyPassword = async function (password) {

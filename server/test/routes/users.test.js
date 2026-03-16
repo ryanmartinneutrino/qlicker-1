@@ -37,6 +37,31 @@ describe('GET /api/v1/users/me', () => {
     expect(body.user.services).toBeUndefined(); // services stripped
   });
 
+  it('includes SSO auth metadata for profile restrictions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await User.create({
+      emails: [{ address: 'sso-meta@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-meta-1', email: 'sso-meta@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Meta', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, user);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/users/me', { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.user.isSSOUser).toBe(true);
+    expect(body.user.isSSOCreatedUser).toBe(true);
+    expect(body.user.allowEmailLogin).toBe(false);
+    expect(body.user.lastAuthProvider).toBe('sso');
+  });
+
   it('includes locale field when set', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const user = await createTestUser({ email: 'locale@example.com' });
@@ -87,6 +112,33 @@ describe('PATCH /api/v1/users/me', () => {
     expect(body.profile.firstname).toBe('Updated');
     expect(body.profile.lastname).toBe('Name');
     expect(body.profile.studentNumber).toBe('S12345');
+  });
+
+  it('does not let SSO-created users change their names', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await User.create({
+      emails: [{ address: 'sso-name@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-name-1', email: 'sso-name@example.com' },
+      },
+      profile: { firstname: 'Managed', lastname: 'Name', studentNumber: 'S1', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, user);
+
+    const res = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me', {
+      token,
+      payload: { firstname: 'Changed', lastname: 'User', studentNumber: 'S2' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.profile.firstname).toBe('Managed');
+    expect(body.profile.lastname).toBe('Name');
+    expect(body.profile.studentNumber).toBe('S2');
   });
 
   it('updates locale preference', async (ctx) => {
@@ -173,6 +225,30 @@ describe('PATCH /api/v1/users/me/password', () => {
       payload: { email: 'pwchange@example.com', password: 'newpassword456' },
     });
     expect(loginRes.statusCode).toBe(200);
+  });
+
+  it('blocks password changes while signed in through SSO', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await User.create({
+      emails: [{ address: 'sso-password@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-password-1', email: 'sso-password@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Password', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, user);
+
+    const res = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/password', {
+      token,
+      payload: { currentPassword: 'password123', newPassword: 'newpassword456' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('SSO_PASSWORD_CHANGE_DISABLED');
   });
 
   it('rejects wrong current password', async (ctx) => {
@@ -302,6 +378,49 @@ describe('Admin user management', () => {
 
     const updated = await User.findById(unverified._id);
     expect(updated.emails[0].verified).toBe(true);
+  });
+
+  it('admin can toggle user properties for SSO approval and promotion', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-properties@example.com', roles: ['admin'] });
+    const target = await User.create({
+      emails: [{ address: 'sso-target@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-target-1', email: 'sso-target@example.com' },
+        resetPassword: {
+          token: 'pending-reset',
+          email: 'sso-target@example.com',
+          when: new Date(),
+          reason: 'reset',
+        },
+      },
+      profile: { firstname: 'Toggle', lastname: 'Target', roles: ['professor'], canPromote: false },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const enableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { canPromote: true, allowEmailLogin: true },
+    });
+    expect(enableRes.statusCode).toBe(200);
+    expect(enableRes.json().profile.canPromote).toBe(true);
+    expect(enableRes.json().allowEmailLogin).toBe(true);
+
+    const disableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { allowEmailLogin: false },
+    });
+    expect(disableRes.statusCode).toBe(200);
+    expect(disableRes.json().allowEmailLogin).toBe(false);
+
+    const updated = await User.findById(target._id);
+    expect(updated.profile.canPromote).toBe(true);
+    expect(updated.allowEmailLogin).toBe(false);
+    expect(updated.services?.resetPassword).toBeUndefined();
   });
 });
 
