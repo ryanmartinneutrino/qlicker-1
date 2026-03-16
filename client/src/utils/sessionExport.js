@@ -1,4 +1,8 @@
-import { prepareRichTextInput } from '../components/questions/richTextUtils';
+import {
+  prepareRichTextInput,
+  renderKatexInElement,
+  sanitizeRichHtml,
+} from '../components/questions/richTextUtils';
 
 function escapeHtml(value) {
   return String(value || '')
@@ -19,6 +23,100 @@ export function downloadJson(filename, payload) {
   anchor.click();
   document.body.removeChild(anchor);
   URL.revokeObjectURL(url);
+}
+
+function buildPdfRenderRoot(htmlContent) {
+  const parsed = new DOMParser().parseFromString(String(htmlContent || ''), 'text/html');
+  const root = document.createElement('div');
+  root.className = 'session-export-root';
+  root.innerHTML = sanitizeRichHtml(parsed.body?.innerHTML || '');
+
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-10000px';
+  container.style.top = '0';
+  container.style.width = '816px';
+  container.style.background = '#fff';
+  container.appendChild(root);
+
+  const styles = Array.from(parsed.head?.querySelectorAll('style') || [])
+    .map(node => node.textContent || '')
+    .join('\n');
+
+  let styleTag = null;
+  if (styles.trim()) {
+    styleTag = document.createElement('style');
+    styleTag.textContent = styles;
+  }
+
+  return { container, root, styleTag };
+}
+
+function waitForImages(container) {
+  const images = Array.from(container.querySelectorAll('img'));
+  return Promise.all(images.map((img) => {
+    if (img.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+    });
+  }));
+}
+
+function waitForLayout() {
+  return new Promise((resolve) => {
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+      return;
+    }
+    window.setTimeout(resolve, 0);
+  });
+}
+
+export async function downloadPdf(filename, htmlContent) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    throw new Error('pdf-download-unavailable');
+  }
+
+  const html2pdfModule = await import('html2pdf.js');
+  const html2pdf = html2pdfModule.default || html2pdfModule;
+  const { container, root, styleTag } = buildPdfRenderRoot(htmlContent);
+
+  if (styleTag) {
+    document.head.appendChild(styleTag);
+  }
+  document.body.appendChild(container);
+
+  try {
+    renderKatexInElement(root);
+    await waitForImages(root);
+    await waitForLayout();
+    await html2pdf().set({
+      filename,
+      margin: 0.25,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        backgroundColor: '#ffffff',
+        logging: false,
+        scale: 2,
+        useCORS: true,
+        windowWidth: 816,
+      },
+      jsPDF: {
+        unit: 'in',
+        format: 'letter',
+        orientation: 'portrait',
+      },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+      },
+    }).from(root).save();
+  } finally {
+    document.body.removeChild(container);
+    if (styleTag && document.head.contains(styleTag)) {
+      styleTag.remove();
+    }
+  }
 }
 
 export function slugifyFilenamePart(value, fallback = 'session') {
@@ -124,7 +222,7 @@ export function buildPrintableSessionHtml({
       <meta charset="utf-8" />
       <title>${escapeHtml(session?.name || 'Session export')}</title>
       <style>
-        body { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 24px; font-size: 14px; line-height: 1.5; }
+        body, .session-export-root { font-family: Arial, sans-serif; color: #111; margin: 0; padding: 24px; font-size: 14px; line-height: 1.5; }
         h1, h2, h3, p { margin: 0; }
         .page-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #333; }
         .page-header h1 { font-size: 20px; margin-bottom: 4px; }

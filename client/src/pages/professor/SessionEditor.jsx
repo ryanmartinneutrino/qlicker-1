@@ -28,8 +28,9 @@ import SessionStatusChip from '../../components/common/SessionStatusChip';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
   buildSessionExportFilename,
+  buildPrintableSessionHtml,
+  downloadPdf,
   downloadJson,
-  openSessionPrintWindow,
 } from '../../utils/sessionExport';
 import { useTranslation } from 'react-i18next';
 
@@ -435,18 +436,25 @@ export default function SessionEditor() {
     }
   };
 
-  const handleExportPdfVariant = (variant) => {
+  const handleExportPdfVariant = async (variant) => {
+    setExportingSession(true);
     try {
-      openSessionPrintWindow({
-        course,
-        session,
-        questions,
-        variant,
-        t,
-      });
+      await downloadPdf(
+        buildSessionExportFilename(session?.name, variant, 'pdf'),
+        buildPrintableSessionHtml({
+          course,
+          session,
+          questions,
+          variant,
+          t,
+        })
+      );
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.exportPdfSuccess') });
       setExportOpen(false);
     } catch {
       setMsg({ severity: 'error', text: t('professor.sessionEditor.failedOpenPdfExport') });
+    } finally {
+      setExportingSession(false);
     }
   };
 
@@ -1804,13 +1812,17 @@ export default function SessionEditor() {
                 <Typography variant="body2" color="text.secondary">
                   {t('professor.sessionEditor.exportPdfDescription')}
                 </Typography>
-                <Button variant="outlined" onClick={() => handleExportPdfVariant('questions')}>
+                <Button variant="outlined" onClick={() => handleExportPdfVariant('questions')} disabled={exportingSession}>
                   {t('professor.sessionEditor.pdfQuestions')}
                 </Button>
-                <Button variant="outlined" onClick={() => handleExportPdfVariant('answers')}>
+                <Button variant="outlined" onClick={() => handleExportPdfVariant('answers')} disabled={exportingSession}>
                   {t('professor.sessionEditor.pdfAnswers')}
                 </Button>
-                <Button variant="outlined" onClick={() => handleExportPdfVariant('answers-solutions')}>
+                <Button
+                  variant="outlined"
+                  onClick={() => handleExportPdfVariant('answers-solutions')}
+                  disabled={exportingSession}
+                >
                   {t('professor.sessionEditor.pdfAnswersSolutions')}
                 </Button>
                 <Typography variant="caption" color="text.secondary">
