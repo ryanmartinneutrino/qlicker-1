@@ -350,3 +350,9 @@ cd client && npx vitest run
 | [LEGACY_DB.md](LEGACY_DB.md) | Legacy MongoDB database schema and compatibility |
 | [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) | Archive of completed work, bug fixes, PR history |
 | [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) | Master requirements document |
+
+### i18n Guardrail for Ongoing UI Work
+
+- Treat i18n as part of the definition of done for **every** UI change.
+- Any new or changed user-facing copy, including tooltips and accessibility labels, must use `t()` and must be added to both `client/src/i18n/locales/en.json` and `client/src/i18n/locales/fr.json` in the same PR.
+- Do not rely on `defaultValue` as the only translation source for shipped features; it is a safety fallback, not a substitute for updating locale files.

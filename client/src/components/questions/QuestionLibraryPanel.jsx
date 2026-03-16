@@ -35,7 +35,7 @@ import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import QuestionDisplay from './QuestionDisplay';
 import QuestionEditor from './QuestionEditor';
-import { TYPE_LABELS, TYPE_COLORS, normalizeQuestionType } from './constants';
+import { TYPE_COLORS, getQuestionTypeLabel, normalizeQuestionType } from './constants';
 import SessionSelectorDialog from '../common/SessionSelectorDialog';
 
 const DEFAULT_LIMIT = 10;
@@ -278,7 +278,7 @@ function ImportQuestionsDialog({
                             <Chip
                               size="small"
                               color={TYPE_COLORS[normalizedType] || 'default'}
-                              label={TYPE_LABELS[normalizedType] || String(normalizedType)}
+                              label={getQuestionTypeLabel(t, normalizedType, { defaultValue: String(normalizedType) })}
                             />
                             <Chip size="small" variant="outlined" label={t('questionLibrary.import.importedTag', { defaultValue: 'imported tag will be added' })} />
                           </Box>
@@ -723,7 +723,7 @@ export default function QuestionLibraryPanel({
               <MenuItem value="">{t('questionLibrary.filters.allTypes', { defaultValue: 'All types' })}</MenuItem>
               {availableTypes.map((type) => (
                 <MenuItem key={type} value={type}>
-                  {TYPE_LABELS[type] || String(type)}
+                  {getQuestionTypeLabel(t, type, { defaultValue: String(type) })}
                 </MenuItem>
               ))}
             </TextField>
@@ -752,10 +752,12 @@ export default function QuestionLibraryPanel({
               startIcon={<FilterListIcon />}
               onClick={() => setSessionDialogOpen(true)}
             >
-              {t('questionLibrary.filters.sessions', {
-                count: selectedSessionIds.length,
-                defaultValue: selectedSessionIds.length > 0 ? `Sessions (${selectedSessionIds.length})` : 'Sessions',
-              })}
+              {selectedSessionIds.length > 0
+                ? t('questionLibrary.filters.sessionsButtonSelected', {
+                  count: selectedSessionIds.length,
+                  defaultValue: `Sessions (${selectedSessionIds.length})`,
+                })
+                : t('questionLibrary.filters.sessionsButton', { defaultValue: 'Sessions' })}
             </Button>
           </Stack>
 
@@ -896,7 +898,7 @@ export default function QuestionLibraryPanel({
                             <Chip
                               size="small"
                               color={TYPE_COLORS[normalizedType] || 'default'}
-                              label={TYPE_LABELS[normalizedType] || String(normalizedType)}
+                              label={getQuestionTypeLabel(t, normalizedType, { defaultValue: String(normalizedType) })}
                             />
                             <Chip
                               size="small"
@@ -1066,7 +1068,7 @@ export default function QuestionLibraryPanel({
 
       <SessionSelectorDialog
         open={sessionDialogOpen}
-        title={t('questionLibrary.filters.sessions', { defaultValue: 'Filter by sessions' })}
+        title={t('questionLibrary.filters.sessionsDialogTitle', { defaultValue: 'Filter by sessions' })}
         sessions={sourceSessions}
         selectedIds={selectedSessionIds}
         onChange={(ids) => setSelectedSessionIds(ids)}

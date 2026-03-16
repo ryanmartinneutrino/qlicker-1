@@ -28,7 +28,7 @@ import apiClient from '../../api/client';
 import {
   QUESTION_TYPES,
   TYPE_COLORS,
-  TYPE_LABELS,
+  getQuestionTypeLabel,
   normalizeQuestionType,
 } from '../questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../questions/richTextUtils';
@@ -903,7 +903,10 @@ export default function SessionQuestionGradingPanel({
             {t('grades.questionPanel.questionNumber', { number: questions.findIndex((question) => String(question?._id) === activeQuestionId) + 1 })}
           </Typography>
           <Chip
-            label={TYPE_LABELS[activeQuestionType] || t('grades.coursePanel.question')}
+            label={getQuestionTypeLabel(t, activeQuestionType, {
+              key: 'grades.coursePanel.question',
+              defaultValue: 'Question',
+            })}
             color={TYPE_COLORS[activeQuestionType] || 'default'}
             size="small"
             sx={COMPACT_CHIP_SX}

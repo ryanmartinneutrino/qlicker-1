@@ -5,8 +5,8 @@ import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/mate
 import apiClient, { getAccessToken } from '../../api/client';
 import {
   QUESTION_TYPES,
-  TYPE_LABELS,
   TYPE_COLORS,
+  getQuestionTypeLabel,
   isOptionBasedQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -611,7 +611,10 @@ export default function PresentationWindow() {
           />
         )}
         <Chip
-          label={TYPE_LABELS[qType] || t('professor.secondDesktop.question')}
+          label={getQuestionTypeLabel(t, qType, {
+            key: 'professor.secondDesktop.question',
+            defaultValue: 'Question',
+          })}
           color={TYPE_COLORS[qType] || 'default'}
           size="small"
           sx={COMPACT_CHIP_SX}

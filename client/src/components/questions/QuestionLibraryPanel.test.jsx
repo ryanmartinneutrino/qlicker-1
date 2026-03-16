@@ -116,6 +116,7 @@ describe('QuestionLibraryPanel', () => {
 
     expect(await screen.findByText('Library question content')).toBeInTheDocument();
     expect(screen.getByText('Session One')).toBeInTheDocument();
+    expect(screen.getAllByText('Short Answer').length).toBeGreaterThan(0);
     expect(screen.getByText('Has responses')).toBeInTheDocument();
     expect(screen.getByText('Unapproved')).toBeInTheDocument();
 

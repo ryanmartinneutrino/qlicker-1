@@ -839,6 +839,14 @@
       "shortAnswer": "Short Answer",
       "numerical": "Numerical"
     },
+    "types": {
+      "multipleChoice": "Multiple Choice",
+      "multiSelect": "Multi-Select",
+      "trueFalse": "True/False",
+      "shortAnswer": "Short Answer",
+      "numerical": "Numerical",
+      "slide": "Slide"
+    },
     "editor": {
       "questionType": "Question Type",
       "questionText": "Question Text",
@@ -902,6 +910,87 @@
       "underline": "Underline",
       "mathTip": "Use \\( ... \\) for inline math or $$ ... $$ for display math",
       "preview": "Preview"
+    }
+  },
+  "questionLibrary": {
+    "title": "Question Library",
+    "subtitle": "Browse, edit, copy, export, and import questions across your instructor courses.",
+    "newQuestion": "New question",
+    "previewHint": "Question {{number}}",
+    "empty": "No questions match the current filters.",
+    "deleteConfirm_one": "Delete this question?",
+    "deleteConfirm_other": "Delete {{count}} questions?",
+    "copyDialog": {
+      "title_one": "Copy question",
+      "title_other": "Copy {{count}} questions"
+    },
+    "filters": {
+      "course": "Course",
+      "copySession": "Session (optional)",
+      "copySessionHelp": "Leave blank to copy into the selected course library.",
+      "type": "Type",
+      "allTypes": "All types",
+      "tags": "Tags",
+      "tagsPlaceholder": "Filter by tag",
+      "sessionsButton": "Sessions",
+      "sessionsButtonSelected": "Sessions ({{count}})",
+      "sessionsDialogTitle": "Filter by sessions",
+      "content": "Content",
+      "contentPlaceholder": "Search question text and option text",
+      "approved": "Approved",
+      "allApprovalStates": "All",
+      "onlyApproved": "Approved only",
+      "onlyUnapproved": "Unapproved only",
+      "limit": "Rows",
+      "applySessions": "Apply sessions"
+    },
+    "import": {
+      "title": "Import questions",
+      "action": "Import JSON",
+      "chooseFile": "Choose JSON file",
+      "libraryOnly": "Course library only",
+      "empty": "Choose a JSON export to preview importable questions.",
+      "previewCount_one": "1 question ready to import",
+      "previewCount_other": "{{count}} questions ready to import",
+      "importedTag": "imported tag will be added",
+      "confirm_one": "Import 1 question",
+      "confirm_other": "Import {{count}} questions"
+    },
+    "bulk": {
+      "selectAll": "Select all ({{count}})",
+      "clearSelection": "Clear selection",
+      "selectAllFiltered": "Select all filtered",
+      "copy": "Copy to course/session",
+      "export": "Export JSON"
+    },
+    "selection": {
+      "pageSummary_one": "1 matching question",
+      "pageSummary_other": "{{count}} matching questions"
+    },
+    "status": {
+      "approved": "Approved",
+      "unapproved": "Unapproved",
+      "hasResponses": "Has responses"
+    },
+    "actions": {
+      "approve": "Approve question"
+    },
+    "editLocks": {
+      "type": "Question type is locked because responses already exist.",
+      "options": "Option count is locked because responses already exist."
+    },
+    "pagination": {
+      "summary": "Page {{page}} of {{pages}}"
+    },
+    "errors": {
+      "load": "Failed to load question library.",
+      "selectAll": "Failed to select all filtered questions.",
+      "approve": "Failed to approve question.",
+      "delete": "Failed to delete questions.",
+      "copy": "Failed to copy questions.",
+      "export": "Failed to export questions.",
+      "importParse": "The selected file is not valid question-library JSON.",
+      "import": "Failed to import questions."
     }
   },
   "grades": {

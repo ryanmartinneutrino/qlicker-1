@@ -11,8 +11,8 @@ import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
 import {
   QUESTION_TYPES,
-  TYPE_LABELS,
   TYPE_COLORS,
+  getQuestionTypeLabel,
   isOptionBasedQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -555,7 +555,7 @@ export default function LiveSession() {
               onClick={handleJoinWithCode}
               disabled={joinCode.length < 6 || joining}
               sx={{ py: 1.5, fontSize: '1.1rem' }}
-              aria-label="Join session"
+              aria-label={t('student.liveSession.joinSessionAction')}
             >
               {joining ? <CircularProgress size={24} color="inherit" /> : t('student.liveSession.joinSessionAction')}
             </Button>
@@ -711,7 +711,10 @@ export default function LiveSession() {
         {/* Question header */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
           <Chip
-            label={TYPE_LABELS[qType] || 'Question'}
+            label={getQuestionTypeLabel(t, qType, {
+              key: 'grades.coursePanel.question',
+              defaultValue: 'Question',
+            })}
             color={TYPE_COLORS[qType] || 'default'}
             size="small"
             sx={COMPACT_CHIP_SX}

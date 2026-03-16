@@ -7,7 +7,7 @@ import {
 import { useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  TYPE_LABELS,
+  getQuestionTypeLabel,
   TYPE_COLORS,
   QUESTION_TYPES,
   isOptionBasedQuestionType,
@@ -81,7 +81,7 @@ export default function QuestionDisplay({ question }) {
   return (
     <Paper variant="outlined" sx={{ p: 2, width: '100%', minWidth: 0, overflow: 'hidden' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-        <Chip label={TYPE_LABELS[normalizedType] || t('common.unknown')} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
+        <Chip label={getQuestionTypeLabel(t, normalizedType)} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
         {!isSlide && points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 

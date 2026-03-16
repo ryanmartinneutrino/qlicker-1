@@ -14,6 +14,7 @@ import {
 } from '@mui/icons-material';
 import {
   TYPE_LABELS,
+  getQuestionTypeLabel,
   QUESTION_TYPES,
   isOptionBasedQuestionType,
   isSlideType,
@@ -507,7 +508,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
                 onChange={e => handleTypeChange(Number(e.target.value))}
               >
                 {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <MenuItem key={k} value={Number(k)}>{v}</MenuItem>
+                  <MenuItem key={k} value={Number(k)}>{getQuestionTypeLabel(t, Number(k), { defaultValue: v })}</MenuItem>
                 ))}
               </Select>
             </FormControl>

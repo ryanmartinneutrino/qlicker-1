@@ -635,6 +635,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 2. Add the French translation to `client/src/i18n/locales/fr.json`
 3. Use `t('namespace.key')` in the component
 4. **Both files must have identical key structures** — missing keys fall back to English
+5. **Do not ship new UI with `defaultValue` only** — every new key used in code must be added to both locale files in the same PR
 
 ### Adding a New Language
 
@@ -657,9 +658,11 @@ Keys are organized hierarchically by page/component, using dot notation:
 ### Rules for User-Facing Strings
 
 - **All user-visible text must go through `t()`** — no hardcoded English in JSX
+- **Accessibility copy counts too** — translate `aria-label`, `title`, `alt`, helper text, dialog text, tooltips, empty states, and button labels
 - **Server error messages remain in English** — they are technical/developer-facing
 - **Use interpolation** for dynamic values: `t('key', { count: 5 })` not `` `${t('key')} 5` ``
 - **Plurals:** Use i18next plural features when needed: `t('items', { count })` with `"items_one": "{{count}} item"`, `"items_other": "{{count}} items"`
+- **Shared labels must use translation helpers** — if a label such as a question type appears in multiple screens, centralize the translated lookup instead of hardcoding English constants in each component
 
 ---
 
