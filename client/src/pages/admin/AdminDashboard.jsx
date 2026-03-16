@@ -292,6 +292,11 @@ function UsersTab({ currentUserId }) {
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertiesSaving, setPropertiesSaving] = useState(false);
 
+  const isStudentOnlyRole = (user) => {
+    const roles = user?.profile?.roles || [];
+    return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
+  };
+
   const getFullName = (u) => `${u.profile?.firstname || ''} ${u.profile?.lastname || ''}`.trim() || 'Unknown';
   const getInitials = (u) => {
     const firstInitial = u.profile?.firstname?.[0] || '';
@@ -320,7 +325,18 @@ function UsersTab({ currentUserId }) {
   const handleRoleChange = async (userId, role) => {
     try {
       await apiClient.patch(`/users/${userId}/role`, { role });
-      setUsers((prev) => prev.map((u) => (u._id === userId ? { ...u, profile: { ...u.profile, roles: [role] } } : u)));
+      setUsers((prev) => prev.map((u) => (
+        u._id === userId
+          ? {
+            ...u,
+            profile: {
+              ...u.profile,
+              roles: [role],
+              ...(role === 'student' ? { canPromote: false } : {}),
+            },
+          }
+          : u
+      )));
       setMsg({ severity: 'success', text: t('admin.users.roleUpdated') });
     } catch {
       setMsg({ severity: 'error', text: t('admin.users.failedUpdateRole') });
@@ -364,7 +380,7 @@ function UsersTab({ currentUserId }) {
   const openPropertiesModal = async (userSummary) => {
     setSelectedUser(userSummary);
     setUserProperties({
-      canPromote: !!userSummary?.profile?.canPromote,
+      canPromote: isStudentOnlyRole(userSummary) ? false : !!userSummary?.profile?.canPromote,
       allowEmailLogin: userSummary?.allowEmailLogin !== false,
     });
     setPropertiesOpen(true);
@@ -373,7 +389,7 @@ function UsersTab({ currentUserId }) {
       const { data } = await apiClient.get(`/users/${userSummary._id}`);
       setSelectedUser(data);
       setUserProperties({
-        canPromote: !!data?.profile?.canPromote,
+        canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
         allowEmailLogin: data?.allowEmailLogin !== false,
       });
     } catch {
@@ -398,7 +414,7 @@ function UsersTab({ currentUserId }) {
       const { data } = await apiClient.patch(`/users/${selectedUser._id}/properties`, userProperties);
       setSelectedUser(data);
       setUserProperties({
-        canPromote: !!data?.profile?.canPromote,
+        canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
         allowEmailLogin: data?.allowEmailLogin !== false,
       });
       setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
@@ -409,6 +425,8 @@ function UsersTab({ currentUserId }) {
       setPropertiesSaving(false);
     }
   };
+
+  const selectedUserIsStudentOnly = isStudentOnlyRole(selectedUser);
 
   return (
     <Box>
@@ -656,11 +674,17 @@ function UsersTab({ currentUserId }) {
                 control={(
                   <Checkbox
                     checked={!!userProperties.canPromote}
+                    disabled={selectedUserIsStudentOnly}
                     onChange={(event) => setUserProperties((current) => ({ ...current, canPromote: event.target.checked }))}
                   />
                 )}
                 label={t('admin.users.canPromote')}
               />
+              {selectedUserIsStudentOnly ? (
+                <Typography variant="caption" color="text.secondary">
+                  {t('admin.users.canPromoteStudentDisabled')}
+                </Typography>
+              ) : null}
               <FormControlLabel
                 control={(
                   <Checkbox

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -345,6 +345,155 @@ function RichContent({ html, fallback }) {
   );
 }
 
+const GradingTableRow = memo(function GradingTableRow({
+  row,
+  draft,
+  saving,
+  rowDisabled,
+  rowDirty,
+  selected,
+  onToggleSelected,
+  onUpdateDraft,
+  onSave,
+  onCancel,
+  onOpenImage,
+  t,
+}) {
+  const rowNeedsGrading = !!row.rowNeedsGrading;
+
+  return (
+    <TableRow
+      hover
+      selected={selected}
+      sx={rowNeedsGrading ? { bgcolor: 'error.50' } : undefined}
+    >
+      <TableCell padding="checkbox">
+        <Checkbox
+          size="small"
+          checked={selected}
+          onChange={(event) => onToggleSelected(event.target.checked)}
+          inputProps={{
+            'aria-label': t('grades.questionPanel.selectStudent', { name: row.displayName }),
+          }}
+        />
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
+          <Avatar
+            src={row.student?.profileThumbnail || row.student?.profileImage || ''}
+            sx={{
+              width: 30,
+              height: 30,
+              cursor: row.student?.profileImage ? 'pointer' : 'default',
+            }}
+            onClick={() => {
+              if (row.student?.profileImage) onOpenImage(row.student.profileImage);
+            }}
+          >
+            {buildStudentInitials(row.student)}
+          </Avatar>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" noWrap>{row.displayName}</Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>{row.email || '—'}</Typography>
+          </Box>
+        </Box>
+      </TableCell>
+      <TableCell>
+        <Box sx={{ maxWidth: 260 }}>
+          {row.responseSummary.richHtml ? (
+            <RichContent html={row.responseSummary.richHtml} />
+          ) : (
+            <Typography variant="body2">{row.responseSummary.displayText}</Typography>
+          )}
+        </Box>
+        {row.latestResponse?.attempt ? (
+          <Typography variant="caption" color="text.secondary">
+            {t('grades.questionPanel.attemptNumber', { number: row.latestResponse.attempt })}
+          </Typography>
+        ) : null}
+      </TableCell>
+      <TableCell>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+          <TextField
+            size="small"
+            type="number"
+            value={draft.points}
+            disabled={rowDisabled || saving}
+            onChange={(event) => {
+              const value = event.target.value;
+              onUpdateDraft((current) => ({ ...current, points: value }));
+            }}
+            sx={{ width: 82 }}
+            inputProps={{ min: 0 }}
+          />
+          <Typography variant="caption" color="text.secondary">
+            {t('grades.questionPanel.outOf', { value: formatPercent(row.mark?.outOf || 0) })}
+          </Typography>
+        </Box>
+        {rowNeedsGrading && (
+          <Chip
+            size="small"
+            color="error"
+            variant="outlined"
+            label={t('grades.questionPanel.needsGrading')}
+            sx={{ mt: 0.5 }}
+          />
+        )}
+        {rowDisabled && (
+          <Chip
+            size="small"
+            color="warning"
+            variant="outlined"
+            label={t('grades.questionPanel.noGradeItem')}
+            sx={{ mt: 0.5 }}
+          />
+        )}
+      </TableCell>
+      <TableCell>
+        <Box sx={{ minWidth: 170 }}>
+          <StudentRichTextEditor
+            value={draft.feedback}
+            disabled={rowDisabled || saving}
+            onChangeDebounceMs={180}
+            onChange={({ html }) => {
+              const value = html || '';
+              onUpdateDraft((current) => ({ ...current, feedback: value }));
+            }}
+            placeholder={t('grades.questionPanel.addFeedback')}
+            ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
+            showMathHint={false}
+          />
+          {rowDirty && hasMathSyntax(draft.feedback) && (
+            <MathPreview html={draft.feedback} debounceMs={220} showLabel={false} />
+          )}
+        </Box>
+      </TableCell>
+      <TableCell align="right">
+        <Box sx={{ display: 'flex', gap: 0.35, flexDirection: 'column', alignItems: 'flex-end' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onSave}
+            disabled={rowDisabled || saving || !rowDirty}
+          >
+            {t('common.save')}
+          </Button>
+          {rowDirty && (
+            <Button
+              size="small"
+              variant="text"
+              onClick={onCancel}
+              disabled={rowDisabled || saving}
+            >
+              {t('common.cancel')}
+            </Button>
+          )}
+        </Box>
+      </TableCell>
+    </TableRow>
+  );
+});
+
 export default function SessionQuestionGradingPanel({
   sessionId,
   session = null,
@@ -638,12 +787,15 @@ export default function SessionQuestionGradingPanel({
   }, []);
 
   const isRowDirty = useCallback((row) => {
-    if (!row?.mark) return false;
     const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
     const draftHasPoints = hasExplicitPointsValue(draft.points);
     const markHasPoints = hasExplicitPointsValue(row.mark?.points);
     const draftPoints = draftHasPoints ? Number(draft.points) : null;
     const markPoints = markHasPoints ? Number(row.mark?.points) : null;
+    const confirmingManualGrade = !!row?.rowNeedsGrading
+      && draftHasPoints
+      && Number.isFinite(draftPoints)
+      && draftPoints >= 0;
     const pointsPresenceChanged = draftHasPoints !== markHasPoints;
     const pointsChanged = pointsPresenceChanged || (draftHasPoints
       && (
@@ -652,7 +804,7 @@ export default function SessionQuestionGradingPanel({
         || Math.abs(draftPoints - markPoints) > 0.0001
       ));
     const feedbackChanged = normalizeValue(draft.feedback) !== normalizeValue(row.mark?.feedback);
-    return pointsChanged || feedbackChanged;
+    return confirmingManualGrade || pointsChanged || feedbackChanged;
   }, [draftByStudentId]);
 
   const handleSaveRow = useCallback(async (row) => {
@@ -1193,139 +1345,23 @@ export default function SessionQuestionGradingPanel({
               const saving = !!savingByStudentId[row.studentId];
               const rowDisabled = !row.gradeId || !row.mark;
               const rowDirty = isRowDirty(row);
-              const rowNeedsGrading = !!row.rowNeedsGrading;
 
               return (
-                <TableRow
+                <GradingTableRow
                   key={row.studentId}
-                  hover
+                  row={row}
+                  draft={draft}
+                  saving={saving}
+                  rowDisabled={rowDisabled}
+                  rowDirty={rowDirty}
                   selected={!!selectedStudentIds[row.studentId]}
-                  sx={rowNeedsGrading ? { bgcolor: 'error.50' } : undefined}
-                >
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      size="small"
-                      checked={!!selectedStudentIds[row.studentId]}
-                      onChange={(event) => handleToggleRowSelected(row.studentId, event.target.checked)}
-                      inputProps={{
-                        'aria-label': t('grades.questionPanel.selectStudent', { name: row.displayName }),
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
-                      <Avatar
-                        src={row.student?.profileThumbnail || row.student?.profileImage || ''}
-                        sx={{
-                          width: 30,
-                          height: 30,
-                          cursor: row.student?.profileImage ? 'pointer' : 'default',
-                        }}
-                        onClick={() => {
-                          if (row.student?.profileImage) setImageViewUrl(row.student.profileImage);
-                        }}
-                      >
-                        {buildStudentInitials(row.student)}
-                      </Avatar>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography variant="body2" noWrap>{row.displayName}</Typography>
-                        <Typography variant="caption" color="text.secondary" noWrap>{row.email || '—'}</Typography>
-                      </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ maxWidth: 260 }}>
-                      {row.responseSummary.richHtml ? (
-                        <RichContent html={row.responseSummary.richHtml} />
-                      ) : (
-                        <Typography variant="body2">{row.responseSummary.displayText}</Typography>
-                      )}
-                    </Box>
-                    {row.latestResponse?.attempt ? (
-                      <Typography variant="caption" color="text.secondary">
-                        {t('grades.questionPanel.attemptNumber', { number: row.latestResponse.attempt })}
-                      </Typography>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
-                      <TextField
-                        size="small"
-                        type="number"
-                        value={draft.points}
-                        disabled={rowDisabled || saving}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          handleUpdateDraft(row.studentId, (current) => ({ ...current, points: value }));
-                        }}
-                        sx={{ width: 82 }}
-                        inputProps={{ min: 0 }}
-                      />
-                      <Typography variant="caption" color="text.secondary">
-                        {t('grades.questionPanel.outOf', { value: formatPercent(row.mark?.outOf || 0) })}
-                      </Typography>
-                    </Box>
-                    {rowNeedsGrading && (
-                      <Chip
-                        size="small"
-                        color="error"
-                        variant="outlined"
-                        label={t('grades.questionPanel.needsGrading')}
-                        sx={{ mt: 0.5 }}
-                      />
-                    )}
-                    {rowDisabled && (
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        label={t('grades.questionPanel.noGradeItem')}
-                        sx={{ mt: 0.5 }}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ minWidth: 170 }}>
-                      <StudentRichTextEditor
-                        value={draft.feedback}
-                        disabled={rowDisabled || saving}
-                        onChangeDebounceMs={180}
-                        onChange={({ html }) => {
-                          const value = html || '';
-                          handleUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
-                        }}
-                        placeholder={t('grades.questionPanel.addFeedback')}
-                        ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
-                        showMathHint={false}
-                      />
-                      {rowDirty && hasMathSyntax(draft.feedback) && (
-                        <MathPreview html={draft.feedback} debounceMs={220} showLabel={false} />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Box sx={{ display: 'flex', gap: 0.35, flexDirection: 'column', alignItems: 'flex-end' }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleSaveRow(row)}
-                        disabled={rowDisabled || saving || !rowDirty}
-                      >
-                        {t('common.save')}
-                      </Button>
-                      {rowDirty && (
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => handleCancelRow(row)}
-                          disabled={rowDisabled || saving}
-                        >
-                          {t('common.cancel')}
-                        </Button>
-                      )}
-                    </Box>
-                  </TableCell>
-                </TableRow>
+                  onToggleSelected={(checked) => handleToggleRowSelected(row.studentId, checked)}
+                  onUpdateDraft={(updater) => handleUpdateDraft(row.studentId, updater)}
+                  onSave={() => handleSaveRow(row)}
+                  onCancel={() => handleCancelRow(row)}
+                  onOpenImage={setImageViewUrl}
+                  t={t}
+                />
               );
             })}
             {sortedRows.length === 0 && (

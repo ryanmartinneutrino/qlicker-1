@@ -9,6 +9,10 @@ function canUseEmailLogin(user = {}) {
   return user.allowEmailLogin === true;
 }
 
+function hasOnlyStudentRole(roles = []) {
+  return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
+}
+
 function sanitizeUser(user) {
   const obj = user.toObject();
   obj.isSSOUser = !!user.services?.sso?.id;
@@ -123,7 +127,7 @@ export default async function userRoutes(app) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
 
-    const isSSONameLocked = !!user.ssoCreated || user.lastAuthProvider === 'sso';
+    const isSSONameLocked = !!user.ssoCreated || !!user.services?.sso?.id || user.lastAuthProvider === 'sso';
 
     for (const key of profileAllowed) {
       if (request.body?.[key] !== undefined) {
@@ -174,7 +178,7 @@ export default async function userRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
 
-      if (user.lastAuthProvider === 'sso') {
+      if (user.lastAuthProvider === 'sso' || user.ssoCreated || user.services?.sso?.id) {
         return reply.code(403).send({
           error: 'Forbidden',
           code: 'SSO_PASSWORD_CHANGE_DISABLED',
@@ -307,10 +311,19 @@ export default async function userRoutes(app) {
       },
     },
     async (request, reply) => {
+      const existingUser = await User.findById(request.params.id);
+      if (!existingUser) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
       const setUpdates = {};
       const unsetUpdates = {};
+      const existingRoles = existingUser.profile?.roles || [];
+      const targetIsStudentOnly = hasOnlyStudentRole(existingRoles);
 
-      if (request.body?.canPromote !== undefined) {
+      if (targetIsStudentOnly) {
+        setUpdates['profile.canPromote'] = false;
+      } else if (request.body?.canPromote !== undefined) {
         setUpdates['profile.canPromote'] = !!request.body.canPromote;
       }
       if (request.body?.allowEmailLogin !== undefined) {
@@ -366,9 +379,14 @@ export default async function userRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Admins cannot change their own role' });
       }
 
+      const roleUpdates = { 'profile.roles': [role] };
+      if (role === 'student') {
+        roleUpdates['profile.canPromote'] = false;
+      }
+
       const user = await User.findByIdAndUpdate(
         request.params.id,
-        { $set: { 'profile.roles': [role] } },
+        { $set: roleUpdates },
         { new: true }
       );
       if (!user) {

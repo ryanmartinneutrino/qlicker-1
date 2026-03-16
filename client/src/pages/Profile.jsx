@@ -50,8 +50,10 @@ export default function Profile() {
   const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
   const numberLabel = isStaff ? t('profile.employeeNumber') : t('profile.studentNumber');
   const isLastAuthSSO = user?.lastAuthProvider === 'sso';
-  const nameLocked = !!user?.isSSOCreatedUser || isLastAuthSSO;
-  const passwordLocked = isLastAuthSSO;
+  const isSSOManaged = !!user?.isSSOUser || !!user?.isSSOCreatedUser || isLastAuthSSO;
+  const hasSSOManagedName = Boolean(normalizeProfile(user?.profile).firstname || normalizeProfile(user?.profile).lastname);
+  const nameLocked = isSSOManaged && hasSSOManagedName;
+  const passwordLocked = isSSOManaged;
 
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {
@@ -241,6 +243,27 @@ export default function Profile() {
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>{t('profile.language')}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t('profile.languageHelp')}
+        </Typography>
+        <FormControl fullWidth>
+          <InputLabel id="profile-locale-label">{t('profile.language')}</InputLabel>
+          <Select
+            labelId="profile-locale-label"
+            value={userLocale}
+            label={t('profile.language')}
+            onChange={handleLocaleChange}
+          >
+            <MenuItem value="">{t('profile.useAppDefault')}</MenuItem>
+            {SUPPORTED_LOCALES.map((loc) => (
+              <MenuItem key={loc.code} value={loc.code}>{loc.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.personalInfo')}</Typography>
         <AutoSaveStatus status={profileSaveStatus} errorText={profileSaveError} />
         {nameLocked && (
@@ -273,26 +296,6 @@ export default function Profile() {
         </Box>
       </Paper>
 
-      <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
-        <Typography variant="h6" gutterBottom>{t('profile.language')}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t('profile.languageHelp')}
-        </Typography>
-        <FormControl fullWidth>
-          <InputLabel id="profile-locale-label">{t('profile.language')}</InputLabel>
-          <Select
-            labelId="profile-locale-label"
-            value={userLocale}
-            label={t('profile.language')}
-            onChange={handleLocaleChange}
-          >
-            <MenuItem value="">{t('profile.useAppDefault')}</MenuItem>
-            {SUPPORTED_LOCALES.map((loc) => (
-              <MenuItem key={loc.code} value={loc.code}>{loc.label}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Paper>
     </Box>
   );
 }

@@ -159,4 +159,35 @@ describe('QuestionLibraryPanel', () => {
       expect(requestCloseMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('bulk-updates selected question visibility from the library modal', async () => {
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        availableSessions={[{ _id: 'session-1', name: 'Session One', status: 'hidden' }]}
+      />
+    );
+
+    await screen.findByText('Library question content');
+
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Change visibility' }));
+
+    expect(screen.queryByText(/Students normally see session questions by making that session reviewable/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Visible to any prof on Qlicker'));
+
+    expect(screen.getByText(/Students normally see session questions by making that session reviewable/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/questions/bulk-visibility', {
+        questionIds: ['q1'],
+        public: true,
+        publicOnQlicker: true,
+        publicOnQlickerForStudents: false,
+      });
+    });
+  });
 });

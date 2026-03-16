@@ -289,6 +289,14 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | POST | `/sessions/:id/respond` | Student | Submit response |
 | PATCH | `/sessions/:id/current` | Prof+ | Set current question |
 | POST | `/sessions/:id/copy` | Prof+ | Copy session |
+| **Questions** | | | |
+| POST | `/questions` | Prof+ | Create question |
+| GET | `/questions/:id` | Token | Get a single question |
+| PATCH | `/questions/:id` | Token | Update a question |
+| POST | `/questions/bulk-copy` | Prof+ | Copy selected questions to another course/session |
+| POST | `/questions/bulk-delete` | Prof+ | Delete selected questions without response data |
+| POST | `/questions/bulk-visibility` | Prof+ | Bulk-update library visibility (course, prof-wide, prof+student-wide) |
+| POST | `/questions/export` | Token | Export selected questions as JSON |
 | **Grades** | | | |
 | POST | `/sessions/:id/grades/recalculate` | Prof+ | Recalculate grades |
 | GET | `/sessions/:id/grades` | Token | Get grades |
