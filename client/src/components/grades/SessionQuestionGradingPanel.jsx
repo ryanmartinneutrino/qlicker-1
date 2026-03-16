@@ -78,6 +78,10 @@ function formatPercent(value) {
   return String(Math.round(numeric * 10) / 10);
 }
 
+function hasExplicitPointsValue(value) {
+  return value !== '' && value !== null && value !== undefined;
+}
+
 function formatDisplayName(student, fallback = 'Unknown Student') {
   const first = normalizeValue(student?.firstname);
   const last = normalizeValue(student?.lastname);
@@ -621,16 +625,17 @@ export default function SessionQuestionGradingPanel({
   const isRowDirty = useCallback((row) => {
     if (!row?.mark) return false;
     const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
-    const draftHasPoints = draft.points !== '' && draft.points !== null && draft.points !== undefined;
-    const markHasPoints = row.mark?.points !== '' && row.mark?.points !== null && row.mark?.points !== undefined;
+    const draftHasPoints = hasExplicitPointsValue(draft.points);
+    const markHasPoints = hasExplicitPointsValue(row.mark?.points);
     const draftPoints = draftHasPoints ? Number(draft.points) : null;
     const markPoints = markHasPoints ? Number(row.mark?.points) : null;
-    const pointsChanged = draftHasPoints !== markHasPoints
-      || (!draftHasPoints
-        ? false
-        : (!Number.isFinite(draftPoints)
-          || !Number.isFinite(markPoints)
-          || Math.abs(draftPoints - markPoints) > 0.0001));
+    const pointsPresenceChanged = draftHasPoints !== markHasPoints;
+    const pointsChanged = pointsPresenceChanged || (draftHasPoints
+      && (
+        !Number.isFinite(draftPoints)
+        || !Number.isFinite(markPoints)
+        || Math.abs(draftPoints - markPoints) > 0.0001
+      ));
     const feedbackChanged = normalizeValue(draft.feedback) !== normalizeValue(row.mark?.feedback);
     return pointsChanged || feedbackChanged;
   }, [draftByStudentId]);

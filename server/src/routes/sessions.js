@@ -1868,6 +1868,9 @@ export default async function sessionRoutes(app) {
     {
       preHandler: authenticate,
       schema: bulkSessionCopySchema,
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const targetCourse = await Course.findById(request.params.courseId).lean();
@@ -1914,7 +1917,12 @@ export default async function sessionRoutes(app) {
   // POST /sessions/:id/copy - Copy a session
   app.post(
     '/sessions/:id/copy',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
+    },
     async (request, reply) => {
       const session = await Session.findById(request.params.id);
       if (!session) {
