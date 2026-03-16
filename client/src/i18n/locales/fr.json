@@ -1144,6 +1144,7 @@
       "bulkFeedbackFailed": "Échec de la mise à jour groupée des commentaires.",
       "bulkSaveSuccess": "Modifications groupées enregistrées pour {{count}} étudiant(s).",
       "bulkSaveFailed": "Échec de l'enregistrement groupé.",
+      "bulkUpdateSelected": "Mettre à jour les étudiants sélectionnés en lot ({{selected}} sur {{filtered}} filtrés)",
       "gradesRecalculated": "Notes recalculées.",
       "failedRecalculate": "Échec du recalcul des notes.",
       "failedLoadGrades": "Échec du chargement des notes pour cette session.",
@@ -1156,7 +1157,10 @@
       "response": "Réponse",
       "mark": "Note",
       "pointsValue": "{{count}} pts",
-      "onlyWithResponses": "Uniquement avec réponses"
+      "onlyWithResponses": "Uniquement avec réponses",
+      "noSelectedRows": "Aucune ligne sélectionnée ne peut être mise à jour.",
+      "selectAllFiltered": "Sélectionner tous les étudiants filtrés ({{count}})",
+      "selectStudent": "Sélectionner l’étudiant : {{name}}"
     }
   },
   "pageTitles": {

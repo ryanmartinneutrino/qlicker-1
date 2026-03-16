@@ -603,7 +603,17 @@ describe('POST /api/v1/questions/:id/copy', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
-    const qRes = await createQuestionAsProf(profToken, { content: 'Original Q' });
+    const qRes = await createQuestionAsProf(profToken, {
+      content: 'Original Q',
+      sessionId: 'session-source',
+      sessionOptions: {
+        points: 4,
+        hidden: false,
+        stats: true,
+        correct: true,
+        attempts: [{ number: 1, closed: false }],
+      },
+    });
     const question = qRes.json().question;
 
     const other = await createTestUser({ email: 'other@example.com', roles: ['professor'] });
@@ -623,6 +633,7 @@ describe('POST /api/v1/questions/:id/copy', () => {
     expect(body.question.courseId).toBe(question.courseId);
     expect(body.question.originalQuestion).toBe(question._id);
     expect(body.question.originalCourse).toBe(question.courseId);
+    expect(body.question.sessionOptions).toBeUndefined();
   });
 });
 
@@ -749,7 +760,7 @@ describe('POST /api/v1/questions/:id/approve', () => {
 
 // ---------- POST /api/v1/questions/bulk-copy ----------
 describe('POST /api/v1/questions/bulk-copy', () => {
-  it('copies selected questions into another course session while preserving lineage metadata', async (ctx) => {
+  it('copies selected questions into another course session while preserving lineage metadata and resetting live session state', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'bulkcopy@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -763,13 +774,25 @@ describe('POST /api/v1/questions/bulk-copy', () => {
       type: 0,
       courseId: sourceCourse._id,
       sessionId: sourceSession._id,
-      content: 'Copy me',
-      plainText: 'Copy me',
-      options: [
-        { answer: 'Yes', correct: true },
-        { answer: 'No', correct: false },
-      ],
-    });
+        content: 'Copy me',
+        plainText: 'Copy me',
+        options: [
+          { answer: 'Yes', correct: true },
+          { answer: 'No', correct: false },
+        ],
+        sessionOptions: {
+          points: 7,
+          maxAttempts: 3,
+          attemptWeights: [1, 0.5, 0.25],
+          hidden: false,
+          stats: true,
+          correct: true,
+          attempts: [
+            { number: 1, closed: true },
+            { number: 2, closed: false },
+          ],
+        },
+      });
     const question = questionRes.json().question;
 
     const res = await authenticatedRequest(app, 'POST', '/api/v1/questions/bulk-copy', {
@@ -790,6 +813,15 @@ describe('POST /api/v1/questions/bulk-copy', () => {
     expect(copiedQuestion.originalCourse).toBe(sourceCourse._id);
     expect(copiedQuestion.courseId).toBe(targetCourse._id);
     expect(copiedQuestion.sessionId).toBe(targetSession._id);
+    expect(copiedQuestion.sessionOptions).toMatchObject({
+      points: 7,
+      maxAttempts: 3,
+      attemptWeights: [1, 0.5, 0.25],
+      hidden: true,
+      stats: false,
+      correct: false,
+      attempts: [],
+    });
 
     const updatedTargetSession = await Session.findById(targetSession._id).lean();
     expect(updatedTargetSession.questions).toContain(copiedQuestion._id);

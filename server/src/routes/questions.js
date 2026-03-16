@@ -1124,22 +1124,10 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      const obj = question.toObject();
-      delete obj._id;
-      delete obj.__v;
-      delete obj.updatedAt;
-
-      const copy = await Question.create({
-        ...obj,
-        creator: String(question.creator || userId),
-        owner: userId,
-        sessionId: '',
-        courseId: String(question.courseId || ''),
-        originalQuestion: String(question.originalQuestion || question._id),
-        originalCourse: String(question.originalCourse || question.courseId || ''),
-        createdAt: new Date(),
-        lastEditedAt: new Date(),
-        approved: true,
+      const copy = await createLibraryQuestionCopy({
+        sourceQuestion: question,
+        targetCourseId: String(question.courseId || ''),
+        userId,
       });
 
       return reply.code(201).send({ question: copy.toObject() });
