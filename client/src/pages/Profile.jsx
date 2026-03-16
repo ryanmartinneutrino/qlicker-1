@@ -49,8 +49,9 @@ export default function Profile() {
 
   const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
   const numberLabel = isStaff ? t('profile.employeeNumber') : t('profile.studentNumber');
-  const nameLocked = !!user?.isSSOCreatedUser || user?.lastAuthProvider === 'sso';
-  const passwordLocked = user?.lastAuthProvider === 'sso';
+  const isLastAuthSSO = user?.lastAuthProvider === 'sso';
+  const nameLocked = !!user?.isSSOCreatedUser || isLastAuthSSO;
+  const passwordLocked = isLastAuthSSO;
 
   useEffect(() => {
     apiClient.get('/users/me').then(({ data }) => {

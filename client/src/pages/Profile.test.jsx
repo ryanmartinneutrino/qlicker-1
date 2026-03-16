@@ -17,7 +17,16 @@ const {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key) => key,
+    t: (key) => ({
+      'profile.firstName': 'First Name',
+      'profile.lastName': 'Last Name',
+      'profile.currentPassword': 'Current Password',
+      'profile.newPassword': 'New Password',
+      'profile.confirmNewPassword': 'Confirm New Password',
+      'profile.ssoNameManagedNote': 'Your name is managed by your SSO provider and cannot be changed here.',
+      'profile.ssoPasswordManagedNote': 'Password changes are unavailable while you are signed in through SSO.',
+      'profile.ssoEmailLoginApprovalNote': 'This account was created through SSO. An administrator must approve email login before password reset or email-based sign-in can be used.',
+    }[key] ?? key),
   }),
 }));
 
@@ -86,13 +95,13 @@ describe('Profile', () => {
       expect(apiClientMock.get).toHaveBeenCalledWith('/users/me');
     });
 
-    expect(screen.getByLabelText('profile.firstName')).toBeDisabled();
-    expect(screen.getByLabelText('profile.lastName')).toBeDisabled();
-    expect(screen.getByLabelText('profile.currentPassword')).toBeDisabled();
-    expect(screen.getByLabelText('profile.newPassword')).toBeDisabled();
-    expect(screen.getByLabelText('profile.confirmNewPassword')).toBeDisabled();
-    expect(screen.getByText('profile.ssoNameManagedNote')).toBeInTheDocument();
-    expect(screen.getByText('profile.ssoPasswordManagedNote')).toBeInTheDocument();
-    expect(screen.getByText('profile.ssoEmailLoginApprovalNote')).toBeInTheDocument();
+    expect(screen.getByLabelText('First Name')).toBeDisabled();
+    expect(screen.getByLabelText('Last Name')).toBeDisabled();
+    expect(screen.getByLabelText('Current Password')).toBeDisabled();
+    expect(screen.getByLabelText('New Password')).toBeDisabled();
+    expect(screen.getByLabelText('Confirm New Password')).toBeDisabled();
+    expect(screen.getByText('Your name is managed by your SSO provider and cannot be changed here.')).toBeInTheDocument();
+    expect(screen.getByText('Password changes are unavailable while you are signed in through SSO.')).toBeInTheDocument();
+    expect(screen.getByText('This account was created through SSO. An administrator must approve email login before password reset or email-based sign-in can be used.')).toBeInTheDocument();
   });
 });

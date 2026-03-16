@@ -81,15 +81,11 @@ const loginSchema = {
 };
 
 export default async function authRoutes(app) {
-  // Shared rate-limit config for sensitive auth endpoints
-  const authRateLimit = {
-    config: {
-      rateLimit: { max: 10, timeWindow: '15 minutes' },
-    },
-  };
-
   // POST /register
-  app.post('/register', { schema: registerSchema, ...authRateLimit }, async (request, reply) => {
+  app.post('/register', {
+    schema: registerSchema,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { email, password, firstname, lastname } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -159,7 +155,10 @@ export default async function authRoutes(app) {
   });
 
   // POST /login
-  app.post('/login', { schema: loginSchema, ...authRateLimit }, async (request, reply) => {
+  app.post('/login', {
+    schema: loginSchema,
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { email, password } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -254,7 +253,7 @@ export default async function authRoutes(app) {
   app.post(
     '/forgot-password',
     {
-      ...authRateLimit,
+      config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
       schema: {
         body: {
           type: 'object',
@@ -294,7 +293,7 @@ export default async function authRoutes(app) {
   app.post(
     '/reset-password',
     {
-      ...authRateLimit,
+      config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
       schema: {
         body: {
           type: 'object',

@@ -218,6 +218,7 @@
       "userPropertiesHelp": "Toggle additional account permissions for this user.",
       "userPropertiesUpdated": "User properties updated",
       "failedUpdateUserProperties": "Failed to update user properties",
+      "openUserProperties": "Open user properties for {{name}}",
       "canPromote": "Can promote other professors",
       "allowEmailLogin": "Allow email login",
       "allowEmailLoginHelp": "Enable email login and password reset for this SSO-created account.",

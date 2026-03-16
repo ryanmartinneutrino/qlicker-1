@@ -454,7 +454,9 @@ function UsersTab({ currentUserId }) {
             ) : users.length === 0 ? (
               <TableRow><TableCell colSpan={6} align="center">{t('admin.users.noUsersFound')}</TableCell></TableRow>
             ) : (
-              users.map((u) => (
+               users.map((u) => {
+                 const userPropertiesLabel = t('admin.users.openUserProperties', { name: getFullName(u) });
+                 return (
                 <TableRow key={u._id}>
                   <TableCell component="th" scope="row">
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
@@ -489,20 +491,23 @@ function UsersTab({ currentUserId }) {
                           {getInitials(u)}
                         </Avatar>
                       </Box>
-                       <ButtonBase
-                         onClick={() => openPropertiesModal(u)}
-                         sx={{
-                           justifyContent: 'flex-start',
-                           color: 'text.primary',
-                           typography: 'body2',
-                           fontWeight: 400,
-                           borderRadius: 1,
-                           px: 0.5,
-                           py: 0.25,
-                         }}
-                       >
-                         {getFullName(u)}
-                       </ButtonBase>
+                       <Tooltip title={userPropertiesLabel}>
+                         <ButtonBase
+                           onClick={() => openPropertiesModal(u)}
+                           aria-label={userPropertiesLabel}
+                           sx={{
+                             justifyContent: 'flex-start',
+                             color: 'text.primary',
+                             typography: 'body2',
+                             fontWeight: 400,
+                             borderRadius: 1,
+                             px: 0.5,
+                             py: 0.25,
+                           }}
+                         >
+                           {getFullName(u)}
+                         </ButtonBase>
+                       </Tooltip>
                      </Box>
                    </TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
@@ -546,8 +551,9 @@ function UsersTab({ currentUserId }) {
                     </IconButton>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+                 );
+               })
+             )}
           </TableBody>
         </Table>
       </TableContainer>

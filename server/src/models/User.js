@@ -140,7 +140,8 @@ UserSchema.methods.isSSOCreatedUser = function () {
 };
 
 UserSchema.methods.canUseEmailLogin = function () {
-  return !this.ssoCreated || this.allowEmailLogin !== false;
+  if (!this.ssoCreated) return true;
+  return this.allowEmailLogin === true;
 };
 
 // Instance method: verify password

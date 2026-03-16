@@ -4,11 +4,16 @@ import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
 
+function canUseEmailLogin(user = {}) {
+  if (!user.ssoCreated) return true;
+  return user.allowEmailLogin === true;
+}
+
 function sanitizeUser(user) {
   const obj = user.toObject();
   obj.isSSOUser = !!user.services?.sso?.id;
   obj.isSSOCreatedUser = !!user.ssoCreated;
-  obj.allowEmailLogin = !user.ssoCreated || user.allowEmailLogin !== false;
+  obj.allowEmailLogin = canUseEmailLogin(user);
   obj.lastAuthProvider = user.lastAuthProvider || '';
   delete obj.services;
   return obj;
@@ -19,7 +24,7 @@ function sanitizeRawUser(user = {}) {
     ...user,
     isSSOUser: !!user.services?.sso?.id,
     isSSOCreatedUser: !!user.ssoCreated,
-    allowEmailLogin: !user.ssoCreated || user.allowEmailLogin !== false,
+    allowEmailLogin: canUseEmailLogin(user),
     lastAuthProvider: user.lastAuthProvider || '',
     services: undefined,
   };
@@ -294,28 +299,33 @@ export default async function userRoutes(app) {
   // PATCH /:id/properties (admin only)
   app.patch(
     '/:id/properties',
-    { preHandler: requireRole(['admin']), schema: updateUserPropertiesSchema },
+    {
+      preHandler: requireRole(['admin']),
+      schema: updateUserPropertiesSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
     async (request, reply) => {
-      const updates = {};
+      const setUpdates = {};
+      const unsetUpdates = {};
 
       if (request.body?.canPromote !== undefined) {
-        updates['profile.canPromote'] = !!request.body.canPromote;
+        setUpdates['profile.canPromote'] = !!request.body.canPromote;
       }
       if (request.body?.allowEmailLogin !== undefined) {
-        updates.allowEmailLogin = !!request.body.allowEmailLogin;
-        if (!request.body.allowEmailLogin) {
-          updates['services.resetPassword'] = undefined;
+        setUpdates.allowEmailLogin = !!request.body.allowEmailLogin;
+        if (request.body.allowEmailLogin === false) {
+          unsetUpdates['services.resetPassword'] = 1;
         }
       }
 
       const updateDoc = {};
-      if (Object.keys(updates).length > 0) {
-        updateDoc.$set = Object.fromEntries(
-          Object.entries(updates).filter(([, value]) => value !== undefined)
-        );
+      if (Object.keys(setUpdates).length > 0) {
+        updateDoc.$set = setUpdates;
       }
-      if (request.body?.allowEmailLogin === false) {
-        updateDoc.$unset = { 'services.resetPassword': 1 };
+      if (Object.keys(unsetUpdates).length > 0) {
+        updateDoc.$unset = unsetUpdates;
       }
 
       const user = await User.findByIdAndUpdate(

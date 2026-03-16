@@ -218,6 +218,7 @@
       "userPropertiesHelp": "Activez ou désactivez des permissions supplémentaires pour cet utilisateur.",
       "userPropertiesUpdated": "Propriétés de l'utilisateur mises à jour",
       "failedUpdateUserProperties": "Échec de la mise à jour des propriétés de l'utilisateur",
+      "openUserProperties": "Ouvrir les propriétés de l'utilisateur {{name}}",
       "canPromote": "Peut promouvoir d'autres professeurs",
       "allowEmailLogin": "Autoriser la connexion par courriel",
       "allowEmailLoginHelp": "Active la connexion par courriel et la réinitialisation du mot de passe pour ce compte créé par SSO.",
