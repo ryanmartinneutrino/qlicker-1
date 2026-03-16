@@ -13,8 +13,8 @@ import {
 import apiClient from '../../api/client';
 import {
   QUESTION_TYPES,
-  TYPE_LABELS,
   TYPE_COLORS,
+  getQuestionTypeLabel,
   buildQuestionProgressList,
   isOptionBasedQuestionType,
   isSlideType,
@@ -1054,7 +1054,7 @@ export default function SessionReview() {
                       />
                     )}
                     <Chip
-                      label={TYPE_LABELS[qT] || t('common.unknown')}
+                      label={getQuestionTypeLabel(t, qT)}
                       color={TYPE_COLORS[qT] || 'default'}
                       size="small"
                       sx={COMPACT_CHIP_SX}

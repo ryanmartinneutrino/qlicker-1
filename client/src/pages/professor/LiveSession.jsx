@@ -17,7 +17,7 @@ import {
 import apiClient, { getAccessToken } from '../../api/client';
 import {
   QUESTION_TYPES,
-  TYPE_LABELS,
+  getQuestionTypeLabel,
   isOptionBasedQuestionType,
   isSlideType,
   normalizeQuestionType,
@@ -1234,7 +1234,7 @@ export default function LiveSession() {
                       />
                     )}
                     <Chip
-                      label={TYPE_LABELS[qType] || t('sessionStatus.unknown')}
+                      label={getQuestionTypeLabel(t, qType)}
                       size="small"
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}

@@ -15,8 +15,8 @@ import {
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import {
-  TYPE_LABELS,
   TYPE_COLORS,
+  getQuestionTypeLabel,
   QUESTION_TYPES,
   buildQuestionProgressList,
   isOptionBasedQuestionType,
@@ -331,7 +331,7 @@ function ReviewQuestionCard({
             />
           </>
         )}
-        <Chip label={TYPE_LABELS[normalizedType] || 'Unknown'} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
+        <Chip label={getQuestionTypeLabel(t, normalizedType)} color={TYPE_COLORS[normalizedType] || 'default'} size="small" sx={COMPACT_CHIP_SX} />
         {markChipLabel && (
           <Chip
             label={markChipLabel}

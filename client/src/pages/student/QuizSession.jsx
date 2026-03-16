@@ -22,8 +22,8 @@ import StudentRichTextEditor, { MathPreview } from '../../components/questions/S
 import BackLinkButton from '../../components/common/BackLinkButton';
 import {
   QUESTION_TYPES,
-  TYPE_LABELS,
   TYPE_COLORS,
+  getQuestionTypeLabel,
   buildQuestionProgressList,
   isResponseQuestionType,
   isSlideType,
@@ -629,7 +629,14 @@ export default function QuizSession() {
                   />
                 </>
               )}
-              <Chip label={TYPE_LABELS[qType] || 'Question'} color={TYPE_COLORS[qType] || 'default'} size="small" />
+              <Chip
+                label={getQuestionTypeLabel(t, qType, {
+                  key: 'grades.coursePanel.question',
+                  defaultValue: 'Question',
+                })}
+                color={TYPE_COLORS[qType] || 'default'}
+                size="small"
+              />
               {!isSlide && locked && <Chip label={t('student.quiz.submitted')} color="success" size="small" variant="outlined" />}
               {!isSlide && !locked && autosaveState === 'saving' && <Chip label={t('student.quiz.saving')} size="small" variant="outlined" />}
               {!isSlide && !locked && autosaveState === 'saved' && <Chip label={t('student.quiz.saved')} size="small" variant="outlined" />}

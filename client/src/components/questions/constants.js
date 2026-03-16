@@ -16,6 +16,15 @@ export const TYPE_LABELS = {
   [QUESTION_TYPES.SLIDE]: 'Slide',
 };
 
+const TYPE_TRANSLATION_KEYS = {
+  [QUESTION_TYPES.SHORT_ANSWER]: 'questions.types.shortAnswer',
+  [QUESTION_TYPES.MULTIPLE_CHOICE]: 'questions.types.multipleChoice',
+  [QUESTION_TYPES.TRUE_FALSE]: 'questions.types.trueFalse',
+  [QUESTION_TYPES.MULTI_SELECT]: 'questions.types.multiSelect',
+  [QUESTION_TYPES.NUMERICAL]: 'questions.types.numerical',
+  [QUESTION_TYPES.SLIDE]: 'questions.types.slide',
+};
+
 export const TYPE_COLORS = {
   [QUESTION_TYPES.SHORT_ANSWER]: 'default',
   [QUESTION_TYPES.MULTIPLE_CHOICE]: 'primary',
@@ -52,6 +61,20 @@ export function isAutoGradeableQuestionType(type) {
 
 export function isResponseQuestionType(type) {
   return !isSlideType(type);
+}
+
+export function getQuestionTypeLabel(t, type, fallback = {}) {
+  const normalizedType = normalizeQuestionType({ type });
+  const translationKey = TYPE_TRANSLATION_KEYS[normalizedType];
+  if (translationKey) {
+    return t(translationKey, {
+      defaultValue: TYPE_LABELS[normalizedType],
+    });
+  }
+
+  return t(fallback.key || 'common.unknown', {
+    defaultValue: fallback.defaultValue || 'Unknown',
+  });
 }
 
 export function buildQuestionProgressList(questions = []) {

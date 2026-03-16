@@ -839,6 +839,14 @@
       "shortAnswer": "Réponse courte",
       "numerical": "Numérique"
     },
+    "types": {
+      "multipleChoice": "Choix multiple",
+      "multiSelect": "Sélection multiple",
+      "trueFalse": "Vrai/Faux",
+      "shortAnswer": "Réponse courte",
+      "numerical": "Numérique",
+      "slide": "Diapositive"
+    },
     "editor": {
       "questionType": "Type de question",
       "questionText": "Texte de la question",
@@ -902,6 +910,87 @@
       "underline": "Souligné",
       "mathTip": "Utilisez \\( ... \\) pour les mathématiques en ligne ou $$ ... $$ pour les mathématiques en mode affichage",
       "preview": "Aperçu"
+    }
+  },
+  "questionLibrary": {
+    "title": "Bibliothèque de questions",
+    "subtitle": "Parcourez, modifiez, copiez, exportez et importez des questions dans vos cours d'enseignement.",
+    "newQuestion": "Nouvelle question",
+    "previewHint": "Question {{number}}",
+    "empty": "Aucune question ne correspond aux filtres actuels.",
+    "deleteConfirm_one": "Supprimer cette question ?",
+    "deleteConfirm_other": "Supprimer {{count}} questions ?",
+    "copyDialog": {
+      "title_one": "Copier la question",
+      "title_other": "Copier {{count}} questions"
+    },
+    "filters": {
+      "course": "Cours",
+      "copySession": "Séance (facultative)",
+      "copySessionHelp": "Laissez vide pour copier dans la bibliothèque du cours sélectionné.",
+      "type": "Type",
+      "allTypes": "Tous les types",
+      "tags": "Étiquettes",
+      "tagsPlaceholder": "Filtrer par étiquette",
+      "sessionsButton": "Séances",
+      "sessionsButtonSelected": "Séances ({{count}})",
+      "sessionsDialogTitle": "Filtrer par séances",
+      "content": "Contenu",
+      "contentPlaceholder": "Rechercher dans le texte de la question et des options",
+      "approved": "Approuvée",
+      "allApprovalStates": "Tous",
+      "onlyApproved": "Approuvées seulement",
+      "onlyUnapproved": "Non approuvées seulement",
+      "limit": "Lignes",
+      "applySessions": "Appliquer aux séances"
+    },
+    "import": {
+      "title": "Importer des questions",
+      "action": "Importer JSON",
+      "chooseFile": "Choisir un fichier JSON",
+      "libraryOnly": "Bibliothèque du cours seulement",
+      "empty": "Choisissez une exportation JSON pour prévisualiser les questions importables.",
+      "previewCount_one": "1 question prête à être importée",
+      "previewCount_other": "{{count}} questions prêtes à être importées",
+      "importedTag": "une étiquette importée sera ajoutée",
+      "confirm_one": "Importer 1 question",
+      "confirm_other": "Importer {{count}} questions"
+    },
+    "bulk": {
+      "selectAll": "Tout sélectionner ({{count}})",
+      "clearSelection": "Effacer la sélection",
+      "selectAllFiltered": "Tout sélectionner dans les résultats filtrés",
+      "copy": "Copier vers un cours/une séance",
+      "export": "Exporter JSON"
+    },
+    "selection": {
+      "pageSummary_one": "1 question correspondante",
+      "pageSummary_other": "{{count}} questions correspondantes"
+    },
+    "status": {
+      "approved": "Approuvée",
+      "unapproved": "Non approuvée",
+      "hasResponses": "A des réponses"
+    },
+    "actions": {
+      "approve": "Approuver la question"
+    },
+    "editLocks": {
+      "type": "Le type de question est verrouillé parce que des réponses existent déjà.",
+      "options": "Le nombre d'options est verrouillé parce que des réponses existent déjà."
+    },
+    "pagination": {
+      "summary": "Page {{page}} sur {{pages}}"
+    },
+    "errors": {
+      "load": "Échec du chargement de la bibliothèque de questions.",
+      "selectAll": "Échec de la sélection de toutes les questions filtrées.",
+      "approve": "Échec de l'approbation de la question.",
+      "delete": "Échec de la suppression des questions.",
+      "copy": "Échec de la copie des questions.",
+      "export": "Échec de l'exportation des questions.",
+      "importParse": "Le fichier sélectionné n'est pas un JSON valide de bibliothèque de questions.",
+      "import": "Échec de l'importation des questions."
     }
   },
   "grades": {

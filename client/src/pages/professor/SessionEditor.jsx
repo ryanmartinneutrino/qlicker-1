@@ -1375,7 +1375,7 @@ export default function SessionEditor() {
                 color="inherit"
                 size="small"
                 onClick={() => setUnlockEndedEditing(true)}
-                aria-label="Unlock question editing"
+                aria-label={t('professor.sessionEditor.unlockEditing')}
               >
                 {t('professor.sessionEditor.unlockEditing')}
               </Button>
