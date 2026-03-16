@@ -21,6 +21,9 @@ export default defineConfig(({ mode }) => {
             if (id.includes('@tiptap/') || id.includes('katex')) {
               return 'vendor-editor';
             }
+            if (id.includes('html2pdf.js') || id.includes('html2canvas') || id.includes('jspdf')) {
+              return 'vendor-pdf';
+            }
             if (id.includes('i18next') || id.includes('react-i18next')) {
               return 'vendor-i18n';
             }

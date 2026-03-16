@@ -7,8 +7,9 @@ const {
   navigateMock,
   requestCloseMock,
   apiClientMock,
+  buildPrintableSessionHtmlMock,
+  downloadPdfMock,
   downloadJsonMock,
-  openSessionPrintWindowMock,
 } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   requestCloseMock: vi.fn(),
@@ -18,8 +19,9 @@ const {
     post: vi.fn(),
     delete: vi.fn(),
   },
+  buildPrintableSessionHtmlMock: vi.fn(() => '<html><body>PDF</body></html>'),
+  downloadPdfMock: vi.fn().mockResolvedValue(undefined),
   downloadJsonMock: vi.fn(),
-  openSessionPrintWindowMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -84,8 +86,9 @@ vi.mock('../../utils/courseTitle', () => ({
 
 vi.mock('../../utils/sessionExport', () => ({
   buildSessionExportFilename: (sessionName, suffix, extension) => `${sessionName}-${suffix}.${extension}`,
+  buildPrintableSessionHtml: buildPrintableSessionHtmlMock,
+  downloadPdf: downloadPdfMock,
   downloadJson: downloadJsonMock,
-  openSessionPrintWindow: openSessionPrintWindowMock,
 }));
 
 describe('SessionEditor inline close behavior', () => {
@@ -96,8 +99,9 @@ describe('SessionEditor inline close behavior', () => {
     apiClientMock.patch.mockReset();
     apiClientMock.post.mockReset();
     apiClientMock.delete.mockReset();
+    buildPrintableSessionHtmlMock.mockClear();
+    downloadPdfMock.mockClear();
     downloadJsonMock.mockReset();
-    openSessionPrintWindowMock.mockReset();
 
     apiClientMock.get.mockImplementation((url) => {
       if (url === '/sessions/session-1') {
@@ -203,6 +207,23 @@ describe('SessionEditor inline close behavior', () => {
       expect(downloadJsonMock).toHaveBeenCalledWith(
         'Draft Session-export.json',
         expect.objectContaining({ version: 1 })
+      );
+    });
+  });
+
+  it('downloads a PDF export from the export dialog', async () => {
+    render(<SessionEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'professor.sessionEditor.exportSession' }));
+    fireEvent.click(screen.getByRole('button', { name: 'professor.sessionEditor.pdfQuestions' }));
+
+    await waitFor(() => {
+      expect(buildPrintableSessionHtmlMock).toHaveBeenCalledWith(expect.objectContaining({
+        variant: 'questions',
+      }));
+      expect(downloadPdfMock).toHaveBeenCalledWith(
+        'Draft Session-questions.pdf',
+        '<html><body>PDF</body></html>'
       );
     });
   });
