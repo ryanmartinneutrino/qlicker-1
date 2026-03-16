@@ -7,6 +7,8 @@ const {
   navigateMock,
   requestCloseMock,
   apiClientMock,
+  downloadJsonMock,
+  openSessionPrintWindowMock,
 } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
   requestCloseMock: vi.fn(),
@@ -16,6 +18,8 @@ const {
     post: vi.fn(),
     delete: vi.fn(),
   },
+  downloadJsonMock: vi.fn(),
+  openSessionPrintWindowMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -78,6 +82,12 @@ vi.mock('../../utils/courseTitle', () => ({
   buildCourseTitle: () => 'CS 101',
 }));
 
+vi.mock('../../utils/sessionExport', () => ({
+  buildSessionExportFilename: (sessionName, suffix, extension) => `${sessionName}-${suffix}.${extension}`,
+  downloadJson: downloadJsonMock,
+  openSessionPrintWindow: openSessionPrintWindowMock,
+}));
+
 describe('SessionEditor inline close behavior', () => {
   beforeEach(() => {
     navigateMock.mockReset();
@@ -86,6 +96,8 @@ describe('SessionEditor inline close behavior', () => {
     apiClientMock.patch.mockReset();
     apiClientMock.post.mockReset();
     apiClientMock.delete.mockReset();
+    downloadJsonMock.mockReset();
+    openSessionPrintWindowMock.mockReset();
 
     apiClientMock.get.mockImplementation((url) => {
       if (url === '/sessions/session-1') {
@@ -160,6 +172,79 @@ describe('SessionEditor inline close behavior', () => {
 
     await waitFor(() => {
       expect(requestCloseMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('exports session JSON from the export dialog', async () => {
+    const originalGet = apiClientMock.get.getMockImplementation();
+    apiClientMock.get.mockImplementation((url) => {
+      if (url === '/sessions/session-1/export') {
+        return Promise.resolve({
+          data: {
+            version: 1,
+            session: {
+              name: 'Draft Session',
+              questions: [],
+            },
+          },
+        });
+      }
+      return originalGet(url);
+    });
+
+    render(<SessionEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'professor.sessionEditor.exportSession' }));
+    fireEvent.click(screen.getByRole('button', { name: 'professor.sessionEditor.exportFormatJson' }));
+    fireEvent.click(screen.getByRole('button', { name: 'professor.sessionEditor.exportJson' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/sessions/session-1/export');
+      expect(downloadJsonMock).toHaveBeenCalledWith(
+        'Draft Session-export.json',
+        expect.objectContaining({ version: 1 })
+      );
+    });
+  });
+
+  it('imports a session JSON file into the current course', async () => {
+    apiClientMock.post.mockResolvedValue({
+      data: {
+        session: {
+          _id: 'imported-session-1',
+        },
+      },
+    });
+
+    render(<SessionEditor />);
+    await screen.findByRole('button', { name: 'professor.sessionEditor.importSession' });
+
+    const input = screen.getByTestId('session-import-input');
+    const fileContents = JSON.stringify({
+      version: 1,
+      session: {
+        name: 'Imported Session',
+        questions: [],
+      },
+    });
+    const file = new File([fileContents], 'session.json', { type: 'application/json' });
+    file.text = vi.fn().mockResolvedValue(fileContents);
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(file.text).toHaveBeenCalled();
+      expect(apiClientMock.post).toHaveBeenCalledWith('/courses/course-1/sessions/import', {
+        version: 1,
+        session: {
+          name: 'Imported Session',
+          questions: [],
+        },
+      });
+      expect(navigateMock).toHaveBeenCalledWith(
+        '/manage/course/course-1/session/imported-session-1?returnTab=1',
+        { state: { returnTab: 1, returnTo: undefined } }
+      );
     });
   });
 });

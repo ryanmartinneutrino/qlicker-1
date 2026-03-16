@@ -16,6 +16,7 @@ import {
   MoreVert as MoreIcon,
   PlayArrow as LaunchIcon, Login as JoinIcon,
   RateReview as ReviewIcon,
+  Download as DownloadIcon, Upload as UploadIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
@@ -25,6 +26,11 @@ import BackLinkButton from '../../components/common/BackLinkButton';
 import DateTimePreferenceField from '../../components/common/DateTimePreferenceField';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import {
+  buildSessionExportFilename,
+  downloadJson,
+  openSessionPrintWindow,
+} from '../../utils/sessionExport';
 import { useTranslation } from 'react-i18next';
 
 const PAGE_SECTION_GAP = 1.5;
@@ -172,6 +178,11 @@ export default function SessionEditor() {
   const [deleting, setDeleting] = useState(false);
   const [copying, setCopying] = useState(false);
   const [confirmGoLiveOpen, setConfirmGoLiveOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('pdf');
+  const [exportingSession, setExportingSession] = useState(false);
+  const [importingSession, setImportingSession] = useState(false);
+  const importInputRef = useRef(null);
 
   // Question editor
   const [inlineEditor, setInlineEditor] = useState(null);
@@ -383,14 +394,7 @@ export default function SessionEditor() {
       const newId = data.session?._id || data._id;
       setMsg({ severity: 'success', text: t('professor.sessionEditor.sessionCopied') });
       if (newId) {
-        const nextParams = new URLSearchParams();
-        if (returnTab > 0) {
-          nextParams.set('returnTab', String(returnTab));
-        }
-        if (returnToReview) {
-          nextParams.set('returnTo', 'review');
-        }
-        const query = nextParams.toString();
+        const query = buildReturnNavigationOptions();
         navigate(
           `/manage/course/${courseId}/session/${newId}${query ? `?${query}` : ''}`,
           { state: { returnTab, returnTo: returnToReview ? 'review' : undefined } }
@@ -400,6 +404,85 @@ export default function SessionEditor() {
       setMsg({ severity: 'error', text: t('professor.sessionEditor.failedCopySession') });
     } finally {
       setCopying(false);
+    }
+  };
+
+  const buildReturnNavigationOptions = () => {
+    const nextParams = new URLSearchParams();
+    if (returnTab > 0) {
+      nextParams.set('returnTab', String(returnTab));
+    }
+    if (returnToReview) {
+      nextParams.set('returnTo', 'review');
+    }
+    return nextParams.toString();
+  };
+
+  const handleExportJson = async () => {
+    setExportingSession(true);
+    try {
+      const { data } = await apiClient.get(`/sessions/${sessionId}/export`);
+      downloadJson(
+        buildSessionExportFilename(session?.name, 'export', 'json'),
+        data
+      );
+      setExportOpen(false);
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.exportJsonSuccess') });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedExportSession') });
+    } finally {
+      setExportingSession(false);
+    }
+  };
+
+  const handleExportPdfVariant = (variant) => {
+    try {
+      openSessionPrintWindow({
+        course,
+        session,
+        questions,
+        variant,
+        t,
+      });
+      setExportOpen(false);
+    } catch {
+      setMsg({ severity: 'error', text: t('professor.sessionEditor.failedOpenPdfExport') });
+    }
+  };
+
+  const openSessionImportPicker = () => {
+    if (importingSession) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportSessionFile = async (event) => {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (!file) return;
+
+    setImportingSession(true);
+    try {
+      const parsed = JSON.parse(await file.text());
+      const { data } = await apiClient.post(`/courses/${courseId}/sessions/import`, parsed);
+      const importedSessionId = data.session?._id;
+      setMsg({ severity: 'success', text: t('professor.sessionEditor.importSessionSuccess') });
+      if (importedSessionId) {
+        const query = buildReturnNavigationOptions();
+        navigate(
+          `/manage/course/${courseId}/session/${importedSessionId}${query ? `?${query}` : ''}`,
+          { state: { returnTab, returnTo: returnToReview ? 'review' : undefined } }
+        );
+      }
+    } catch (err) {
+      const invalidJson = err instanceof SyntaxError;
+      setMsg({
+        severity: 'error',
+        text: invalidJson
+          ? t('professor.sessionEditor.invalidImportFile')
+          : err.response?.data?.message || t('professor.sessionEditor.failedImportSession'),
+      });
+    } finally {
+      setImportingSession(false);
     }
   };
 
@@ -1351,7 +1434,26 @@ export default function SessionEditor() {
             </Box>
           )}
 
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              data-testid="session-import-input"
+              aria-label={t('professor.sessionEditor.importSessionFile')}
+              onChange={handleImportSessionFile}
+            />
+            <Button startIcon={<DownloadIcon />} onClick={() => setExportOpen(true)} disabled={exportingSession}>
+              {exportingSession ? t('professor.sessionEditor.exporting') : t('professor.sessionEditor.exportSession')}
+            </Button>
+            <Button
+              startIcon={<UploadIcon />}
+              onClick={openSessionImportPicker}
+              disabled={importingSession}
+            >
+              {importingSession ? t('professor.sessionEditor.importingSession') : t('professor.sessionEditor.importSession')}
+            </Button>
             <Button startIcon={<CopyIcon />} onClick={handleCopySession} disabled={copying}>
               {copying ? t('professor.sessionEditor.copying') : t('professor.sessionEditor.copySession')}
             </Button>
@@ -1659,6 +1761,69 @@ export default function SessionEditor() {
           })}
         </Box>
       </Paper>
+
+      <Dialog open={exportOpen} onClose={() => !exportingSession && setExportOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('professor.sessionEditor.exportTitle')}</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              {t('professor.sessionEditor.exportDescription')}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant={exportFormat === 'pdf' ? 'contained' : 'outlined'}
+                onClick={() => setExportFormat('pdf')}
+              >
+                {t('professor.sessionEditor.exportFormatPdf')}
+              </Button>
+              <Button
+                variant={exportFormat === 'json' ? 'contained' : 'outlined'}
+                onClick={() => setExportFormat('json')}
+              >
+                {t('professor.sessionEditor.exportFormatJson')}
+              </Button>
+            </Box>
+
+            {exportFormat === 'json' ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {t('professor.sessionEditor.exportJsonDescription')}
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleExportJson}
+                  disabled={exportingSession}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  {exportingSession ? t('professor.sessionEditor.exporting') : t('professor.sessionEditor.exportJson')}
+                </Button>
+              </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                <Typography variant="body2" color="text.secondary">
+                  {t('professor.sessionEditor.exportPdfDescription')}
+                </Typography>
+                <Button variant="outlined" onClick={() => handleExportPdfVariant('questions')}>
+                  {t('professor.sessionEditor.pdfQuestions')}
+                </Button>
+                <Button variant="outlined" onClick={() => handleExportPdfVariant('answers')}>
+                  {t('professor.sessionEditor.pdfAnswers')}
+                </Button>
+                <Button variant="outlined" onClick={() => handleExportPdfVariant('answers-solutions')}>
+                  {t('professor.sessionEditor.pdfAnswersSolutions')}
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  {t('professor.sessionEditor.exportPdfHint')}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportOpen(false)}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Session Confirmation */}
       <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)}>
