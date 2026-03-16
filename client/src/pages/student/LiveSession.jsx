@@ -155,6 +155,7 @@ export default function LiveSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const courseBackLink = `/student/course/${courseId}`;
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -478,11 +479,11 @@ export default function LiveSession() {
 
   if (error || !session) {
     return (
-      <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
-        <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.liveSession.sessionNotFound')}</Alert>
-        <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
-      </Box>
-    );
+        <Box sx={{ p: 3, maxWidth: 600, mx: 'auto' }}>
+          <Alert severity="error" sx={{ mb: 2 }}>{error || t('student.liveSession.sessionNotFound')}</Alert>
+          <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(courseBackLink)} />
+        </Box>
+      );
   }
 
   // --------------------------------------------------
@@ -491,13 +492,13 @@ export default function LiveSession() {
 
   if (session.status === 'done') {
     return (
-      <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
-        <Alert severity="info" sx={{ mb: 3, justifyContent: 'center' }}>
-          {t('student.liveSession.sessionEnded')}
-        </Alert>
-        <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
-      </Box>
-    );
+        <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
+          <Alert severity="info" sx={{ mb: 3, justifyContent: 'center' }}>
+            {t('student.liveSession.sessionEnded')}
+          </Alert>
+          <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(courseBackLink)} />
+        </Box>
+      );
   }
 
   // --------------------------------------------------
@@ -507,11 +508,17 @@ export default function LiveSession() {
   if (!isJoined && (session.joinCodeActive || session.joinCodeEnabled)) {
     // If join code is active, show the code entry form
     if (session.joinCodeActive) {
-      return (
-        <Box sx={{ p: 3, maxWidth: 400, mx: 'auto', textAlign: 'center' }}>
-          <Paper variant="outlined" sx={{ p: 4 }}>
-            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-              {t('student.liveSession.joinSession')}
+        return (
+          <Box sx={{ p: 3, maxWidth: 400, mx: 'auto', textAlign: 'center' }}>
+            <BackLinkButton
+              variant="outlined"
+              label={t('student.liveSession.backToCourse')}
+              onClick={() => navigate(courseBackLink)}
+              sx={{ mb: 2 }}
+            />
+            <Paper variant="outlined" sx={{ p: 4 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
+                {t('student.liveSession.joinSession')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               {t('student.liveSession.enterPasscode')}
@@ -567,6 +574,12 @@ export default function LiveSession() {
     // joinCodeEnabled but not active — wait for instructor to activate
     return (
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
+        <BackLinkButton
+          variant="outlined"
+          label={t('student.liveSession.backToCourse')}
+          onClick={() => navigate(courseBackLink)}
+          sx={{ mb: 2 }}
+        />
         <Paper variant="outlined" sx={{ p: 4 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
             {session.name || t('student.liveSession.liveSessionFallback')}
@@ -589,7 +602,7 @@ export default function LiveSession() {
         {joinError ? (
           <>
             <Alert severity="error" sx={{ mb: 2 }}>{joinError}</Alert>
-            <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(`/student/course/${courseId}`)} />
+            <BackLinkButton variant="outlined" label={t('student.liveSession.backToCourse')} onClick={() => navigate(courseBackLink)} />
           </>
         ) : (
           <>
@@ -610,6 +623,12 @@ export default function LiveSession() {
   if (questionHidden || !currentQ) {
     return (
       <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
+        <BackLinkButton
+          variant="outlined"
+          label={t('student.liveSession.backToCourse')}
+          onClick={() => navigate(courseBackLink)}
+          sx={{ mb: 2 }}
+        />
         <Paper variant="outlined" sx={{ p: 4 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
             {session.name || t('student.liveSession.liveSessionFallback')}
@@ -671,6 +690,12 @@ export default function LiveSession() {
       {/* Session header                                               */}
       {/* ============================================================ */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <BackLinkButton
+          variant="outlined"
+          label={t('student.liveSession.backToCourse')}
+          onClick={() => navigate(courseBackLink)}
+          sx={{ flexShrink: 0 }}
+        />
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
           {session.name || t('student.liveSession.liveSessionFallback')}
         </Typography>

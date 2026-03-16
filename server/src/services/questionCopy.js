@@ -1,6 +1,24 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 
+function buildCopiedSessionOptions(sessionOptions) {
+  if (sessionOptions == null) return undefined;
+  if (typeof sessionOptions !== 'object') return undefined;
+
+  const next = {};
+
+  if (sessionOptions.points !== undefined) next.points = sessionOptions.points;
+  if (sessionOptions.maxAttempts !== undefined) next.maxAttempts = sessionOptions.maxAttempts;
+  if (Array.isArray(sessionOptions.attemptWeights)) next.attemptWeights = [...sessionOptions.attemptWeights];
+
+  next.hidden = true;
+  next.stats = false;
+  next.correct = false;
+  next.attempts = [];
+
+  return next;
+}
+
 export async function copyQuestionToSession({
   sourceQuestion,
   targetSessionId,
@@ -20,6 +38,7 @@ export async function copyQuestionToSession({
   delete copiedPayload._id;
   delete copiedPayload.__v;
   delete copiedPayload.updatedAt;
+  copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions);
 
   const copy = await Question.create({
     ...copiedPayload,
