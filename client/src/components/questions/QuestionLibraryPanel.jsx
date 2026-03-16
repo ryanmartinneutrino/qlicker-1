@@ -24,9 +24,10 @@ import {
 import {
   Add as AddIcon,
   CheckCircle as ApproveIcon,
+  Close as CloseIcon,
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
-  ExpandMore as ExpandMoreIcon,
+  Edit as EditIcon,
   Upload as UploadIcon,
   Download as DownloadIcon,
   FilterList as FilterListIcon,
@@ -68,6 +69,11 @@ function normalizeTagValues(tags = []) {
       .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
       .filter(Boolean)
   )];
+}
+
+function cloneQuestionForBaseline(question) {
+  if (!question) return null;
+  return JSON.parse(JSON.stringify(question));
 }
 
 function buildQueryString(params = {}) {
@@ -360,11 +366,13 @@ export default function QuestionLibraryPanel({
   const [selectedQuestionIds, setSelectedQuestionIds] = useState([]);
   const [expandedQuestionIds, setExpandedQuestionIds] = useState({});
   const [editingQuestionId, setEditingQuestionId] = useState('');
+  const [editingQuestionBaseline, setEditingQuestionBaseline] = useState(null);
   const [creatingQuestion, setCreatingQuestion] = useState(false);
   const [copyDialogState, setCopyDialogState] = useState({ open: false, questionIds: [] });
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importPreviewQuestions, setImportPreviewQuestions] = useState([]);
   const [importSelectedIds, setImportSelectedIds] = useState([]);
+  const inlineQuestionEditorRef = useRef(null);
 
   const queryParams = useMemo(() => ({
     page,
@@ -464,6 +472,15 @@ export default function QuestionLibraryPanel({
     await fetchQuestions();
   };
 
+  const upsertQuestionLocally = useCallback((savedQuestion) => {
+    if (!savedQuestion?._id) return;
+    setQuestions((previous) => previous.map((question) => (
+      String(question._id) === String(savedQuestion._id)
+        ? { ...question, ...savedQuestion }
+        : question
+    )));
+  }, []);
+
   const handleEditorSave = async (payload, questionId) => {
     const nextPayload = {
       ...payload,
@@ -473,8 +490,40 @@ export default function QuestionLibraryPanel({
       ? await apiClient.patch(`/questions/${questionId}`, nextPayload)
       : await apiClient.post('/questions', nextPayload);
     const savedQuestion = data.question || data;
-    await refreshQuestions();
+    if (questionId) {
+      upsertQuestionLocally(savedQuestion);
+    }
     return savedQuestion;
+  };
+
+  const openEditEditor = (question) => {
+    setCreatingQuestion(false);
+    setEditingQuestionId(String(question?._id || ''));
+    setEditingQuestionBaseline(cloneQuestionForBaseline(question));
+  };
+
+  const closeInlineEditor = async ({ persistedQuestionId } = {}) => {
+    setEditingQuestionId('');
+    setEditingQuestionBaseline(null);
+
+    if (persistedQuestionId) {
+      try {
+        const { data } = await apiClient.get(`/questions/${persistedQuestionId}`);
+        const refreshed = data.question || data;
+        upsertQuestionLocally(refreshed);
+      } catch {
+        // Keep local state if the final refresh fails.
+      }
+    }
+  };
+
+  const requestInlineEditorClose = () => {
+    const requestClose = inlineQuestionEditorRef.current?.requestClose;
+    if (typeof requestClose === 'function') {
+      requestClose();
+      return;
+    }
+    closeInlineEditor();
   };
 
   const toggleExpanded = (questionId) => {
@@ -873,7 +922,10 @@ export default function QuestionLibraryPanel({
                   initial={null}
                   tagSuggestions={tagOptions}
                   onAutoSave={handleEditorSave}
-                  onClose={() => setCreatingQuestion(false)}
+                  onClose={async () => {
+                    setCreatingQuestion(false);
+                    await refreshQuestions();
+                  }}
                 />
               </CardContent>
             </Card>
@@ -934,7 +986,9 @@ export default function QuestionLibraryPanel({
                                 label={t('questionLibrary.status.hasResponses', { defaultValue: 'Has responses' })}
                               />
                             ) : null}
-                            {(question.tags || []).map((tag, tagIndex) => (
+                            {(question.tags || []).filter((tag) => (
+                              String(tag?.label || tag?.value || '').trim().toLowerCase() !== 'qlicker'
+                            )).map((tag, tagIndex) => (
                               <Chip
                                 key={`${questionId}-tag-${tagIndex}`}
                                 size="small"
@@ -960,20 +1014,21 @@ export default function QuestionLibraryPanel({
                                 </IconButton>
                               </span>
                             </Tooltip>
-                            <Tooltip title={t('common.edit')}>
+                            <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
                               <span>
                                 <IconButton
                                   size="small"
                                   disabled={saving}
+                                  aria-label={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}
                                   onClick={() => {
-                                    setCreatingQuestion(false);
-                                    setEditingQuestionId((previous) => previous === questionId ? '' : questionId);
+                                    if (editing) {
+                                      requestInlineEditorClose();
+                                      return;
+                                    }
+                                    openEditEditor(question);
                                   }}
                                 >
-                                  <ExpandMoreIcon
-                                    fontSize="small"
-                                    sx={{ transform: editing ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
-                                  />
+                                  {editing ? <CloseIcon fontSize="small" /> : <EditIcon fontSize="small" />}
                                 </IconButton>
                               </span>
                             </Tooltip>
@@ -989,12 +1044,14 @@ export default function QuestionLibraryPanel({
 
                         {editing ? (
                           <QuestionEditor
+                            ref={inlineQuestionEditorRef}
                             open
                             inline
                             initial={question}
+                            initialBaseline={editingQuestionBaseline}
                             tagSuggestions={tagOptions}
                             onAutoSave={handleEditorSave}
-                            onClose={() => setEditingQuestionId('')}
+                            onClose={closeInlineEditor}
                             disableTypeSelection={disableTypeSelection}
                             disableOptionCountChanges={disableOptionCountChanges}
                             typeSelectionLockReason={t('questionLibrary.editLocks.type', {

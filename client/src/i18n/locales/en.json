@@ -439,7 +439,7 @@
       "rightMinusWrong": "Right minus wrong (default)",
       "allOrNothing": "All or nothing",
       "correctnessRatio": "Correctness ratio",
-      "msScoringHelp": "Applies to all session types. For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.",
+      "msScoringHelp": "For multi-select: Right minus wrong = max(0, (2C - S) / K); All or nothing = exact match only; Correctness ratio = correctly labeled options / total options.",
       "quizStart": "Quiz Start",
       "quizEnd": "Quiz End",
       "today": "Today",

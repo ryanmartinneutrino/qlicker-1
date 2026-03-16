@@ -605,6 +605,30 @@ describe('PATCH /api/v1/sessions/:id', () => {
     expect(body.session.description).toBe('New desc');
   });
 
+  it('persists normalized session tags from editor updates', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'session-tags-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const session = (await createSessionInCourse(profToken, course._id)).json().session;
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: {
+        tags: [
+          { value: 'kinematics', label: 'kinematics' },
+          { value: 'vectors', label: 'vectors' },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.tags).toEqual([
+      { value: 'kinematics', label: 'kinematics' },
+      { value: 'vectors', label: 'vectors' },
+    ]);
+  });
+
   it('non-instructor gets 403', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent();

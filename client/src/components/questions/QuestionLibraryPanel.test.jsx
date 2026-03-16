@@ -6,6 +6,7 @@ import QuestionLibraryPanel from './QuestionLibraryPanel';
 const {
   apiClientMock,
   tMock,
+  requestCloseMock,
 } = vi.hoisted(() => ({
   apiClientMock: {
     get: vi.fn(),
@@ -14,6 +15,7 @@ const {
     delete: vi.fn(),
   },
   tMock: vi.fn((key, options) => options?.defaultValue ?? key),
+  requestCloseMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -31,7 +33,12 @@ vi.mock('./QuestionDisplay', () => ({
 }));
 
 vi.mock('./QuestionEditor', () => ({
-  default: () => <div>Mock Question Editor</div>,
+  default: React.forwardRef(function MockQuestionEditor(_props, ref) {
+    React.useImperativeHandle(ref, () => ({
+      requestClose: requestCloseMock,
+    }));
+    return <div>Mock Question Editor</div>;
+  }),
 }));
 
 describe('QuestionLibraryPanel', () => {
@@ -41,6 +48,7 @@ describe('QuestionLibraryPanel', () => {
     apiClientMock.patch.mockReset();
     apiClientMock.delete.mockReset();
     tMock.mockClear();
+    requestCloseMock.mockReset();
 
     apiClientMock.get.mockImplementation((url) => {
       if (url === '/courses') {
@@ -91,7 +99,10 @@ describe('QuestionLibraryPanel', () => {
                 approved: false,
                 hasResponses: true,
                 linkedSessions: [{ _id: 'session-1', name: 'Session One' }],
-                tags: [{ value: 'algebra', label: 'algebra' }],
+                tags: [
+                  { value: 'algebra', label: 'algebra' },
+                  { value: 'Qlicker', label: 'Qlicker' },
+                ],
               },
             ],
             total: 1,
@@ -119,6 +130,8 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.getAllByText('Short Answer').length).toBeGreaterThan(0);
     expect(screen.getByText('Has responses')).toBeInTheDocument();
     expect(screen.getByText('Unapproved')).toBeInTheDocument();
+    expect(screen.getByText('algebra')).toBeInTheDocument();
+    expect(screen.queryByText('Qlicker')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Select all filtered' }));
 
@@ -127,5 +140,23 @@ describe('QuestionLibraryPanel', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Export JSON' })).not.toBeDisabled();
+  });
+
+  it('uses edit and close icons that route closing through the editor close handler', async () => {
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        availableSessions={[{ _id: 'session-1', name: 'Session One', status: 'hidden' }]}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'common.edit' }));
+    expect(screen.getByText('Mock Question Editor')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'professor.sessionEditor.closeEditor' }));
+
+    await waitFor(() => {
+      expect(requestCloseMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

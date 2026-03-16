@@ -7,6 +7,7 @@ import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copySessionToCourse } from '../services/sessionCopy.js';
 import {
+  normalizeTags,
   sanitizeExportedQuestion,
   sanitizeImportedQuestion,
 } from '../services/questionImportExport.js';
@@ -35,6 +36,18 @@ const createSessionSchema = {
       quizEnd: { type: 'string', format: 'date-time' },
       date: { type: 'string', format: 'date-time' },
       msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
+      tags: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            label: { type: 'string' },
+            className: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
     },
     additionalProperties: false,
   },
@@ -56,6 +69,18 @@ const updateSessionSchema = {
       joinCodeEnabled: { type: 'boolean' },
       joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
       msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
+      tags: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            label: { type: 'string' },
+            className: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
       acknowledgeNonAutoGradeable: { type: 'boolean' },
       zeroNonAutoGradeable: { type: 'boolean' },
     },
@@ -142,6 +167,18 @@ const importSessionSchema = {
           joinCodeEnabled: { type: 'boolean' },
           joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
           msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
+          tags: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+                label: { type: 'string' },
+                className: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          },
           questions: {
             type: 'array',
             items: {
@@ -278,6 +315,7 @@ function sanitizeExportedSession(session, orderedQuestions = []) {
       joinCodeEnabled: !!session?.joinCodeEnabled,
       joinCodeInterval: Number(session?.joinCodeInterval) || 10,
       msScoringMethod: session?.msScoringMethod || 'right-minus-wrong',
+      tags: normalizeTags(session?.tags || []),
       questions: orderedQuestions.map((question) => sanitizeExportedQuestion(question, { includeSessionOptions: true })),
     },
   };
@@ -298,6 +336,7 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
     joinCodeEnabled: !!sourceSession?.joinCodeEnabled,
     joinCodeInterval: Number(sourceSession?.joinCodeInterval) || 10,
     msScoringMethod: sourceSession?.msScoringMethod || 'right-minus-wrong',
+    tags: normalizeTags(sourceSession?.tags || []),
     date: undefined,
     quizStart: undefined,
     quizEnd: undefined,
@@ -1171,6 +1210,7 @@ export default async function sessionRoutes(app) {
         quizEnd,
         date,
         msScoringMethod,
+        tags,
       } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
@@ -1195,6 +1235,7 @@ export default async function sessionRoutes(app) {
         quizEnd: quizEnd ? new Date(quizEnd) : undefined,
         date: date ? new Date(date) : undefined,
         msScoringMethod: msScoringMethod || undefined,
+        tags: normalizeTags(tags || []),
       });
 
       await Course.findByIdAndUpdate(course._id, {
@@ -1531,12 +1572,15 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod'];
+      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
           updates[key] = request.body[key];
         }
+      }
+      if (updates.tags !== undefined) {
+        updates.tags = normalizeTags(updates.tags);
       }
 
       // Practice quizzes are a subset of quizzes.
