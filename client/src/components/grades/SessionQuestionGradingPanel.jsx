@@ -374,6 +374,7 @@ export default function SessionQuestionGradingPanel({
   const [recalculating, setRecalculating] = useState(false);
   const [tableSort, setTableSort] = useState({ field: 'student', direction: 'asc' });
   const [imageViewUrl, setImageViewUrl] = useState('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState({});
 
   const fetchSessionGrades = useCallback(async () => {
     setLoading(true);
@@ -521,6 +522,10 @@ export default function SessionQuestionGradingPanel({
   }, [allRows]);
 
   useEffect(() => {
+    setSelectedStudentIds({});
+  }, [activeQuestionId]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setDebouncedAnswerQuery(answerQuery);
     }, 250);
@@ -558,6 +563,16 @@ export default function SessionQuestionGradingPanel({
       return true;
     });
   }, [allRows, debouncedAnswerQuery, showNeedsGradingOnly, showResponsesOnly, studentQuery]);
+
+  const filteredStudentIds = useMemo(
+    () => filteredRows.map((row) => row.studentId),
+    [filteredRows]
+  );
+
+  const selectedFilteredCount = useMemo(
+    () => filteredStudentIds.filter((studentId) => !!selectedStudentIds[studentId]).length,
+    [filteredStudentIds, selectedStudentIds]
+  );
 
   const sortedRows = useMemo(() => {
     const nextRows = [...filteredRows];
@@ -766,9 +781,9 @@ export default function SessionQuestionGradingPanel({
       }
     }
 
-    const targetRows = filteredRows.filter((row) => row.gradeId && row.mark);
+    const targetRows = filteredRows.filter((row) => row.gradeId && row.mark && selectedStudentIds[row.studentId]);
     if (targetRows.length === 0) {
-      setGlobalMessage(t('grades.questionPanel.noFilteredRows'));
+      setGlobalMessage(t('grades.questionPanel.noSelectedRows'));
       setGlobalMessageType('warning');
       return;
     }
@@ -796,7 +811,30 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setBulkApplying(false);
     }
-  }, [activeQuestionId, applyUpdatedGrade, bulkPoints, bulkFeedback, filteredRows]);
+  }, [activeQuestionId, applyUpdatedGrade, bulkPoints, bulkFeedback, filteredRows, selectedStudentIds]);
+
+  const handleToggleRowSelected = useCallback((studentId, checked) => {
+    setSelectedStudentIds((prev) => {
+      if (checked) return { ...prev, [studentId]: true };
+      const next = { ...prev };
+      delete next[studentId];
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAllFiltered = useCallback((checked) => {
+    setSelectedStudentIds((prev) => {
+      const next = { ...prev };
+      filteredStudentIds.forEach((studentId) => {
+        if (checked) {
+          next[studentId] = true;
+        } else {
+          delete next[studentId];
+        }
+      });
+      return next;
+    });
+  }, [filteredStudentIds]);
 
   const handleRecalculateAll = useCallback(async () => {
     if (!sessionId) return;
@@ -869,6 +907,8 @@ export default function SessionQuestionGradingPanel({
   const displayedStudentHint = isQuizSession
     ? t('grades.questionPanel.showingStudentsQuiz', { showing: sortedRows.length, total: allRows.length })
     : t('grades.questionPanel.showingStudentsSession', { showing: sortedRows.length, total: allRows.length });
+  const allFilteredSelected = filteredStudentIds.length > 0 && selectedFilteredCount === filteredStudentIds.length;
+  const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
 
   const renderQuestionRibbon = () => (
     <Box
@@ -994,7 +1034,10 @@ export default function SessionQuestionGradingPanel({
 
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>
-          {t('grades.questionPanel.bulkUpdateFiltered', { count: sortedRows.length })}
+          {t('grades.questionPanel.bulkUpdateSelected', {
+            selected: selectedFilteredCount,
+            filtered: sortedRows.length,
+          })}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
@@ -1016,7 +1059,7 @@ export default function SessionQuestionGradingPanel({
             size="small"
             variant="contained"
             onClick={handleBulkSave}
-            disabled={bulkApplying || (!bulkPoints && !bulkFeedback)}
+            disabled={bulkApplying || (!bulkPoints && !bulkFeedback) || selectedFilteredCount === 0}
           >
             {bulkApplying ? t('common.saving') : t('common.save')}
           </Button>
@@ -1093,6 +1136,18 @@ export default function SessionQuestionGradingPanel({
         >
           <TableHead>
             <TableRow>
+              <TableCell padding="checkbox" sx={{ width: 52 }}>
+                <Checkbox
+                  size="small"
+                  checked={allFilteredSelected}
+                  indeterminate={someFilteredSelected}
+                  disabled={filteredStudentIds.length === 0}
+                  onChange={(event) => handleToggleSelectAllFiltered(event.target.checked)}
+                  inputProps={{
+                    'aria-label': t('grades.questionPanel.selectAllFiltered', { count: sortedRows.length }),
+                  }}
+                />
+              </TableCell>
               <TableCell sx={{ fontWeight: 700, minWidth: 170 }}>
                 <TableSortLabel
                   active={tableSort.field === 'student'}
@@ -1144,8 +1199,19 @@ export default function SessionQuestionGradingPanel({
                 <TableRow
                   key={row.studentId}
                   hover
+                  selected={!!selectedStudentIds[row.studentId]}
                   sx={rowNeedsGrading ? { bgcolor: 'error.50' } : undefined}
                 >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={!!selectedStudentIds[row.studentId]}
+                      onChange={(event) => handleToggleRowSelected(row.studentId, event.target.checked)}
+                      inputProps={{
+                        'aria-label': t('grades.questionPanel.selectStudent', { name: row.displayName }),
+                      }}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
                       <Avatar
@@ -1264,7 +1330,7 @@ export default function SessionQuestionGradingPanel({
             })}
             {sortedRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5}>
+                <TableCell colSpan={6}>
                   <Typography variant="body2" color="text.secondary">
                     {t('grades.questionPanel.noStudentsMatch')}
                   </Typography>

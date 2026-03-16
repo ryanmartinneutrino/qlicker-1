@@ -1144,6 +1144,7 @@
       "bulkFeedbackFailed": "Bulk feedback update failed.",
       "bulkSaveSuccess": "Saved bulk changes for {{count}} student(s).",
       "bulkSaveFailed": "Bulk save failed.",
+      "bulkUpdateSelected": "Bulk update selected students ({{selected}} of {{filtered}} filtered)",
       "gradesRecalculated": "Grades recalculated.",
       "failedRecalculate": "Failed to re-calculate grades.",
       "failedLoadGrades": "Failed to load grades for this session.",
@@ -1156,7 +1157,10 @@
       "response": "Response",
       "mark": "Mark",
       "pointsValue": "{{count}} pts",
-      "onlyWithResponses": "Only with responses"
+      "onlyWithResponses": "Only with responses",
+      "noSelectedRows": "No selected rows can be updated.",
+      "selectAllFiltered": "Select all filtered students ({{count}})",
+      "selectStudent": "Select student: {{name}}"
     }
   },
   "pageTitles": {

@@ -231,4 +231,81 @@ describe('SessionQuestionGradingPanel', () => {
       expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
     });
   });
+
+  it('applies bulk grading changes only to selected filtered students', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 1, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+          {
+            _id: 'grade-2',
+            userId: 'student-b',
+            marks: [{ questionId: 'q-manual', points: 2, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+    apiClient.patch
+      .mockResolvedValueOnce({ data: { grade: { _id: 'grade-1', userId: 'student-a', marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }] } } })
+      .mockResolvedValueOnce({ data: { grade: { _id: 'grade-2', userId: 'student-b', marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }] } } });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'First response' }] }],
+          },
+          {
+            studentId: 'student-b',
+            firstname: 'Grace',
+            lastname: 'Hopper',
+            email: 'grace@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Second response' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    const [bulkSaveButton] = screen.getAllByRole('button', { name: /^save$/i });
+    expect(bulkSaveButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/bulk points/i), { target: { value: '4' } });
+    expect(bulkSaveButton).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/select student: ada lovelace/i));
+    expect(bulkSaveButton).not.toBeDisabled();
+
+    fireEvent.click(bulkSaveButton);
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledTimes(1);
+      expect(apiClient.patch).toHaveBeenCalledWith(
+        '/grades/grade-1/marks/q-manual',
+        { points: 4 }
+      );
+    });
+  });
 });
