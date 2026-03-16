@@ -1,4 +1,8 @@
-import { prepareRichTextInput, renderKatexInElement } from '../components/questions/richTextUtils';
+import {
+  prepareRichTextInput,
+  renderKatexInElement,
+  sanitizeRichHtml,
+} from '../components/questions/richTextUtils';
 
 function escapeHtml(value) {
   return String(value || '')
@@ -25,7 +29,7 @@ function buildPdfRenderRoot(htmlContent) {
   const parsed = new DOMParser().parseFromString(String(htmlContent || ''), 'text/html');
   const root = document.createElement('div');
   root.className = 'session-export-root';
-  root.innerHTML = parsed.body?.innerHTML || '';
+  root.innerHTML = sanitizeRichHtml(parsed.body?.innerHTML || '');
 
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -109,7 +113,9 @@ export async function downloadPdf(filename, htmlContent) {
     }).from(root).save();
   } finally {
     document.body.removeChild(container);
-    styleTag?.remove();
+    if (styleTag && document.head.contains(styleTag)) {
+      styleTag.remove();
+    }
   }
 }
 
