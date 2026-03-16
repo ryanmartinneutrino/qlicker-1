@@ -73,6 +73,26 @@ describe('getStudentSessionAction', () => {
       chipVariant: 'outlined',
     });
   });
+
+  it('opens owned practice sessions even when they are not live quizzes', () => {
+    const action = getStudentSessionAction({
+      _id: 'practice-1',
+      quiz: true,
+      practiceQuiz: true,
+      studentCreated: true,
+      status: 'hidden',
+      quizHasResponsesByCurrentUser: false,
+      quizAllQuestionsAnsweredByCurrentUser: false,
+    }, 'course-1', 2);
+
+    expect(action).toEqual({
+      clickable: true,
+      path: '/student/course/course-1/session/practice-1/quiz',
+      label: 'student.course.startQuiz',
+      chipColor: 'primary',
+      chipVariant: 'filled',
+    });
+  });
 });
 
 describe('sortSessions', () => {

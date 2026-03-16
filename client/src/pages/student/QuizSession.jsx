@@ -143,7 +143,6 @@ export default function QuizSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const courseQuizTabLink = `/student/course/${courseId}?tab=1`;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -438,6 +437,9 @@ export default function QuizSession() {
   }, [draftByQuestion, fetchQuiz, questions, responsesByQuestion, saveDraftNow, sessionId]);
 
   const practiceQuiz = !!session?.practiceQuiz;
+  const courseQuizTabLink = session?.studentCreated
+    ? `/student/course/${courseId}?tab=2`
+    : `/student/course/${courseId}?tab=1`;
   const answerableQuestions = useMemo(
     () => questions.filter((question) => isResponseQuestionType(normalizeQuestionType(question))),
     [questions]

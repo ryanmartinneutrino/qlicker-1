@@ -202,6 +202,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   typeSelectionLockReason = 'Question type is locked for this question.',
   tagSuggestions = [],
   showVisibilityControls = true,
+  allowCustomTags = true,
 }, ref) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
@@ -560,7 +561,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
 
         <Autocomplete
           multiple
-          freeSolo
+          freeSolo={allowCustomTags}
           options={[...new Set(
             (tagSuggestions || [])
               .map((tag) => String(tag?.label || tag?.value || tag || '').trim())

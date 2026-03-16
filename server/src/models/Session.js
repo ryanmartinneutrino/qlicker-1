@@ -34,6 +34,8 @@ const SessionSchema = new mongoose.Schema(
     name: { type: String, required: true },
     description: { type: String, default: '' },
     courseId: { type: String, required: true },
+    creator: { type: String, default: '' },
+    studentCreated: { type: Boolean, default: false },
     status: { type: String, required: true, enum: ['hidden', 'visible', 'running', 'done'] },
     quiz: { type: Boolean, default: false },
     practiceQuiz: { type: Boolean, default: false },

@@ -3,11 +3,13 @@ import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 import { copyQuestionToSession } from './questionCopy.js';
 
-function buildSessionCopyPayload(sourceSession = {}, targetCourseId) {
+function buildSessionCopyPayload(sourceSession = {}, targetCourseId, userId) {
   return {
     name: `${sourceSession.name || 'Session'} (copy)`,
     description: sourceSession.description || '',
     courseId: targetCourseId,
+    creator: String(userId || ''),
+    studentCreated: false,
     status: 'hidden',
     quiz: !!sourceSession.quiz,
     practiceQuiz: !!sourceSession.practiceQuiz,
@@ -46,7 +48,7 @@ export async function copySessionToCourse({
   let createdSession = null;
 
   try {
-    createdSession = await Session.create(buildSessionCopyPayload(sessionObject, targetCourseId));
+    createdSession = await Session.create(buildSessionCopyPayload(sessionObject, targetCourseId, userId));
 
     await Course.findByIdAndUpdate(targetCourseId, {
       $addToSet: { sessions: createdSession._id },

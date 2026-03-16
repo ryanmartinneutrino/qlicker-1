@@ -125,6 +125,22 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('student can create a practice session that tracks ownership', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, student, studentToken } = await setupCourseWithStudent();
+
+    const res = await createSessionInCourse(studentToken, course._id, {
+      name: 'My Practice Session',
+      practiceQuiz: true,
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().session.practiceQuiz).toBe(true);
+    expect(res.json().session.quiz).toBe(true);
+    expect(res.json().session.studentCreated).toBe(true);
+    expect(res.json().session.creator).toBe(student._id.toString());
+  });
+
   it('session is added to course sessions array', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -224,6 +240,31 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     const body = res.json();
     expect(body.sessions.length).toBe(1);
     expect(body.sessions[0].name).toBe('Visible Session');
+  });
+
+  it('student only sees their own practice sessions in the session list', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, studentToken } = await setupCourseWithStudent();
+    const otherStudent = await createTestUser({ email: 'other-student-practice@example.com', roles: ['student'] });
+    const otherStudentToken = await getAuthToken(app, otherStudent);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: otherStudentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const ownPractice = await createSessionInCourse(studentToken, course._id, { name: 'Own Practice', practiceQuiz: true });
+    expect(ownPractice.statusCode).toBe(201);
+    const otherPractice = await createSessionInCourse(otherStudentToken, course._id, { name: 'Other Practice', practiceQuiz: true });
+    expect(otherPractice.statusCode).toBe(201);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().sessions.some((session) => session.name === 'Own Practice')).toBe(true);
+    expect(res.json().sessions.some((session) => session.name === 'Other Practice')).toBe(false);
   });
 
   it('student session list includes hasNewFeedback when visible grades have unseen feedback', async (ctx) => {
@@ -1633,6 +1674,68 @@ describe('Student quiz routes', () => {
     });
     expect(submitWholeRes.statusCode).toBe(400);
     expect(submitWholeRes.json().message).toContain('Practice quizzes');
+  });
+
+  it('student practice sessions can quiz over library questions without attaching them to the session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'student-practice-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: true } });
+    const student = await createTestUser({ email: 'student-practice-owner@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const questionRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: studentToken,
+      payload: {
+        type: 0,
+        courseId: course._id,
+        content: 'Library-only practice question',
+        options: [
+          { answer: 'A', correct: true },
+          { answer: 'B', correct: false },
+        ],
+      },
+    });
+    expect(questionRes.statusCode).toBe(201);
+    const libraryQuestion = questionRes.json().question;
+    expect(libraryQuestion.sessionId).toBe('');
+
+    const sessionRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Library Practice Session',
+      practiceQuiz: true,
+    });
+    expect(sessionRes.statusCode).toBe(201);
+    const practiceSession = sessionRes.json().session;
+
+    const setQuestionsRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${practiceSession._id}/practice-questions`, {
+      token: studentToken,
+      payload: { questionIds: [libraryQuestion._id] },
+    });
+    expect(setQuestionsRes.statusCode).toBe(200);
+
+    const quizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${practiceSession._id}/quiz`, {
+      token: studentToken,
+    });
+    expect(quizRes.statusCode).toBe(200);
+    expect(quizRes.json().questions).toHaveLength(1);
+
+    const answerRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${practiceSession._id}/quiz-response`, {
+      token: studentToken,
+      payload: { questionId: libraryQuestion._id, answer: '0' },
+    });
+    expect(answerRes.statusCode).toBe(200);
+
+    const lockRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${practiceSession._id}/quiz-question-submit`, {
+      token: studentToken,
+      payload: { questionId: libraryQuestion._id },
+    });
+    expect(lockRes.statusCode).toBe(200);
   });
 
   it('quiz access route allows active extension students while rejecting students outside the active window', async (ctx) => {

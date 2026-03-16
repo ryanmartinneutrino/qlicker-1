@@ -22,6 +22,7 @@ import {
   summarizeGradeFeedback,
   setSessionGradesVisibility,
 } from '../services/grading.js';
+import { userCanViewQuestion } from './questions.js';
 
 const createSessionSchema = {
   body: {
@@ -271,6 +272,20 @@ const submitQuizQuestionSchema = {
   },
 };
 
+const replacePracticeQuestionsSchema = {
+  body: {
+    type: 'object',
+    required: ['questionIds'],
+    properties: {
+      questionIds: {
+        type: 'array',
+        items: { type: 'string', minLength: 1 },
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
 // Generate a 6-digit numeric join code
 function generateJoinCode() {
   return String(crypto.randomInt(100000, 999999));
@@ -329,6 +344,8 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
     name: String(sourceSession?.name || '').trim(),
     description: sourceSession?.description || '',
     courseId: String(courseId),
+    creator: String(sourceSession?.creator || ''),
+    studentCreated: !!sourceSession?.studentCreated,
     status: 'hidden',
     quiz: isQuiz,
     practiceQuiz: isPracticeQuiz,
@@ -407,6 +424,11 @@ function toDateOrNull(value) {
 
 function isQuizLikeSession(session) {
   return !!(session?.quiz || session?.practiceQuiz);
+}
+
+function isStudentOwnedSession(session, user) {
+  if (!session || !user) return false;
+  return !!session.studentCreated && String(session.creator || '') === String(user.userId || '');
 }
 
 async function getNonAutoGradeableQuestions(session) {
@@ -1197,7 +1219,10 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isInstructorOrAdmin(course, request.user)) {
+      const isInstructor = isInstructorOrAdmin(course, request.user);
+      const isStudentOwner = (course.students || []).includes(request.user.userId);
+      const isStudentPracticeCreation = !isInstructor && isStudentOwner;
+      if (!isInstructor && !isStudentPracticeCreation) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -1214,6 +1239,9 @@ export default async function sessionRoutes(app) {
       } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
+      if (isStudentPracticeCreation && !isPracticeQuiz) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Students can only create practice sessions' });
+      }
       const quizWindowValidationError = getQuizWindowValidationMessage(null, {
         quiz: isQuiz,
         practiceQuiz: isPracticeQuiz,
@@ -1228,7 +1256,9 @@ export default async function sessionRoutes(app) {
         name,
         description: description || '',
         courseId: course._id,
-        status: 'hidden',
+        creator: request.user.userId,
+        studentCreated: isStudentPracticeCreation,
+        status: isStudentPracticeCreation ? 'running' : 'hidden',
         quiz: isQuiz,
         practiceQuiz: isPracticeQuiz,
         quizStart: quizStart ? new Date(quizStart) : undefined,
@@ -1277,9 +1307,11 @@ export default async function sessionRoutes(app) {
         status: { $in: ['running', 'visible'] },
       }).lean();
 
-      const normalizedSessions = sessions.map((session) => buildSessionForUser(session, request.user, {
-        instructorView: isInstructorView,
-      }));
+      const normalizedSessions = sessions
+        .map((session) => buildSessionForUser(session, request.user, {
+          instructorView: isInstructorView,
+        }))
+        .filter((session) => isInstructorView || !session.studentCreated || isStudentOwnedSession(session, request.user));
 
       if (!isInstructorView) {
         const runningQuizSessions = normalizedSessions.filter((session) => (
@@ -1376,7 +1408,10 @@ export default async function sessionRoutes(app) {
 
       const filter = { courseId: course._id };
       if (!isInstrOrAdmin) {
-        filter.status = { $ne: 'hidden' };
+        filter.$or = [
+          { status: { $ne: 'hidden' }, studentCreated: { $ne: true } },
+          { studentCreated: true, creator: request.user.userId },
+        ];
       }
 
       const sessions = await Session.find(filter).lean();
@@ -1528,6 +1563,9 @@ export default async function sessionRoutes(app) {
       }
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      if (!isInstrOrAdmin && session.studentCreated && !isStudentOwnedSession(session, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+      }
       let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
       if (isInstrOrAdmin) {
         const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
@@ -1538,7 +1576,7 @@ export default async function sessionRoutes(app) {
       }
 
       // For students, hide certain fields if session is hidden.
-      if (!isInstrOrAdmin && normalizedSession.status === 'hidden') {
+      if (!isInstrOrAdmin && normalizedSession.status === 'hidden' && !isStudentOwnedSession(normalizedSession, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
 
@@ -1568,11 +1606,15 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isInstructorOrAdmin(course, request.user)) {
+      const isInstructor = isInstructorOrAdmin(course, request.user);
+      const isStudentOwner = isStudentOwnedSession(session, request.user);
+      if (!isInstructor && !isStudentOwner) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const allowed = ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
+      const allowed = isStudentOwner
+        ? ['name', 'description']
+        : ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
@@ -1606,14 +1648,14 @@ export default async function sessionRoutes(app) {
 
       // Reviewable can only be set to true when session is ended
       // Allow if session is already done or if status is being set to done in this request
-      if (updates.reviewable === true && session.status !== 'done' && updates.status !== 'done') {
+      if (!isStudentOwner && updates.reviewable === true && session.status !== 'done' && updates.status !== 'done') {
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'Session must be in ended state to be made reviewable',
         });
       }
 
-      if (updates.reviewable === true) {
+      if (!isStudentOwner && updates.reviewable === true) {
         const previewSession = {
           ...session.toObject(),
           ...updates,
@@ -1629,7 +1671,7 @@ export default async function sessionRoutes(app) {
         }
       }
 
-      if (updates.reviewable === true && !session.reviewable) {
+      if (!isStudentOwner && updates.reviewable === true && !session.reviewable) {
         const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
         if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
           return {
@@ -1654,7 +1696,7 @@ export default async function sessionRoutes(app) {
       const makingReviewable = updates.reviewable === true && !session.reviewable;
       const removingReviewable = updates.reviewable === false && session.reviewable;
 
-      if (makingReviewable) {
+      if (!isStudentOwner && makingReviewable) {
         const gradingResult = await recalculateSessionGrades({
           sessionId: updated._id,
           sessionDoc: updated,
@@ -1663,7 +1705,7 @@ export default async function sessionRoutes(app) {
           visibleToStudents: true,
         });
         grading = gradingResult.summary;
-      } else if (removingReviewable) {
+      } else if (!isStudentOwner && removingReviewable) {
         await setSessionGradesVisibility({
           sessionId: updated._id,
           visibleToStudents: false,
@@ -1691,7 +1733,9 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isInstructorOrAdmin(course, request.user)) {
+      const isInstructor = isInstructorOrAdmin(course, request.user);
+      const isStudentOwner = isStudentOwnedSession(session, request.user);
+      if (!isInstructor && !isStudentOwner) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -1702,6 +1746,53 @@ export default async function sessionRoutes(app) {
       await Session.findByIdAndDelete(request.params.id);
 
       return { success: true };
+    }
+  );
+
+  app.patch(
+    '/sessions/:id/practice-questions',
+    {
+      preHandler: authenticate,
+      schema: replacePracticeQuestionsSchema,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isStudentOwnedSession(session, request.user) || !session.practiceQuiz) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionIds = [...new Set((request.body.questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
+      const questions = questionIds.length > 0
+        ? await Question.find({ _id: { $in: questionIds } }).lean()
+        : [];
+      if (questions.length !== questionIds.length) {
+        return reply.code(404).send({ error: 'Not Found', message: 'One or more questions were not found' });
+      }
+
+      const visibilityResults = await Promise.all(
+        questions.map((question) => userCanViewQuestion(question, request.user))
+      );
+      if (visibilityResults.some((canView) => !canView)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'One or more questions are not available to this student' });
+      }
+
+      const updated = await Session.findByIdAndUpdate(
+        request.params.id,
+        { $set: { questions: questionIds, currentQuestion: questionIds[0] || '' } },
+        { new: true }
+      );
+
+      return { session: updated.toObject() };
     }
   );
 
@@ -2217,7 +2308,11 @@ export default async function sessionRoutes(app) {
       }
 
       const sourceSession = request.body.session || {};
-      const importedSessionPayload = buildImportedSessionPayload(sourceSession, course._id);
+      const importedSessionPayload = {
+        ...buildImportedSessionPayload(sourceSession, course._id),
+        creator: request.user.userId,
+        studentCreated: false,
+      };
       if (!importedSessionPayload.name) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Imported session requires a name' });
       }
@@ -2289,10 +2384,14 @@ export default async function sessionRoutes(app) {
       // Students can only review if the session is reviewable and done
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
       if (!isInstrOrAdmin) {
-        if (!normalizedSession.reviewable) {
+        const ownsStudentSession = isStudentOwnedSession(normalizedSession, request.user);
+        if (!ownsStudentSession && normalizedSession.studentCreated) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+        }
+        if (!normalizedSession.reviewable && !ownsStudentSession) {
           return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
         }
-        if (normalizedSession.status !== 'done') {
+        if (normalizedSession.status !== 'done' && !ownsStudentSession) {
           return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
         }
       }
@@ -2377,10 +2476,10 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can dismiss feedback notifications' });
       }
 
-      if (!normalizedSession.reviewable) {
+      if (!normalizedSession.reviewable && !isStudentOwnedSession(normalizedSession, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
       }
-      if (normalizedSession.status !== 'done') {
+      if (normalizedSession.status !== 'done' && !isStudentOwnedSession(normalizedSession, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not yet finished' });
       }
 
@@ -2451,8 +2550,11 @@ export default async function sessionRoutes(app) {
       if (!isQuizLikeSession(normalizedSession)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
       }
+      if (normalizedSession.studentCreated && !isStudentOwnedSession(normalizedSession, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+      }
 
-      if (normalizedSession.status === 'hidden') {
+      if (normalizedSession.status === 'hidden' && !isStudentOwnedSession(normalizedSession, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
 
@@ -2584,6 +2686,9 @@ export default async function sessionRoutes(app) {
       if (!isQuizLikeSession(normalizedSession)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
       }
+      if (normalizedSession.studentCreated && !isStudentOwnedSession(normalizedSession, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+      }
 
       const runtime = getQuizRuntimeState(normalizedSession, {
         userId: request.user.userId,
@@ -2607,7 +2712,10 @@ export default async function sessionRoutes(app) {
       }
 
       const question = await Question.findById(questionId).lean();
-      if (!question || String(question.sessionId) !== String(normalizedSession._id)) {
+      const questionBelongsToPracticeSession = isStudentOwnedSession(normalizedSession, request.user)
+        && normalizedSession.practiceQuiz
+        && (normalizedSession.questions || []).includes(String(question?._id || ''));
+      if (!question || (!questionBelongsToPracticeSession && String(question.sessionId) !== String(normalizedSession._id))) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
       if (!isQuestionResponseCollectionEnabled(question)) {
@@ -2693,6 +2801,9 @@ export default async function sessionRoutes(app) {
       if (!isQuizLikeSession(normalizedSession)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
       }
+      if (normalizedSession.studentCreated && !isStudentOwnedSession(normalizedSession, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
+      }
       if (!normalizedSession.practiceQuiz) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Per-question submission is only available for practice quizzes' });
       }
@@ -2711,7 +2822,10 @@ export default async function sessionRoutes(app) {
       }
 
       const question = await Question.findById(questionId).lean();
-      if (!question || String(question.sessionId) !== String(normalizedSession._id)) {
+      const questionBelongsToPracticeSession = isStudentOwnedSession(normalizedSession, request.user)
+        && normalizedSession.practiceQuiz
+        && (normalizedSession.questions || []).includes(String(question?._id || ''));
+      if (!question || (!questionBelongsToPracticeSession && String(question.sessionId) !== String(normalizedSession._id))) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
       if (!isQuestionResponseCollectionEnabled(question)) {
@@ -2771,6 +2885,9 @@ export default async function sessionRoutes(app) {
 
       if (!isQuizLikeSession(normalizedSession)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Session is not a quiz' });
+      }
+      if (normalizedSession.studentCreated && !isStudentOwnedSession(normalizedSession, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
       if (normalizedSession.practiceQuiz) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Practice quizzes are submitted per question' });
