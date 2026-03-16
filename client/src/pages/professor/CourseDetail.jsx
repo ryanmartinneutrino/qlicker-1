@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
+  Autocomplete, Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
   List, ListItem, ListItemAvatar, ListItemText, ListItemButton, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar, MenuItem,
@@ -16,10 +16,11 @@ import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
-import { buildCourseTitle } from '../../utils/courseTitle';
+import { buildCourseSelectionLabel, buildCourseTitle, sortCoursesByRecent } from '../../utils/courseTitle';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import SessionListCard from '../../components/common/SessionListCard';
+import SessionSelectorDialog from '../../components/common/SessionSelectorDialog';
 import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
@@ -227,6 +228,15 @@ export default function CourseDetail() {
   const [createSessionOpen, setCreateSessionOpen] = useState(false);
   const [creatingSess, setCreatingSess] = useState(false);
   const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
+  const [copySessionTarget, setCopySessionTarget] = useState(null);
+  const [copySessionTargetCourseId, setCopySessionTargetCourseId] = useState(id);
+  const [copyingSession, setCopyingSession] = useState(false);
+  const [copySessionsDialogOpen, setCopySessionsDialogOpen] = useState(false);
+  const [copySessionsSourceCourseId, setCopySessionsSourceCourseId] = useState(id);
+  const [copySessionsSourceSessions, setCopySessionsSourceSessions] = useState([]);
+  const [selectedCopySessionIds, setSelectedCopySessionIds] = useState([]);
+  const [copyingSessions, setCopyingSessions] = useState(false);
+  const [instructorCourses, setInstructorCourses] = useState([]);
   const [sessionUpdatesInFlight, setSessionUpdatesInFlight] = useState({});
 
   // Video chat — check if Jitsi is enabled for this course
@@ -290,6 +300,23 @@ export default function CourseDetail() {
     }
   }, [id]);
 
+  const fetchInstructorCourses = useCallback(async () => {
+    const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
+    const nextCourses = sortCoursesByRecent(
+      (data.courses || []).filter((courseItem) => Array.isArray(courseItem.instructors))
+    );
+    setInstructorCourses(nextCourses);
+  }, []);
+
+  const fetchCopySessionsSource = useCallback(async (sourceCourseId) => {
+    if (!sourceCourseId) {
+      setCopySessionsSourceSessions([]);
+      return;
+    }
+    const { data } = await apiClient.get(`/courses/${sourceCourseId}/sessions`);
+    setCopySessionsSourceSessions(sortSessions(data.sessions || []));
+  }, []);
+
   const fetchCourse = useCallback(async () => {
     try {
       const { data } = await apiClient.get(`/courses/${id}`);
@@ -344,6 +371,11 @@ export default function CourseDetail() {
   }, []);
 
   useEffect(() => { fetchCourse(); fetchSessions(); }, [fetchCourse, fetchSessions]);
+  useEffect(() => {
+    if (tab === 0 || tab === 1) {
+      fetchSessions();
+    }
+  }, [fetchSessions, tab]);
 
   // Poll for updates every 15 seconds (reactive student/instructor list)
   useEffect(() => {
@@ -352,6 +384,27 @@ export default function CourseDetail() {
     }, 15000);
     return () => clearInterval(pollingRef.current);
   }, [fetchCourse]);
+
+  useEffect(() => {
+    if (!copySessionsDialogOpen) return;
+    fetchInstructorCourses().catch(() => {
+      setMsg({ severity: 'error', text: t('professor.course.failedLoadCourses') });
+    });
+  }, [copySessionsDialogOpen, fetchInstructorCourses, t]);
+
+  useEffect(() => {
+    if (!copySessionTarget) return;
+    fetchInstructorCourses().catch(() => {
+      setMsg({ severity: 'error', text: t('professor.course.failedLoadCourses') });
+    });
+  }, [copySessionTarget, fetchInstructorCourses, t]);
+
+  useEffect(() => {
+    if (!copySessionsDialogOpen) return;
+    fetchCopySessionsSource(copySessionsSourceCourseId).catch(() => {
+      setMsg({ severity: 'error', text: t('professor.course.failedLoadSessionsForCopy') });
+    });
+  }, [copySessionsDialogOpen, copySessionsSourceCourseId, fetchCopySessionsSource, t]);
 
   // WebSocket push for session status changes (replaces session-list polling)
   useEffect(() => {
@@ -677,13 +730,45 @@ export default function CourseDetail() {
     }
   };
 
-  const handleCopySession = async (sessionId) => {
+  const handleCopySession = async () => {
+    if (!copySessionTarget?._id) return;
+    setCopyingSession(true);
     try {
-      await apiClient.post(`/sessions/${sessionId}/copy`);
-      fetchSessions();
+      await apiClient.post(`/sessions/${copySessionTarget._id}/copy`, {
+        targetCourseId: copySessionTargetCourseId,
+      });
+      if (String(copySessionTargetCourseId) === String(id)) {
+        await fetchSessions();
+      }
+      setCopySessionTarget(null);
       setMsg({ severity: 'success', text: t('professor.course.sessionCopied') });
-    } catch {
-      setMsg({ severity: 'error', text: t('professor.course.failedCopySession') });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedCopySession') });
+    } finally {
+      setCopyingSession(false);
+    }
+  };
+
+  const handleCopySelectedSessions = async () => {
+    if (!selectedCopySessionIds.length) return;
+    setCopyingSessions(true);
+    try {
+      const { data } = await apiClient.post(`/courses/${id}/sessions/copy`, {
+        sessionIds: selectedCopySessionIds,
+      });
+      await fetchSessions();
+      setCopySessionsDialogOpen(false);
+      setSelectedCopySessionIds([]);
+      setMsg({
+        severity: 'success',
+        text: t('professor.course.sessionsCopied', {
+          count: (data.sessions || []).length,
+        }),
+      });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedCopySession') });
+    } finally {
+      setCopyingSessions(false);
     }
   };
 
@@ -758,6 +843,12 @@ export default function CourseDetail() {
   const videoTabIndex = videoEnabled ? 6 : -1;
   const settingsTabIndex = videoEnabled ? 7 : 6;
   const questionLibraryTabIndex = videoEnabled ? 8 : 7;
+  const selectedCopySourceCourse = instructorCourses.find((courseItem) => String(courseItem._id) === String(copySessionsSourceCourseId))
+    || instructorCourses.find((courseItem) => String(courseItem._id) === String(id))
+    || null;
+  const selectedCopyTargetCourse = instructorCourses.find((courseItem) => String(courseItem._id) === String(copySessionTargetCourseId))
+    || instructorCourses.find((courseItem) => String(courseItem._id) === String(id))
+    || null;
 
   const handleTabChange = (nextTab) => {
     setTab(nextTab);
@@ -888,7 +979,14 @@ export default function CourseDetail() {
                   label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
                 />
                 <Tooltip title={t('professor.course.copySession')}>
-                  <IconButton size="small" onClick={() => handleCopySession(s._id)} disabled={!!sessionUpdatesInFlight[s._id]}>
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setCopySessionTarget(s);
+                      setCopySessionTargetCourseId(id);
+                    }}
+                    disabled={!!sessionUpdatesInFlight[s._id]}
+                  >
                     <CopyIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -943,7 +1041,18 @@ export default function CourseDetail() {
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
-          sx={{ '& .MuiTabs-flexContainer': { flexWrap: 'wrap' } }}
+          sx={{
+            '& .MuiTabs-flexContainer': { flexWrap: 'wrap' },
+            '& .MuiTabs-indicator': { display: 'none' },
+            '& .MuiTab-root': {
+              alignSelf: 'stretch',
+              borderBottom: 2,
+              borderColor: 'transparent',
+            },
+            '& .MuiTab-root.Mui-selected': {
+              borderColor: 'primary.main',
+            },
+          }}
         >
           {tabLabels.map((label) => <Tab key={label} label={label} />)}
         </Tabs>
@@ -1215,6 +1324,7 @@ export default function CourseDetail() {
         <QuestionLibraryPanel
           courseId={id}
           availableSessions={sortedSessions}
+          onSessionsChanged={fetchSessions}
         />
       </TabPanel>
 
@@ -1362,6 +1472,20 @@ export default function CourseDetail() {
           <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField label={t('professor.course.sessionName')} inputRef={newSessionNameInputRef} fullWidth autoFocus />
             <TextField label={t('professor.course.description')} inputRef={newSessionDescInputRef} fullWidth multiline rows={2} />
+            <Button
+              variant="outlined"
+              startIcon={<CopyIcon />}
+              onClick={() => {
+                setCreateSessionOpen(false);
+                if (newSessionNameInputRef.current) newSessionNameInputRef.current.value = '';
+                if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
+                setCopySessionsSourceCourseId(id);
+                setSelectedCopySessionIds([]);
+                setCopySessionsDialogOpen(true);
+              }}
+            >
+              {t('professor.course.copySessionsFromCourse')}
+            </Button>
           </DialogContent>
           <DialogActions>
             <Button
@@ -1378,6 +1502,73 @@ export default function CourseDetail() {
             </Button>
           </DialogActions>
         </Box>
+      </Dialog>
+
+      <SessionSelectorDialog
+        open={copySessionsDialogOpen}
+        title={t('professor.course.copySessionsDialogTitle')}
+        sessions={copySessionsSourceSessions}
+        selectedIds={selectedCopySessionIds}
+        headerContent={(
+          <Autocomplete
+            options={instructorCourses}
+            value={selectedCopySourceCourse}
+            isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
+            onChange={(_event, nextValue) => {
+              setCopySessionsSourceCourseId(nextValue?._id || id);
+              setSelectedCopySessionIds([]);
+            }}
+            getOptionLabel={(option) => buildCourseSelectionLabel(option)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('professor.course.sourceCourse')}
+                sx={{ mb: 1.25 }}
+              />
+            )}
+          />
+        )}
+        getSessionSecondaryText={(sessionItem) => (
+          `${t('professor.course.questionCount', { count: (sessionItem.questions || []).length })} · ${t('grades.coursePanel.sessionStatus', {
+            status: sessionItem.status,
+            defaultValue: `Status: ${sessionItem.status}`,
+          })}`
+        )}
+        onChange={setSelectedCopySessionIds}
+        onClose={() => {
+          setCopySessionsDialogOpen(false);
+          setSelectedCopySessionIds([]);
+        }}
+        onConfirm={handleCopySelectedSessions}
+        confirmLabel={copyingSessions ? t('professor.course.copyingSessions') : t('professor.course.copySelectedSessions')}
+      />
+
+      <Dialog open={!!copySessionTarget} onClose={() => setCopySessionTarget(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('professor.course.copySessionToCourse')}</DialogTitle>
+        <DialogContent sx={{ pt: '8px !important', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            {copySessionTarget ? t('professor.course.copySessionConfirm', { name: copySessionTarget.name }) : ''}
+          </Typography>
+          <Autocomplete
+            options={instructorCourses}
+            value={selectedCopyTargetCourse}
+            isOptionEqualToValue={(option, value) => String(option?._id) === String(value?._id)}
+            onChange={(_event, nextValue) => setCopySessionTargetCourseId(nextValue?._id || id)}
+            getOptionLabel={(option) => buildCourseSelectionLabel(option)}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('professor.course.destinationCourse')}
+              />
+            )}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCopySessionTarget(null)}>{t('common.cancel')}</Button>
+          <Button variant="contained" onClick={handleCopySession} disabled={copyingSession || !copySessionTargetCourseId}>
+            {copyingSession ? t('professor.course.copyingSession') : t('common.copy', { defaultValue: 'Copy' })}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Delete Session Confirmation */}

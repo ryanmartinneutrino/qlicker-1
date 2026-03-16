@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
+import { buildCourseSelectionLabel, sortCoursesByRecent } from '../../utils/courseTitle';
 import QuestionDisplay from './QuestionDisplay';
 import QuestionEditor from './QuestionEditor';
 import { TYPE_COLORS, getQuestionTypeLabel, normalizeQuestionType } from './constants';
@@ -144,7 +145,7 @@ function QuestionCopyDialog({
               setTargetCourseId(nextValue?._id || '');
               setTargetSessionId('');
             }}
-            getOptionLabel={(option) => option?.name || ''}
+            getOptionLabel={(option) => buildCourseSelectionLabel(option)}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -333,6 +334,7 @@ function FormSelectionActions({ total, selectedCount, onSelectAll, onClear }) {
 export default function QuestionLibraryPanel({
   courseId,
   availableSessions = [],
+  onSessionsChanged,
 }) {
   const { t } = useTranslation();
   const loadErrorTextRef = useRef('');
@@ -383,8 +385,10 @@ export default function QuestionLibraryPanel({
   ), [courses, sourceCourseId]);
 
   const fetchCourses = useCallback(async () => {
-    const { data } = await apiClient.get('/courses');
-    const nextCourses = (data.courses || []).filter((course) => Array.isArray(course.instructors));
+    const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
+    const nextCourses = sortCoursesByRecent(
+      (data.courses || []).filter((course) => Array.isArray(course.instructors))
+    );
     setCourses(nextCourses);
   }, []);
 
@@ -562,6 +566,9 @@ export default function QuestionLibraryPanel({
         ...(targetSessionId ? { targetSessionId } : {}),
       });
       setCopyDialogState({ open: false, questionIds: [] });
+      if (typeof onSessionsChanged === 'function' && String(targetCourseId) === String(courseId) && targetSessionId) {
+        await onSessionsChanged();
+      }
       if (String(targetCourseId) === String(sourceCourseId)) {
         await refreshQuestions();
       }
@@ -636,6 +643,9 @@ export default function QuestionLibraryPanel({
       setImportDialogOpen(false);
       setImportPreviewQuestions([]);
       setImportSelectedIds([]);
+      if (typeof onSessionsChanged === 'function' && targetSessionId) {
+        await onSessionsChanged();
+      }
       if (String(sourceCourseId) === String(courseId)) {
         await refreshQuestions();
       }
@@ -701,7 +711,7 @@ export default function QuestionLibraryPanel({
                   fetchTagOptions(nextCourseId),
                 ]);
               }}
-              getOptionLabel={(option) => option?.name || ''}
+              getOptionLabel={(option) => buildCourseSelectionLabel(option)}
               renderInput={(params) => (
                 <TextField
                   {...params}

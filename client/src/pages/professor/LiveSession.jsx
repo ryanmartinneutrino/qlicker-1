@@ -806,6 +806,10 @@ export default function LiveSession() {
   const totalQ = questionIds.length || 0;
   const hasPrev = qIdx > 0;
   const hasNext = qIdx < totalQ - 1;
+  const sessionNavigationItems = questionIds.map((questionId, index) => ({
+    questionId: String(questionId),
+    label: String(index + 1),
+  }));
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
   const pageProgress = liveData?.pageProgress || (totalQ > 0 && qIdx >= 0
@@ -1138,6 +1142,36 @@ export default function LiveSession() {
             </Box>
 
             <Divider />
+
+            {sessionNavigationItems.length > 1 && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 0.75,
+                  flexWrap: 'wrap',
+                  p: 1,
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                }}
+              >
+                {sessionNavigationItems.map((entry) => {
+                  const isActive = entry.questionId === String(session?.currentQuestion || '');
+                  return (
+                    <Chip
+                      key={entry.questionId}
+                      clickable
+                      disabled={navigationBusy && !isActive}
+                      onClick={() => handleSetQuestion(entry.questionId)}
+                      label={entry.label}
+                      color={isActive ? 'primary' : 'default'}
+                      variant={isActive ? 'filled' : 'outlined'}
+                      sx={COMPACT_CHIP_SX}
+                    />
+                  );
+                })}
+              </Box>
+            )}
 
             <Box
               sx={{

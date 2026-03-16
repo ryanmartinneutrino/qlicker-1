@@ -24,10 +24,12 @@ export default function SessionSelectorDialog({
   title,
   sessions = [],
   selectedIds = [],
+  headerContent = null,
   onChange,
   onClose,
   onConfirm,
   confirmLabel,
+  getSessionSecondaryText,
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState('');
@@ -77,6 +79,7 @@ export default function SessionSelectorDialog({
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent dividers>
+        {headerContent ? <>{headerContent}</> : null}
         <TextField
           size="small"
           fullWidth
@@ -115,10 +118,12 @@ export default function SessionSelectorDialog({
                   <Checkbox size="small" checked={checked} />
                   <ListItemText
                     primary={session.name || t('grades.coursePanel.untitledSession', { defaultValue: 'Untitled session' })}
-                    secondary={session.status ? t('grades.coursePanel.sessionStatus', {
-                      status: session.status,
-                      defaultValue: `Status: ${session.status}`,
-                    }) : undefined}
+                    secondary={typeof getSessionSecondaryText === 'function'
+                      ? getSessionSecondaryText(session)
+                      : (session.status ? t('grades.coursePanel.sessionStatus', {
+                        status: session.status,
+                        defaultValue: `Status: ${session.status}`,
+                      }) : undefined)}
                   />
                 </ListItemButton>
               );

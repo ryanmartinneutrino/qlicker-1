@@ -5,7 +5,7 @@ import Grade from '../models/Grade.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
-import { copyQuestionToSession } from '../services/questionCopy.js';
+import { copySessionToCourse } from '../services/sessionCopy.js';
 import {
   ensureSessionMsScoringMethod,
   isQuestionResponseCollectionEnabled,
@@ -100,6 +100,21 @@ const setExtensionsSchema = {
           },
           additionalProperties: false,
         },
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
+const bulkSessionCopySchema = {
+  body: {
+    type: 'object',
+    required: ['sessionIds'],
+    properties: {
+      sessionIds: {
+        type: 'array',
+        minItems: 1,
+        items: { type: 'string', minLength: 1 },
       },
     },
     additionalProperties: false,
@@ -1848,6 +1863,54 @@ export default async function sessionRoutes(app) {
     }
   );
 
+  app.post(
+    '/courses/:courseId/sessions/copy',
+    {
+      preHandler: authenticate,
+      schema: bulkSessionCopySchema,
+    },
+    async (request, reply) => {
+      const targetCourse = await Course.findById(request.params.courseId).lean();
+      if (!targetCourse) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(targetCourse, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const requestedSessionIds = [...new Set((request.body.sessionIds || []).map((sessionId) => String(sessionId)))];
+      const sourceSessions = await Session.find({ _id: { $in: requestedSessionIds } });
+      const sourceSessionsById = new Map(sourceSessions.map((session) => [String(session._id), session]));
+      const copiedSessions = [];
+
+      for (const sessionId of requestedSessionIds) {
+        const sourceSession = sourceSessionsById.get(sessionId);
+        if (!sourceSession) {
+          return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+        }
+
+        const sourceCourse = await Course.findById(sourceSession.courseId).lean();
+        if (!sourceCourse) {
+          return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+        }
+
+        if (!isInstructorOrAdmin(sourceCourse, request.user)) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+        }
+
+        const copiedSession = await copySessionToCourse({
+          sourceSession,
+          targetCourseId: targetCourse._id,
+          userId: request.user.userId,
+        });
+        copiedSessions.push(copiedSession);
+      }
+
+      return reply.code(201).send({ sessions: copiedSessions });
+    }
+  );
+
   // POST /sessions/:id/copy - Copy a session
   app.post(
     '/sessions/:id/copy',
@@ -1867,62 +1930,25 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const newSession = await Session.create({
-        name: session.name + ' (copy)',
-        description: session.description,
-        courseId: session.courseId,
-        status: 'hidden',
-        quiz: session.quiz,
-        practiceQuiz: session.practiceQuiz,
-        quizStart: session.quizStart,
-        quizEnd: session.quizEnd,
-        msScoringMethod: session.msScoringMethod,
-        date: session.date,
-        tags: session.tags,
-        reviewable: session.reviewable,
-        questions: [],
-        joined: [],
-        submittedQuiz: [],
-        quizExtensions: [],
-        currentQuestion: '',
-      });
-
-      await Course.findByIdAndUpdate(course._id, {
-        $addToSet: { sessions: newSession._id },
-      });
-
-      const sourceQuestionIds = session.questions || [];
-      if (sourceQuestionIds.length > 0) {
-        const sourceQuestions = await Question.find({ _id: { $in: sourceQuestionIds } });
-        const sourceQuestionsById = new Map(sourceQuestions.map((q) => [String(q._id), q]));
-        const copiedQuestionIds = [];
-
-        for (const sourceQuestionId of sourceQuestionIds) {
-          const sourceQuestion = sourceQuestionsById.get(String(sourceQuestionId));
-          if (!sourceQuestion) continue;
-
-          const copiedQuestion = await copyQuestionToSession({
-            sourceQuestion,
-            targetSessionId: newSession._id,
-            targetCourseId: course._id,
-            userId: request.user.userId,
-            addToSession: false,
-          });
-
-          copiedQuestionIds.push(copiedQuestion._id);
-        }
-
-        if (copiedQuestionIds.length > 0) {
-          await Session.findByIdAndUpdate(newSession._id, {
-            $set: { questions: copiedQuestionIds },
-          });
-        }
+      const targetCourseId = request.body?.targetCourseId || session.courseId;
+      const targetCourse = String(targetCourseId) === String(course._id)
+        ? course
+        : await Course.findById(targetCourseId).lean();
+      if (!targetCourse) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isInstructorOrAdmin(targetCourse, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const copiedSession = await Session.findById(newSession._id);
+      const copiedSession = await copySessionToCourse({
+        sourceSession: session,
+        targetCourseId: targetCourse._id,
+        userId: request.user.userId,
+      });
 
       return reply.code(201).send({
-        session: copiedSession ? copiedSession.toObject() : newSession.toObject(),
+        session: copiedSession,
       });
     }
   );

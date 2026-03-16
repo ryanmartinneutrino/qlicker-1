@@ -34,6 +34,8 @@ describe('SessionQuestionGradingPanel', () => {
     vi.clearAllMocks();
     i18n.changeLanguage('en');
     apiClient.get.mockResolvedValue({ data: buildGradesPayload() });
+    apiClient.patch.mockResolvedValue({ data: { grade: { _id: 'grade-1', userId: 'student-a', marks: [{ questionId: 'q-manual', points: 0, outOf: 5, needsGrading: false }] } } });
+    apiClient.post.mockResolvedValue({ data: {} });
   });
 
   it('debounces answer filtering and matches MC answers by option label instead of option text', async () => {
@@ -110,5 +112,123 @@ describe('SessionQuestionGradingPanel', () => {
       { type: 2 },
       { answer: 'Derivative is positive', answerWysiwyg: '<p>Derivative is positive</p>' }
     ).filterText.toLowerCase()).toContain('derivative is positive');
+  });
+
+  it('allows saving a manual zero when the mark previously had no explicit score', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: null, outOf: 5, needsGrading: true, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    const saveButton = screen.getAllByRole('button', { name: /save/i }).find((button) => !button.disabled);
+    expect(saveButton).toBeTruthy();
+    expect(saveButton).not.toBeDisabled();
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith(
+        '/grades/grade-1/marks/q-manual',
+        { points: 0, feedback: '' }
+      );
+    });
+  });
+
+  it('filters the grading table down to students with responses only', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+          {
+            _id: 'grade-2',
+            userId: 'student-b',
+            marks: [{ questionId: 'q-manual', points: 0, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Has response' }] }],
+          },
+          {
+            studentId: 'student-b',
+            firstname: 'Grace',
+            lastname: 'Hopper',
+            email: 'grace@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+    expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText(/only with responses/i));
+
+    await waitFor(() => {
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+      expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    });
   });
 });
