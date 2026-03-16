@@ -7,6 +7,10 @@ import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copySessionToCourse } from '../services/sessionCopy.js';
 import {
+  sanitizeExportedQuestion,
+  sanitizeImportedQuestion,
+} from '../services/questionImportExport.js';
+import {
   ensureSessionMsScoringMethod,
   isQuestionResponseCollectionEnabled,
   isSlideQuestion,
@@ -121,6 +125,91 @@ const bulkSessionCopySchema = {
   },
 };
 
+const importSessionSchema = {
+  body: {
+    type: 'object',
+    required: ['session'],
+    properties: {
+      session: {
+        type: 'object',
+        required: ['name', 'questions'],
+        properties: {
+          name: { type: 'string', minLength: 1 },
+          description: { type: 'string' },
+          quiz: { type: 'boolean' },
+          practiceQuiz: { type: 'boolean' },
+          reviewable: { type: 'boolean' },
+          joinCodeEnabled: { type: 'boolean' },
+          joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
+          msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
+          questions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['type'],
+              properties: {
+                type: { type: 'integer', minimum: 0, maximum: 6 },
+                content: { type: 'string' },
+                plainText: { type: 'string' },
+                options: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      wysiwyg: { type: 'boolean' },
+                      correct: { type: 'boolean' },
+                      answer: { type: 'string' },
+                      content: { type: 'string' },
+                      plainText: { type: 'string' },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                toleranceNumerical: { type: 'number' },
+                correctNumerical: { type: 'number' },
+                solution: { type: 'string' },
+                solution_plainText: { type: 'string' },
+                public: { type: 'boolean' },
+                creator: { type: 'string' },
+                originalQuestion: { type: 'string' },
+                originalCourse: { type: 'string' },
+                imagePath: { type: 'string' },
+                tags: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      value: { type: 'string' },
+                      label: { type: 'string' },
+                      className: { type: 'string' },
+                    },
+                    additionalProperties: false,
+                  },
+                },
+                sessionOptions: {
+                  type: 'object',
+                  properties: {
+                    hidden: { type: 'boolean' },
+                    points: { type: 'number' },
+                    maxAttempts: { type: 'number' },
+                    attemptWeights: { type: 'array', items: { type: 'number' } },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              additionalProperties: false,
+            },
+          },
+        },
+        additionalProperties: false,
+      },
+      version: { type: 'integer' },
+      exportedAt: { type: 'string', format: 'date-time' },
+    },
+    additionalProperties: false,
+  },
+};
+
 const saveQuizResponseSchema = {
   body: {
     type: 'object',
@@ -158,6 +247,69 @@ function getParticipationQuestionPoints(question) {
     points = Number(question.sessionOptions.points) || 0;
   }
   return points;
+}
+
+function countCorrectOptions(options = []) {
+  if (!Array.isArray(options)) return 0;
+  return options.reduce((count, option) => (option?.correct ? count + 1 : count), 0);
+}
+
+function multipleChoiceValidationError(type, options) {
+  if (Number(type) !== 0) return null;
+  if (countCorrectOptions(options) <= 1) return null;
+  return {
+    error: 'Bad Request',
+    message: 'Multiple Choice questions can only have one correct option',
+  };
+}
+
+function sanitizeExportedSession(session, orderedQuestions = []) {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    session: {
+      name: String(session?.name || '').trim(),
+      description: session?.description || '',
+      quiz: !!session?.quiz,
+      practiceQuiz: !!session?.practiceQuiz,
+      reviewable: !!session?.reviewable,
+      joinCodeEnabled: !!session?.joinCodeEnabled,
+      joinCodeInterval: Number(session?.joinCodeInterval) || 10,
+      msScoringMethod: session?.msScoringMethod || 'right-minus-wrong',
+      questions: orderedQuestions.map((question) => sanitizeExportedQuestion(question, { includeSessionOptions: true })),
+    },
+  };
+}
+
+function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
+  const isPracticeQuiz = !!sourceSession?.practiceQuiz;
+  const isQuiz = isPracticeQuiz ? true : !!sourceSession?.quiz;
+
+  return {
+    name: String(sourceSession?.name || '').trim(),
+    description: sourceSession?.description || '',
+    courseId: String(courseId),
+    status: 'hidden',
+    quiz: isQuiz,
+    practiceQuiz: isPracticeQuiz,
+    reviewable: !!sourceSession?.reviewable,
+    joinCodeEnabled: !!sourceSession?.joinCodeEnabled,
+    joinCodeInterval: Number(sourceSession?.joinCodeInterval) || 10,
+    msScoringMethod: sourceSession?.msScoringMethod || 'right-minus-wrong',
+    date: undefined,
+    quizStart: undefined,
+    quizEnd: undefined,
+    quizExtensions: [],
+    currentQuestion: '',
+    questions: [],
+    joined: [],
+    joinRecords: [],
+    submittedQuiz: [],
+    joinCodeActive: false,
+    currentJoinCode: '',
+    joinCodeExpiresAt: undefined,
+    createdAt: new Date(),
+  };
 }
 
 function optionDisplayContent(option, index) {
@@ -1957,6 +2109,107 @@ export default async function sessionRoutes(app) {
 
       return reply.code(201).send({
         session: copiedSession,
+      });
+    }
+  );
+
+  app.get(
+    '/sessions/:id/export',
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 60, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionIds = Array.isArray(session.questions) ? session.questions : [];
+      const questions = questionIds.length > 0
+        ? await Question.find({ _id: { $in: questionIds } }).lean()
+        : [];
+      const questionsById = new Map(questions.map((question) => [String(question._id), question]));
+      const orderedQuestions = questionIds
+        .map((questionId) => questionsById.get(String(questionId)))
+        .filter(Boolean);
+
+      return sanitizeExportedSession(session, orderedQuestions);
+    }
+  );
+
+  app.post(
+    '/courses/:courseId/sessions/import',
+    {
+      preHandler: authenticate,
+      schema: importSessionSchema,
+      config: {
+        rateLimit: { max: 20, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const course = await Course.findById(request.params.courseId);
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const sourceSession = request.body.session || {};
+      const importedSessionPayload = buildImportedSessionPayload(sourceSession, course._id);
+      if (!importedSessionPayload.name) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Imported session requires a name' });
+      }
+
+      const importedQuestions = Array.isArray(sourceSession.questions) ? sourceSession.questions : [];
+      const validationError = importedQuestions
+        .map((question) => multipleChoiceValidationError(question?.type, question?.options))
+        .find(Boolean);
+      if (validationError) {
+        return reply.code(400).send(validationError);
+      }
+
+      const session = await Session.create(importedSessionPayload);
+
+      const importedQuestionPayloads = importedQuestions.map((question) => (
+        sanitizeImportedQuestion(question, {
+          courseId: String(course._id),
+          sessionId: String(session._id),
+          userId: request.user.userId,
+          includeSessionOptions: true,
+        })
+      ));
+      const createdQuestions = importedQuestionPayloads.length > 0
+        ? await Question.insertMany(importedQuestionPayloads)
+        : [];
+      const createdQuestionIds = createdQuestions.map((question) => String(question._id));
+
+      const updatedSession = await Session.findByIdAndUpdate(
+        session._id,
+        { $set: { questions: createdQuestionIds } },
+        { new: true }
+      );
+
+      await Course.findByIdAndUpdate(course._id, {
+        $addToSet: { sessions: session._id },
+      });
+
+      return reply.code(201).send({
+        session: updatedSession.toObject(),
+        questionCount: createdQuestionIds.length,
       });
     }
   );

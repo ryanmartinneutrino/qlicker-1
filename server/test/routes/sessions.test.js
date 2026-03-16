@@ -2252,6 +2252,184 @@ describe('POST /api/v1/courses/:courseId/sessions/copy', () => {
   });
 });
 
+// ---------- GET /api/v1/sessions/:id/export + POST /api/v1/courses/:courseId/sessions/import ----------
+describe('session import/export endpoints', () => {
+  it('exports a portable session payload with ordered questions and draft-safe fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-session-export@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken, { name: 'Export Course' })).json().course;
+    const session = (await createSessionInCourse(profToken, course._id, {
+      name: 'Export Session',
+      description: 'Export me',
+      quiz: true,
+      practiceQuiz: true,
+    })).json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: {
+        status: 'done',
+        reviewable: true,
+        joinCodeEnabled: true,
+        joinCodeInterval: 30,
+      },
+    });
+
+    const questionA = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>First question</p>',
+      plainText: 'First question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'Correct', correct: true },
+        { answer: 'Incorrect', correct: false },
+      ],
+      sessionOptions: {
+        points: 3,
+        hidden: true,
+        stats: true,
+        correct: true,
+        attempts: [{ number: 1, closed: true }],
+      },
+    });
+    const questionB = await createQuestionInSession(profToken, {
+      type: 2,
+      content: '<p>Second question</p>',
+      plainText: 'Second question',
+      solution: '<p>Worked solution</p>',
+      solution_plainText: 'Worked solution',
+      sessionId: session._id,
+      courseId: course._id,
+      sessionOptions: { points: 5, maxAttempts: 2, attemptWeights: [1, 0.5] },
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/questions/order`, {
+      token: profToken,
+      payload: { questions: [questionB._id, questionA._id] },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/export`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.version).toBe(1);
+    expect(body.session).toMatchObject({
+      name: 'Export Session',
+      description: 'Export me',
+      quiz: true,
+      practiceQuiz: true,
+      reviewable: true,
+      joinCodeEnabled: true,
+      joinCodeInterval: 30,
+    });
+    expect(body.session).not.toHaveProperty('courseId');
+    expect(body.session).not.toHaveProperty('status');
+    expect(body.session).not.toHaveProperty('date');
+    expect(body.session).not.toHaveProperty('quizStart');
+    expect(body.session).not.toHaveProperty('quizEnd');
+    expect(body.session.questions).toHaveLength(2);
+    expect(body.session.questions[0].plainText).toBe('Second question');
+    expect(body.session.questions[0].sessionOptions).toEqual({
+      points: 5,
+      maxAttempts: 2,
+      attemptWeights: [1, 0.5],
+    });
+    expect(body.session.questions[1].plainText).toBe('First question');
+    expect(body.session.questions[1].sessionOptions).toEqual({
+      hidden: true,
+      points: 3,
+    });
+    expect(body.session.questions[1].sessionOptions).not.toHaveProperty('stats');
+    expect(body.session.questions[1].sessionOptions).not.toHaveProperty('correct');
+    expect(body.session.questions[1].sessionOptions).not.toHaveProperty('attempts');
+  });
+
+  it('imports a session export into the current course with new question documents', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-session-import@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const targetCourse = (await createCourseAsProf(profToken, { name: 'Import Target' })).json().course;
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/courses/${targetCourse._id}/sessions/import`, {
+      token: profToken,
+      payload: {
+        version: 1,
+        session: {
+          name: 'Imported Session',
+          description: 'Portable import',
+          quiz: false,
+          practiceQuiz: false,
+          reviewable: true,
+          joinCodeEnabled: true,
+          joinCodeInterval: 15,
+          msScoringMethod: 'correctness-ratio',
+          questions: [
+            {
+              type: 0,
+              content: '<p>Imported MC</p>',
+              plainText: 'Imported MC',
+              options: [
+                { answer: 'A', correct: true },
+                { answer: 'B', correct: false },
+              ],
+              tags: [{ value: 'review', label: 'Review' }],
+              sessionOptions: { hidden: true, points: 4, maxAttempts: 2, attemptWeights: [1, 0.5] },
+            },
+            {
+              type: 2,
+              content: '<p>Imported SA</p>',
+              plainText: 'Imported SA',
+              solution: '<p>Explain</p>',
+              solution_plainText: 'Explain',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const importedSession = res.json().session;
+    expect(importedSession.courseId).toBe(targetCourse._id);
+    expect(importedSession.name).toBe('Imported Session');
+    expect(importedSession.status).toBe('hidden');
+    expect(importedSession.reviewable).toBe(true);
+    expect(importedSession.joinCodeEnabled).toBe(true);
+    expect(importedSession.joinCodeInterval).toBe(15);
+    expect(importedSession.date).toBeUndefined();
+    expect(importedSession.quizStart).toBeUndefined();
+    expect(importedSession.quizEnd).toBeUndefined();
+    expect(importedSession.currentQuestion).toBe('');
+    expect(importedSession.questions).toHaveLength(2);
+
+    const targetCourseDoc = await Course.findById(targetCourse._id).lean();
+    expect(targetCourseDoc.sessions).toContain(importedSession._id);
+
+    const importedQuestions = await Question.find({ _id: { $in: importedSession.questions } }).lean();
+    expect(importedQuestions).toHaveLength(2);
+    importedQuestions.forEach((question) => {
+      expect(question.courseId).toBe(targetCourse._id);
+      expect(question.sessionId).toBe(importedSession._id);
+      expect(question.owner).toBe(prof._id);
+    });
+
+    const multipleChoiceQuestion = importedQuestions.find((question) => question.plainText === 'Imported MC');
+    expect(multipleChoiceQuestion.tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'review', label: 'Review' }),
+      expect.objectContaining({ value: 'imported', label: 'imported' }),
+    ]));
+    expect(multipleChoiceQuestion.sessionOptions).toMatchObject({
+      hidden: true,
+      points: 4,
+      maxAttempts: 2,
+      attemptWeights: [1, 0.5],
+    });
+  });
+});
+
 // ---------- POST /api/v1/sessions/:id/copy ----------
 describe('POST /api/v1/sessions/:id/copy', () => {
   it('instructor can copy a session', async (ctx) => {

@@ -3,6 +3,11 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
+import {
+  normalizeTags,
+  sanitizeExportedQuestion,
+  sanitizeImportedQuestion,
+} from '../services/questionImportExport.js';
 import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 
 const createQuestionSchema = {
@@ -367,90 +372,6 @@ function parseDelimitedValues(value) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
-}
-
-function normalizeTags(tags = []) {
-  if (!Array.isArray(tags)) return [];
-  return tags.reduce((normalized, tag) => {
-    if (typeof tag === 'string') {
-      const value = tag.trim();
-      if (!value) return normalized;
-      normalized.push({ value, label: value });
-      return normalized;
-    }
-
-    const value = String(tag?.value || tag?.label || '').trim();
-    const label = String(tag?.label || tag?.value || '').trim();
-    if (!value || !label) return normalized;
-
-    normalized.push({
-      value,
-      label,
-      ...(tag?.className ? { className: String(tag.className) } : {}),
-    });
-    return normalized;
-  }, []);
-}
-
-function buildNormalizedImportedTagList(tags = []) {
-  const existingTags = normalizeTags(tags);
-  const hasImportedTag = existingTags.some((tag) => String(tag.value || '').toLowerCase() === 'imported');
-  if (hasImportedTag) return existingTags;
-  return [...existingTags, { value: 'imported', label: 'imported' }];
-}
-
-function sanitizeExportedQuestion(question) {
-  const source = typeof question?.toObject === 'function' ? question.toObject() : question;
-  return {
-    type: source?.type,
-    content: source?.content || '',
-    plainText: source?.plainText || '',
-    options: Array.isArray(source?.options) ? source.options : [],
-    toleranceNumerical: source?.toleranceNumerical,
-    correctNumerical: source?.correctNumerical,
-    solution: source?.solution || '',
-    solution_plainText: source?.solution_plainText || '',
-    public: !!source?.public,
-    tags: normalizeTags(source?.tags || []),
-    creator: String(source?.creator || '').trim(),
-    originalQuestion: String(source?.originalQuestion || source?._id || '').trim(),
-    originalCourse: String(source?.originalCourse || source?.courseId || '').trim(),
-    imagePath: source?.imagePath || '',
-  };
-}
-
-function sanitizeImportedQuestion(question, { courseId, sessionId, userId }) {
-  const tags = buildNormalizedImportedTagList(question?.tags || []);
-  const payload = {
-    type: Number(question?.type),
-    content: question?.content || '',
-    plainText: question?.plainText || question?.content || '',
-    options: Array.isArray(question?.options) ? question.options : [],
-    courseId,
-    sessionId,
-    solution: question?.solution || '',
-    solution_plainText: question?.solution_plainText || '',
-    public: !!question?.public,
-    tags,
-    imagePath: question?.imagePath || '',
-    approved: true,
-    creator: String(question?.creator || userId),
-    owner: userId,
-    originalQuestion: String(question?.originalQuestion || '').trim(),
-    originalCourse: String(question?.originalCourse || courseId).trim(),
-    createdAt: new Date(),
-    lastEditedAt: new Date(),
-    studentCreated: false,
-  };
-
-  if (question?.toleranceNumerical !== undefined) {
-    payload.toleranceNumerical = question.toleranceNumerical;
-  }
-  if (question?.correctNumerical !== undefined) {
-    payload.correctNumerical = question.correctNumerical;
-  }
-
-  return payload;
 }
 
 async function createLibraryQuestionCopy({ sourceQuestion, targetCourseId, userId }) {
