@@ -13,7 +13,9 @@ export async function copyQuestionToSession({
   }
 
   const sourceObject = sourceQuestion.toObject ? sourceQuestion.toObject() : sourceQuestion;
-  const originalQuestionId = String(sourceObject._id || sourceQuestion._id || '');
+  const sourceQuestionId = String(sourceObject._id || sourceQuestion._id || '');
+  const originalQuestionId = String(sourceObject.originalQuestion || sourceQuestionId);
+  const originalCourseId = String(sourceObject.originalCourse || sourceObject.courseId || targetCourseId || '');
   const copiedPayload = { ...sourceObject };
   delete copiedPayload._id;
   delete copiedPayload.__v;
@@ -21,12 +23,16 @@ export async function copyQuestionToSession({
 
   const copy = await Question.create({
     ...copiedPayload,
-    creator: userId,
+    creator: String(sourceObject.creator || userId),
     owner: userId,
     sessionId: targetSessionId,
     courseId: targetCourseId,
     originalQuestion: originalQuestionId,
+    originalCourse: originalCourseId,
     createdAt: new Date(),
+    lastEditedAt: new Date(),
+    approved: true,
+    studentCreated: !!sourceObject.studentCreated,
   });
 
   if (addToSession) {

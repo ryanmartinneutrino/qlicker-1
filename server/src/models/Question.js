@@ -54,17 +54,20 @@ const QuestionSchema = new mongoose.Schema(
     creator: { type: String, required: true },
     owner: { type: String, default: '' },
     originalQuestion: { type: String, default: '' },
+    originalCourse: { type: String, default: '' },
     sessionId: { type: String, default: '' },
     courseId: { type: String, default: '' },
     public: { type: Boolean, default: false },
     solution: { type: String, default: '' },
     solution_plainText: { type: String, default: '' },
     createdAt: { type: Date, default: Date.now },
+    lastEditedAt: { type: Date },
     approved: { type: Boolean, default: true },
     tags: { type: [TagSchema], default: [] },
     sessionOptions: { type: SessionOptionsSchema },
     imagePath: { type: String, default: '' },
     studentCopyOfPublic: { type: Boolean, default: false },
+    studentCreated: { type: Boolean, default: false },
   },
   {
     collection: 'questions',
@@ -76,6 +79,14 @@ const QuestionSchema = new mongoose.Schema(
 QuestionSchema.index({ sessionId: 1 });
 QuestionSchema.index({ courseId: 1 });
 QuestionSchema.index({ owner: 1 });
+QuestionSchema.index({ courseId: 1, createdAt: -1 });
+QuestionSchema.index({ originalCourse: 1 });
+QuestionSchema.index({ 'tags.value': 1 });
+QuestionSchema.index({
+  plainText: 'text',
+  'options.plainText': 'text',
+  'options.answer': 'text',
+});
 
 const Question = mongoose.model('Question', QuestionSchema);
 

@@ -24,6 +24,7 @@ import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
+import QuestionLibraryPanel from '../../components/questions/QuestionLibraryPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
 import { useTranslation } from 'react-i18next';
 
@@ -77,8 +78,8 @@ function sortSessions(items) {
   });
 }
 
-// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Video, 7=Settings
-const MAX_COURSE_TAB_INDEX = 7;
+// Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Video?, 7=Settings, 8=Question Library
+const MAX_COURSE_TAB_INDEX = 8;
 
 function parseCourseTab(value) {
   const parsed = Number.parseInt(value, 10);
@@ -750,11 +751,13 @@ export default function CourseDetail() {
     t('professor.course.groups'),
     ...(videoEnabled ? [t('professor.course.video')] : []),
     t('professor.course.settings'),
+    t('questionLibrary.title', { defaultValue: 'Question Library' }),
   ];
 
   // When video tab is hidden, settings tab shifts from index 7 to index 6
   const videoTabIndex = videoEnabled ? 6 : -1;
   const settingsTabIndex = videoEnabled ? 7 : 6;
+  const questionLibraryTabIndex = videoEnabled ? 8 : 7;
 
   const handleTabChange = (nextTab) => {
     setTab(nextTab);
@@ -1206,6 +1209,13 @@ export default function CourseDetail() {
             {t('professor.course.deleteCourse')}
           </Button>
         </Box>
+      </TabPanel>
+
+      <TabPanel value={tab} index={questionLibraryTabIndex}>
+        <QuestionLibraryPanel
+          courseId={id}
+          availableSessions={sortedSessions}
+        />
       </TabPanel>
 
       {/* Add Student Dialog */}
