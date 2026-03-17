@@ -1233,7 +1233,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                   {directSelectionMode
                     ? (selectionAction.buttonLabel || t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }))
                     : isStudentLibrary
-                    ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
+                    ? t('questionLibrary.bulk.copyToPracticeSession', { defaultValue: 'Copy to practice session' })
                     : t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
                 </Button>
               ) : null}
@@ -1382,7 +1382,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                             {!directSelectionMode && studentCanCopyQuestion ? (
                               <Tooltip
                                 title={isStudentLibrary
-                                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
+                                  ? t('questionLibrary.bulk.copyToPracticeSession', { defaultValue: 'Copy to practice session' })
                                   : t('common.copy', { defaultValue: 'Copy' })}
                               >
                                 <span>
@@ -1390,7 +1390,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                                     size="small"
                                     disabled={saving}
                                     aria-label={isStudentLibrary
-                                      ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
+                                      ? t('questionLibrary.bulk.copyToPracticeSession', { defaultValue: 'Copy to practice session' })
                                       : t('common.copy', { defaultValue: 'Copy' })}
                                     onClick={() => handleCopyQuestionSingle(questionId)}
                                   >
@@ -1574,7 +1574,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
 
       <SessionSelectorDialog
         open={practiceSessionDialogOpen}
-        title={t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })}
+        title={t('questionLibrary.bulk.copyToPracticeSession', { defaultValue: 'Copy to practice session' })}
         sessions={studentPracticeSessions}
         selectedIds={selectedPracticeSessionIds}
         headerContent={(

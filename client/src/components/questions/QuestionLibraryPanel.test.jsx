@@ -232,7 +232,7 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
     expect(screen.queryByText('Has responses')).not.toBeInTheDocument();
     expect(screen.queryByText('3 responses')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Copy to practice session' }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('button', { name: 'Copy to practice session' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'New question' }));
