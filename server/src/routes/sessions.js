@@ -7,6 +7,7 @@ import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copySessionToCourse } from '../services/sessionCopy.js';
 import {
+  getNormalizedTagValue,
   normalizeTags,
   sanitizeExportedQuestion,
   sanitizeImportedQuestion,
@@ -241,12 +242,43 @@ const importSessionSchema = {
         },
         additionalProperties: false,
       },
+      importTags: {
+        type: 'array',
+        items: {
+          anyOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+                label: { type: 'string' },
+                className: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
       version: { type: 'integer' },
       exportedAt: { type: 'string', format: 'date-time' },
     },
     additionalProperties: false,
   },
 };
+
+function getAllowedCourseTagValues(course) {
+  const values = new Set();
+  (course?.tags || []).forEach((tag) => {
+    const normalized = getNormalizedTagValue(tag);
+    if (normalized) values.add(normalized);
+  });
+  return values;
+}
+
+function hasDisallowedTags(tags = [], allowedTagValues = new Set()) {
+  const normalizedTags = normalizeTags(tags);
+  return normalizedTags.some((tag) => !allowedTagValues.has(getNormalizedTagValue(tag)));
+}
 
 const saveQuizResponseSchema = {
   body: {
@@ -1239,8 +1271,12 @@ export default async function sessionRoutes(app) {
       } = request.body;
       const isPracticeQuiz = !!practiceQuiz;
       const isQuiz = isPracticeQuiz ? true : !!quiz;
+      const allowedTagValues = getAllowedCourseTagValues(course);
       if (isStudentPracticeCreation && !isPracticeQuiz) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Students can only create practice sessions' });
+      }
+      if (hasDisallowedTags(tags || [], allowedTagValues)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Sessions can only use the course topics' });
       }
       const quizWindowValidationError = getQuizWindowValidationMessage(null, {
         quiz: isQuiz,
@@ -1638,6 +1674,10 @@ export default async function sessionRoutes(app) {
         }
       }
       if (updates.tags !== undefined) {
+        const allowedTagValues = getAllowedCourseTagValues(course);
+        if (hasDisallowedTags(updates.tags, allowedTagValues)) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Sessions can only use the course topics' });
+        }
         updates.tags = normalizeTags(updates.tags);
       }
 
@@ -2334,6 +2374,10 @@ export default async function sessionRoutes(app) {
       }
 
       const importedQuestions = Array.isArray(sourceSession.questions) ? sourceSession.questions : [];
+      const allowedTagValues = getAllowedCourseTagValues(course);
+      if (hasDisallowedTags(sourceSession.tags || [], allowedTagValues)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Sessions can only use the course topics' });
+      }
       const validationError = importedQuestions
         .map((question) => multipleChoiceValidationError(question?.type, question?.options))
         .find(Boolean);
@@ -2342,6 +2386,7 @@ export default async function sessionRoutes(app) {
       }
 
       const session = await Session.create(importedSessionPayload);
+      const importTags = normalizeTags(request.body.importTags || []);
 
       const importedQuestionPayloads = importedQuestions.map((question) => (
         sanitizeImportedQuestion(question, {
@@ -2349,6 +2394,7 @@ export default async function sessionRoutes(app) {
           sessionId: String(session._id),
           userId: request.user.userId,
           includeSessionOptions: true,
+          importTags,
         })
       ));
       const createdQuestions = importedQuestionPayloads.length > 0

@@ -4,6 +4,7 @@ import Course from '../models/Course.js';
 import Response from '../models/Response.js';
 import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
+  getNormalizedTagValue,
   normalizeTags,
   sanitizeExportedQuestion,
   sanitizeImportedQuestion,
@@ -325,6 +326,23 @@ const importQuestionsSchema = {
         },
       },
       sessionId: { type: 'string' },
+      importTags: {
+        type: 'array',
+        items: {
+          anyOf: [
+            { type: 'string' },
+            {
+              type: 'object',
+              properties: {
+                value: { type: 'string' },
+                label: { type: 'string' },
+                className: { type: 'string' },
+              },
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
     },
     additionalProperties: false,
   },
@@ -487,8 +505,11 @@ async function buildQuestionLibraryDetails(questionDocs = [], courseId = '') {
     return [];
   }
 
-  const [responseQuestionIds, linkedSessions, directSessionDocs] = await Promise.all([
-    Response.distinct('questionId', { questionId: { $in: questionIds } }),
+  const [responseStats, linkedSessions, directSessionDocs] = await Promise.all([
+    Response.aggregate([
+      { $match: { questionId: { $in: questionIds } } },
+      { $group: { _id: '$questionId', count: { $sum: 1 } } },
+    ]),
     Session.find({ courseId, questions: { $in: questionIds } })
       .select('_id name questions')
       .lean(),
@@ -504,7 +525,9 @@ async function buildQuestionLibraryDetails(questionDocs = [], courseId = '') {
     }).select('_id name').lean(),
   ]);
 
-  const responseSet = new Set(responseQuestionIds.map((questionId) => String(questionId)));
+  const responseCountByQuestionId = new Map(
+    responseStats.map((entry) => [String(entry?._id || ''), Number(entry?.count || 0)])
+  );
   const sessionsByQuestionId = new Map();
   const seenSessionLinks = new Set();
 
@@ -543,7 +566,8 @@ async function buildQuestionLibraryDetails(questionDocs = [], courseId = '') {
 
     return {
       ...question,
-      hasResponses: responseSet.has(questionId),
+      hasResponses: (responseCountByQuestionId.get(questionId) || 0) > 0,
+      responseCount: responseCountByQuestionId.get(questionId) || 0,
       linkedSessions: sessionsByQuestionId.get(questionId) || [],
     };
   });
@@ -726,21 +750,17 @@ function isQuestionVisibleOutsideCourse(question, user) {
   return !!question?.publicOnQlickerForStudents;
 }
 
-async function getAllowedStudentTagValues(courseId) {
-  const normalizedCourseId = String(courseId || '').trim();
-  if (!normalizedCourseId) return new Set();
-
-  const course = await Course.findById(normalizedCourseId).select('tags').lean();
-
+function getAllowedCourseTagValues(course) {
   const values = new Set();
-  const addTagValue = (tag) => {
-    const normalized = String(tag?.value || tag?.label || tag || '').trim().toLowerCase();
+  (course?.tags || []).forEach((tag) => {
+    const normalized = getNormalizedTagValue(tag);
     if (normalized) values.add(normalized);
-  };
-
-  (course?.tags || []).forEach(addTagValue);
-
+  });
   return values;
+}
+
+function courseTopicValidationMessage(label = 'Questions') {
+  return `${label} can only use the course topics`;
 }
 
 export async function userCanViewQuestion(question, user) {
@@ -992,18 +1012,6 @@ export default async function questionRoutes(app) {
 
       const search = String(request.query.q || '').trim().toLowerCase();
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
-      const [courseTags, sessionTags, questionTags] = isStudentMember
-        ? await Promise.all([
-          Promise.resolve(course.tags || []),
-          Promise.resolve([]),
-          Promise.resolve([]),
-        ])
-        : await Promise.all([
-          Promise.resolve(course.tags || []),
-          Session.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
-          Question.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
-        ]);
-
       const tagMap = new Map();
       const addTag = (tag) => {
         const value = String(tag?.value || tag?.label || '').trim();
@@ -1019,9 +1027,7 @@ export default async function questionRoutes(app) {
         }
       };
 
-      courseTags.forEach(addTag);
-      sessionTags.forEach((session) => (session?.tags || []).forEach(addTag));
-      questionTags.forEach((question) => (question?.tags || []).forEach(addTag));
+      (course.tags || []).forEach(addTag);
 
       const tags = [...tagMap.values()]
         .sort((a, b) => a.label.localeCompare(b.label) || a.value.localeCompare(b.value))
@@ -1080,13 +1086,20 @@ export default async function questionRoutes(app) {
         }
 
         const normalizedTags = normalizeTags(tags || []);
-        const allowedTagValues = await getAllowedStudentTagValues(normalizedCourseId);
+        const allowedTagValues = getAllowedCourseTagValues(course);
         const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
         if (hasInvalidTag) {
-          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use the course topics' });
+          return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
         }
       } else if (course && !isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      } else if (course) {
+        const normalizedTags = normalizeTags(tags || []);
+        const allowedTagValues = getAllowedCourseTagValues(course);
+        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
+        if (hasInvalidTag) {
+          return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
+        }
       }
 
       const questionData = {
@@ -1165,12 +1178,20 @@ export default async function questionRoutes(app) {
       }
 
       const isStudent = isStudentAccount(request.user);
+      const course = question.courseId ? await Course.findById(question.courseId).lean() : null;
       if (isStudent) {
         const normalizedTags = request.body.tags !== undefined ? normalizeTags(request.body.tags) : question.tags;
-        const allowedTagValues = await getAllowedStudentTagValues(question.courseId);
+        const allowedTagValues = getAllowedCourseTagValues(course);
         const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
         if (hasInvalidTag) {
-          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use the course topics' });
+          return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
+        }
+      } else if (course && request.body.tags !== undefined) {
+        const normalizedTags = normalizeTags(request.body.tags);
+        const allowedTagValues = getAllowedCourseTagValues(course);
+        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
+        if (hasInvalidTag) {
+          return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
         }
       }
 
@@ -1637,11 +1658,14 @@ export default async function questionRoutes(app) {
         }
       }
 
+      const importTags = normalizeTags(request.body.importTags || []);
+
       const importedPayloads = request.body.questions.map((question) => (
         sanitizeImportedQuestion(question, {
           courseId: String(course._id),
           sessionId: String(targetSession?._id || ''),
           userId: request.user.userId,
+          importTags,
         })
       ));
 

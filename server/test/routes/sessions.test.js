@@ -651,6 +651,14 @@ describe('PATCH /api/v1/sessions/:id', () => {
     const prof = await createTestUser({ email: 'session-tags-prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
     const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        tags: [
+          { value: 'kinematics', label: 'kinematics' },
+          { value: 'vectors', label: 'vectors' },
+        ],
+      },
+    });
     const session = (await createSessionInCourse(profToken, course._id)).json().session;
 
     const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {

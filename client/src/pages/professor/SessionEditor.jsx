@@ -5,7 +5,8 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   Alert, Snackbar, Switch, FormControlLabel, CircularProgress,
   Card, CardContent, Tooltip, FormControl, InputLabel, Select, MenuItem,
-  Menu, Autocomplete,
+  Checkbox, Chip,
+  Menu, Autocomplete, Stack,
 } from '@mui/material';
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
@@ -21,6 +22,7 @@ import {
 import apiClient from '../../api/client';
 import QuestionEditor from '../../components/questions/QuestionEditor';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
+import QuestionLibraryPanel from '../../components/questions/QuestionLibraryPanel';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import DateTimePreferenceField from '../../components/common/DateTimePreferenceField';
@@ -196,6 +198,11 @@ export default function SessionEditor() {
   const [exportFormat, setExportFormat] = useState('pdf');
   const [exportingSession, setExportingSession] = useState(false);
   const [importingSession, setImportingSession] = useState(false);
+  const [addQuestionDialog, setAddQuestionDialog] = useState({ open: false, index: 0 });
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [sessionImportPreview, setSessionImportPreview] = useState(null);
+  const [sessionImportSelectedIds, setSessionImportSelectedIds] = useState([]);
+  const [sessionImportTags, setSessionImportTags] = useState(['Imported']);
   const importInputRef = useRef(null);
 
   // Question editor
@@ -482,11 +489,59 @@ export default function SessionEditor() {
     event.target.value = '';
     if (!file) return;
 
-    setImportingSession(true);
     try {
       const parsed = JSON.parse(await file.text());
-      const { data } = await apiClient.post(`/courses/${courseId}/sessions/import`, parsed);
+      const previewQuestions = Array.isArray(parsed?.session?.questions)
+        ? parsed.session.questions.map((question, index) => ({
+          ...question,
+          _previewId: `session-import-${index}`,
+        }))
+        : [];
+      setSessionImportPreview({
+        ...parsed,
+        session: {
+          ...(parsed?.session || {}),
+          questions: previewQuestions,
+        },
+      });
+      setSessionImportSelectedIds(previewQuestions.map((question) => question._previewId));
+      setSessionImportTags(['Imported']);
+    } catch (err) {
+      const invalidJson = err instanceof SyntaxError;
+      setMsg({
+        severity: 'error',
+        text: invalidJson
+          ? t('professor.sessionEditor.invalidImportFile')
+          : err.response?.data?.message || t('professor.sessionEditor.failedImportSession'),
+      });
+    }
+  };
+
+  const handleConfirmSessionImport = async () => {
+    if (!sessionImportPreview?.session) return;
+    setImportingSession(true);
+    try {
+      const selectedSet = new Set(sessionImportSelectedIds);
+      const filteredQuestions = (sessionImportPreview.session.questions || [])
+        .filter((question) => selectedSet.has(question._previewId))
+        .map((question) => {
+          const sanitized = { ...question };
+          delete sanitized._previewId;
+          return sanitized;
+        });
+      const payload = {
+        ...sessionImportPreview,
+        session: {
+          ...sessionImportPreview.session,
+          questions: filteredQuestions,
+        },
+        importTags: sessionImportTags,
+      };
+      const { data } = await apiClient.post(`/courses/${courseId}/sessions/import`, payload);
       const importedSessionId = data.session?._id;
+      setSessionImportPreview(null);
+      setSessionImportSelectedIds([]);
+      setSessionImportTags(['Imported']);
       setMsg({ severity: 'success', text: t('professor.sessionEditor.importSessionSuccess') });
       if (importedSessionId) {
         const query = buildReturnNavigationOptions();
@@ -496,12 +551,9 @@ export default function SessionEditor() {
         );
       }
     } catch (err) {
-      const invalidJson = err instanceof SyntaxError;
       setMsg({
         severity: 'error',
-        text: invalidJson
-          ? t('professor.sessionEditor.invalidImportFile')
-          : err.response?.data?.message || t('professor.sessionEditor.failedImportSession'),
+        text: err.response?.data?.message || t('professor.sessionEditor.failedImportSession'),
       });
     } finally {
       setImportingSession(false);
@@ -568,6 +620,14 @@ export default function SessionEditor() {
     });
   };
 
+  const openAddQuestionDialogAt = (index) => {
+    if (questionsEditingLocked) {
+      setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeAdd') });
+      return;
+    }
+    setAddQuestionDialog({ open: true, index });
+  };
+
   const openEditEditor = (questionId) => {
     if (questionsEditingLocked) {
       setMsg({ severity: 'warning', text: t('professor.sessionEditor.unlockBeforeChange') });
@@ -616,6 +676,24 @@ export default function SessionEditor() {
     }
     closeInlineEditor();
   };
+
+  const handleAddQuestionsFromLibrary = useCallback(async (questionIds) => {
+    const normalizedIds = [...new Set((questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
+    if (!normalizedIds.length) return;
+
+    const insertIndex = Math.max(0, Math.min(addQuestionDialog.index, questions.length));
+    for (const questionId of normalizedIds) {
+      await apiClient.post(`/sessions/${sessionId}/questions`, { questionId });
+    }
+
+    const existingIds = questions.map((question) => String(question._id)).filter((questionId) => !normalizedIds.includes(questionId));
+    const orderedIds = [...existingIds];
+    orderedIds.splice(insertIndex, 0, ...normalizedIds);
+    await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
+    setLibraryDialogOpen(false);
+    setAddQuestionDialog({ open: false, index: insertIndex });
+    await fetchSession();
+  }, [addQuestionDialog.index, fetchSession, questions, sessionId]);
 
   const handleAutoSaveQuestion = useCallback(async (payload, questionId) => {
     try {
@@ -1065,7 +1143,9 @@ export default function SessionEditor() {
             disableOptionCountChanges={questionHasResponses}
             optionCountLockReason={t('professor.sessionEditor.questionOptionsLocked')}
             typeSelectionLockReason={t('professor.sessionEditor.questionTypeLocked')}
+            tagSuggestions={course?.tags || []}
             showVisibilityControls={false}
+            allowCustomTags={false}
           />
         </Box>
 
@@ -1362,8 +1442,8 @@ export default function SessionEditor() {
 
           <Autocomplete
             multiple
-            freeSolo
-            options={sessionTags}
+            freeSolo={false}
+            options={normalizeTagValues(course?.tags || [])}
             value={sessionTags}
             onChange={(_event, nextValue) => {
               const normalizedTags = normalizeTagValues(nextValue);
@@ -1589,7 +1669,7 @@ export default function SessionEditor() {
                       variant="outlined"
                       size="small"
                       startIcon={<AddIcon />}
-                      onClick={() => openInsertEditorAt(slotIdx)}
+                      onClick={() => openAddQuestionDialogAt(slotIdx)}
                       disabled={questionsEditingLocked}
                       aria-label={`Add question at position ${slotIdx + 1}`}
                     >
@@ -1599,7 +1679,7 @@ export default function SessionEditor() {
                     <Button
                       variant="text"
                       size="small"
-                      onClick={() => openInsertEditorAt(slotIdx)}
+                      onClick={() => openAddQuestionDialogAt(slotIdx)}
                       disabled={questionsEditingLocked}
                       aria-label={`Add question at position ${slotIdx + 1}`}
                       sx={{
@@ -1871,6 +1951,133 @@ export default function SessionEditor() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setExportOpen(false)}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={addQuestionDialog.open} onClose={() => setAddQuestionDialog((current) => ({ ...current, open: false }))} maxWidth="xs" fullWidth>
+        <DialogTitle>{t('professor.sessionEditor.addQuestion')}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                openInsertEditorAt(addQuestionDialog.index);
+                setAddQuestionDialog((current) => ({ ...current, open: false }));
+              }}
+            >
+              {t('student.course.createNewQuestion', { defaultValue: 'Create New' })}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<CopyIcon />}
+              onClick={() => {
+                setLibraryDialogOpen(true);
+                setAddQuestionDialog((current) => ({ ...current, open: false }));
+              }}
+            >
+              {t('student.course.copyFromQuestionLibrary', { defaultValue: 'Copy from Question Library' })}
+            </Button>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddQuestionDialog((current) => ({ ...current, open: false }))}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={libraryDialogOpen} onClose={() => setLibraryDialogOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>{t('student.course.copyFromQuestionLibrary', { defaultValue: 'Copy from Question Library' })}</DialogTitle>
+        <DialogContent dividers sx={{ p: 0 }}>
+          <Box sx={{ p: 2 }}>
+            <QuestionLibraryPanel
+              courseId={courseId}
+              currentCourse={course}
+              availableSessions={[]}
+              allowQuestionCreate={false}
+              selectionAction={{
+                buttonLabel: t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }),
+                hideImport: true,
+                onSubmit: handleAddQuestionsFromLibrary,
+              }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLibraryDialogOpen(false)}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!sessionImportPreview} onClose={() => !importingSession && setSessionImportPreview(null)} maxWidth="lg" fullWidth>
+        <DialogTitle>{t('professor.sessionEditor.importSession')}</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              {t('professor.sessionEditor.importPreviewDescription', {
+                defaultValue: 'Review the imported questions, remove any you do not want, and choose tags to apply to all imported questions.',
+              })}
+            </Typography>
+            <TextField
+              label={t('professor.sessionEditor.sessionName', { defaultValue: 'Session name' })}
+              value={sessionImportPreview?.session?.name || ''}
+              InputProps={{ readOnly: true }}
+            />
+            <Autocomplete
+              multiple
+              freeSolo
+              options={[...new Set(['Imported', ...normalizeTagValues(course?.tags || [])])]}
+              value={sessionImportTags}
+              onChange={(_event, nextValue) => setSessionImportTags(normalizeTagValues(nextValue))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label={t('questionLibrary.import.tags', { defaultValue: 'Tags to apply to all imported questions' })}
+                  placeholder={t('questionLibrary.import.tagsPlaceholder', { defaultValue: 'Imported' })}
+                />
+              )}
+            />
+            <Stack spacing={1.25}>
+              {(sessionImportPreview?.session?.questions || []).map((question, index) => {
+                const previewId = question._previewId || `session-import-${index}`;
+                const checked = sessionImportSelectedIds.includes(previewId);
+                return (
+                  <Card key={previewId} variant="outlined">
+                    <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                      <Checkbox
+                        checked={checked}
+                        onChange={() => {
+                          setSessionImportSelectedIds((previous) => (
+                            checked
+                              ? previous.filter((id) => id !== previewId)
+                              : [...previous, previewId]
+                          ));
+                        }}
+                      />
+                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                          <Chip
+                            size="small"
+                            label={t('professor.sessionEditor.questionNumber', { number: index + 1 })}
+                          />
+                        </Box>
+                        <QuestionDisplay question={question} />
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSessionImportPreview(null)} disabled={importingSession}>{t('common.cancel')}</Button>
+          <Button
+            variant="contained"
+            data-testid="confirm-session-import"
+            onClick={handleConfirmSessionImport}
+            disabled={importingSession}
+          >
+            {importingSession ? t('common.saving', { defaultValue: 'Saving…' }) : t('professor.sessionEditor.importSession')}
+          </Button>
         </DialogActions>
       </Dialog>
 

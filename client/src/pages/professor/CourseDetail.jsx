@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
@@ -25,9 +25,10 @@ import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
-import QuestionLibraryPanel from '../../components/questions/QuestionLibraryPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
 import { useTranslation } from 'react-i18next';
+
+const QuestionLibraryPanel = lazy(() => import('../../components/questions/QuestionLibraryPanel'));
 
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
@@ -1360,11 +1361,13 @@ export default function CourseDetail() {
       </TabPanel>
 
       <TabPanel value={tab} index={questionLibraryTabIndex}>
-        <QuestionLibraryPanel
-          courseId={id}
-          availableSessions={sortedSessions}
-          onSessionsChanged={fetchSessions}
-        />
+        <Suspense fallback={<Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>}>
+          <QuestionLibraryPanel
+            courseId={id}
+            availableSessions={sortedSessions}
+            onSessionsChanged={fetchSessions}
+          />
+        </Suspense>
       </TabPanel>
 
       {/* Add Student Dialog */}

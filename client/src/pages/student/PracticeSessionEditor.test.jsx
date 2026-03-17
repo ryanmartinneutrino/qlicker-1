@@ -75,27 +75,17 @@ describe('PracticeSessionEditor', () => {
         });
       }
 
-      if (url === '/courses/course-1/questions?limit=100') {
-        return Promise.resolve({
-          data: {
-            questions: [
-              { _id: 'q-1', content: 'Existing question' },
-            ],
-          },
-        });
-      }
-
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
   });
 
-  it('loads questions with the supported limit and keeps student question creation private', async () => {
+  it('opens the add-question flow and keeps student question creation private', async () => {
     renderEditor();
 
-    expect(await screen.findByText('Existing question')).toBeInTheDocument();
-    expect(apiClientMock.get).toHaveBeenCalledWith('/courses/course-1/questions?limit=100');
+    expect(await screen.findByLabelText('Practice session name')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'New question' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add question' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create New' }));
 
     expect(await screen.findByText('Mock Question Editor')).toBeInTheDocument();
     expect(questionEditorPropsMock).toHaveBeenCalledWith(expect.objectContaining({

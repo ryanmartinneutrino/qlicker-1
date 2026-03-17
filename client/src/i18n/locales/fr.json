@@ -538,7 +538,8 @@
       "quizEndAfterStart": "La fin du quiz doit être postérieure au début du quiz.",
       "failedLoadSession": "Échec du chargement de la session",
       "failedUpdateSession": "Échec de la mise à jour de la session.",
-      "failedDeleteSession": "Échec de la suppression de la session"
+      "failedDeleteSession": "Échec de la suppression de la session",
+      "importPreviewDescription": "Passez en revue les questions importées, retirez celles que vous ne voulez pas et choisissez les étiquettes à appliquer à toutes les questions importées."
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -779,7 +780,12 @@
       "failedUnenroll": "Échec de la désinscription",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
-      "video": "Vidéo"
+      "video": "Vidéo",
+      "addQuestion": "Ajouter une question",
+      "createNewQuestion": "Créer une nouvelle question",
+      "copyFromQuestionLibrary": "Copier depuis la bibliothèque de questions",
+      "practiceSessionQuestions": "Questions dans cette séance de pratique",
+      "noPracticeQuestionsSelected": "Ajoutez ou créez des questions pour construire cette séance de pratique."
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -1028,7 +1034,9 @@
       "previewCount_other": "{{count}} questions prêtes à être importées",
       "importedTag": "une étiquette importée sera ajoutée",
       "confirm_one": "Importer 1 question",
-      "confirm_other": "Importer {{count}} questions"
+      "confirm_other": "Importer {{count}} questions",
+      "tags": "Étiquettes à appliquer à toutes les questions importées",
+      "tagsPlaceholder": "Imported"
     },
     "bulk": {
       "selectAll": "Tout sélectionner ({{count}})",
@@ -1048,7 +1056,12 @@
       "practiceSessionHelp": "Choisissez une de vos séances de pratique pour y ajouter les questions sélectionnées.",
       "practiceSessionEmpty": "Créez d'abord une séance de pratique pour y réutiliser les questions sélectionnées.",
       "practiceSessionSaved_one": "Question ajoutée à la séance de pratique.",
-      "practiceSessionSaved_other": "Questions ajoutées à la séance de pratique."
+      "practiceSessionSaved_other": "Questions ajoutées à la séance de pratique.",
+      "addToSession": "Ajouter à la séance",
+      "questionsAddedToSession_one": "Question ajoutée à la séance.",
+      "questionsAddedToSession_other": "Questions ajoutées à la séance.",
+      "randomCount": "Nombre aléatoire",
+      "selectRandomFiltered": "Choisir {{count}} au hasard"
     },
     "selection": {
       "pageSummary_one": "1 question correspondante",
@@ -1057,7 +1070,9 @@
     "status": {
       "approved": "Approuvée",
       "unapproved": "Non approuvée",
-      "hasResponses": "A des réponses"
+      "hasResponses": "A des réponses",
+      "responseCount_one": "1 réponse",
+      "responseCount_other": "{{count}} réponses"
     },
     "actions": {
       "approve": "Approuver la question",
@@ -1080,7 +1095,8 @@
       "visibility": "Échec de la mise à jour de la visibilité des questions.",
       "export": "Échec de l'exportation des questions.",
       "importParse": "Le fichier sélectionné n'est pas un JSON valide de bibliothèque de questions.",
-      "import": "Échec de l'importation des questions."
+      "import": "Échec de l'importation des questions.",
+      "selectRandom": "Impossible de sélectionner des questions filtrées au hasard."
     }
   },
   "grades": {
