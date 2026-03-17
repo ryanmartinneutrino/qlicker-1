@@ -4,6 +4,7 @@ import axios from 'axios';
 // On page reload the token is lost; the first 401 triggers a refresh via the
 // httpOnly cookie, which transparently restores the access token.
 let accessToken = null;
+let refreshRequest = null;
 
 export function setAccessToken(token) {
   accessToken = token;
@@ -17,8 +18,27 @@ export function clearAccessToken() {
   accessToken = null;
 }
 
+export async function refreshAccessToken() {
+  if (!refreshRequest) {
+    refreshRequest = axios.post('/api/v1/auth/refresh', {}, {
+      withCredentials: true,
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    }).then(({ data }) => {
+      if (!data?.token) {
+        throw new Error('Missing access token in refresh response');
+      }
+      setAccessToken(data.token);
+      return data.token;
+    }).finally(() => {
+      refreshRequest = null;
+    });
+  }
+  return refreshRequest;
+}
+
 const apiClient = axios.create({
   baseURL: '/api/v1',
+  withCredentials: true,
   headers: {
     'X-Requested-With': 'XMLHttpRequest',
   },
@@ -26,6 +46,7 @@ const apiClient = axios.create({
 
 // Attach JWT token to every request
 apiClient.interceptors.request.use((config) => {
+  config.headers = config.headers || {};
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
@@ -42,12 +63,9 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true;
       try {
-        const { data } = await axios.post('/api/v1/auth/refresh', {}, {
-          withCredentials: true,
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        });
-        setAccessToken(data.token);
-        originalRequest.headers.Authorization = `Bearer ${data.token}`;
+        const refreshedToken = await refreshAccessToken();
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
         return apiClient(originalRequest);
       } catch {
         clearAccessToken();
