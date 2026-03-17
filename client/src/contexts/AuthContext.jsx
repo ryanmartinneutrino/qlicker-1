@@ -1,5 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import apiClient, { setAccessToken, getAccessToken, clearAccessToken } from '../api/client';
+import apiClient, {
+  setAccessToken,
+  getAccessToken,
+  clearAccessToken,
+  refreshAccessToken,
+} from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -11,8 +16,7 @@ export function AuthProvider({ children }) {
     // On initial load, try refreshing via httpOnly cookie (access token is memory-only)
     if (!getAccessToken()) {
       try {
-        const { data } = await apiClient.post('/auth/refresh');
-        setAccessToken(data.token);
+        await refreshAccessToken();
       } catch {
         setLoading(false);
         return;

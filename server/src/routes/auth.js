@@ -9,6 +9,13 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+const LEGACY_REFRESH_VERSION_QUERY = {
+  $or: [
+    { refreshTokenVersion: { $exists: false } },
+    { refreshTokenVersion: null },
+    { refreshTokenVersion: 0 },
+  ],
+};
 
 function getAttr(profile, key) {
   if (!key || !profile) return '';
@@ -99,6 +106,23 @@ async function recordFailedLoginAttempt(user) {
   }
   await user.save();
   return isLoginLocked(user);
+}
+
+async function consumeRefreshTokenVersion(userId, version) {
+  if (Number.isInteger(version) && version >= 0) {
+    return User.findOneAndUpdate(
+      { _id: userId, refreshTokenVersion: version },
+      { $inc: { refreshTokenVersion: 1 } },
+      { new: true }
+    );
+  }
+
+  // Backward-compatible path for pre-rotation tokens that had no version claim.
+  return User.findOneAndUpdate(
+    { _id: userId, ...LEGACY_REFRESH_VERSION_QUERY },
+    { $set: { refreshTokenVersion: 1 } },
+    { new: true }
+  );
 }
 
 const registerSchema = {
@@ -276,11 +300,18 @@ export default async function authRoutes(app) {
     if (refreshToken) {
       try {
         const payload = jwt.verify(refreshToken, app.config.jwtRefreshSecret);
-        if (payload?.type === 'refresh' && Number.isInteger(payload.version)) {
-          await User.updateOne(
-            { _id: payload.userId, refreshTokenVersion: payload.version },
-            { $inc: { refreshTokenVersion: 1 } }
-          );
+        if (payload?.type === 'refresh' && payload.userId) {
+          if (Number.isInteger(payload.version) && payload.version >= 0) {
+            await User.updateOne(
+              { _id: payload.userId, refreshTokenVersion: payload.version },
+              { $inc: { refreshTokenVersion: 1 } }
+            );
+          } else {
+            await User.updateOne(
+              { _id: payload.userId, ...LEGACY_REFRESH_VERSION_QUERY },
+              { $set: { refreshTokenVersion: 1 } }
+            );
+          }
         }
       } catch {
         // Ignore invalid refresh tokens during logout and still clear the cookie.
@@ -311,15 +342,11 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid token type' });
     }
 
-    if (!Number.isInteger(payload.version) || payload.version < 0) {
+    if (!payload.userId) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }
 
-    const user = await User.findOneAndUpdate(
-      { _id: payload.userId, refreshTokenVersion: payload.version },
-      { $inc: { refreshTokenVersion: 1 } },
-      { new: true }
-    );
+    const user = await consumeRefreshTokenVersion(payload.userId, payload.version);
     if (!user) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }

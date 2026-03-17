@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
 import Settings from '../../src/models/Settings.js';
+import User from '../../src/models/User.js';
 
 let app;
 
@@ -493,6 +494,45 @@ describe('POST /api/v1/auth/refresh', () => {
     });
     expect(secondRefreshRes.statusCode).toBe(200);
     expect(secondRefreshRes.json().token).toBeTruthy();
+  });
+
+  it('accepts one legacy refresh token (no version claim) and rotates to a versioned token', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'legacy-refresh@example.com', password: 'password123' });
+    await User.updateOne({ _id: user._id }, { $unset: { refreshTokenVersion: 1 } });
+
+    const legacyRefreshToken = jwt.sign(
+      { userId: user._id, type: 'refresh' },
+      app.config.jwtRefreshSecret,
+      { expiresIn: '7d' }
+    );
+
+    const firstRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${legacyRefreshToken}`,
+      },
+    });
+    expect(firstRefreshRes.statusCode).toBe(200);
+    expect(firstRefreshRes.json().token).toBeTruthy();
+
+    const rotatedRefreshToken = extractCookieValue(firstRefreshRes.headers['set-cookie'], 'refreshToken');
+    expect(rotatedRefreshToken).toBeTruthy();
+    const rotatedPayload = jwt.verify(rotatedRefreshToken, app.config.jwtRefreshSecret);
+    expect(Number.isInteger(rotatedPayload.version)).toBe(true);
+    expect(rotatedPayload.version).toBeGreaterThanOrEqual(1);
+
+    const rejectedLegacyReuseRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${legacyRefreshToken}`,
+      },
+    });
+    expect(rejectedLegacyReuseRes.statusCode).toBe(401);
   });
 });
 
