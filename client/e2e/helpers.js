@@ -136,6 +136,8 @@ export async function loginViaUi(page, email, password, expectedPathPattern) {
 
 export async function expectNoCriticalAccessibilityViolations(page) {
   const results = await new AxeBuilder({ page }).analyze();
+  // Fail the regression checks on critical issues first; serious violations can
+  // be triaged separately without making the existing suite too brittle.
   const criticalViolations = results.violations.filter((violation) => violation.impact === 'critical');
 
   expect(

@@ -124,7 +124,7 @@ export function LiveSessionWebSocketProvider({ sessionId, children }) {
     lastEvent,
     transport,
     registerRefreshHandler,
-  }), [lastEvent, transport]);
+  }), [lastEvent, registerRefreshHandler, transport]);
 
   return (
     <LiveSessionWebSocketContext.Provider value={value}>

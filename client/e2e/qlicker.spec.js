@@ -173,7 +173,11 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
   await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.goto(`/manage/course/${course._id}/session/${quizSession._id}/review`);
+  await professorPage.getByRole('heading', { name: /^CS 101$/ }).click();
+  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await professorPage.getByRole('tab', { name: /^Quizzes/i }).click();
+  await professorPage.getByRole('button', { name: new RegExp(`Review session ${quizSession.name}`, 'i') }).click();
+  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}/session/${quizSession._id}/review`));
   await professorPage.getByRole('tab', { name: /^Students$/i }).click();
   await expect(professorPage.getByText(student.email)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(professorPage);

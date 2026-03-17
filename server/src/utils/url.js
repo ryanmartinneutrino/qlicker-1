@@ -7,6 +7,9 @@ export function isSafeProfileImageUrl(value) {
   }
 
   if (trimmed.startsWith('/')) {
+    if (/^\/{2,}/.test(trimmed)) {
+      return false;
+    }
     return true;
   }
 

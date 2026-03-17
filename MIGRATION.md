@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and what remains. For coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md). For legacy database details, see [LEGACY_DB.md](LEGACY_DB.md). For completed work history, see [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md).
 
-## Status: Phase 7 In Progress — Security Hardening Complete, Remaining Work Below
+## Status: Phase 7 In Progress — Only SSO Production Confirmation and Follow-Up Items Remain
 
 ---
 
@@ -124,16 +124,18 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Question-library/session-editor follow-up fixes — student/practice and professor/session question insertion now both start from a create-vs-library chooser with searchable library pickers, filtered random selection, and import previews that allow pruning imported questions plus applying suggested tags; course/question/session tagging is now limited to course topics for new edits; professor library rows can show response counts; delete refreshes more gracefully; question-library bundles are lazy-loaded from the course page; practice-session cards expose review once they contain questions; and shared student identity rows only make the text area clickable so avatar expansion no longer triggers group membership changes
 - ✅ Additional student/practice question-library polish — instructor-facing question editors now explain when course-topic tags are required and disabled until course topics exist; student libraries hide edit/response-management affordances for questions they cannot manage, hide response-count chips, and keep bulk delete disabled whenever any selected question is not student-manageable; practice-session editors now expose insert slots before, between, and after questions plus bottom-of-modal actions for adding selected or random library questions; and hidden question-editor visibility settings are permission-locked so student/practice flows cannot mutate them indirectly
 - ✅ Practice-session and SSO follow-up polish — practice-session cards now route directly into review once they contain questions, course and question topic tags are visible in the student/practice and professor/session lists, student-owned practice-session questions can be edited inline and recopied from visible library rows, practice reviews stop requesting unnecessary session grades, and SSO-enabled courses now treat enrollment emails as verified while hiding the redundant per-course verified-email toggle
+- ✅ Remaining Phase 7 security hardening — refresh tokens now rotate on each use and are invalidated on logout/password changes, password logins temporarily lock after repeated failures, development JWT secrets are generated at runtime when env values are omitted outside production, profile image URLs accept only http(s) or site-relative paths, and file uploads plus inbound websocket messages are rate limited
+- ✅ Remaining Phase 7 additional items — professor/student live-session pages now share a common websocket context, Playwright uses axe-core accessibility regression checks across the existing browser flows, the student question approval workflow is complete, and the question library expansion work is complete enough that only SSO confirmation plus follow-up decisions remain in Phase 7
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 274 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 36 tests across 14 files
+- **Server:** 283 tests across 13 test files
+- **Client:** 39 tests across 14 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
-- **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
+- **E2E:** 6 Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
 
 ---
 
@@ -146,60 +148,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 - [ ] Verify SP-initiated logout generates correct redirect URL
 - [ ] Confirm encrypted assertion decryption works with production certificates
 
-### Priority 2: Question Library UI
-
-- [x] Implement an initial course question library for professors
-  - Browse instructor-owned course libraries from the course management page
-  - Search/filter by course, type, tags, session membership, content, and approval state
-  - Preview and inline-edit questions with response-aware edit locks
-  - Copy single or bulk questions to another instructor course and optional session
-  - Export/import question JSON for course/session reuse
-  - Preserve creator/original course/original question lineage metadata when copying or importing
-- [ ] Extend the question library to cover personal/public libraries and deeper session-editor integration
-  - Session editor now includes direct session export/import controls (portable JSON plus print-friendly PDF variants); remaining work here is broader personal/public library coverage
-- [x] Student question library and approval/publication workflow (when `allowStudentQuestions` is enabled)
-  - Students can browse the course question library from the student course page, copy visible questions, and create/edit only their own private unapproved questions
-  - Student-authored questions stay library-only (never session-attached), can only use the professor-managed course topics, and do not expose public-visibility controls in the editor
-  - Professors can still approve student questions, and can now promote a student question to course-public visibility in one action, which also transfers ownership to the professor
-- [x] Student practice sessions
-  - Students now have a dedicated “Practice Sessions” course tab with create/edit/delete flows for their own practice quizzes
-  - Practice sessions reuse the student quiz/review experience, including one-question-at-a-time navigation and “show solution” behavior after per-question submission
-  - Practice sessions can reference visible library questions directly, so student-authored questions remain unassociated with sessions
-
-### Priority 3: Remaining Security Hardening
-
-| Item | Severity | Status | Notes |
-|------|----------|--------|-------|
-| Refresh token rotation | LOW-MEDIUM | ⬜ TODO | Implement one-time-use refresh tokens (currently valid for 7 days) |
-| Account lockout | LOW-MEDIUM | ⬜ TODO | Temporary lockout after repeated failed login attempts |
-| Hardcoded dev secrets | LOW | ⬜ TODO | Remove `'dev-secret-change-me'` fallbacks in config (guarded in production but should be explicit) |
-| Profile image URL validation | MEDIUM | ⬜ TODO | Validate URLs to prevent `javascript:` or `data:` URIs |
-| Rate limiting on file uploads | LOW | ⬜ TODO | Prevent abuse of 5MB image upload endpoint |
-
-### Priority 4: API Documentation
-
-- [x] Register `@fastify/swagger` in `app.js` (dependency installed but not wired up)
-- [x] Add `@fastify/swagger-ui` for interactive API explorer
-- [x] Add JSON Schema to all routes for auto-generated docs
-
-### Priority 5: E2E Tests (Playwright)
-
-- [x] Set up Playwright configuration
-- [x] Login flow E2E test
-- [x] Course management flow E2E test
-- [x] Session creation flow E2E test
-- [x] Live session flow E2E test
-- [x] Quiz flow E2E test
-- [x] Grading flow E2E test
-- [x] Legacy DB compatibility E2E tests
-
-### Priority 6: Additional Items
-
-- [x] Copy sessions between courses (Agent 3 remaining task)
-- [ ] Extract WebSocket context from inline LiveSession pages to shared context
-- [ ] Add automated accessibility regression checks (axe-core in Playwright)
-- [ ] Question approval workflow (student submissions)
-- [ ] WebSocket rate limiting
+All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 work is the SSO production confirmation above plus the follow-up decisions below.
 
 ### Remaining Follow-Up Items
 
@@ -222,8 +171,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 - [ ] Private-bucket cutover for S3 images (see [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [ ] Complete developer guide
 - [ ] Complete user manual
-- [ ] Refresh token rotation
-- [ ] Account lockout after repeated failures
+- [x] Refresh token rotation
+- [x] Account lockout after repeated failures
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Component tests for critical UI components
 
@@ -261,38 +210,39 @@ Work is divided into **8 parallel lanes**. Dependencies between agents are minim
 | 1 - Foundation | ✅ Phase 7 done | Phase 8: production Docker, backup scripts |
 | 2 - Auth | ✅ Phase 7 done | SSO production confirmation |
 | 3 - Courses | ✅ Phase 7 done | — |
-| 4 - Sessions | ✅ Phase 7 done | Question approval workflow |
-| 5 - Responses | ✅ Phase 7 done | WebSocket rate limiting |
+| 4 - Sessions | ✅ Phase 7 done | — |
+| 5 - Responses | ✅ Phase 7 done | — |
 | 6 - Grading | ✅ Phase 6 done | — |
-| 7 - Frontend | ✅ Phase 7 done | Question library UI, WebSocket context extraction |
-| 8 - Testing | ✅ Phase 7 done | Playwright E2E, CI pipeline, component tests |
+| 7 - Frontend | ✅ Phase 7 done | — |
+| 8 - Testing | ✅ Phase 7 done | Phase 8: CI pipeline, component tests |
 
 ---
 
-## Code Review Findings (2026-03-12)
+## Code Review Findings (2026-03-12, refreshed 2026-03-17)
 
-A comprehensive security and performance code review was conducted. Below are the remaining findings that need attention.
+A comprehensive security and performance code review was conducted and refreshed after the latest Phase 7 hardening work. Below are the remaining findings that still need attention after addressing the straightforward items in this PR.
 
 ### Security — Remaining
 
 | Issue | Severity | Recommendation | Target |
 |-------|----------|----------------|--------|
-| **No refresh token rotation** | LOW-MEDIUM | Implement one-time-use refresh tokens | Phase 8 |
-| **No account lockout** | LOW-MEDIUM | Temporary lockout after repeated failed attempts | Phase 8 |
-| **Profile image URL no validation** | MEDIUM | Validate URLs to prevent `javascript:` / `data:` URIs | Phase 7 |
-| **Hardcoded dev secrets in config** | LOW | Remove fallback strings to force explicit configuration | Phase 8 |
-| **File upload no rate limit** | LOW | Add rate limiting to image upload endpoint | Phase 7 |
 | **Settings PATCH accepts unvalidated SSO keys** | LOW | While field whitelist is in place, individual value validation for sensitive SSO fields should be added | Phase 8 |
 
 ### Security — Fixed (This Review)
 
 | Issue | Severity | Fix Applied |
 |-------|----------|-------------|
+| **No refresh token rotation** | LOW-MEDIUM | Refresh tokens now include a version claim and rotate atomically on refresh/logout/password changes |
+| **No account lockout** | LOW-MEDIUM | Password login now locks for 15 minutes after repeated failures |
+| **Profile image URL no validation** | MEDIUM | Profile images now allow only http(s) or site-relative URLs |
+| **Hardcoded dev secrets in config** | LOW | Development/runtime secrets are generated when explicit JWT env vars are absent outside production |
+| **File upload no rate limit** | LOW | Image upload route now opts into Fastify rate limiting |
 | **No CSRF protection** | HIGH | Custom header (`X-Requested-With`) with CORS enforcement |
 | **JWT access token in localStorage** | HIGH | Moved to in-memory with httpOnly cookie refresh |
 | **SAML logout not validated** | MEDIUM | node-saml `validatePostRequestAsync` attempted first |
 | **File upload no magic bytes** | MEDIUM | `file-type` library validates file content |
 | **Settings PATCH no field whitelist** | HIGH | Explicit allowed-fields whitelist |
+| **No WebSocket rate limiting** | LOW | WebSocket connections now close when inbound message limits are exceeded |
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previously fixed security issues.
 
@@ -317,14 +267,14 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 
 | Requirement | Status |
 |-------------|--------|
-| Same functionality as MeteorJS | 🔄 In progress — Phases 1–7 mostly complete; question library UI and SSO confirmation remain |
+| Same functionality as MeteorJS | 🔄 In progress — only SSO production confirmation and follow-up decisions remain from Phase 7 |
 | Same database compatibility | ✅ Verified — see [LEGACY_DB.md](LEGACY_DB.md) |
 | Fewer dependencies / well-maintained | ✅ On track |
 | API-first design | ✅ Complete — 30+ REST endpoints + WebSocket |
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 252 tests (240 server + 12 client) |
+| Unit tests | ✅ 322 automated checks (283 server + 39 client) plus 6 Playwright E2E flows |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 
@@ -344,13 +294,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (241 tests, 12 files)
+# Server tests (283 tests, 13 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (12 tests, 5 files)
+# Client tests (39 tests, 14 files)
 cd client && npx vitest run
 
 # Client E2E tests (6 Playwright flows)

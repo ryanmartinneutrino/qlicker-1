@@ -53,9 +53,7 @@ async function signAccessToken(app, user) {
 }
 
 function getRefreshTokenVersion(user) {
-  return Number.isInteger(user?.refreshTokenVersion) && user.refreshTokenVersion >= 0
-    ? user.refreshTokenVersion
-    : 0;
+  return Math.max(0, Number(user?.refreshTokenVersion) || 0);
 }
 
 function signRefreshToken(config, user, version = getRefreshTokenVersion(user)) {
@@ -85,7 +83,7 @@ function isLoginLocked(user) {
   return !!lockedUntil && lockedUntil.getTime() > Date.now();
 }
 
-async function resetLoginLockout(user) {
+function prepareLoginLockoutReset(user) {
   if (!user) return;
   user.failedLoginAttempts = 0;
   user.loginLockedUntil = null;
@@ -255,7 +253,7 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
-    await resetLoginLockout(user);
+    prepareLoginLockoutReset(user);
     user.lastLogin = new Date();
     user.lastAuthProvider = 'password';
     user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
@@ -270,7 +268,9 @@ export default async function authRoutes(app) {
   });
 
   // POST /logout
-  app.post('/logout', async (request, reply) => {
+  app.post('/logout', {
+    config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const refreshToken = request.cookies?.refreshToken;
 
     if (refreshToken) {
@@ -292,7 +292,9 @@ export default async function authRoutes(app) {
   });
 
   // POST /refresh
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', {
+    config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const refreshToken = request.cookies?.refreshToken;
     if (!refreshToken) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'No refresh token' });
