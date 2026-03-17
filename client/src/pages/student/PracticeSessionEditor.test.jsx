@@ -8,6 +8,9 @@ const {
   apiClientMock,
   tMock,
   questionEditorPropsMock,
+  questionLibraryPanelPropsMock,
+  submitSelectedQuestionsMock,
+  submitRandomFilteredQuestionsMock,
 } = vi.hoisted(() => ({
   apiClientMock: {
     get: vi.fn(),
@@ -16,6 +19,9 @@ const {
   },
   tMock: vi.fn((key, options) => options?.defaultValue ?? key),
   questionEditorPropsMock: vi.fn(),
+  questionLibraryPanelPropsMock: vi.fn(),
+  submitSelectedQuestionsMock: vi.fn(),
+  submitRandomFilteredQuestionsMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -44,11 +50,29 @@ vi.mock('../../components/questions/QuestionEditor', () => ({
   }),
 }));
 
-function renderEditor() {
+vi.mock('../../components/questions/QuestionLibraryPanel', () => ({
+  default: React.forwardRef(function MockQuestionLibraryPanel(props, ref) {
+    React.useImperativeHandle(ref, () => ({
+      submitSelectedQuestions: submitSelectedQuestionsMock,
+      submitRandomFilteredQuestions: submitRandomFilteredQuestionsMock,
+    }));
+
+    React.useEffect(() => {
+      props.selectionAction?.onSelectionChange?.(['q1', 'q2']);
+    }, [props.selectionAction]);
+
+    questionLibraryPanelPropsMock(props);
+    return <div>Mock Question Library Panel</div>;
+  }),
+}));
+
+function renderEditor(initialEntry = '/student/course/course-1/practice-sessions/new') {
   return render(
-    <MemoryRouter initialEntries={['/student/course/course-1/practice-sessions/new']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/student/course/:courseId/practice-sessions/new" element={<PracticeSessionEditor />} />
+        <Route path="/student/course/:courseId/practice-sessions/:sessionId" element={<PracticeSessionEditor />} />
+        <Route path="/student/course/:courseId/session/:sessionId/review" element={<div>Review destination</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -75,6 +99,29 @@ describe('PracticeSessionEditor', () => {
         });
       }
 
+      if (url === '/sessions/session-1') {
+        return Promise.resolve({
+          data: {
+            session: {
+              _id: 'session-1',
+              name: 'Practice One',
+              questions: ['q1', 'q2'],
+            },
+          },
+        });
+      }
+
+      if (url === '/questions/q1' || url === '/questions/q2') {
+        return Promise.resolve({
+          data: {
+            question: {
+              _id: url.endsWith('q1') ? 'q1' : 'q2',
+              content: url.endsWith('q1') ? 'Question One' : 'Question Two',
+            },
+          },
+        });
+      }
+
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
   });
@@ -92,6 +139,62 @@ describe('PracticeSessionEditor', () => {
       showVisibilityControls: false,
       allowCustomTags: false,
       tagSuggestions: [{ value: 'algebra', label: 'algebra' }],
+    }));
+  });
+
+  it('shows insertion controls for existing practice questions and saves to review', async () => {
+    apiClientMock.patch.mockResolvedValue({ data: {} });
+
+    renderEditor('/student/course/course-1/practice-sessions/session-1');
+
+    expect(await screen.findByText('Question One')).toBeInTheDocument();
+    expect(screen.getByText('Question Two')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Add question' }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByRole('button', { name: 'common.add' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save and start practice' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/sessions/session-1', { name: 'Practice One' });
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/sessions/session-1/practice-questions', {
+        questionIds: ['q1', 'q2'],
+      });
+    });
+
+    expect(await screen.findByText('Review destination')).toBeInTheDocument();
+  });
+
+  it('offers bottom modal actions to add selected or random library questions', async () => {
+    submitSelectedQuestionsMock.mockResolvedValue(undefined);
+    submitRandomFilteredQuestionsMock.mockResolvedValue(undefined);
+
+    renderEditor();
+
+    expect(await screen.findByLabelText('Practice session name')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add question' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy from Question Library' }));
+
+    expect(await screen.findByText('Mock Question Library Panel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add selected questions to practice session' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add selected questions to practice session' }));
+
+    await waitFor(() => {
+      expect(submitSelectedQuestionsMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.change(screen.getByLabelText('Random count'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Randomly add 12 questions from the list' }));
+
+    await waitFor(() => {
+      expect(submitRandomFilteredQuestionsMock).toHaveBeenCalledWith(12);
+    });
+
+    expect(questionLibraryPanelPropsMock).toHaveBeenCalledWith(expect.objectContaining({
+      selectionAction: expect.objectContaining({
+        hideInlineRandomSelectionControls: true,
+      }),
     }));
   });
 });

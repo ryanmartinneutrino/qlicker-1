@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
+} from 'react';
 import {
   Alert,
   Autocomplete,
@@ -394,14 +396,14 @@ function FormSelectionActions({ total, selectedCount, onSelectAll, onClear }) {
   );
 }
 
-export default function QuestionLibraryPanel({
+const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
   courseId,
   availableSessions = [],
   onSessionsChanged,
   currentCourse = null,
   allowQuestionCreate = true,
   selectionAction = null,
-}) {
+}, ref) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const roles = user?.roles || [];
@@ -443,6 +445,7 @@ export default function QuestionLibraryPanel({
   const [randomSelectionCount, setRandomSelectionCount] = useState(10);
   const inlineQuestionEditorRef = useRef(null);
   const directSelectionMode = !!selectionAction?.onSubmit;
+  const showInlineRandomSelectionControls = directSelectionMode && !selectionAction?.hideInlineRandomSelectionControls;
 
   const queryParams = useMemo(() => ({
     page,
@@ -799,16 +802,16 @@ export default function QuestionLibraryPanel({
     }
   };
 
-  const handleDirectSelectionSubmit = async () => {
-    if (!directSelectionMode || !selectedQuestionIds.length) return;
+  const submitSelectedQuestionIds = useCallback(async (questionIds, selectedQuestionSubset = []) => {
+    if (!directSelectionMode || !questionIds.length) return;
     setSaving(true);
     try {
-      await selectionAction.onSubmit?.(selectedQuestionIds, questions.filter((question) => selectedIdSet.has(String(question._id))));
+      await selectionAction.onSubmit?.(questionIds, selectedQuestionSubset);
       setMessage({
         severity: 'success',
         text: selectionAction.successMessage || t('questionLibrary.bulk.questionsAddedToSession', {
-          count: selectedQuestionIds.length,
-          defaultValue: selectedQuestionIds.length === 1 ? 'Question added to the session.' : 'Questions added to the session.',
+          count: questionIds.length,
+          defaultValue: questionIds.length === 1 ? 'Question added to the session.' : 'Questions added to the session.',
         }),
       });
       setSelectedQuestionIds([]);
@@ -820,27 +823,57 @@ export default function QuestionLibraryPanel({
     } finally {
       setSaving(false);
     }
-  };
+  }, [directSelectionMode, questions, selectionAction, t]);
 
-  const selectRandomFilteredQuestions = async () => {
+  const handleDirectSelectionSubmit = useCallback(async () => {
+    if (!directSelectionMode || !selectedQuestionIds.length) return;
+    await submitSelectedQuestionIds(
+      selectedQuestionIds,
+      questions.filter((question) => selectedIdSet.has(String(question._id)))
+    );
+  }, [directSelectionMode, questions, selectedIdSet, selectedQuestionIds, submitSelectedQuestionIds]);
+
+  const getFilteredQuestionIds = useCallback(async () => {
+    const query = buildQueryString({ ...queryParams, idsOnly: true });
+    const { data } = await apiClient.get(`/courses/${sourceCourseId}/questions?${query}`);
+    return [...new Set((data.questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
+  }, [queryParams, sourceCourseId]);
+
+  const getRandomFilteredQuestionIds = useCallback(async (requestedCount) => {
+    const allQuestionIds = await getFilteredQuestionIds();
+    const shuffledIds = [...allQuestionIds];
+    for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
+      const randomIndex = Math.floor(Math.random() * (index + 1));
+      [shuffledIds[index], shuffledIds[randomIndex]] = [shuffledIds[randomIndex], shuffledIds[index]];
+    }
+    return shuffledIds.slice(0, Math.min(Math.max(1, Number(requestedCount) || 1), shuffledIds.length));
+  }, [getFilteredQuestionIds]);
+
+  const selectRandomFilteredQuestions = useCallback(async (requestedCount = randomSelectionCount) => {
     try {
-      const requestedCount = Math.max(1, Number(randomSelectionCount) || 1);
-      const query = buildQueryString({ ...queryParams, idsOnly: true });
-      const { data } = await apiClient.get(`/courses/${sourceCourseId}/questions?${query}`);
-      const allQuestionIds = [...new Set((data.questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
-      const shuffledIds = [...allQuestionIds];
-      for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
-        const randomIndex = Math.floor(Math.random() * (index + 1));
-        [shuffledIds[index], shuffledIds[randomIndex]] = [shuffledIds[randomIndex], shuffledIds[index]];
-      }
-      setSelectedQuestionIds(shuffledIds.slice(0, Math.min(requestedCount, shuffledIds.length)));
+      setSelectedQuestionIds(await getRandomFilteredQuestionIds(requestedCount));
     } catch (err) {
       setMessage({
         severity: 'error',
         text: err.response?.data?.message || t('questionLibrary.errors.selectRandom', { defaultValue: 'Failed to select random filtered questions.' }),
       });
     }
-  };
+  }, [getRandomFilteredQuestionIds, randomSelectionCount, t]);
+
+  useImperativeHandle(ref, () => ({
+    submitSelectedQuestions: handleDirectSelectionSubmit,
+    submitRandomFilteredQuestions: async (requestedCount = randomSelectionCount) => {
+      if (!directSelectionMode) return;
+      const randomQuestionIds = await getRandomFilteredQuestionIds(requestedCount);
+      if (!randomQuestionIds.length) return;
+      await submitSelectedQuestionIds(randomQuestionIds, []);
+    },
+  }), [directSelectionMode, getRandomFilteredQuestionIds, handleDirectSelectionSubmit, randomSelectionCount, submitSelectedQuestionIds]);
+
+  useEffect(() => {
+    if (!directSelectionMode || typeof selectionAction?.onSelectionChange !== 'function') return;
+    selectionAction.onSelectionChange(selectedQuestionIds);
+  }, [directSelectionMode, selectedQuestionIds, selectionAction]);
 
   const handleOpenVisibilityDialog = () => {
     setBulkVisibilityForm(resolveBulkVisibilityInitialForm(selectedQuestions));
@@ -1211,6 +1244,7 @@ export default function QuestionLibraryPanel({
                   tagSuggestions={tagOptions}
                   showVisibilityControls={!isStudentLibrary}
                   allowCustomTags={false}
+                  showCourseTagSettingsHint={!isStudentLibrary}
                   onAutoSave={handleEditorSave}
                   onClose={async () => {
                     setCreatingQuestion(false);
@@ -1234,6 +1268,7 @@ export default function QuestionLibraryPanel({
               {questions.map((question, index) => {
                 const questionId = String(question._id);
                 const ownsQuestion = String(question.owner || '') === currentUserId;
+                const studentCanManageQuestion = ownsQuestion && !question.hasResponses;
                 const checked = selectedIdSet.has(questionId);
                 const expanded = !!expandedQuestionIds[questionId];
                 const editing = editingQuestionId === questionId;
@@ -1269,7 +1304,7 @@ export default function QuestionLibraryPanel({
                                 label={session.name || t('grades.coursePanel.untitledSession', { defaultValue: 'Untitled session' })}
                               />
                             ))}
-                            {question.hasResponses ? (
+                            {!isStudentLibrary && question.hasResponses ? (
                               <Chip
                                 size="small"
                                 color="error"
@@ -1332,7 +1367,7 @@ export default function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
-                            {(!isStudentLibrary || ownsQuestion) ? (
+                            {(!isStudentLibrary || studentCanManageQuestion) ? (
                               <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
                                 <span>
                                   <IconButton
@@ -1358,7 +1393,7 @@ export default function QuestionLibraryPanel({
                                   size="small"
                                   color="error"
                                   aria-label={t('common.delete')}
-                                  disabled={saving || question.hasResponses || (isStudentLibrary && !ownsQuestion)}
+                                  disabled={saving || question.hasResponses || (isStudentLibrary && !studentCanManageQuestion)}
                                   onClick={() => handleDeleteQuestions([questionId])}
                                 >
                                   <DeleteIcon fontSize="small" />
@@ -1378,6 +1413,7 @@ export default function QuestionLibraryPanel({
                             tagSuggestions={tagOptions}
                             showVisibilityControls={!isStudentLibrary}
                             allowCustomTags={false}
+                            showCourseTagSettingsHint={!isStudentLibrary}
                             onAutoSave={handleEditorSave}
                             onClose={closeInlineEditor}
                             disableTypeSelection={disableTypeSelection}
@@ -1438,7 +1474,7 @@ export default function QuestionLibraryPanel({
             </Stack>
           )}
 
-          {directSelectionMode ? (
+          {showInlineRandomSelectionControls ? (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
               <TextField
                 size="small"
@@ -1630,4 +1666,6 @@ export default function QuestionLibraryPanel({
       />
     </Box>
   );
-}
+});
+
+export default QuestionLibraryPanel;

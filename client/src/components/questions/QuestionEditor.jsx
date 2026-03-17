@@ -203,6 +203,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   tagSuggestions = [],
   showVisibilityControls = true,
   allowCustomTags = true,
+  showCourseTagSettingsHint = false,
 }, ref) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
@@ -371,6 +372,16 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   const currentPayloadHash = useMemo(() => JSON.stringify(buildQuestionPayload(form)), [form]);
   const deferredPreviewForm = useDeferredValue(form);
   const previewPayload = useMemo(() => buildQuestionPayload(deferredPreviewForm), [deferredPreviewForm]);
+  const normalizedTagSuggestions = useMemo(() => (
+    [...new Set(
+      (tagSuggestions || [])
+        .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+        .filter(Boolean)
+    )]
+  ), [tagSuggestions]);
+  const tagsLockedToCourseTopics = !allowCustomTags;
+  const hasCourseTagSuggestions = normalizedTagSuggestions.length > 0;
+  const disableTagEditing = tagsLockedToCourseTopics && !hasCourseTagSuggestions;
   const linkedSessionCount = useMemo(() => {
     if (Array.isArray(initial?.linkedSessions) && initial.linkedSessions.length > 0) {
       return initial.linkedSessions.length;
@@ -562,11 +573,8 @@ const QuestionEditor = forwardRef(function QuestionEditor({
         <Autocomplete
           multiple
           freeSolo={allowCustomTags}
-          options={[...new Set(
-            (tagSuggestions || [])
-              .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
-              .filter(Boolean)
-          )]}
+          disabled={disableTagEditing}
+          options={normalizedTagSuggestions}
           value={form.tags || []}
           onChange={(_event, nextValue) => {
             updateForm((prev) => ({
@@ -590,12 +598,25 @@ const QuestionEditor = forwardRef(function QuestionEditor({
             <TextField
               {...params}
               label={t('questions.editor.tags', { defaultValue: 'Tags' })}
-              placeholder={t('questions.editor.tagsPlaceholder', { defaultValue: 'Add a tag' })}
+              placeholder={disableTagEditing
+                ? t('questions.editor.tagsUnavailablePlaceholder', { defaultValue: 'No course topics available' })
+                : t('questions.editor.tagsPlaceholder', { defaultValue: 'Add a tag' })}
               size="small"
             />
           )}
           sx={{ mb: 2 }}
         />
+        {showCourseTagSettingsHint && tagsLockedToCourseTopics ? (
+          <Alert severity={hasCourseTagSuggestions ? 'info' : 'warning'} sx={{ mb: 2 }}>
+            {hasCourseTagSuggestions
+              ? t('questions.editor.courseTagsOnly', {
+                defaultValue: 'Only course topics can be used as tags for questions.',
+              })
+              : t('questions.editor.courseTagsUnavailable', {
+                defaultValue: 'Only course-related topics can be added as question tags. Add course topics in Course Settings to enable tagging.',
+              })}
+          </Alert>
+        ) : null}
 
         {showVisibilityControls ? (
           <>

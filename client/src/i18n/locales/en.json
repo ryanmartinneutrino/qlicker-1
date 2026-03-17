@@ -950,6 +950,11 @@
       "editQuestion": "Edit Question",
       "newQuestion": "New Question",
       "closing": "Closing…",
+      "tags": "Tags",
+      "tagsPlaceholder": "Add a tag",
+      "tagsUnavailablePlaceholder": "No course topics available",
+      "courseTagsOnly": "Only course topics can be used as tags for questions.",
+      "courseTagsUnavailable": "Only course-related topics can be added as question tags. Add course topics in Course Settings to enable tagging.",
       "coursePublic": "Visible to students in this course",
       "qlickerPublic": "Visible to any prof on Qlicker",
       "qlickerPublicStudents": "Allow student accounts to view it outside this course",
@@ -1058,10 +1063,12 @@
       "practiceSessionSaved_one": "Question added to the practice session.",
       "practiceSessionSaved_other": "Questions added to the practice session.",
       "addToSession": "Add to session",
+      "addSelectedToPracticeSession": "Add selected questions to practice session",
       "questionsAddedToSession_one": "Question added to the session.",
       "questionsAddedToSession_other": "Questions added to the session.",
       "randomCount": "Random count",
-      "selectRandomFiltered": "Choose {{count}} at random"
+      "selectRandomFiltered": "Choose {{count}} at random",
+      "randomAddToPracticeSession": "Randomly add {{count}} questions from the list"
     },
     "selection": {
       "pageSummary_one": "1 matching question",
