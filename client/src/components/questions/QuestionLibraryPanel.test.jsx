@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import QuestionLibraryPanel from './QuestionLibraryPanel';
 
@@ -258,5 +258,100 @@ describe('QuestionLibraryPanel', () => {
 
     const deleteButtons = screen.getAllByRole('button', { name: 'common.delete' });
     expect(deleteButtons[0]).toBeDisabled();
+  });
+
+  it('only shows student edit controls for manageable owned questions and disables mixed delete selections', async () => {
+    authState.user = { _id: 'student-1', roles: ['student'] };
+    apiClientMock.get.mockImplementation((url) => {
+      if (url.startsWith('/courses/course-1/questions?') && !url.includes('idsOnly=true')) {
+        return Promise.resolve({
+          data: {
+            questions: [
+              {
+                _id: 'q-owned',
+                type: 2,
+                content: 'Owned draft question',
+                owner: 'student-1',
+                approved: false,
+                hasResponses: false,
+                responseCount: 0,
+                linkedSessions: [],
+                tags: [{ value: 'algebra', label: 'algebra' }],
+              },
+              {
+                _id: 'q-shared',
+                type: 2,
+                content: 'Shared session question',
+                owner: 'prof-1',
+                approved: true,
+                hasResponses: true,
+                responseCount: 2,
+                linkedSessions: [{ _id: 'session-1', name: 'Session One' }],
+                tags: [{ value: 'algebra', label: 'algebra' }],
+              },
+            ],
+            total: 2,
+            page: 1,
+            limit: 10,
+            questionTypes: [2],
+          },
+        });
+      }
+
+      if (url.startsWith('/courses/course-1/questions?') && url.includes('idsOnly=true')) {
+        return Promise.resolve({
+          data: {
+            questionIds: ['q-owned', 'q-shared'],
+            total: 2,
+          },
+        });
+      }
+
+      if (url === '/courses/course-1/sessions') {
+        return Promise.resolve({
+          data: {
+            sessions: [{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }],
+          },
+        });
+      }
+
+      if (url === '/courses/course-1/question-tags?limit=100') {
+        return Promise.resolve({
+          data: {
+            tags: [{ value: 'algebra', label: 'algebra' }],
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
+    });
+
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
+        availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
+        allowQuestionCreate
+      />
+    );
+
+    const ownedCard = (await screen.findByText('Owned draft question')).closest('.MuiCard-root');
+    const sharedCard = screen.getByText('Shared session question').closest('.MuiCard-root');
+
+    expect(ownedCard).not.toBeNull();
+    expect(sharedCard).not.toBeNull();
+
+    expect(within(ownedCard).getByRole('button', { name: 'common.edit' })).toBeInTheDocument();
+    expect(within(sharedCard).queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
+    expect(within(sharedCard).getByRole('button', { name: 'common.delete' })).toBeDisabled();
+    expect(screen.queryByText('Has responses')).not.toBeInTheDocument();
+    expect(screen.queryByText('2 responses')).not.toBeInTheDocument();
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[1]);
+    expect(screen.getAllByRole('button', { name: 'common.delete' })[0]).toBeEnabled();
+
+    fireEvent.click(checkboxes[2]);
+    expect(screen.getAllByRole('button', { name: 'common.delete' })[0]).toBeDisabled();
   });
 });

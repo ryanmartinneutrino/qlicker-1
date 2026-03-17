@@ -123,6 +123,24 @@ function resolveBulkVisibilityInitialForm(selectedQuestions = []) {
   return allMatch ? createVisibilityForm(first) : createVisibilityForm();
 }
 
+function questionOwnerId(question) {
+  return String(question?.owner || '');
+}
+
+function isQuestionOwnedByUser(question, userId) {
+  return questionOwnerId(question) !== '' && questionOwnerId(question) === String(userId || '');
+}
+
+function canStudentManageQuestion(question, userId) {
+  return isQuestionOwnedByUser(question, userId) && !question?.hasResponses;
+}
+
+function canDeleteLibraryQuestion(question, { isStudentLibrary, currentUserId }) {
+  if (question?.hasResponses) return false;
+  if (!isStudentLibrary) return true;
+  return canStudentManageQuestion(question, currentUserId);
+}
+
 function QuestionCopyDialog({
   open,
   courses = [],
@@ -469,12 +487,10 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
   ), [courses, sourceCourseId]);
   const currentUserId = String(user?._id || '');
   const selectedOwnedQuestions = useMemo(() => (
-    selectedQuestions.filter((question) => String(question?.owner || '') === currentUserId && !question?.hasResponses)
-  ), [currentUserId, selectedQuestions]);
+    selectedQuestions.filter((question) => canDeleteLibraryQuestion(question, { isStudentLibrary, currentUserId }))
+  ), [currentUserId, isStudentLibrary, selectedQuestions]);
   const hasSelectedUndeletableQuestions = selectedQuestionIds.length !== selectedQuestions.length
-    || selectedQuestions.some((question) => (
-      String(question?.owner || '') !== currentUserId || !!question?.hasResponses
-    ));
+    || selectedQuestions.some((question) => !canDeleteLibraryQuestion(question, { isStudentLibrary, currentUserId }));
 
   const fetchCourses = useCallback(async () => {
     if (isStudentLibrary) {
@@ -1267,14 +1283,14 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
             <Stack spacing={1.5}>
               {questions.map((question, index) => {
                 const questionId = String(question._id);
-                const ownsQuestion = String(question.owner || '') === currentUserId;
-                const studentCanManageQuestion = ownsQuestion && !question.hasResponses;
+                const studentCanManage = canStudentManageQuestion(question, currentUserId);
                 const checked = selectedIdSet.has(questionId);
                 const expanded = !!expandedQuestionIds[questionId];
                 const editing = editingQuestionId === questionId;
                 const normalizedType = normalizeQuestionType(question);
                 const disableTypeSelection = !!question.hasResponses;
                 const disableOptionCountChanges = !!question.hasResponses;
+                const canDeleteQuestion = canDeleteLibraryQuestion(question, { isStudentLibrary, currentUserId });
 
                 return (
                     <Card key={questionId} variant="outlined">
@@ -1367,7 +1383,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
-                            {(!isStudentLibrary || studentCanManageQuestion) ? (
+                            {(!isStudentLibrary || studentCanManage) ? (
                               <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
                                 <span>
                                   <IconButton
@@ -1393,7 +1409,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                                   size="small"
                                   color="error"
                                   aria-label={t('common.delete')}
-                                  disabled={saving || question.hasResponses || (isStudentLibrary && !studentCanManageQuestion)}
+                                  disabled={saving || !canDeleteQuestion}
                                   onClick={() => handleDeleteQuestions([questionId])}
                                 >
                                   <DeleteIcon fontSize="small" />
