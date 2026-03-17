@@ -950,6 +950,11 @@
       "editQuestion": "Modifier la question",
       "newQuestion": "Nouvelle question",
       "closing": "Fermeture…",
+      "tags": "Étiquettes",
+      "tagsPlaceholder": "Ajouter une étiquette",
+      "tagsUnavailablePlaceholder": "Aucun sujet de cours disponible",
+      "courseTagsOnly": "Seuls les sujets du cours peuvent être utilisés comme étiquettes pour les questions.",
+      "courseTagsUnavailable": "Seuls les sujets liés au cours peuvent être ajoutés comme étiquettes de question. Ajoutez des sujets dans les paramètres du cours pour activer l’étiquetage.",
       "coursePublic": "Visible aux étudiants de ce cours",
       "qlickerPublic": "Visible à tout prof sur Qlicker",
       "qlickerPublicStudents": "Permettre aux comptes étudiants de la voir en dehors de ce cours",
@@ -1058,10 +1063,12 @@
       "practiceSessionSaved_one": "Question ajoutée à la séance de pratique.",
       "practiceSessionSaved_other": "Questions ajoutées à la séance de pratique.",
       "addToSession": "Ajouter à la séance",
+      "addSelectedToPracticeSession": "Ajouter les questions sélectionnées à la séance de pratique",
       "questionsAddedToSession_one": "Question ajoutée à la séance.",
       "questionsAddedToSession_other": "Questions ajoutées à la séance.",
       "randomCount": "Nombre aléatoire",
-      "selectRandomFiltered": "Choisir {{count}} au hasard"
+      "selectRandomFiltered": "Choisir {{count}} au hasard",
+      "randomAddToPracticeSession": "Ajouter aléatoirement {{count}} questions de la liste"
     },
     "selection": {
       "pageSummary_one": "1 question correspondante",

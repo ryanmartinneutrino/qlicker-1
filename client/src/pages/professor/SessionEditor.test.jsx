@@ -175,6 +175,7 @@ describe('SessionEditor inline close behavior', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: 'common.edit' }))[0]);
     expect(screen.getByText('Mock Question Editor')).toBeInTheDocument();
     expect(lastQuestionEditorProps.current?.showVisibilityControls).toBe(false);
+    expect(lastQuestionEditorProps.current?.showCourseTagSettingsHint).toBe(true);
 
     fireEvent.click(screen.getAllByRole('button', { name: 'professor.sessionEditor.closeEditor' })[0]);
 

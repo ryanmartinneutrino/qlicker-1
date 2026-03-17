@@ -108,6 +108,7 @@ describe('QuestionLibraryPanel', () => {
                 _id: 'q1',
                 type: 2,
                 content: 'Library question content',
+                owner: 'prof-1',
                 approved: false,
                 hasResponses: true,
                 responseCount: 3,
@@ -227,6 +228,9 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.queryByRole('button', { name: 'Approve question' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Change visibility' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Import JSON' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Has responses')).not.toBeInTheDocument();
+    expect(screen.queryByText('3 responses')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to practice session' })).toBeInTheDocument();
     expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1);
 

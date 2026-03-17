@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -33,10 +33,28 @@ function normalizeQuestionId(questionOrId) {
   return String(questionOrId?._id || questionOrId || '').trim();
 }
 
+function insertQuestionsAtIndex(existingQuestions, incomingQuestions, insertAtIndex) {
+  const normalizedInsertAtIndex = Math.max(0, Math.min(Number(insertAtIndex) || 0, existingQuestions.length));
+  const existingIds = new Set(existingQuestions.map((question) => normalizeQuestionId(question)).filter(Boolean));
+  const uniqueIncomingQuestions = (incomingQuestions || []).filter((question) => {
+    const questionId = normalizeQuestionId(question);
+    if (!questionId || existingIds.has(questionId)) return false;
+    existingIds.add(questionId);
+    return true;
+  });
+
+  return [
+    ...existingQuestions.slice(0, normalizedInsertAtIndex),
+    ...uniqueIncomingQuestions,
+    ...existingQuestions.slice(normalizedInsertAtIndex),
+  ];
+}
+
 export default function PracticeSessionEditor() {
   const { t } = useTranslation();
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
+  const libraryPanelRef = useRef(null);
   const [course, setCourse] = useState(null);
   const [session, setSession] = useState(null);
   const [selectedQuestions, setSelectedQuestions] = useState([]);
@@ -47,6 +65,9 @@ export default function PracticeSessionEditor() {
   const [creatingQuestion, setCreatingQuestion] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [libraryDialogOpen, setLibraryDialogOpen] = useState(false);
+  const [insertAtIndex, setInsertAtIndex] = useState(null);
+  const [librarySelectionCount, setLibrarySelectionCount] = useState(0);
+  const [randomAddCount, setRandomAddCount] = useState(10);
 
   const selectedQuestionIds = useMemo(
     () => selectedQuestions.map((question) => normalizeQuestionId(question)).filter(Boolean),
@@ -105,21 +126,22 @@ export default function PracticeSessionEditor() {
     fetchData();
   }, [fetchData]);
 
-  const upsertSelectedQuestion = useCallback((question) => {
-    const questionId = normalizeQuestionId(question);
-    if (!questionId) return;
-    setSelectedQuestions((previous) => {
-      const existingIndex = previous.findIndex((item) => normalizeQuestionId(item) === questionId);
-      if (existingIndex === -1) {
-        return [...previous, question];
-      }
-      return previous.map((item, index) => (index === existingIndex ? { ...item, ...question } : item));
-    });
-  }, []);
-
   const removeSelectedQuestion = (questionId) => {
     const normalizedId = normalizeQuestionId(questionId);
     setSelectedQuestions((previous) => previous.filter((question) => normalizeQuestionId(question) !== normalizedId));
+  };
+
+  const openAddQuestionDialog = (nextInsertIndex = selectedQuestions.length) => {
+    setInsertAtIndex(nextInsertIndex);
+    setAddDialogOpen(true);
+  };
+
+  const closeAddQuestionFlow = () => {
+    setAddDialogOpen(false);
+    setLibraryDialogOpen(false);
+    setCreatingQuestion(false);
+    setInsertAtIndex(null);
+    setLibrarySelectionCount(0);
   };
 
   const handleQuestionSave = async (payload) => {
@@ -130,7 +152,7 @@ export default function PracticeSessionEditor() {
     return data.question || data;
   };
 
-  const handleAddLibraryQuestions = async (questionIds) => {
+  const handleAddLibraryQuestions = useCallback(async (questionIds) => {
     if (!questionIds.length) return;
 
     const uniqueIds = [...new Set([...selectedQuestionIds, ...questionIds.map((questionId) => String(questionId))])];
@@ -147,11 +169,18 @@ export default function PracticeSessionEditor() {
       loadedQuestions.filter(Boolean).forEach((question) => {
         nextQuestionById.set(normalizeQuestionId(question), question);
       });
-      setSelectedQuestions(uniqueIds.map((questionId) => nextQuestionById.get(questionId)).filter(Boolean));
+      const incomingQuestions = questionIds
+        .map((questionId) => nextQuestionById.get(String(questionId)))
+        .filter(Boolean);
+      setSelectedQuestions((previous) => (
+        insertQuestionsAtIndex(previous, incomingQuestions, insertAtIndex ?? previous.length)
+      ));
     }
+    setInsertAtIndex(null);
+    setLibrarySelectionCount(0);
     setLibraryDialogOpen(false);
     setAddDialogOpen(false);
-  };
+  }, [insertAtIndex, selectedQuestionIds, selectedQuestions]);
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -179,7 +208,7 @@ export default function PracticeSessionEditor() {
         questionIds: selectedQuestionIds,
       });
 
-      navigate(`/student/course/${courseId}/session/${practiceSessionId}/quiz`);
+      navigate(`/student/course/${courseId}/session/${practiceSessionId}/review?returnTab=2`);
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -228,7 +257,7 @@ export default function PracticeSessionEditor() {
             fullWidth
           />
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddDialogOpen(true)}>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => openAddQuestionDialog()}>
               {t('student.course.addQuestion', { defaultValue: 'Add question' })}
             </Button>
             {selectedQuestionIds.length > 0 ? (
@@ -260,11 +289,15 @@ export default function PracticeSessionEditor() {
                 if (persistedQuestionId) {
                   try {
                     const { data } = await apiClient.get(`/questions/${persistedQuestionId}`);
-                    upsertSelectedQuestion(data.question || data);
+                    const savedQuestion = data.question || data;
+                    setSelectedQuestions((previous) => (
+                      insertQuestionsAtIndex(previous, [savedQuestion], insertAtIndex ?? previous.length)
+                    ));
                   } catch {
                     await fetchData();
                   }
                 }
+                setInsertAtIndex(null);
               }}
             />
           </CardContent>
@@ -283,24 +316,78 @@ export default function PracticeSessionEditor() {
               })}
             </Alert>
           ) : (
-            selectedQuestions.map((question) => {
+            [...Array(selectedQuestions.length + 1).keys()].map((slotIndex) => {
+              const question = selectedQuestions[slotIndex];
+              const isEdgeInsertSlot = slotIndex === 0 || slotIndex === selectedQuestions.length;
               const questionId = normalizeQuestionId(question);
+
               return (
-                <Card key={questionId} variant="outlined">
-                  <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
-                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                      <QuestionDisplay question={question} />
-                    </Box>
-                    <Button
-                      size="small"
-                      color="error"
-                      startIcon={<DeleteIcon />}
-                      onClick={() => removeSelectedQuestion(questionId)}
-                    >
-                      {t('common.remove', { defaultValue: 'Remove' })}
-                    </Button>
-                  </CardContent>
-                </Card>
+                <Box key={`practice-slot-${slotIndex}`}>
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+                    {isEdgeInsertSlot ? (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => openAddQuestionDialog(slotIndex)}
+                      >
+                        {t('student.course.addQuestion', { defaultValue: 'Add question' })}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={() => openAddQuestionDialog(slotIndex)}
+                        sx={{
+                          width: '100%',
+                          minWidth: 0,
+                          maxWidth: { xs: '100%', sm: 620 },
+                          px: 0.5,
+                          py: 0.35,
+                          borderRadius: 1.5,
+                          color: 'text.secondary',
+                          justifyContent: 'flex-end',
+                          textTransform: 'none',
+                          '& .insert-question-line': {
+                            flexGrow: 1,
+                            borderTop: '3px solid',
+                            borderColor: 'divider',
+                            borderRadius: 999,
+                            mr: 0.9,
+                            transition: 'border-color 0.2s ease',
+                          },
+                          '&:hover .insert-question-line': {
+                            borderColor: 'text.secondary',
+                          },
+                        }}
+                      >
+                        <Box className="insert-question-line" />
+                        <AddIcon fontSize="small" />
+                        <Typography variant="caption" sx={{ ml: 0.2, display: { xs: 'none', sm: 'inline' } }}>
+                          {t('common.add')}
+                        </Typography>
+                      </Button>
+                    )}
+                  </Box>
+
+                  {question ? (
+                    <Card variant="outlined" sx={{ mb: 1.5 }}>
+                      <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <QuestionDisplay question={question} />
+                        </Box>
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<DeleteIcon />}
+                          onClick={() => removeSelectedQuestion(questionId)}
+                        >
+                          {t('common.remove', { defaultValue: 'Remove' })}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : null}
+                </Box>
               );
             })
           )}
@@ -318,7 +405,7 @@ export default function PracticeSessionEditor() {
         </Button>
       </Box>
 
-      <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} maxWidth="xs" fullWidth>
+      <Dialog open={addDialogOpen} onClose={closeAddQuestionFlow} maxWidth="xs" fullWidth>
         <DialogTitle>{t('student.course.addQuestion', { defaultValue: 'Add question' })}</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5}>
@@ -338,6 +425,7 @@ export default function PracticeSessionEditor() {
               startIcon={<CopyIcon />}
               onClick={() => {
                 setLibraryDialogOpen(true);
+                setAddDialogOpen(false);
               }}
             >
               {t('student.course.copyFromQuestionLibrary', { defaultValue: 'Copy from Question Library' })}
@@ -345,13 +433,13 @@ export default function PracticeSessionEditor() {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddDialogOpen(false)}>{t('common.close')}</Button>
+          <Button onClick={closeAddQuestionFlow}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog
         open={libraryDialogOpen}
-        onClose={() => setLibraryDialogOpen(false)}
+        onClose={closeAddQuestionFlow}
         maxWidth="lg"
         fullWidth
       >
@@ -359,19 +447,55 @@ export default function PracticeSessionEditor() {
         <DialogContent dividers sx={{ p: 0 }}>
           <Box sx={{ p: 2 }}>
             <QuestionLibraryPanel
+              ref={libraryPanelRef}
               courseId={courseId}
               currentCourse={course}
               availableSessions={[]}
               allowQuestionCreate={false}
               selectionAction={{
-                buttonLabel: t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }),
+                buttonLabel: t('questionLibrary.bulk.addSelectedToPracticeSession', { defaultValue: 'Add selected questions to practice session' }),
                 onSubmit: handleAddLibraryQuestions,
+                onSelectionChange: (questionIds) => setLibrarySelectionCount(questionIds.length),
+                hideInlineRandomSelectionControls: true,
               }}
             />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setLibraryDialogOpen(false)}>{t('common.close')}</Button>
+        <DialogActions sx={{ justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              type="number"
+              label={t('questionLibrary.bulk.randomCount', { defaultValue: 'Random count' })}
+              value={randomAddCount}
+              inputProps={{ min: 1 }}
+              onChange={(event) => setRandomAddCount(Math.max(1, Number(event.target.value) || 1))}
+              sx={{ width: { xs: '100%', sm: 140 } }}
+            />
+            <Button
+              variant="outlined"
+              onClick={async () => {
+                await libraryPanelRef.current?.submitRandomFilteredQuestions(randomAddCount);
+              }}
+            >
+              {t('questionLibrary.bulk.randomAddToPracticeSession', {
+                count: Math.max(1, Number(randomAddCount) || 1),
+                defaultValue: `Randomly add ${Math.max(1, Number(randomAddCount) || 1)} questions from the list`,
+              })}
+            </Button>
+          </Stack>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              disabled={librarySelectionCount === 0}
+              onClick={async () => {
+                await libraryPanelRef.current?.submitSelectedQuestions();
+              }}
+            >
+              {t('questionLibrary.bulk.addSelectedToPracticeSession', { defaultValue: 'Add selected questions to practice session' })}
+            </Button>
+            <Button onClick={closeAddQuestionFlow}>{t('common.close')}</Button>
+          </Stack>
         </DialogActions>
       </Dialog>
     </Box>

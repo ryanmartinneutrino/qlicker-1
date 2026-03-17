@@ -1146,6 +1146,7 @@ export default function SessionEditor() {
             tagSuggestions={course?.tags || []}
             showVisibilityControls={false}
             allowCustomTags={false}
+            showCourseTagSettingsHint
           />
         </Box>
 
