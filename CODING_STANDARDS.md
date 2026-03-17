@@ -672,6 +672,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 - **Use interpolation** for dynamic values: `t('key', { count: 5 })` not `` `${t('key')} 5` ``
 - **Plurals:** Use i18next plural features when needed: `t('items', { count })` with `"items_one": "{{count}} item"`, `"items_other": "{{count}} items"`
 - **Shared labels must use translation helpers** — if a label such as a question type appears in multiple screens, centralize the translated lookup instead of hardcoding English constants in each component
+- **Question/session tag chips should stay visible in compact list rows** — library rows, session editors, and practice-session editors should surface course-topic tags as outlined `Chip`s without requiring the full editor to be open
 
 ---
 
@@ -684,6 +685,7 @@ Keys are organized hierarchically by page/component, using dot notation:
   - `users.js` — change-password (`PATCH /me/password`), admin-create-user (`POST /`)
 - **Argon2id** hashing (OWASP baseline: `memoryCost: 19456, timeCost: 2, parallelism: 1`)
 - Legacy bcrypt hashes trigger forced password reset on next login
+- When institutional SSO is enabled, treat SSO-authenticated emails as verified and avoid exposing redundant course-level verified-email enrollment toggles in the UI
 
 ### Input Sanitization
 

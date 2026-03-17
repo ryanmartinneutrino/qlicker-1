@@ -2,7 +2,7 @@ import { Suspense, lazy, useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
-  List, ListItem, ListItemButton, ListItemText, Divider,
+  List, ListItem, ListItemButton, ListItemText, Divider, IconButton, Tooltip,
   Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -16,6 +16,10 @@ import {
   isSubmittedLiveQuiz,
   sortStudentSessions,
 } from '../../utils/studentSessions';
+import {
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+} from '@mui/icons-material';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import SessionListCard from '../../components/common/SessionListCard';
 import { useTranslation } from 'react-i18next';
@@ -408,17 +412,29 @@ export default function StudentCourseDetail() {
                   )}
                   actions={(
                     <>
-                      {(session.questions || []).length > 0 ? (
-                        <Button size="small" onClick={() => navigate(`/student/course/${id}/session/${session._id}/review?returnTab=${practiceTabIndex}`)}>
-                          {t('student.course.review', { defaultValue: 'Review' })}
-                        </Button>
-                      ) : null}
-                      <Button size="small" onClick={() => navigate(`/student/course/${id}/practice-sessions/${session._id}`)}>
-                        {t('common.edit')}
-                      </Button>
-                      <Button size="small" color="error" onClick={() => deletePracticeSession(session._id)}>
-                        {t('common.delete')}
-                      </Button>
+                      <Tooltip title={t('common.edit')}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            aria-label={t('common.edit')}
+                            onClick={() => navigate(`/student/course/${id}/practice-sessions/${session._id}`)}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title={t('common.delete')}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            aria-label={t('common.delete')}
+                            onClick={() => deletePracticeSession(session._id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </>
                   )}
                 />

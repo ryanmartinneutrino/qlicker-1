@@ -1834,6 +1834,20 @@ export default function SessionEditor() {
                             ? `Collapse question ${displayedQuestionNumber}`
                             : `Expand question ${displayedQuestionNumber}`}
                         >
+                          {normalizeTagValues(currentQuestion.tags || []).filter((tag) => tag.toLowerCase() !== 'qlicker').length > 0 ? (
+                            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', px: { xs: 0.25, sm: 0.5 }, pb: 0.5 }}>
+                              {normalizeTagValues(currentQuestion.tags || [])
+                                .filter((tag) => tag.toLowerCase() !== 'qlicker')
+                                .map((tag) => (
+                                  <Chip
+                                    key={`${currentQuestion._id}-tag-${tag}`}
+                                    size="small"
+                                    variant="outlined"
+                                    label={tag}
+                                  />
+                                ))}
+                            </Box>
+                          ) : null}
                           <Box
                             sx={{
                               display: 'flex',

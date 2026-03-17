@@ -106,6 +106,7 @@ describe('PracticeSessionEditor', () => {
               _id: 'session-1',
               name: 'Practice One',
               questions: ['q1', 'q2'],
+              tags: [{ value: 'algebra', label: 'algebra' }],
             },
           },
         });
@@ -117,6 +118,7 @@ describe('PracticeSessionEditor', () => {
             question: {
               _id: url.endsWith('q1') ? 'q1' : 'q2',
               content: url.endsWith('q1') ? 'Question One' : 'Question Two',
+              tags: [{ value: url.endsWith('q1') ? 'algebra' : 'geometry', label: url.endsWith('q1') ? 'algebra' : 'geometry' }],
             },
           },
         });
@@ -149,13 +151,26 @@ describe('PracticeSessionEditor', () => {
 
     expect(await screen.findByText('Question One')).toBeInTheDocument();
     expect(screen.getByText('Question Two')).toBeInTheDocument();
+    expect(screen.getAllByText('algebra').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: 'Add question' }).length).toBeGreaterThanOrEqual(3);
     expect(screen.getByRole('button', { name: 'common.add' })).toBeInTheDocument();
+
+    questionEditorPropsMock.mockClear();
+    fireEvent.click(screen.getAllByRole('button', { name: 'common.edit' })[0]);
+
+    expect(questionEditorPropsMock).toHaveBeenCalledWith(expect.objectContaining({
+      initial: expect.objectContaining({ _id: 'q1' }),
+      showVisibilityControls: false,
+      allowCustomTags: false,
+    }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Save and start practice' }));
 
     await waitFor(() => {
-      expect(apiClientMock.patch).toHaveBeenCalledWith('/sessions/session-1', { name: 'Practice One' });
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/sessions/session-1', {
+        name: 'Practice One',
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      });
       expect(apiClientMock.patch).toHaveBeenCalledWith('/sessions/session-1/practice-questions', {
         questionIds: ['q1', 'q2'],
       });

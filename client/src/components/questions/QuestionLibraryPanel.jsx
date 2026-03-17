@@ -1291,8 +1291,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
               {questions.map((question, index) => {
                 const questionId = String(question._id);
                 const studentCanManage = canStudentManageQuestion(question, currentUserId);
-                const studentCanCopyQuestion = !isStudentLibrary
-                  || (!isQuestionOwnedByUser(question, currentUserId) && studentPracticeSessions.length > 0);
+                const studentCanCopyQuestion = !isStudentLibrary || studentPracticeSessions.length > 0;
                 const checked = selectedIdSet.has(questionId);
                 const expanded = !!expandedQuestionIds[questionId];
                 const editing = editingQuestionId === questionId;

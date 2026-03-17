@@ -1,4 +1,5 @@
 import Course from '../models/Course.js';
+import Settings from '../models/Settings.js';
 import User from '../models/User.js';
 import { normalizeTags } from '../services/questionImportExport.js';
 import { escapeForRegex } from '../utils/regex.js';
@@ -335,9 +336,12 @@ export default async function courseRoutes(app) {
       }
 
       if (course.requireVerified) {
-        const enrollingUser = await User.findById(userId);
-        if (!enrollingUser?.emails?.[0]?.verified) {
-          return reply.code(403).send({ error: 'Forbidden', message: 'Email verification required to enroll in this course' });
+        const settings = await Settings.findOne().select('SSO_enabled').lean();
+        if (!settings?.SSO_enabled) {
+          const enrollingUser = await User.findById(userId);
+          if (!enrollingUser?.emails?.[0]?.verified) {
+            return reply.code(403).send({ error: 'Forbidden', message: 'Email verification required to enroll in this course' });
+          }
         }
       }
 
