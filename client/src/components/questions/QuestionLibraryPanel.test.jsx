@@ -110,6 +110,7 @@ describe('QuestionLibraryPanel', () => {
                 content: 'Library question content',
                 approved: false,
                 hasResponses: true,
+                responseCount: 3,
                 linkedSessions: [{ _id: 'session-1', name: 'Session One' }],
                 tags: [
                   { value: 'algebra', label: 'algebra' },
@@ -141,6 +142,7 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.getByText('Session One')).toBeInTheDocument();
     expect(screen.getAllByText('Short Answer').length).toBeGreaterThan(0);
     expect(screen.getByText('Has responses')).toBeInTheDocument();
+    expect(screen.getByText('3 responses')).toBeInTheDocument();
     expect(screen.getByText('Unapproved')).toBeInTheDocument();
     expect(screen.getByText('algebra')).toBeInTheDocument();
     expect(screen.queryByText('Qlicker')).not.toBeInTheDocument();

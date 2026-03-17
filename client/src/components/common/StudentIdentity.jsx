@@ -49,13 +49,11 @@ export default function StudentIdentity({
   return (
     <>
       <Box
-        onClick={onClick}
         sx={{
           display: 'flex',
           alignItems: 'center',
           gap: 1,
           minWidth: 0,
-          cursor: onClick ? 'pointer' : 'default',
           ...sx,
         }}
       >
@@ -76,7 +74,14 @@ export default function StudentIdentity({
         >
           {initials.toUpperCase()}
         </Avatar>
-        <Box sx={{ minWidth: 0 }}>
+        <Box
+          onClick={onClick}
+          sx={{
+            minWidth: 0,
+            flexGrow: 1,
+            cursor: onClick ? 'pointer' : 'default',
+          }}
+        >
           <Typography variant={nameVariant} sx={{ fontWeight: nameWeight }} noWrap>
             {displayName}
           </Typography>

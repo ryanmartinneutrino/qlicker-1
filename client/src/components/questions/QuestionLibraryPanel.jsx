@@ -233,8 +233,11 @@ function QuestionCopyDialog({
 function ImportQuestionsDialog({
   open,
   sessions = [],
+  tagSuggestions = [],
+  importTags = [],
   previewQuestions = [],
   selectedIds = [],
+  onImportTagsChange,
   onFileSelected,
   onSelectionChange,
   onClose,
@@ -275,6 +278,24 @@ function ImportQuestionsDialog({
               <MenuItem key={session._id} value={session._id}>{session.name}</MenuItem>
             ))}
           </TextField>
+
+          <Autocomplete
+            multiple
+            freeSolo
+            options={[...new Set([
+              'Imported',
+              ...normalizeTagValues(tagSuggestions),
+            ])]}
+            value={importTags}
+            onChange={(_event, nextValue) => onImportTagsChange?.(normalizeTagValues(nextValue))}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('questionLibrary.import.tags', { defaultValue: 'Tags to apply to all imported questions' })}
+                placeholder={t('questionLibrary.import.tagsPlaceholder', { defaultValue: 'Imported' })}
+              />
+            )}
+          />
 
           {previewQuestions.length === 0 ? (
             <Alert severity="info">
@@ -379,6 +400,7 @@ export default function QuestionLibraryPanel({
   onSessionsChanged,
   currentCourse = null,
   allowQuestionCreate = true,
+  selectionAction = null,
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -417,7 +439,10 @@ export default function QuestionLibraryPanel({
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importPreviewQuestions, setImportPreviewQuestions] = useState([]);
   const [importSelectedIds, setImportSelectedIds] = useState([]);
+  const [importTags, setImportTags] = useState(['Imported']);
+  const [randomSelectionCount, setRandomSelectionCount] = useState(10);
   const inlineQuestionEditorRef = useRef(null);
+  const directSelectionMode = !!selectionAction?.onSubmit;
 
   const queryParams = useMemo(() => ({
     page,
@@ -474,17 +499,19 @@ export default function QuestionLibraryPanel({
       setTagOptions([]);
       return;
     }
-    if (isStudentLibrary) {
-      const nextTags = normalizeTagValues(currentCourse?.tags || []).map((tag) => ({ value: tag, label: tag }));
+    const nextTags = normalizeTagValues(currentCourse?.tags || []).map((tag) => ({ value: tag, label: tag }));
+    if (String(nextCourseId) === String(currentCourse?._id) && nextTags.length > 0) {
       setTagOptions(nextTags);
       return;
     }
     const { data } = await apiClient.get(`/courses/${nextCourseId}/question-tags?limit=100`);
     setTagOptions(data.tags || []);
-  }, [currentCourse?.tags, isStudentLibrary]);
+  }, [currentCourse?._id, currentCourse?.tags]);
 
-  const fetchQuestions = useCallback(async () => {
-    setLoading(true);
+  const fetchQuestions = useCallback(async ({ background = false } = {}) => {
+    if (!background) {
+      setLoading(true);
+    }
     try {
       const query = buildQueryString(queryParams);
       const { data } = await apiClient.get(`/courses/${sourceCourseId}/questions${query ? `?${query}` : ''}`);
@@ -497,7 +524,9 @@ export default function QuestionLibraryPanel({
         text: err.response?.data?.message || loadErrorTextRef.current,
       });
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, [queryParams, sourceCourseId]);
 
@@ -539,8 +568,8 @@ export default function QuestionLibraryPanel({
     }
   }, [availableSessions, courseId, sourceCourseId, sourceSessions]);
 
-  const refreshQuestions = async () => {
-    await fetchQuestions();
+  const refreshQuestions = async (options) => {
+    await fetchQuestions(options);
   };
 
   const upsertQuestionLocally = useCallback((savedQuestion) => {
@@ -638,7 +667,7 @@ export default function QuestionLibraryPanel({
     setSaving(true);
     try {
       await apiClient.post(`/questions/${questionId}/approve`);
-      await refreshQuestions();
+      await refreshQuestions({ background: true });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -653,7 +682,7 @@ export default function QuestionLibraryPanel({
     setSaving(true);
     try {
       await apiClient.post(`/questions/${questionId}/make-public`);
-      await refreshQuestions();
+      await refreshQuestions({ background: true });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -675,13 +704,16 @@ export default function QuestionLibraryPanel({
 
     setSaving(true);
     try {
+      const deletedIdSet = new Set(questionIds.map((questionId) => String(questionId)));
+      setQuestions((previous) => previous.filter((question) => !deletedIdSet.has(String(question._id))));
+      setTotal((previous) => Math.max(0, previous - questionIds.length));
       if (questionIds.length === 1) {
         await apiClient.delete(`/questions/${questionIds[0]}`);
       } else {
         await apiClient.post('/questions/bulk-delete', { questionIds });
       }
       setSelectedQuestionIds((previous) => previous.filter((id) => !questionIds.includes(id)));
-      await refreshQuestions();
+      await refreshQuestions({ background: true });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -705,7 +737,7 @@ export default function QuestionLibraryPanel({
         await onSessionsChanged();
       }
       if (String(targetCourseId) === String(sourceCourseId)) {
-        await refreshQuestions();
+        await refreshQuestions({ background: true });
       }
     } catch (err) {
       setMessage({
@@ -749,15 +781,14 @@ export default function QuestionLibraryPanel({
   };
 
   const handleCopyQuestionSingle = async (questionId) => {
+    if (isStudentLibrary) {
+      setSelectedQuestionIds([String(questionId)]);
+      setPracticeSessionDialogOpen(true);
+      return;
+    }
     setSaving(true);
     try {
-      if (isStudentLibrary) {
-        await apiClient.post(`/questions/${questionId}/copy`);
-      } else {
-        setCopyDialogState({ open: true, questionIds: [questionId] });
-        return;
-      }
-      await refreshQuestions();
+      setCopyDialogState({ open: true, questionIds: [questionId] });
     } catch (err) {
       setMessage({
         severity: 'error',
@@ -765,6 +796,49 @@ export default function QuestionLibraryPanel({
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDirectSelectionSubmit = async () => {
+    if (!directSelectionMode || !selectedQuestionIds.length) return;
+    setSaving(true);
+    try {
+      await selectionAction.onSubmit?.(selectedQuestionIds, questions.filter((question) => selectedIdSet.has(String(question._id))));
+      setMessage({
+        severity: 'success',
+        text: selectionAction.successMessage || t('questionLibrary.bulk.questionsAddedToSession', {
+          count: selectedQuestionIds.length,
+          defaultValue: selectedQuestionIds.length === 1 ? 'Question added to the session.' : 'Questions added to the session.',
+        }),
+      });
+      setSelectedQuestionIds([]);
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || selectionAction.errorMessage || t('questionLibrary.errors.copy', { defaultValue: 'Failed to copy questions.' }),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectRandomFilteredQuestions = async () => {
+    try {
+      const requestedCount = Math.max(1, Number(randomSelectionCount) || 1);
+      const query = buildQueryString({ ...queryParams, idsOnly: true });
+      const { data } = await apiClient.get(`/courses/${sourceCourseId}/questions?${query}`);
+      const allQuestionIds = [...new Set((data.questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
+      const shuffledIds = [...allQuestionIds];
+      for (let index = shuffledIds.length - 1; index > 0; index -= 1) {
+        const randomIndex = Math.floor(Math.random() * (index + 1));
+        [shuffledIds[index], shuffledIds[randomIndex]] = [shuffledIds[randomIndex], shuffledIds[index]];
+      }
+      setSelectedQuestionIds(shuffledIds.slice(0, Math.min(requestedCount, shuffledIds.length)));
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('questionLibrary.errors.selectRandom', { defaultValue: 'Failed to select random filtered questions.' }),
+      });
     }
   };
 
@@ -864,10 +938,12 @@ export default function QuestionLibraryPanel({
       await apiClient.post(`/courses/${courseId}/questions/import`, {
         questions: questionsToImport,
         ...(targetSessionId ? { sessionId: targetSessionId } : {}),
+        importTags,
       });
       setImportDialogOpen(false);
       setImportPreviewQuestions([]);
       setImportSelectedIds([]);
+      setImportTags(['Imported']);
       if (typeof onSessionsChanged === 'function' && targetSessionId) {
         await onSessionsChanged();
       }
@@ -912,7 +988,7 @@ export default function QuestionLibraryPanel({
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap">
-              {!isStudentLibrary ? (
+              {!isStudentLibrary && !selectionAction?.hideImport ? (
                 <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => setImportDialogOpen(true)}>
                   {t('questionLibrary.import.action', { defaultValue: 'Import JSON' })}
                 </Button>
@@ -922,7 +998,7 @@ export default function QuestionLibraryPanel({
                   setCreatingQuestion(true);
                   setEditingQuestionId('');
                 }}>
-                  {t('questionLibrary.newQuestion', { defaultValue: 'New question' })}
+                  {selectionAction?.newQuestionLabel || t('questionLibrary.newQuestion', { defaultValue: 'New question' })}
                 </Button>
               ) : null}
             </Stack>
@@ -975,7 +1051,7 @@ export default function QuestionLibraryPanel({
 
             <Autocomplete
               multiple
-              freeSolo={!isStudentLibrary}
+              freeSolo={false}
               sx={{ minWidth: 240, flex: 1 }}
               options={tagOptions.map((tag) => tag.label || tag.value)}
               value={currentTagValues}
@@ -992,7 +1068,7 @@ export default function QuestionLibraryPanel({
               )}
             />
 
-            {!isStudentLibrary ? (
+            {!isStudentLibrary && !directSelectionMode ? (
               <Button
                 variant="outlined"
                 startIcon={<FilterListIcon />}
@@ -1073,7 +1149,7 @@ export default function QuestionLibraryPanel({
               </Button>
             </Box>
             <Stack direction="row" spacing={1} flexWrap="wrap">
-              {!isStudentLibrary ? (
+              {!isStudentLibrary && !directSelectionMode ? (
                 <Button
                   size="small"
                   startIcon={<EditIcon />}
@@ -1086,8 +1162,12 @@ export default function QuestionLibraryPanel({
               <Button
                 size="small"
                 startIcon={<CopyIcon />}
-                disabled={selectedQuestionIds.length === 0 || saving || (isStudentLibrary && studentPracticeSessions.length === 0)}
+                disabled={selectedQuestionIds.length === 0 || saving || (!directSelectionMode && isStudentLibrary && studentPracticeSessions.length === 0)}
                 onClick={() => {
+                  if (directSelectionMode) {
+                    handleDirectSelectionSubmit();
+                    return;
+                  }
                   if (isStudentLibrary) {
                     setPracticeSessionDialogOpen(true);
                     return;
@@ -1095,7 +1175,9 @@ export default function QuestionLibraryPanel({
                   setCopyDialogState({ open: true, questionIds: selectedQuestionIds });
                 }}
               >
-                {isStudentLibrary
+                {directSelectionMode
+                  ? (selectionAction.buttonLabel || t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }))
+                  : isStudentLibrary
                   ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })
                   : t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
               </Button>
@@ -1128,7 +1210,7 @@ export default function QuestionLibraryPanel({
                   initial={null}
                   tagSuggestions={tagOptions}
                   showVisibilityControls={!isStudentLibrary}
-                  allowCustomTags={!isStudentLibrary}
+                  allowCustomTags={false}
                   onAutoSave={handleEditorSave}
                   onClose={async () => {
                     setCreatingQuestion(false);
@@ -1195,6 +1277,18 @@ export default function QuestionLibraryPanel({
                                 label={t('questionLibrary.status.hasResponses', { defaultValue: 'Has responses' })}
                               />
                             ) : null}
+                            {!isStudentLibrary && Number(question.responseCount || 0) > 0 ? (
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                label={t('questionLibrary.status.responseCount', {
+                                  count: Number(question.responseCount || 0),
+                                  defaultValue: Number(question.responseCount || 0) === 1
+                                    ? '1 response'
+                                    : `${Number(question.responseCount || 0)} responses`,
+                                })}
+                              />
+                            ) : null}
                             {(question.tags || []).filter((tag) => (
                               String(tag?.label || tag?.value || '').trim().toLowerCase() !== 'qlicker'
                             )).map((tag, tagIndex) => (
@@ -1225,13 +1319,19 @@ export default function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
-                            <Tooltip title={t('common.copy', { defaultValue: 'Copy' })}>
-                              <span>
-                                <IconButton size="small" disabled={saving} onClick={() => handleCopyQuestionSingle(questionId)}>
-                                  <CopyIcon fontSize="small" />
-                                </IconButton>
-                              </span>
-                            </Tooltip>
+                            {!directSelectionMode ? (
+                              <Tooltip
+                                title={isStudentLibrary
+                                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })
+                                  : t('common.copy', { defaultValue: 'Copy' })}
+                              >
+                                <span>
+                                  <IconButton size="small" disabled={saving} onClick={() => handleCopyQuestionSingle(questionId)}>
+                                    <CopyIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            ) : null}
                             {(!isStudentLibrary || ownsQuestion) ? (
                               <Tooltip title={editing ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
                                 <span>
@@ -1277,7 +1377,7 @@ export default function QuestionLibraryPanel({
                             initialBaseline={editingQuestionBaseline}
                             tagSuggestions={tagOptions}
                             showVisibilityControls={!isStudentLibrary}
-                            allowCustomTags={!isStudentLibrary}
+                            allowCustomTags={false}
                             onAutoSave={handleEditorSave}
                             onClose={closeInlineEditor}
                             disableTypeSelection={disableTypeSelection}
@@ -1337,6 +1437,26 @@ export default function QuestionLibraryPanel({
               })}
             </Stack>
           )}
+
+          {directSelectionMode ? (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ xs: 'stretch', sm: 'center' }}>
+              <TextField
+                size="small"
+                type="number"
+                label={t('questionLibrary.bulk.randomCount', { defaultValue: 'Random count' })}
+                value={randomSelectionCount}
+                inputProps={{ min: 1 }}
+                onChange={(event) => setRandomSelectionCount(Math.max(1, Number(event.target.value) || 1))}
+                sx={{ width: { xs: '100%', sm: 150 } }}
+              />
+              <Button variant="outlined" onClick={selectRandomFilteredQuestions} disabled={saving}>
+                {t('questionLibrary.bulk.selectRandomFiltered', {
+                  count: Math.max(1, Number(randomSelectionCount) || 1),
+                  defaultValue: `Choose ${Math.max(1, Number(randomSelectionCount) || 1)} at random`,
+                })}
+              </Button>
+            </Stack>
+          ) : null}
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
             <Typography variant="body2" color="text.secondary">
@@ -1498,8 +1618,11 @@ export default function QuestionLibraryPanel({
       <ImportQuestionsDialog
         open={importDialogOpen}
         sessions={availableSessions}
+        tagSuggestions={tagOptions}
+        importTags={importTags}
         previewQuestions={importPreviewQuestions}
         selectedIds={importSelectedIds}
+        onImportTagsChange={setImportTags}
         onFileSelected={handleImportFileSelected}
         onSelectionChange={setImportSelectedIds}
         onClose={() => setImportDialogOpen(false)}

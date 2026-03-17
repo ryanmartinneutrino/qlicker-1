@@ -256,6 +256,7 @@ describe('SessionEditor inline close behavior', () => {
     file.text = vi.fn().mockResolvedValue(fileContents);
 
     fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(await screen.findByTestId('confirm-session-import'));
 
     await waitFor(() => {
       expect(file.text).toHaveBeenCalled();
@@ -265,6 +266,7 @@ describe('SessionEditor inline close behavior', () => {
           name: 'Imported Session',
           questions: [],
         },
+        importTags: ['Imported'],
       });
       expect(navigateMock).toHaveBeenCalledWith(
         '/manage/course/course-1/session/imported-session-1?returnTab=1',

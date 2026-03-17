@@ -952,6 +952,14 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
   it('lists filtered course questions with linked-session and response metadata', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, session } = await setupCourseAndSession();
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        tags: [
+          { value: 'algebra', label: 'algebra' },
+          { value: 'calculus', label: 'calculus' },
+        ],
+      },
+    });
 
     const olderRes = await createQuestionAsProf(profToken, {
       type: 2,
@@ -1012,26 +1020,43 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
     expect(body.total).toBe(2);
     expect(body.questions.map((question) => question._id)).toEqual([newerQuestion._id, olderQuestion._id]);
     expect(body.questions[0].hasResponses).toBe(true);
+    expect(body.questions[0].responseCount).toBe(1);
     expect(body.questions[0].linkedSessions).toEqual([
       expect.objectContaining({ _id: session._id, name: session.name }),
     ]);
     expect(body.questionTypes).toEqual(expect.arrayContaining([0, 2]));
   });
 
+  it('rejects professor question tags that are not course topics', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      },
+    });
+
+    const res = await createQuestionAsProf(profToken, {
+      type: 2,
+      courseId: course._id,
+      content: 'Off-topic question',
+      tags: [{ value: 'calculus', label: 'calculus' }],
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toBe('Questions can only use the course topics');
+  });
+
   it('returns autocomplete tag suggestions for a course library', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course } = await setupCourseAndSession();
-
-    await createQuestionAsProf(profToken, {
-      courseId: course._id,
-      tags: [
-        { value: 'algebra', label: 'Algebra' },
-        { value: 'imported', label: 'imported' },
-      ],
-    });
-    await createQuestionAsProf(profToken, {
-      courseId: course._id,
-      tags: [{ value: 'algorithms', label: 'Algorithms' }],
+    await Course.findByIdAndUpdate(course._id, {
+      $set: {
+        tags: [
+          { value: 'algebra', label: 'Algebra' },
+          { value: 'algorithms', label: 'Algorithms' },
+        ],
+      },
     });
 
     const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/question-tags?q=alg`, {
@@ -1220,6 +1245,14 @@ describe('question import/export endpoints', () => {
     const { prof, profToken, course } = await setupCourseAndSession();
     const targetCourse = (await createCourseAsProf(profToken, { name: 'Imported Course' })).json().course;
     const targetSession = (await createSessionInCourse(profToken, targetCourse._id, { name: 'Imported Session' })).json().session;
+    await Promise.all([
+      Course.findByIdAndUpdate(course._id, {
+        $set: { tags: [{ value: 'review', label: 'Review' }] },
+      }),
+      Course.findByIdAndUpdate(targetCourse._id, {
+        $set: { tags: [{ value: 'review', label: 'Review' }] },
+      }),
+    ]);
 
     const qRes = await createQuestionAsProf(profToken, {
       type: 2,

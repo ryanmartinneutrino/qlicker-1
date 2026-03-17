@@ -5,7 +5,8 @@ import StudentIdentity from './StudentIdentity';
  * Reusable component for showing a student in a list.
  *
  * Shows: name, email (greyed out second line), clickable avatar (opens full-size
- * profile image).  Clicking anywhere else on the row triggers `onClick` if provided.
+ * profile image). Clicking the text area to the right of the avatar triggers `onClick`
+ * if provided.
  *
  * @param {Object}   props
  * @param {Object}   props.student          – student user object ({ _id, profile, emails })
@@ -17,12 +18,9 @@ export default function StudentListItem({ student, onClick, action, sx }) {
   return (
     <ListItem
       sx={{
-        cursor: onClick ? 'pointer' : 'default',
-        '&:hover': onClick ? { bgcolor: 'action.hover' } : undefined,
         pr: action ? 8 : undefined,
         ...sx,
       }}
-      onClick={onClick}
       secondaryAction={action}
     >
       <Box sx={{ width: '100%' }}>

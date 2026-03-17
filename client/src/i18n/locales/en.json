@@ -538,7 +538,8 @@
       "quizEndAfterStart": "Quiz end must be later than quiz start.",
       "failedLoadSession": "Failed to load session",
       "failedUpdateSession": "Failed to update session.",
-      "failedDeleteSession": "Failed to delete session"
+      "failedDeleteSession": "Failed to delete session",
+      "importPreviewDescription": "Review the imported questions, remove any you do not want, and choose tags to apply to all imported questions."
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -779,7 +780,12 @@
       "failedUnenroll": "Failed to unenroll",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
-      "video": "Video"
+      "video": "Video",
+      "addQuestion": "Add question",
+      "createNewQuestion": "Create New",
+      "copyFromQuestionLibrary": "Copy from Question Library",
+      "practiceSessionQuestions": "Questions in this practice session",
+      "noPracticeQuestionsSelected": "Add or create questions to build this practice session."
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -1028,7 +1034,9 @@
       "previewCount_other": "{{count}} questions ready to import",
       "importedTag": "imported tag will be added",
       "confirm_one": "Import 1 question",
-      "confirm_other": "Import {{count}} questions"
+      "confirm_other": "Import {{count}} questions",
+      "tags": "Tags to apply to all imported questions",
+      "tagsPlaceholder": "Imported"
     },
     "bulk": {
       "selectAll": "Select all ({{count}})",
@@ -1048,7 +1056,12 @@
       "practiceSessionHelp": "Choose one of your practice sessions to receive the selected questions.",
       "practiceSessionEmpty": "Create a practice session first to reuse selected questions there.",
       "practiceSessionSaved_one": "Question added to the practice session.",
-      "practiceSessionSaved_other": "Questions added to the practice session."
+      "practiceSessionSaved_other": "Questions added to the practice session.",
+      "addToSession": "Add to session",
+      "questionsAddedToSession_one": "Question added to the session.",
+      "questionsAddedToSession_other": "Questions added to the session.",
+      "randomCount": "Random count",
+      "selectRandomFiltered": "Choose {{count}} at random"
     },
     "selection": {
       "pageSummary_one": "1 matching question",
@@ -1057,7 +1070,9 @@
     "status": {
       "approved": "Approved",
       "unapproved": "Unapproved",
-      "hasResponses": "Has responses"
+      "hasResponses": "Has responses",
+      "responseCount_one": "1 response",
+      "responseCount_other": "{{count}} responses"
     },
     "actions": {
       "approve": "Approve question",
@@ -1080,7 +1095,8 @@
       "visibility": "Failed to update question visibility.",
       "export": "Failed to export questions.",
       "importParse": "The selected file is not valid question-library JSON.",
-      "import": "Failed to import questions."
+      "import": "Failed to import questions.",
+      "selectRandom": "Failed to select random filtered questions."
     }
   },
   "grades": {

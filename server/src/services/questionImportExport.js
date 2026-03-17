@@ -23,6 +23,31 @@ export function normalizeTags(tags = []) {
   }, []);
 }
 
+export function getNormalizedTagValue(tag) {
+  return String(tag?.value || tag?.label || tag || '').trim().toLowerCase();
+}
+
+export function filterTagsToAllowedValues(tags = [], allowedValues = new Set()) {
+  if (!(allowedValues instanceof Set) || allowedValues.size === 0) return [];
+  return normalizeTags(tags).filter((tag) => allowedValues.has(getNormalizedTagValue(tag)));
+}
+
+export function mergeNormalizedTags(...tagLists) {
+  const merged = [];
+  const seen = new Set();
+
+  tagLists.forEach((tags) => {
+    normalizeTags(tags).forEach((tag) => {
+      const key = getNormalizedTagValue(tag);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(tag);
+    });
+  });
+
+  return merged;
+}
+
 function buildNormalizedImportedTagList(tags = []) {
   const existingTags = normalizeTags(tags);
   const hasImportedTag = existingTags.some((tag) => String(tag.value || '').toLowerCase() === 'imported');
@@ -97,8 +122,9 @@ export function sanitizeImportedQuestion(question, {
   sessionId,
   userId,
   includeSessionOptions = false,
+  importTags = [],
 }) {
-  const tags = buildNormalizedImportedTagList(question?.tags || []);
+  const tags = mergeNormalizedTags(buildNormalizedImportedTagList(question?.tags || []), importTags);
   const payload = {
     type: Number(question?.type),
     content: question?.content || '',

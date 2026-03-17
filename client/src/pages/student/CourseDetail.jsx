@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
@@ -21,8 +21,9 @@ import SessionListCard from '../../components/common/SessionListCard';
 import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
-import QuestionLibraryPanel from '../../components/questions/QuestionLibraryPanel';
 export { getStudentSessionAction, sortStudentSessions as sortSessions };
+
+const QuestionLibraryPanel = lazy(() => import('../../components/questions/QuestionLibraryPanel'));
 
 const MAX_STUDENT_TAB_INDEX = 6;
 
@@ -407,6 +408,11 @@ export default function StudentCourseDetail() {
                   )}
                   actions={(
                     <>
+                      {(session.questions || []).length > 0 ? (
+                        <Button size="small" onClick={() => navigate(`/student/course/${id}/session/${session._id}/review?returnTab=${practiceTabIndex}`)}>
+                          {t('student.course.review', { defaultValue: 'Review' })}
+                        </Button>
+                      ) : null}
                       <Button size="small" onClick={() => navigate(`/student/course/${id}/practice-sessions/${session._id}`)}>
                         {t('common.edit')}
                       </Button>
@@ -423,12 +429,14 @@ export default function StudentCourseDetail() {
       </TabPanel>
 
       <TabPanel value={tab} index={questionLibraryTabIndex}>
-        <QuestionLibraryPanel
-          courseId={id}
-          currentCourse={course}
-          availableSessions={sortedSessions}
-          allowQuestionCreate={!!course.allowStudentQuestions}
-        />
+        <Suspense fallback={<Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>}>
+          <QuestionLibraryPanel
+            courseId={id}
+            currentCourse={course}
+            availableSessions={sortedSessions}
+            allowQuestionCreate={!!course.allowStudentQuestions}
+          />
+        </Suspense>
       </TabPanel>
 
       <TabPanel value={tab} index={gradesTabIndex}>
