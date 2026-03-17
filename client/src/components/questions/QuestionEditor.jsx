@@ -100,6 +100,14 @@ function cloneFormState(form) {
   };
 }
 
+function extractVisibilityState(source = {}) {
+  return {
+    public: !!source.public,
+    publicOnQlicker: !!source.publicOnQlicker,
+    publicOnQlickerForStudents: !!source.publicOnQlickerForStudents,
+  };
+}
+
 const COMPACT_FIELD_SX = {
   '& .MuiInputBase-input': {
     py: 1.05,
@@ -109,12 +117,13 @@ const COMPACT_FIELD_SX = {
   },
 };
 
-function buildQuestionPayload(form) {
+function buildQuestionPayload(form, options = {}) {
+  const effectiveVisibility = options.visibilityState || extractVisibilityState(form);
   const content = normalizeStoredHtml(form.content);
   const isSlide = isSlideType(form.type);
   const solution = isSlide ? '' : normalizeStoredHtml(form.solution);
   const points = isSlide ? 0 : Number(form.points) || 1;
-  const publicOnQlicker = !!form.publicOnQlicker;
+  const publicOnQlicker = !!effectiveVisibility.publicOnQlicker;
   const payload = {
     type: form.type,
     content,
@@ -122,9 +131,9 @@ function buildQuestionPayload(form) {
     solution: solution || undefined,
     solution_plainText: solution ? extractPlainTextFromHtml(solution) : undefined,
     sessionOptions: { points },
-    public: publicOnQlicker ? true : !!form.public,
+    public: publicOnQlicker ? true : !!effectiveVisibility.public,
     publicOnQlicker,
-    publicOnQlickerForStudents: publicOnQlicker ? !!form.publicOnQlickerForStudents : false,
+    publicOnQlickerForStudents: publicOnQlicker ? !!effectiveVisibility.publicOnQlickerForStudents : false,
     tags: [...new Set((form.tags || []).map((tag) => String(tag || '').trim()).filter(Boolean))]
       .map((tag) => ({ value: tag, label: tag })),
   };
@@ -222,6 +231,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   const queuedSaveRef = useRef(null);
   const onAutoSaveRef = useRef(onAutoSave);
   const tRef = useRef(t);
+  const lockedVisibilityRef = useRef(extractVisibilityState());
 
   useEffect(() => {
     onAutoSaveRef.current = onAutoSave;
@@ -239,6 +249,10 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     setForm(normalizedNextForm);
     return normalizedNextForm;
   }, []);
+
+  const buildEditorPayload = useCallback((nextForm) => buildQuestionPayload(nextForm, {
+    visibilityState: showVisibilityControls ? extractVisibilityState(nextForm) : lockedVisibilityRef.current,
+  }), [showVisibilityControls]);
 
   const persistPayload = useCallback(async (payload, payloadHash) => {
     const runSave = async (nextPayload, nextHash) => {
@@ -328,8 +342,13 @@ const QuestionEditor = forwardRef(function QuestionEditor({
       : rawNextForm;
     const nextForm = cloneFormState(rawNextForm);
     const baselineForm = cloneFormState(rawBaselineForm);
-    const currentFormHash = JSON.stringify(buildQuestionPayload(nextForm));
-    const snapshotHash = JSON.stringify(buildQuestionPayload(baselineForm));
+    const lockedVisibilityState = extractVisibilityState(initial || rawNextForm);
+    const currentFormHash = JSON.stringify(buildQuestionPayload(nextForm, {
+      visibilityState: showVisibilityControls ? extractVisibilityState(nextForm) : lockedVisibilityState,
+    }));
+    const snapshotHash = JSON.stringify(buildQuestionPayload(baselineForm, {
+      visibilityState: showVisibilityControls ? extractVisibilityState(baselineForm) : lockedVisibilityState,
+    }));
 
     hydratingRef.current = true;
     latestFormRef.current = cloneFormState(nextForm);
@@ -344,6 +363,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     const nextId = initial?._id || null;
     setPersistedQuestionId(nextId);
     questionIdRef.current = nextId;
+    lockedVisibilityRef.current = lockedVisibilityState;
 
     lastSavedHashRef.current = nextId ? currentFormHash : '';
 
@@ -352,13 +372,13 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     }, 0);
 
     return () => clearTimeout(hydrationTimer);
-  }, [open, initial?._id]);
+  }, [initial, initialBaseline, open, showVisibilityControls]);
 
   useEffect(() => {
     if (!open || hydratingRef.current) return;
     if (!hasRichTextContent(form.content) && !questionIdRef.current) return;
 
-    const payload = buildQuestionPayload(form);
+    const payload = buildEditorPayload(form);
     const payloadHash = JSON.stringify(payload);
     if (payloadHash === lastSavedHashRef.current) return;
 
@@ -367,11 +387,11 @@ const QuestionEditor = forwardRef(function QuestionEditor({
     }, 700);
 
     return () => clearTimeout(autosaveTimer);
-  }, [open, form, persistPayload]);
+  }, [buildEditorPayload, open, form, persistPayload]);
 
-  const currentPayloadHash = useMemo(() => JSON.stringify(buildQuestionPayload(form)), [form]);
+  const currentPayloadHash = useMemo(() => JSON.stringify(buildEditorPayload(form)), [buildEditorPayload, form]);
   const deferredPreviewForm = useDeferredValue(form);
-  const previewPayload = useMemo(() => buildQuestionPayload(deferredPreviewForm), [deferredPreviewForm]);
+  const previewPayload = useMemo(() => buildEditorPayload(deferredPreviewForm), [buildEditorPayload, deferredPreviewForm]);
   const normalizedTagSuggestions = useMemo(() => (
     [...new Set(
       (tagSuggestions || [])
@@ -484,7 +504,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
       const latestForm = latestFormRef.current;
       const shouldAttemptSave = hasRichTextContent(latestForm.content) || !!questionIdRef.current;
       if (shouldAttemptSave) {
-        const payload = buildQuestionPayload(latestForm);
+        const payload = buildEditorPayload(latestForm);
         const payloadHash = JSON.stringify(payload);
         if (payloadHash !== lastSavedHashRef.current || saveInFlightRef.current || queuedSaveRef.current) {
           await persistPayload(payload, payloadHash);

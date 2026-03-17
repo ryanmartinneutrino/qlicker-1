@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import QuestionEditor from './QuestionEditor';
 
@@ -36,5 +36,53 @@ describe('QuestionEditor', () => {
 
     expect(screen.getByLabelText('Tags')).toBeDisabled();
     expect(screen.getByText('Only course-related topics can be added as question tags. Add course topics in Course Settings to enable tagging.')).toBeInTheDocument();
+  });
+
+  it('keeps visibility settings locked when the visibility controls are hidden', async () => {
+    vi.useFakeTimers();
+    const onAutoSave = vi.fn().mockResolvedValue({ _id: 'question-1' });
+
+    render(
+      <QuestionEditor
+        open
+        inline
+        initial={{
+          _id: 'question-1',
+          type: 2,
+          content: '<p>Question body</p>',
+          options: [
+            { content: '<p>Option 1</p>', correct: true },
+            { content: '<p>Option 2</p>', correct: false },
+          ],
+          sessionOptions: { points: 1 },
+          public: true,
+          publicOnQlicker: true,
+          publicOnQlickerForStudents: true,
+        }}
+        onAutoSave={onAutoSave}
+        showVisibilityControls={false}
+      />
+    );
+
+    expect(screen.queryByLabelText('Visible to students in this course')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Visible to any prof on Qlicker')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '2' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750);
+    });
+
+    expect(onAutoSave).toHaveBeenCalledWith(expect.objectContaining({
+      public: true,
+      publicOnQlicker: true,
+      publicOnQlickerForStudents: true,
+      sessionOptions: { points: 2 },
+    }), 'question-1');
+
+    vi.useRealTimers();
   });
 });
