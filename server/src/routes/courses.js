@@ -313,6 +313,10 @@ export default async function courseRoutes(app) {
     '/enroll',
     {
       preHandler: authenticate,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
       schema: {
         body: {
           type: 'object',
