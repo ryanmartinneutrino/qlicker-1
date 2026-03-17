@@ -730,11 +730,7 @@ async function getAllowedStudentTagValues(courseId) {
   const normalizedCourseId = String(courseId || '').trim();
   if (!normalizedCourseId) return new Set();
 
-  const [course, sessions, questions] = await Promise.all([
-    Course.findById(normalizedCourseId).select('tags').lean(),
-    Session.find({ courseId: normalizedCourseId }).select('tags').lean(),
-    Question.find({ courseId: normalizedCourseId }).select('tags').lean(),
-  ]);
+  const course = await Course.findById(normalizedCourseId).select('tags').lean();
 
   const values = new Set();
   const addTagValue = (tag) => {
@@ -743,8 +739,6 @@ async function getAllowedStudentTagValues(courseId) {
   };
 
   (course?.tags || []).forEach(addTagValue);
-  sessions.forEach((session) => (session?.tags || []).forEach(addTagValue));
-  questions.forEach((question) => (question?.tags || []).forEach(addTagValue));
 
   return values;
 }
@@ -998,11 +992,17 @@ export default async function questionRoutes(app) {
 
       const search = String(request.query.q || '').trim().toLowerCase();
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
-      const [courseTags, sessionTags, questionTags] = await Promise.all([
-        Promise.resolve(course.tags || []),
-        Session.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
-        Question.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
-      ]);
+      const [courseTags, sessionTags, questionTags] = isStudentMember
+        ? await Promise.all([
+          Promise.resolve(course.tags || []),
+          Promise.resolve([]),
+          Promise.resolve([]),
+        ])
+        : await Promise.all([
+          Promise.resolve(course.tags || []),
+          Session.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
+          Question.find({ courseId: String(course._id), tags: { $exists: true, $ne: [] } }).select('tags').lean(),
+        ]);
 
       const tagMap = new Map();
       const addTag = (tag) => {
@@ -1083,7 +1083,7 @@ export default async function questionRoutes(app) {
         const allowedTagValues = await getAllowedStudentTagValues(normalizedCourseId);
         const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
         if (hasInvalidTag) {
-          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use existing course tags' });
+          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use the course topics' });
         }
       } else if (course && !isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
@@ -1170,7 +1170,7 @@ export default async function questionRoutes(app) {
         const allowedTagValues = await getAllowedStudentTagValues(question.courseId);
         const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
         if (hasInvalidTag) {
-          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use existing course tags' });
+          return reply.code(400).send({ error: 'Bad Request', message: 'Students can only use the course topics' });
         }
       }
 

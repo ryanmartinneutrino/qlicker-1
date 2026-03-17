@@ -120,13 +120,14 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Session slides — added a first-class `Slide` item type in the session/question editor so instructors can place content-only slides before, between, or after graded questions; slides now render across professor live view, student live view, presentation/second desktop, quizzes, and review screens, while staying out of response collection, grading, participation, and quiz-completion requirements; live-facing UIs now distinguish full session-page progress from question-only progress when slides are present
 - ✅ Session sequencing simplification — sessions once again use the ordered `questions` array as the single source of truth, matching the legacy Meteor database; slides are represented as question documents with `type: 6`, so interactive sessions and quizzes can mix slides and response-collecting questions without a second session-level array
 - ✅ Live session editing and delta sync — question/slide edits now save reliably from the session editor and live sessions, including rich-text image resizing; legacy session-linked questions authorize correctly through session/course fallback metadata; live websocket traffic now uses audience-scoped deltas (`session:question-updated`, `session:attempt-changed`, `session:participant-joined`, `session:join-code-changed`) and limits response-count updates to instructors plus joined students when visible stats need histogram refreshes
+- ✅ Student library/practice follow-up fixes — dashboard live-session loading now avoids oversized course/session payloads, student question-library topic suggestions now come only from professor-managed course topics, student bulk library actions can add selected questions only to the student’s own practice sessions while keeping visibility controls hidden, the practice-session editor now supports inline student question creation and valid question pagination, and the student review page no longer trips React’s hook-order warning
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 272 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 30 tests across 11 files
+- **Server:** 274 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
+- **Client:** 33 tests across 13 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -155,7 +156,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
   - Session editor now includes direct session export/import controls (portable JSON plus print-friendly PDF variants); remaining work here is broader personal/public library coverage
 - [x] Student question library and approval/publication workflow (when `allowStudentQuestions` is enabled)
   - Students can browse the course question library from the student course page, copy visible questions, and create/edit only their own private unapproved questions
-  - Student-authored questions stay library-only (never session-attached), can only use existing course/session/question tags, and do not expose public-visibility controls in the editor
+  - Student-authored questions stay library-only (never session-attached), can only use the professor-managed course topics, and do not expose public-visibility controls in the editor
   - Professors can still approve student questions, and can now promote a student question to course-public visibility in one action, which also transfers ownership to the professor
 - [x] Student practice sessions
   - Students now have a dedicated “Practice Sessions” course tab with create/edit/delete flows for their own practice quizzes

@@ -13,10 +13,12 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import QuestionDisplay from '../../components/questions/QuestionDisplay';
+import QuestionEditor from '../../components/questions/QuestionEditor';
 import { buildCourseTitle } from '../../utils/courseTitle';
 
 export default function PracticeSessionEditor() {
@@ -32,13 +34,14 @@ export default function PracticeSessionEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [creatingQuestion, setCreatingQuestion] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [courseRes, questionRes, sessionRes] = await Promise.all([
         apiClient.get(`/courses/${courseId}`),
-        apiClient.get(`/courses/${courseId}/questions?limit=500`),
+        apiClient.get(`/courses/${courseId}/questions?limit=100`),
         sessionId ? apiClient.get(`/sessions/${sessionId}`) : Promise.resolve(null),
       ]);
 
@@ -79,6 +82,14 @@ export default function PracticeSessionEditor() {
         ? previous.filter((id) => id !== normalizedId)
         : [...previous, normalizedId]
     ));
+  };
+
+  const handleQuestionSave = async (payload) => {
+    const { data } = await apiClient.post('/questions', {
+      ...payload,
+      courseId,
+    });
+    return data.question || data;
   };
 
   const handleSave = async () => {
@@ -146,6 +157,43 @@ export default function PracticeSessionEditor() {
           ? t('student.course.editPracticeSession', { defaultValue: 'Edit practice session' })
           : t('student.course.newPracticeSession', { defaultValue: 'New practice session' })}
       </Typography>
+
+      <Box sx={{ mb: 2 }}>
+        <Button
+          variant={creatingQuestion ? 'outlined' : 'contained'}
+          startIcon={<AddIcon />}
+          onClick={() => setCreatingQuestion((current) => !current)}
+        >
+          {t('questionLibrary.newQuestion', { defaultValue: 'New question' })}
+        </Button>
+      </Box>
+
+      {creatingQuestion ? (
+        <Card variant="outlined" sx={{ mb: 2 }}>
+          <CardContent>
+            <QuestionEditor
+              open
+              inline
+              initial={null}
+              tagSuggestions={course?.tags || []}
+              showVisibilityControls={false}
+              allowCustomTags={false}
+              onAutoSave={handleQuestionSave}
+              onClose={async ({ persistedQuestionId } = {}) => {
+                setCreatingQuestion(false);
+                await fetchData();
+                if (persistedQuestionId) {
+                  setSelectedQuestionIds((previous) => (
+                    previous.includes(String(persistedQuestionId))
+                      ? previous
+                      : [...previous, String(persistedQuestionId)]
+                  ));
+                }
+              }}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Stack spacing={2}>

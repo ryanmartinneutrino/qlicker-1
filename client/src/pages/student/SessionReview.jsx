@@ -645,6 +645,7 @@ export default function SessionReview() {
     const fallbackIds = feedbackSummary?.newFeedbackQuestionIds || [];
     return fallbackIds.join(', ');
   }, [feedbackQuestionNumbers, feedbackSummary]);
+  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
 
   const handleDismissFeedback = async () => {
     setDismissingFeedback(true);
@@ -687,7 +688,6 @@ export default function SessionReview() {
   }
 
   const total = questions.length;
-  const progressList = useMemo(() => buildQuestionProgressList(questions), [questions]);
   const resolvedReturnTab = session && (session.quiz || session.practiceQuiz)
     ? (session.studentCreated ? 2 : 1)
     : requestedReturnTab;

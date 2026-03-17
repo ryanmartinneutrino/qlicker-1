@@ -8,6 +8,7 @@ const {
   tMock,
   requestCloseMock,
   authState,
+  questionEditorPropsMock,
 } = vi.hoisted(() => ({
   apiClientMock: {
     get: vi.fn(),
@@ -18,6 +19,7 @@ const {
   tMock: vi.fn((key, options) => options?.defaultValue ?? key),
   requestCloseMock: vi.fn(),
   authState: { user: { _id: 'prof-1', roles: ['professor'] } },
+  questionEditorPropsMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -39,10 +41,11 @@ vi.mock('./QuestionDisplay', () => ({
 }));
 
 vi.mock('./QuestionEditor', () => ({
-  default: React.forwardRef(function MockQuestionEditor(_props, ref) {
+  default: React.forwardRef(function MockQuestionEditor(props, ref) {
     React.useImperativeHandle(ref, () => ({
       requestClose: requestCloseMock,
     }));
+    questionEditorPropsMock(props);
     return <div>Mock Question Editor</div>;
   }),
 }));
@@ -55,6 +58,7 @@ describe('QuestionLibraryPanel', () => {
     apiClientMock.delete.mockReset();
     tMock.mockClear();
     requestCloseMock.mockReset();
+    questionEditorPropsMock.mockReset();
     authState.user = { _id: 'prof-1', roles: ['professor'] };
 
     apiClientMock.get.mockImplementation((url) => {
@@ -73,6 +77,7 @@ describe('QuestionLibraryPanel', () => {
           data: {
             sessions: [
               { _id: 'session-1', name: 'Session One', status: 'hidden' },
+              { _id: 'practice-1', name: 'Practice One', status: 'hidden', studentCreated: true, practiceQuiz: true },
             ],
           },
         });
@@ -204,8 +209,13 @@ describe('QuestionLibraryPanel', () => {
     render(
       <QuestionLibraryPanel
         courseId="course-1"
-        currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
-        availableSessions={[]}
+        currentCourse={{
+          _id: 'course-1',
+          name: 'Course One',
+          instructors: ['prof-1'],
+          tags: [{ value: 'algebra', label: 'algebra' }],
+        }}
+        availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
         allowQuestionCreate
       />
     );
@@ -215,5 +225,32 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.queryByRole('button', { name: 'Approve question' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Change visibility' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Import JSON' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to practice session' })).toBeInTheDocument();
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New question' }));
+
+    expect(questionEditorPropsMock).toHaveBeenCalledWith(expect.objectContaining({
+      showVisibilityControls: false,
+      allowCustomTags: false,
+    }));
+  });
+
+  it('disables student delete actions for questions they do not own', async () => {
+    authState.user = { _id: 'student-1', roles: ['student'] };
+
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
+        availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
+        allowQuestionCreate
+      />
+    );
+
+    await screen.findByText('Library question content');
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'common.delete' });
+    expect(deleteButtons[0]).toBeDisabled();
   });
 });
