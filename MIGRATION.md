@@ -129,7 +129,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 ### Test Summary
 
 - **Server:** 274 tests across 12 test files (auth, courses, sessions, questions, grades, models, settings, grading service, users, groups, video, API docs)
-- **Client:** 33 tests across 13 files
+- **Client:** 36 tests across 14 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
