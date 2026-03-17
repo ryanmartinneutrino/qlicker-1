@@ -3,6 +3,7 @@ import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
+import { isSafeProfileImageUrl } from '../utils/url.js';
 
 function canUseEmailLogin(user = {}) {
   if (!user.ssoCreated) return true;
@@ -208,6 +209,7 @@ export default async function userRoutes(app) {
       if (!user.services.password) user.services.password = {};
       user.services.password.hash = hashed;
       user.services.password.bcrypt = undefined;
+      user.refreshTokenVersion = (Number(user.refreshTokenVersion) || 0) + 1;
       await user.save();
 
       return { success: true };
@@ -222,6 +224,12 @@ export default async function userRoutes(app) {
     }
     if (profileThumbnail !== undefined && typeof profileThumbnail !== 'string') {
       return reply.code(400).send({ error: 'Bad Request', message: 'profileThumbnail must be a URL string when provided' });
+    }
+    if (!isSafeProfileImageUrl(profileImage)) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'profileImage must use an http(s) URL or site-relative path' });
+    }
+    if (profileThumbnail !== undefined && !isSafeProfileImageUrl(profileThumbnail)) {
+      return reply.code(400).send({ error: 'Bad Request', message: 'profileThumbnail must use an http(s) URL or site-relative path' });
     }
 
     const resolvedThumbnail = profileThumbnail ?? profileImage;

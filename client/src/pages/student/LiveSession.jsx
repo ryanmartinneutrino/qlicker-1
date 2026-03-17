@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
   TextField, Radio, RadioGroup, FormControlLabel, Checkbox, FormGroup,
 } from '@mui/material';
-import apiClient, { getAccessToken } from '../../api/client';
+import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildHistogramData } from '../../utils/histogram';
@@ -19,6 +19,10 @@ import {
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  LiveSessionWebSocketProvider,
+  useLiveSessionWebSocket,
+} from '../../contexts/LiveSessionWebSocketContext';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -54,12 +58,6 @@ const richContentSx = {
     my: 0.75,
   },
 };
-
-function buildWebsocketUrl(token) {
-  const encodedToken = encodeURIComponent(token);
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
-}
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
@@ -151,10 +149,11 @@ function RichContent({ html, fallback }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function LiveSession() {
+function LiveSessionContent() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { lastEvent, registerRefreshHandler } = useLiveSessionWebSocket();
   const courseBackLink = `/student/course/${courseId}`;
 
   // Core state
@@ -196,6 +195,8 @@ export default function LiveSession() {
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
 
+  useEffect(() => registerRefreshHandler(fetchLive), [fetchLive, registerRefreshHandler]);
+
   const fetchThrottleRef = useRef(null);
   const scheduleFetchLive = useCallback(() => {
     if (fetchThrottleRef.current) return;
@@ -205,121 +206,39 @@ export default function LiveSession() {
     }, 2000);
   }, [fetchLive]);
 
-  // --------------------------------------------------
-  // WebSocket real-time updates (with polling fallback)
-  // --------------------------------------------------
-
   useEffect(() => {
-    let ws = null;
-    let reconnectTimer = null;
-    let pollingTimer = null;
-    let closed = false;
+    if (!lastEvent) return;
 
-    const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
-      fetchLive();
-    };
+    const { event, data } = lastEvent;
+    switch (event) {
+      // Students receive this only while joined and live stats are visible.
+      case 'session:response-added':
+        scheduleFetchLive();
+        break;
+      case 'session:question-changed':
+      case 'session:visibility-changed':
+      case 'session:status-changed':
+      case 'session:updated':
+        fetchLive();
+        break;
+      case 'session:question-updated':
+        setLiveData((prev) => applyCurrentQuestionUpdate(prev, data));
+        break;
+      case 'session:attempt-changed':
+        setLiveData((prev) => applyAttemptChanged(prev, data));
+        break;
+      case 'session:join-code-changed':
+        setLiveData((prev) => applyJoinCodeChanged(prev, data));
+        break;
+      default:
+        break;
+    }
+  }, [fetchLive, lastEvent, scheduleFetchLive]);
 
-    const startPolling = () => {
-      if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refresh, 3000);
-    };
-
-    const stopPolling = () => {
-      if (!pollingTimer) return;
-      clearInterval(pollingTimer);
-      pollingTimer = null;
-    };
-
-    const connect = () => {
-      if (closed) return;
-      const latestToken = getAccessToken();
-      if (!latestToken) return;
-      try {
-        ws = new WebSocket(buildWebsocketUrl(latestToken));
-      } catch {
-        startPolling();
-        reconnectTimer = setTimeout(connect, 2500);
-        return;
-      }
-
-      ws.onopen = () => { stopPolling(); };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          const evt = message?.event;
-          const d = message?.data;
-          if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
-
-          switch (evt) {
-            // Students receive this only while joined and live stats are visible.
-            case 'session:response-added':
-              scheduleFetchLive();
-              break;
-            case 'session:question-changed':
-              fetchLive();
-              break;
-            case 'session:question-updated':
-              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
-              break;
-            case 'session:attempt-changed':
-              setLiveData((prev) => applyAttemptChanged(prev, d));
-              break;
-            case 'session:join-code-changed':
-              setLiveData((prev) => applyJoinCodeChanged(prev, d));
-              break;
-            case 'session:visibility-changed':
-              fetchLive();
-              break;
-            case 'session:status-changed':
-              fetchLive();
-              break;
-            case 'session:updated':
-              fetchLive();
-              break;
-            default:
-              break;
-          }
-        } catch {
-          // Ignore malformed payloads
-        }
-      };
-
-      ws.onclose = () => {
-        if (closed) return;
-        startPolling();
-        reconnectTimer = setTimeout(connect, 2500);
-      };
-    };
-
-    const init = async () => {
-      try {
-        const { data } = await apiClient.get('/health');
-        if (data?.websocket === true) { connect(); return; }
-      } catch { /* fall through */ }
-      startPolling();
-    };
-
-    init();
-
-    const handleVisibility = () => refresh();
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      closed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
-      fetchThrottleRef.current = null;
-      stopPolling();
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        ws.close();
-      }
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [fetchLive, scheduleFetchLive, sessionId]);
+  useEffect(() => () => {
+    if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
+    fetchThrottleRef.current = null;
+  }, []);
 
   // --------------------------------------------------
   // Reset answer when question or attempt changes
@@ -1127,5 +1046,15 @@ export default function LiveSession() {
         </Paper>
       )}
     </Box>
+  );
+}
+
+export default function LiveSession() {
+  const { sessionId } = useParams();
+
+  return (
+    <LiveSessionWebSocketProvider sessionId={sessionId}>
+      <LiveSessionContent />
+    </LiveSessionWebSocketProvider>
   );
 }

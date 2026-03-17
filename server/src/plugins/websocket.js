@@ -1,6 +1,9 @@
 import fp from 'fastify-plugin';
 import { WebSocket } from 'ws';
 
+const WS_MESSAGE_RATE_LIMIT_MAX = 60;
+const WS_MESSAGE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+
 async function websocketPlugin(fastify) {
   await fastify.register(import('@fastify/websocket'));
 
@@ -59,6 +62,7 @@ async function websocketPlugin(fastify) {
     app.get('/ws', { websocket: true }, (socket, req) => {
       const token = req.query.token;
       let userId;
+      const messageTimestamps = [];
 
       try {
         const decoded = fastify.jwt.verify(token);
@@ -81,6 +85,18 @@ async function websocketPlugin(fastify) {
       });
 
       socket.on('message', (raw) => {
+        const now = Date.now();
+        messageTimestamps.push(now);
+        while (messageTimestamps.length > 0 && (now - messageTimestamps[0]) > WS_MESSAGE_RATE_LIMIT_WINDOW_MS) {
+          messageTimestamps.shift();
+        }
+
+        if (messageTimestamps.length > WS_MESSAGE_RATE_LIMIT_MAX) {
+          fastify.log.warn({ userId }, 'WebSocket rate limit exceeded');
+          socket.close(4408, 'Rate limit exceeded');
+          return;
+        }
+
         try {
           const { event, data } = JSON.parse(raw.toString());
           if (event === 'ping') {

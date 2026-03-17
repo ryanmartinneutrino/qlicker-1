@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import AxeBuilder from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 
 const STATE_FILE = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
@@ -131,6 +132,18 @@ export async function loginViaUi(page, email, password, expectedPathPattern) {
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: /^Login$/ }).click();
   await expect(page).toHaveURL(expectedPathPattern);
+}
+
+export async function expectNoCriticalAccessibilityViolations(page) {
+  const results = await new AxeBuilder({ page }).analyze();
+  const criticalViolations = results.violations.filter((violation) => violation.impact === 'critical');
+
+  expect(
+    criticalViolations,
+    criticalViolations.length
+      ? `Critical accessibility violations:\n${JSON.stringify(criticalViolations, null, 2)}`
+      : undefined
+  ).toEqual([]);
 }
 
 export async function loginViaApi(request, email, password) {

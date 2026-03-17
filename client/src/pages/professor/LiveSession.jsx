@@ -14,7 +14,7 @@ import {
   People as PeopleIcon, Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import apiClient, { getAccessToken } from '../../api/client';
+import apiClient from '../../api/client';
 import {
   QUESTION_TYPES,
   getQuestionTypeLabel,
@@ -29,6 +29,10 @@ import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import StudentIdentity from '../../components/common/StudentIdentity';
+import {
+  LiveSessionWebSocketProvider,
+  useLiveSessionWebSocket,
+} from '../../contexts/LiveSessionWebSocketContext';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -52,12 +56,6 @@ const SR_ONLY_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-function buildWebsocketUrl(token) {
-  const encodedToken = encodeURIComponent(token);
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
-}
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
@@ -323,11 +321,12 @@ function NumericalStats({ stats, allResponses }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function LiveSession() {
+function LiveSessionContent() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width:768px)');
   const { t } = useTranslation();
+  const { lastEvent, registerRefreshHandler } = useLiveSessionWebSocket();
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -383,140 +382,62 @@ export default function LiveSession() {
   }, [fetchLive]);
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
-
-  // --------------------------------------------------
-  // WebSocket real-time updates (with polling fallback)
-  // --------------------------------------------------
+  useEffect(() => registerRefreshHandler(fetchLive), [fetchLive, registerRefreshHandler]);
 
   useEffect(() => {
-    let ws = null;
-    let reconnectTimer = null;
-    let pollingTimer = null;
-    let closed = false;
+    if (!lastEvent) return;
 
-    const refresh = () => {
-      if (document.visibilityState !== 'visible') return;
-      fetchLive();
-    };
-
-    const startPolling = () => {
-      if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refresh, 3000);
-    };
-
-    const stopPolling = () => {
-      if (!pollingTimer) return;
-      clearInterval(pollingTimer);
-      pollingTimer = null;
-    };
-
-    const connect = () => {
-      if (closed) return;
-      const latestToken = getAccessToken();
-      if (!latestToken) return;
-      try {
-        ws = new WebSocket(buildWebsocketUrl(latestToken));
-      } catch {
-        startPolling();
-        reconnectTimer = setTimeout(connect, 2500);
-        return;
-      }
-
-      ws.onopen = () => { stopPolling(); };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          const evt = message?.event;
-          const d = message?.data;
-          if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
-
-          switch (evt) {
-            case 'session:response-added':
-              // Update count immediately; schedule throttled re-fetch for full stats
-              setLiveData((prev) => {
-                if (!prev) return prev;
-                return {
-                  ...prev,
-                  responseCount: d.responseCount ?? prev.responseCount,
-                  session: {
-                    ...prev.session,
-                    joinedCount: d.joinedCount ?? prev.session?.joinedCount,
-                  },
-                };
-              });
-              scheduleFetchLive();
-              break;
-            case 'session:participant-joined':
-              setLiveData((prev) => applyParticipantJoined(prev, d));
-              break;
-            case 'session:question-changed':
-              fetchLive();
-              break;
-            case 'session:question-updated':
-              setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
-              break;
-            case 'session:attempt-changed':
-              setLiveData((prev) => applyAttemptChanged(prev, d));
-              break;
-            case 'session:join-code-changed':
-              setLiveData((prev) => applyJoinCodeChanged(prev, d));
-              break;
-            case 'session:visibility-changed':
-              setLiveData((prev) => applyVisibilityChanged(prev, d));
-              break;
-            case 'session:status-changed':
-              if (d.status === 'done') {
-                navigate(`/manage/course/${courseId}`, { replace: true });
-                return;
-              }
-              fetchLive();
-              break;
-            case 'session:updated':
-              fetchLive();
-              break;
-            default:
-              break;
-          }
-        } catch {
-          // Ignore malformed payloads
+    const { event, data } = lastEvent;
+    switch (event) {
+      case 'session:response-added':
+        setLiveData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            responseCount: data.responseCount ?? prev.responseCount,
+            session: {
+              ...prev.session,
+              joinedCount: data.joinedCount ?? prev.session?.joinedCount,
+            },
+          };
+        });
+        scheduleFetchLive();
+        break;
+      case 'session:participant-joined':
+        setLiveData((prev) => applyParticipantJoined(prev, data));
+        break;
+      case 'session:question-changed':
+      case 'session:updated':
+        fetchLive();
+        break;
+      case 'session:question-updated':
+        setLiveData((prev) => applyCurrentQuestionUpdate(prev, data));
+        break;
+      case 'session:attempt-changed':
+        setLiveData((prev) => applyAttemptChanged(prev, data));
+        break;
+      case 'session:join-code-changed':
+        setLiveData((prev) => applyJoinCodeChanged(prev, data));
+        break;
+      case 'session:visibility-changed':
+        setLiveData((prev) => applyVisibilityChanged(prev, data));
+        break;
+      case 'session:status-changed':
+        if (data.status === 'done') {
+          navigate(`/manage/course/${courseId}`, { replace: true });
+          return;
         }
-      };
+        fetchLive();
+        break;
+      default:
+        break;
+    }
+  }, [courseId, fetchLive, lastEvent, navigate, scheduleFetchLive]);
 
-      ws.onclose = () => {
-        if (closed) return;
-        startPolling();
-        reconnectTimer = setTimeout(connect, 2500);
-      };
-    };
-
-    const init = async () => {
-      try {
-        const { data } = await apiClient.get('/health');
-        if (data?.websocket === true) { connect(); return; }
-      } catch { /* fall through */ }
-      startPolling();
-    };
-
-    init();
-
-    const handleVisibility = () => refresh();
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      closed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
-      fetchThrottleRef.current = null;
-      stopPolling();
-      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        ws.close();
-      }
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [fetchLive, scheduleFetchLive, sessionId, courseId, navigate]);
+  useEffect(() => () => {
+    if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);
+    fetchThrottleRef.current = null;
+  }, []);
 
   // --------------------------------------------------
   // Auto-refresh join code
@@ -1539,5 +1460,15 @@ export default function LiveSession() {
         {msg ? <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert> : undefined}
       </Snackbar>
     </Box>
+  );
+}
+
+export default function LiveSession() {
+  const { sessionId } = useParams();
+
+  return (
+    <LiveSessionWebSocketProvider sessionId={sessionId}>
+      <LiveSessionContent />
+    </LiveSessionWebSocketProvider>
   );
 }
