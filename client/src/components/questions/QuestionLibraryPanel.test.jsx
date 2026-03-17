@@ -207,7 +207,7 @@ describe('QuestionLibraryPanel', () => {
   });
 
   it('hides professor-only controls for student libraries', async () => {
-    authState.user = { _id: 'student-1', roles: ['student'] };
+    authState.user = { _id: 'student-1', roles: ['student', 'professor'] };
 
     render(
       <QuestionLibraryPanel
@@ -220,6 +220,7 @@ describe('QuestionLibraryPanel', () => {
         }}
         availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
         allowQuestionCreate
+        permissionMode="student"
       />
     );
 
@@ -231,7 +232,7 @@ describe('QuestionLibraryPanel', () => {
     expect(screen.queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
     expect(screen.queryByText('Has responses')).not.toBeInTheDocument();
     expect(screen.queryByText('3 responses')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add to practice session' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Copy to practice session' }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('checkbox').length).toBeGreaterThan(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'New question' }));
@@ -251,6 +252,7 @@ describe('QuestionLibraryPanel', () => {
         currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
         availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
         allowQuestionCreate
+        permissionMode="student"
       />
     );
 
@@ -332,6 +334,7 @@ describe('QuestionLibraryPanel', () => {
         currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
         availableSessions={[{ _id: 'practice-1', name: 'Practice One', studentCreated: true, practiceQuiz: true }]}
         allowQuestionCreate
+        permissionMode="student"
       />
     );
 
@@ -343,6 +346,8 @@ describe('QuestionLibraryPanel', () => {
 
     expect(within(ownedCard).getByRole('button', { name: 'common.edit' })).toBeInTheDocument();
     expect(within(sharedCard).queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
+    expect(within(ownedCard).queryByRole('button', { name: 'Copy to practice session' })).not.toBeInTheDocument();
+    expect(within(sharedCard).getByRole('button', { name: 'Copy to practice session' })).toBeInTheDocument();
     expect(within(sharedCard).getByRole('button', { name: 'common.delete' })).toBeDisabled();
     expect(screen.queryByText('Has responses')).not.toBeInTheDocument();
     expect(screen.queryByText('2 responses')).not.toBeInTheDocument();
@@ -353,5 +358,25 @@ describe('QuestionLibraryPanel', () => {
 
     fireEvent.click(checkboxes[2]);
     expect(screen.getAllByRole('button', { name: 'common.delete' })[0]).toBeDisabled();
+  });
+
+  it('hides student practice-session copy actions when no practice sessions exist', async () => {
+    authState.user = { _id: 'student-1', roles: ['student', 'professor'] };
+
+    render(
+      <QuestionLibraryPanel
+        courseId="course-1"
+        currentCourse={{ _id: 'course-1', name: 'Course One', instructors: ['prof-1'] }}
+        availableSessions={[]}
+        allowQuestionCreate
+        permissionMode="student"
+      />
+    );
+
+    const questionCard = (await screen.findByText('Library question content')).closest('.MuiCard-root');
+
+    expect(screen.queryByRole('button', { name: 'Copy to practice session' })).not.toBeInTheDocument();
+    expect(questionCard).not.toBeNull();
+    expect(within(questionCard).queryByRole('button', { name: 'Copy to practice session' })).not.toBeInTheDocument();
   });
 });

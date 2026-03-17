@@ -452,6 +452,7 @@ export default function PracticeSessionEditor() {
               currentCourse={course}
               availableSessions={[]}
               allowQuestionCreate={false}
+              permissionMode="student"
               selectionAction={{
                 buttonLabel: t('questionLibrary.bulk.addSelectedToPracticeSession', { defaultValue: 'Add selected questions to practice session' }),
                 onSubmit: handleAddLibraryQuestions,

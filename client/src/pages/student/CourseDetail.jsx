@@ -435,6 +435,7 @@ export default function StudentCourseDetail() {
             currentCourse={course}
             availableSessions={sortedSessions}
             allowQuestionCreate={!!course.allowStudentQuestions}
+            permissionMode="student"
           />
         </Suspense>
       </TabPanel>

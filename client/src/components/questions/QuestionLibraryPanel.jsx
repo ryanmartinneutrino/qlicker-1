@@ -421,11 +421,16 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
   currentCourse = null,
   allowQuestionCreate = true,
   selectionAction = null,
+  permissionMode = null,
 }, ref) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const roles = user?.roles || [];
-  const isStudentLibrary = roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
+  const isStudentLibrary = permissionMode === 'student'
+    || (permissionMode !== 'instructor'
+      && roles.includes('student')
+      && !roles.includes('professor')
+      && !roles.includes('admin'));
   const loadErrorTextRef = useRef('');
   loadErrorTextRef.current = t('questionLibrary.errors.load', { defaultValue: 'Failed to load question library.' });
   const [loading, setLoading] = useState(true);
@@ -1208,28 +1213,30 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                   {t('questionLibrary.bulk.visibility', { defaultValue: 'Change visibility' })}
                 </Button>
               ) : null}
-              <Button
-                size="small"
-                startIcon={<CopyIcon />}
-                disabled={selectedQuestionIds.length === 0 || saving || (!directSelectionMode && isStudentLibrary && studentPracticeSessions.length === 0)}
-                onClick={() => {
-                  if (directSelectionMode) {
-                    handleDirectSelectionSubmit();
-                    return;
-                  }
-                  if (isStudentLibrary) {
-                    setPracticeSessionDialogOpen(true);
-                    return;
-                  }
-                  setCopyDialogState({ open: true, questionIds: selectedQuestionIds });
-                }}
-              >
-                {directSelectionMode
-                  ? (selectionAction.buttonLabel || t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }))
-                  : isStudentLibrary
-                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })
-                  : t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
-              </Button>
+              {(!isStudentLibrary || directSelectionMode || studentPracticeSessions.length > 0) ? (
+                <Button
+                  size="small"
+                  startIcon={<CopyIcon />}
+                  disabled={selectedQuestionIds.length === 0 || saving}
+                  onClick={() => {
+                    if (directSelectionMode) {
+                      handleDirectSelectionSubmit();
+                      return;
+                    }
+                    if (isStudentLibrary) {
+                      setPracticeSessionDialogOpen(true);
+                      return;
+                    }
+                    setCopyDialogState({ open: true, questionIds: selectedQuestionIds });
+                  }}
+                >
+                  {directSelectionMode
+                    ? (selectionAction.buttonLabel || t('questionLibrary.bulk.addToSession', { defaultValue: 'Add to session' }))
+                    : isStudentLibrary
+                    ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
+                    : t('questionLibrary.bulk.copy', { defaultValue: 'Copy to course/session' })}
+                </Button>
+              ) : null}
               <Button
                 size="small"
                 startIcon={<DownloadIcon />}
@@ -1284,6 +1291,8 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
               {questions.map((question, index) => {
                 const questionId = String(question._id);
                 const studentCanManage = canStudentManageQuestion(question, currentUserId);
+                const studentCanCopyQuestion = !isStudentLibrary
+                  || (!isQuestionOwnedByUser(question, currentUserId) && studentPracticeSessions.length > 0);
                 const checked = selectedIdSet.has(questionId);
                 const expanded = !!expandedQuestionIds[questionId];
                 const editing = editingQuestionId === questionId;
@@ -1370,14 +1379,21 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                                 </span>
                               </Tooltip>
                             ) : null}
-                            {!directSelectionMode ? (
+                            {!directSelectionMode && studentCanCopyQuestion ? (
                               <Tooltip
                                 title={isStudentLibrary
-                                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })
+                                  ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
                                   : t('common.copy', { defaultValue: 'Copy' })}
                               >
                                 <span>
-                                  <IconButton size="small" disabled={saving} onClick={() => handleCopyQuestionSingle(questionId)}>
+                                  <IconButton
+                                    size="small"
+                                    disabled={saving}
+                                    aria-label={isStudentLibrary
+                                      ? t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })
+                                      : t('common.copy', { defaultValue: 'Copy' })}
+                                    onClick={() => handleCopyQuestionSingle(questionId)}
+                                  >
                                     <CopyIcon fontSize="small" />
                                   </IconButton>
                                 </span>
@@ -1558,7 +1574,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
 
       <SessionSelectorDialog
         open={practiceSessionDialogOpen}
-        title={t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Add to practice session' })}
+        title={t('questionLibrary.bulk.addToPracticeSession', { defaultValue: 'Copy to practice session' })}
         sessions={studentPracticeSessions}
         selectedIds={selectedPracticeSessionIds}
         headerContent={(
