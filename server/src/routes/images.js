@@ -10,6 +10,9 @@ export default async function imageRoutes(app) {
   // POST / — Upload an image
   app.post('/', {
     preHandler: authenticate,
+    config: {
+      rateLimit: { max: 10, timeWindow: '1 hour' },
+    },
     schema: {
       consumes: ['multipart/form-data'],
       body: {

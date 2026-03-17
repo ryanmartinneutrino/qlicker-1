@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
@@ -6,8 +7,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, '../../../.env') });
 
 const nodeEnv = process.env.NODE_ENV || 'development';
-const jwtSecret = process.env.JWT_SECRET || 'dev-secret-change-me';
-const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-me';
+const runtimeJwtSecret = crypto.randomBytes(32).toString('hex');
+const runtimeJwtRefreshSecret = crypto.randomBytes(32).toString('hex');
+const jwtSecret = process.env.JWT_SECRET || runtimeJwtSecret;
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || runtimeJwtRefreshSecret;
 
 if (nodeEnv === 'production') {
   if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {

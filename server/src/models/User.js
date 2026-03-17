@@ -111,6 +111,9 @@ const UserSchema = new mongoose.Schema(
     ssoCreated: { type: Boolean, default: false },
     allowEmailLogin: { type: Boolean, default: true },
     lastAuthProvider: { type: String, default: '' },
+    refreshTokenVersion: { type: Number, default: 0 },
+    failedLoginAttempts: { type: Number, default: 0 },
+    loginLockedUntil: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date },
     // Per-user locale preference (overrides app default from Settings).

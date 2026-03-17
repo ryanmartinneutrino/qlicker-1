@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
 import Settings from '../../src/models/Settings.js';
 
 let app;
+
+function extractCookieValue(setCookieHeader, name) {
+  const entries = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+  for (const entry of entries) {
+    const match = String(entry || '').match(new RegExp(`${name}=([^;]+)`));
+    if (match) return match[1];
+  }
+  return null;
+}
 
 beforeEach(async (ctx) => {
   if (mongoose.connection.readyState !== 1) {
@@ -387,6 +397,103 @@ describe('POST /api/v1/auth/logout', () => {
     const body = res.json();
     expect(body.success).toBe(true);
   });
+
+  it('invalidates the current refresh token when present', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'logout-refresh@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'logout-refresh@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+
+    const refreshCookie = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(refreshCookie).toBeTruthy();
+
+    const logoutRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${refreshCookie}`,
+      },
+    });
+    expect(logoutRes.statusCode).toBe(200);
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${refreshCookie}`,
+      },
+    });
+    expect(refreshRes.statusCode).toBe(401);
+  });
+});
+
+// ---------- POST /api/v1/auth/refresh ----------
+describe('POST /api/v1/auth/refresh', () => {
+  it('rotates refresh tokens so the previous token becomes invalid after use', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'rotate@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'rotate@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+
+    const originalRefreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(originalRefreshToken).toBeTruthy();
+
+    const firstRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${originalRefreshToken}`,
+      },
+    });
+    expect(firstRefreshRes.statusCode).toBe(200);
+    expect(firstRefreshRes.json().token).toBeTruthy();
+
+    const rotatedRefreshToken = extractCookieValue(firstRefreshRes.headers['set-cookie'], 'refreshToken');
+    expect(rotatedRefreshToken).toBeTruthy();
+    expect(rotatedRefreshToken).not.toBe(originalRefreshToken);
+
+    const rejectedReuseRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${originalRefreshToken}`,
+      },
+    });
+    expect(rejectedReuseRes.statusCode).toBe(401);
+
+    const secondRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${rotatedRefreshToken}`,
+      },
+    });
+    expect(secondRefreshRes.statusCode).toBe(200);
+    expect(secondRefreshRes.json().token).toBeTruthy();
+  });
 });
 
 // ---------- POST /api/v1/auth/forgot-password ----------
@@ -418,6 +525,91 @@ describe('POST /api/v1/auth/forgot-password', () => {
 
     const stored = await User.findOne({ 'emails.address': 'sso-forgot@example.com' });
     expect(stored.services?.resetPassword).toBeUndefined();
+  });
+});
+
+describe('login hardening', () => {
+  it('temporarily locks an account after repeated failed password attempts and clears the lock on success', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'locked@example.com', password: 'password123' });
+
+    for (let attempt = 1; attempt < 5; attempt += 1) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        headers: { ...csrfHeaders },
+        payload: {
+          email: 'locked@example.com',
+          password: 'wrongpassword',
+        },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+
+    const lockRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'locked@example.com',
+        password: 'wrongpassword',
+      },
+    });
+    expect(lockRes.statusCode).toBe(423);
+    expect(lockRes.json().code).toBe('ACCOUNT_LOCKED');
+
+    const lockedCorrectPasswordRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'locked@example.com',
+        password: 'password123',
+      },
+    });
+    expect(lockedCorrectPasswordRes.statusCode).toBe(423);
+
+    await (await import('../../src/models/User.js')).default.findByIdAndUpdate(user._id, {
+      $set: {
+        loginLockedUntil: new Date(Date.now() - 1000),
+      },
+    });
+
+    const unlockedRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'locked@example.com',
+        password: 'password123',
+      },
+    });
+    expect(unlockedRes.statusCode).toBe(200);
+
+    const updated = await (await import('../../src/models/User.js')).default.findById(user._id);
+    expect(updated.failedLoginAttempts).toBe(0);
+    expect(updated.loginLockedUntil).toBeNull();
+  });
+
+  it('issues refresh tokens with a version claim', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'version@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'version@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    const decoded = jwt.verify(refreshToken, app.config.jwtRefreshSecret);
+    expect(decoded.type).toBe('refresh');
+    expect(decoded.version).toBeGreaterThanOrEqual(1);
   });
 });
 

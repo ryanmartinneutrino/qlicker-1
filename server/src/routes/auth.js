@@ -6,6 +6,10 @@ import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 
+const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const LOGIN_LOCKOUT_THRESHOLD = 5;
+const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 function getAttr(profile, key) {
   if (!key || !profile) return '';
   const val = profile[key];
@@ -48,12 +52,53 @@ async function signAccessToken(app, user) {
   );
 }
 
-function signRefreshToken(config, user) {
+function getRefreshTokenVersion(user) {
+  return Math.max(0, Number(user?.refreshTokenVersion) || 0);
+}
+
+function signRefreshToken(config, user, version = getRefreshTokenVersion(user)) {
   return jwt.sign(
-    { userId: user._id, type: 'refresh' },
+    { userId: user._id, type: 'refresh', version },
     config.jwtRefreshSecret,
     { expiresIn: '7d' }
   );
+}
+
+function setRefreshTokenCookie(reply, app, refreshToken) {
+  reply.setCookie('refreshToken', refreshToken, {
+    path: '/',
+    httpOnly: true,
+    secure: app.config.nodeEnv === 'production',
+    sameSite: 'strict',
+    maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
+  });
+}
+
+function clearRefreshTokenCookie(reply) {
+  reply.clearCookie('refreshToken', { path: '/' });
+}
+
+function isLoginLocked(user) {
+  const lockedUntil = user?.loginLockedUntil ? new Date(user.loginLockedUntil) : null;
+  return !!lockedUntil && lockedUntil.getTime() > Date.now();
+}
+
+function prepareLoginLockoutReset(user) {
+  if (!user) return;
+  user.failedLoginAttempts = 0;
+  user.loginLockedUntil = null;
+}
+
+async function recordFailedLoginAttempt(user) {
+  if (!user) return false;
+
+  const attempts = (Number(user.failedLoginAttempts) || 0) + 1;
+  user.failedLoginAttempts = attempts;
+  if (attempts >= LOGIN_LOCKOUT_THRESHOLD) {
+    user.loginLockedUntil = new Date(Date.now() + LOGIN_LOCKOUT_DURATION_MS);
+  }
+  await user.save();
+  return isLoginLocked(user);
 }
 
 const registerSchema = {
@@ -143,13 +188,7 @@ export default async function authRoutes(app) {
     const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
-    reply.setCookie('refreshToken', refreshToken, {
-      path: '/',
-      httpOnly: true,
-      secure: app.config.nodeEnv === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
-    });
+    setRefreshTokenCookie(reply, app, refreshToken);
 
     return reply.code(201).send({ token, user: sanitizeUser(user) });
   });
@@ -192,38 +231,70 @@ export default async function authRoutes(app) {
       });
     }
 
+    if (isLoginLocked(user)) {
+      return reply.code(423).send({
+        error: 'Locked',
+        code: 'ACCOUNT_LOCKED',
+        message: 'Too many failed login attempts. Please try again later.',
+      });
+    }
+
     const valid = await user.verifyPassword(password);
     if (!valid) {
       request.log.warn({ email: normalizedEmail, userId: user._id }, 'Login failed: invalid password');
+      const locked = await recordFailedLoginAttempt(user);
+      if (locked) {
+        return reply.code(423).send({
+          error: 'Locked',
+          code: 'ACCOUNT_LOCKED',
+          message: 'Too many failed login attempts. Please try again later.',
+        });
+      }
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
+    prepareLoginLockoutReset(user);
     user.lastLogin = new Date();
     user.lastAuthProvider = 'password';
+    user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
     await user.save();
 
     const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
-    reply.setCookie('refreshToken', refreshToken, {
-      path: '/',
-      httpOnly: true,
-      secure: app.config.nodeEnv === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60,
-    });
+    setRefreshTokenCookie(reply, app, refreshToken);
 
     return { token, user: sanitizeUser(user) };
   });
 
   // POST /logout
-  app.post('/logout', async (request, reply) => {
-    reply.clearCookie('refreshToken', { path: '/' });
+  app.post('/logout', {
+    config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const refreshToken = request.cookies?.refreshToken;
+
+    if (refreshToken) {
+      try {
+        const payload = jwt.verify(refreshToken, app.config.jwtRefreshSecret);
+        if (payload?.type === 'refresh' && Number.isInteger(payload.version)) {
+          await User.updateOne(
+            { _id: payload.userId, refreshTokenVersion: payload.version },
+            { $inc: { refreshTokenVersion: 1 } }
+          );
+        }
+      } catch {
+        // Ignore invalid refresh tokens during logout and still clear the cookie.
+      }
+    }
+
+    clearRefreshTokenCookie(reply);
     return { success: true };
   });
 
   // POST /refresh
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', {
+    config: { rateLimit: { max: 30, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const refreshToken = request.cookies?.refreshToken;
     if (!refreshToken) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'No refresh token' });
@@ -240,12 +311,22 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid token type' });
     }
 
-    const user = await User.findById(payload.userId);
+    if (!Number.isInteger(payload.version) || payload.version < 0) {
+      return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { _id: payload.userId, refreshTokenVersion: payload.version },
+      { $inc: { refreshTokenVersion: 1 } },
+      { new: true }
+    );
     if (!user) {
-      return reply.code(401).send({ error: 'Unauthorized', message: 'User not found' });
+      return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }
 
     const token = await signAccessToken(app, user);
+    const nextRefreshToken = signRefreshToken(app.config, user);
+    setRefreshTokenCookie(reply, app, nextRefreshToken);
     return { token };
   });
 
@@ -326,6 +407,7 @@ export default async function authRoutes(app) {
       user.services.password.hash = hashedPassword;
       user.services.password.bcrypt = undefined;
       user.services.resetPassword = undefined;
+      user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
       await user.save();
 
       return { success: true };
@@ -480,6 +562,7 @@ export default async function authRoutes(app) {
 
       user.lastLogin = new Date();
       user.lastAuthProvider = 'sso';
+      user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
       await user.save();
     }
 
@@ -493,13 +576,7 @@ export default async function authRoutes(app) {
     const token = await signAccessToken(app, user);
     const refreshToken = signRefreshToken(app.config, user);
 
-    reply.setCookie('refreshToken', refreshToken, {
-      path: '/',
-      httpOnly: true,
-      secure: app.config.nodeEnv === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60,
-    });
+    setRefreshTokenCookie(reply, app, refreshToken);
 
     return reply.redirect(`${app.config.rootUrl}/sso-callback?token=${encodeURIComponent(token)}`);
   });

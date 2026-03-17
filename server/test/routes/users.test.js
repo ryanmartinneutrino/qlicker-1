@@ -217,6 +217,9 @@ describe('PATCH /api/v1/users/me/password', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().success).toBe(true);
 
+    const storedAfterChange = await User.findById(user._id);
+    expect(storedAfterChange.refreshTokenVersion).toBe(1);
+
     // Verify new password works
     const loginRes = await app.inject({
       method: 'POST',
@@ -273,6 +276,56 @@ describe('PATCH /api/v1/users/me/password', () => {
       payload: { currentPassword: 'password123', newPassword: 'short' },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ---------- PATCH /api/v1/users/me/image ----------
+describe('PATCH /api/v1/users/me/image', () => {
+  it('accepts site-relative and https profile image URLs', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'image-ok@example.com' });
+    const token = await getAuthToken(app, user);
+
+    const relativeRes = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/image', {
+      token,
+      payload: { profileImage: '/uploads/avatar.png' },
+    });
+    expect(relativeRes.statusCode).toBe(200);
+    expect(relativeRes.json().profile.profileImage).toBe('/uploads/avatar.png');
+    expect(relativeRes.json().profile.profileThumbnail).toBe('/uploads/avatar.png');
+
+    const absoluteRes = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/image', {
+      token,
+      payload: {
+        profileImage: 'https://cdn.example.com/avatar.png',
+        profileThumbnail: 'https://cdn.example.com/avatar-thumb.png',
+      },
+    });
+    expect(absoluteRes.statusCode).toBe(200);
+    expect(absoluteRes.json().profile.profileImage).toBe('https://cdn.example.com/avatar.png');
+    expect(absoluteRes.json().profile.profileThumbnail).toBe('https://cdn.example.com/avatar-thumb.png');
+  });
+
+  it('rejects unsafe profile image URL schemes', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'image-bad@example.com' });
+    const token = await getAuthToken(app, user);
+
+    const badImageRes = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/image', {
+      token,
+      payload: { profileImage: 'javascript:alert(1)' },
+    });
+    expect(badImageRes.statusCode).toBe(400);
+    expect(badImageRes.json().message).toMatch(/http\(s\)|site-relative/i);
+
+    const badThumbnailRes = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/image', {
+      token,
+      payload: {
+        profileImage: '/uploads/avatar.png',
+        profileThumbnail: 'data:text/html;base64,PHNjcmlwdD4=',
+      },
+    });
+    expect(badThumbnailRes.statusCode).toBe(400);
   });
 });
 
