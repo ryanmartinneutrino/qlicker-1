@@ -1165,6 +1165,9 @@ export default async function questionRoutes(app) {
       preHandler: authenticate,
       schema: updateQuestionSchema,
       rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const question = await Question.findById(request.params.id);
