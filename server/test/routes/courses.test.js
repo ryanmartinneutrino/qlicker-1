@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
+import Settings from '../../src/models/Settings.js';
 import User from '../../src/models/User.js';
 
 let app;
@@ -396,6 +397,31 @@ describe('POST /api/v1/courses/enroll', () => {
     });
 
     expect(res.statusCode).toBe(409);
+  });
+
+  it('skips the verified-email enrollment requirement when SSO is enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.create({ _id: 'settings', SSO_enabled: true });
+
+    const prof = await createTestUser({ email: 'prof-sso@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+    await Course.findByIdAndUpdate(course._id, { requireVerified: true });
+
+    const student = await createTestUser({ email: 'student-sso@example.com', roles: ['student'] });
+    await User.updateOne(
+      { _id: student._id },
+      { $set: { 'emails.0.verified': false } }
+    );
+    const studentToken = await getAuthToken(app, student);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    expect(res.statusCode).toBe(200);
   });
 });
 

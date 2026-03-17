@@ -514,10 +514,7 @@ export default function SessionReview() {
 
   const fetchReview = useCallback(async ({ background = false } = {}) => {
     try {
-      const [reviewResult, gradeResult] = await Promise.all([
-        apiClient.get(`/sessions/${sessionId}/review`),
-        apiClient.get(`/sessions/${sessionId}/grades`).catch(() => null),
-      ]);
+      const reviewResult = await apiClient.get(`/sessions/${sessionId}/review`);
 
       const data = reviewResult?.data || {};
       setSession(data.session);
@@ -525,6 +522,10 @@ export default function SessionReview() {
       setResponsesByQuestion(data.responses || {});
       setFeedbackSummary(data.feedback || buildDefaultFeedbackSummary());
 
+      const shouldLoadGrades = !(data.session?.studentCreated && data.session?.practiceQuiz);
+      const gradeResult = shouldLoadGrades
+        ? await apiClient.get(`/sessions/${sessionId}/grades`).catch(() => null)
+        : null;
       const grade = gradeResult?.data?.grades?.[0] || null;
       setSessionGrade(grade);
       setFeedbackActionError('');

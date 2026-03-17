@@ -98,6 +98,8 @@ describe('Student SessionReview', () => {
       ).toBe(false);
     });
 
+    expect(apiClient.get).not.toHaveBeenCalledWith('/sessions/session-1/grades');
+
     consoleErrorSpy.mockRestore();
   });
 });

@@ -495,6 +495,7 @@ describe('POST /api/v1/auth/sso/callback', () => {
     expect(created.ssoCreated).toBe(true);
     expect(created.allowEmailLogin).toBe(false);
     expect(created.lastAuthProvider).toBe('sso');
+    expect(created.emails?.[0]?.verified).toBe(true);
   });
 });
 

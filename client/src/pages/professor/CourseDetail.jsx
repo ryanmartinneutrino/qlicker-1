@@ -233,6 +233,7 @@ export default function CourseDetail() {
   const [settingsAutoSaveStatus, setSettingsAutoSaveStatus] = useState('idle');
   const [settingsAutoSaveError, setSettingsAutoSaveError] = useState('');
   const [adminTimeFormat, setAdminTimeFormat] = useState('24h');
+  const [ssoEnabled, setSsoEnabled] = useState(false);
 
   // Sessions
   const [sessions, setSessions] = useState([]);
@@ -373,10 +374,14 @@ export default function CourseDetail() {
       .then(({ data }) => {
         if (mounted) {
           setAdminTimeFormat(data?.timeFormat === '12h' ? '12h' : '24h');
+          setSsoEnabled(!!data?.SSO_enabled);
         }
       })
       .catch(() => {
-        if (mounted) setAdminTimeFormat('24h');
+        if (mounted) {
+          setAdminTimeFormat('24h');
+          setSsoEnabled(false);
+        }
       });
     return () => {
       mounted = false;
@@ -1241,15 +1246,17 @@ export default function CourseDetail() {
             control={<Switch checked={!course.inactive} onChange={handleToggleActive} />}
             label={course.inactive ? t('professor.course.courseInactive') : t('professor.course.courseActive')}
           />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={!!course.requireVerified}
-                onChange={handleToggleRequireVerified}
-              />
-            }
-            label={t('professor.course.requireVerifiedEnroll')}
-          />
+          {!ssoEnabled ? (
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={!!course.requireVerified}
+                  onChange={handleToggleRequireVerified}
+                />
+              )}
+              label={t('professor.course.requireVerifiedEnroll')}
+            />
+          ) : null}
           <FormControlLabel
             control={
               <Switch

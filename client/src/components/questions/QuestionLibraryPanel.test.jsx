@@ -262,7 +262,7 @@ describe('QuestionLibraryPanel', () => {
     expect(deleteButtons[0]).toBeDisabled();
   });
 
-  it('only shows student edit controls for manageable owned questions and disables mixed delete selections', async () => {
+  it('shows student edit and copy controls for manageable owned questions and disables mixed delete selections', async () => {
     authState.user = { _id: 'student-1', roles: ['student'] };
     apiClientMock.get.mockImplementation((url) => {
       if (url.startsWith('/courses/course-1/questions?') && !url.includes('idsOnly=true')) {
@@ -346,7 +346,7 @@ describe('QuestionLibraryPanel', () => {
 
     expect(within(ownedCard).getByRole('button', { name: 'common.edit' })).toBeInTheDocument();
     expect(within(sharedCard).queryByRole('button', { name: 'common.edit' })).not.toBeInTheDocument();
-    expect(within(ownedCard).queryByRole('button', { name: 'Copy to practice session' })).not.toBeInTheDocument();
+    expect(within(ownedCard).getByRole('button', { name: 'Copy to practice session' })).toBeInTheDocument();
     expect(within(sharedCard).getByRole('button', { name: 'Copy to practice session' })).toBeInTheDocument();
     expect(within(sharedCard).getByRole('button', { name: 'common.delete' })).toBeDisabled();
     expect(screen.queryByText('Has responses')).not.toBeInTheDocument();

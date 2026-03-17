@@ -81,16 +81,17 @@ describe('getStudentSessionAction', () => {
       practiceQuiz: true,
       studentCreated: true,
       status: 'hidden',
+      questions: ['q-1'],
       quizHasResponsesByCurrentUser: false,
       quizAllQuestionsAnsweredByCurrentUser: false,
     }, 'course-1', 2);
 
     expect(action).toEqual({
       clickable: true,
-      path: '/student/course/course-1/session/practice-1/quiz',
-      label: 'student.course.startQuiz',
-      chipColor: 'primary',
-      chipVariant: 'filled',
+      path: '/student/course/course-1/session/practice-1/review?returnTab=2',
+      label: 'student.course.review',
+      chipColor: 'success',
+      chipVariant: 'outlined',
     });
   });
 });

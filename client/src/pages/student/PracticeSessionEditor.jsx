@@ -2,24 +2,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import {
   Add as AddIcon,
+  Close as CloseIcon,
   ContentCopy as CopyIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
@@ -31,6 +37,18 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 
 function normalizeQuestionId(questionOrId) {
   return String(questionOrId?._id || questionOrId || '').trim();
+}
+
+function normalizeTagValues(tags = []) {
+  return [...new Set(
+    (tags || [])
+      .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+      .filter(Boolean)
+  )];
+}
+
+function toTagObjects(tags = []) {
+  return normalizeTagValues(tags).map((tag) => ({ value: tag, label: tag }));
 }
 
 function insertQuestionsAtIndex(existingQuestions, incomingQuestions, insertAtIndex) {
@@ -68,6 +86,8 @@ export default function PracticeSessionEditor() {
   const [insertAtIndex, setInsertAtIndex] = useState(null);
   const [librarySelectionCount, setLibrarySelectionCount] = useState(0);
   const [randomAddCount, setRandomAddCount] = useState(10);
+  const [sessionTags, setSessionTags] = useState([]);
+  const [editingQuestionId, setEditingQuestionId] = useState('');
 
   const selectedQuestionIds = useMemo(
     () => selectedQuestions.map((question) => normalizeQuestionId(question)).filter(Boolean),
@@ -110,6 +130,7 @@ export default function PracticeSessionEditor() {
       setCourse(nextCourse);
       setSession(nextSession);
       setName(nextSession?.name || '');
+      setSessionTags(normalizeTagValues(nextSession?.tags || []));
       await loadSelectedQuestions(nextSession?.questions || []);
       setMessage(null);
     } catch (err) {
@@ -150,6 +171,15 @@ export default function PracticeSessionEditor() {
       courseId,
     });
     return data.question || data;
+  };
+
+  const handlePracticeQuestionUpdate = async (payload, questionId) => {
+    const { data } = await apiClient.patch(`/questions/${questionId}`, payload);
+    const savedQuestion = data.question || data;
+    setSelectedQuestions((previous) => previous.map((question) => (
+      normalizeQuestionId(question) === normalizeQuestionId(savedQuestion) ? savedQuestion : question
+    )));
+    return savedQuestion;
   };
 
   const handleAddLibraryQuestions = useCallback(async (questionIds) => {
@@ -198,10 +228,14 @@ export default function PracticeSessionEditor() {
         const { data } = await apiClient.post(`/courses/${courseId}/sessions`, {
           name: name.trim(),
           practiceQuiz: true,
+          tags: toTagObjects(sessionTags),
         });
         practiceSessionId = data?.session?._id;
       } else {
-        await apiClient.patch(`/sessions/${practiceSessionId}`, { name: name.trim() });
+        await apiClient.patch(`/sessions/${practiceSessionId}`, {
+          name: name.trim(),
+          tags: toTagObjects(sessionTags),
+        });
       }
 
       await apiClient.patch(`/sessions/${practiceSessionId}/practice-questions`, {
@@ -255,6 +289,31 @@ export default function PracticeSessionEditor() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             fullWidth
+          />
+          <Autocomplete
+            multiple
+            freeSolo={false}
+            options={normalizeTagValues(course?.tags || [])}
+            value={sessionTags}
+            onChange={(_event, nextValue) => setSessionTags(normalizeTagValues(nextValue))}
+            renderTags={(value, getTagProps) => value.map((tag, index) => (
+              <Chip
+                {...getTagProps({ index })}
+                key={tag}
+                size="small"
+                label={tag}
+              />
+            ))}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
+                placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
+                helperText={t('professor.sessionEditor.tagsHelp', {
+                  defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
+                })}
+              />
+            )}
           />
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <Button variant="contained" startIcon={<AddIcon />} onClick={() => openAddQuestionDialog()}>
@@ -374,16 +433,60 @@ export default function PracticeSessionEditor() {
                     <Card variant="outlined" sx={{ mb: 1.5 }}>
                       <CardContent sx={{ display: 'flex', gap: 1.25, alignItems: 'flex-start' }}>
                         <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                          <QuestionDisplay question={question} />
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start', mb: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                              {normalizeTagValues(question.tags || [])
+                                .filter((tag) => tag.toLowerCase() !== 'qlicker')
+                                .map((tag) => (
+                                  <Chip
+                                    key={`${questionId}-tag-${tag}`}
+                                    size="small"
+                                    variant="outlined"
+                                    label={tag}
+                                  />
+                                ))}
+                            </Box>
+                            <Stack direction="row" spacing={0.25}>
+                              <Tooltip title={editingQuestionId === questionId ? t('professor.sessionEditor.closeEditor') : t('common.edit')}>
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    aria-label={editingQuestionId === questionId ? t('professor.sessionEditor.closeEditor') : t('common.edit')}
+                                    onClick={() => setEditingQuestionId((previous) => (previous === questionId ? '' : questionId))}
+                                  >
+                                    {editingQuestionId === questionId ? <CloseIcon fontSize="small" /> : <EditIcon fontSize="small" />}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title={t('common.remove', { defaultValue: 'Remove' })}>
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    aria-label={t('common.remove', { defaultValue: 'Remove' })}
+                                    onClick={() => removeSelectedQuestion(questionId)}
+                                  >
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </Stack>
+                          </Box>
+                          {editingQuestionId === questionId ? (
+                            <QuestionEditor
+                              open
+                              inline
+                              initial={question}
+                              tagSuggestions={course?.tags || []}
+                              showVisibilityControls={false}
+                              allowCustomTags={false}
+                              onAutoSave={handlePracticeQuestionUpdate}
+                              onClose={() => setEditingQuestionId('')}
+                            />
+                          ) : (
+                            <QuestionDisplay question={question} />
+                          )}
                         </Box>
-                        <Button
-                          size="small"
-                          color="error"
-                          startIcon={<DeleteIcon />}
-                          onClick={() => removeSelectedQuestion(questionId)}
-                        >
-                          {t('common.remove', { defaultValue: 'Remove' })}
-                        </Button>
                       </CardContent>
                     </Card>
                   ) : null}

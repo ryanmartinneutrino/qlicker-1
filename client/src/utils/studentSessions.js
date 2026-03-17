@@ -46,11 +46,12 @@ export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
   const isQuiz = isQuizSession(session);
   const submittedQuiz = isQuiz && session?.quizSubmittedByCurrentUser && !session?.practiceQuiz;
   const isOwnedPracticeSession = !!session?.practiceQuiz && !!session?.studentCreated;
+  const practiceReviewPath = `/student/course/${courseId}/session/${session?._id}/review?returnTab=${listTabIndex}`;
 
   if (session?.status === 'done' && session?.reviewable) {
     return {
       clickable: true,
-      path: `/student/course/${courseId}/session/${session?._id}/review?returnTab=${listTabIndex}`,
+      path: practiceReviewPath,
       label: 'student.course.review',
       chipColor: 'success',
       chipVariant: 'outlined',
@@ -77,7 +78,18 @@ export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
     };
   }
 
-  if (isQuiz && (session?.status === 'running' || isOwnedPracticeSession)) {
+  if (isOwnedPracticeSession) {
+    const hasQuestions = Array.isArray(session?.questions) && session.questions.length > 0;
+    return {
+      clickable: hasQuestions,
+      path: hasQuestions ? practiceReviewPath : '',
+      label: hasQuestions ? 'student.course.review' : '',
+      chipColor: hasQuestions ? 'success' : 'default',
+      chipVariant: 'outlined',
+    };
+  }
+
+  if (isQuiz && session?.status === 'running') {
     const hasResponses = !!session?.quizHasResponsesByCurrentUser;
     const allQuestionsAnswered = !!session?.quizAllQuestionsAnsweredByCurrentUser;
     let quizActionLabel = 'student.course.startQuiz';
