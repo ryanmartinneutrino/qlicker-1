@@ -192,6 +192,7 @@ describe('PracticeSessionEditor', () => {
     });
 
     expect(questionLibraryPanelPropsMock).toHaveBeenCalledWith(expect.objectContaining({
+      permissionMode: 'student',
       selectionAction: expect.objectContaining({
         hideInlineRandomSelectionControls: true,
       }),
