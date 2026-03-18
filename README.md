@@ -187,7 +187,7 @@ The generated payload configures Qlicker with:
 - `SSO_enabled=true`
 - `SSO_entrypoint=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleSignOnService`
 - `SSO_logoutUrl=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleLogout`
-- `SSO_EntityId=http://127.0.0.1:3300/api/v1/auth/sso/metadata`
+- `SSO_EntityId` derived from the repository root `.env` app URL (for example `http://localhost:3200/api/v1/auth/sso/metadata`)
 - `SSO_identifierFormat=urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress`
 - `SSO_institutionName=Local SimpleSAMLphp`
 - `SSO_emailIdentifier=mail`
@@ -198,6 +198,13 @@ The generated payload configures Qlicker with:
 - `SSO_studentNumberIdentifier=studentNumber`
 - `SSO_cert` from `ssoserver/certs/idp.crt`
 - `SSO_privCert` and `SSO_privKey` from `ssoserver/certs/qlicker-sp.*`
+
+For production cutover compatibility, the Fastify app also serves the legacy Meteor SAML surface alongside the newer `/api/v1/auth/sso/*` routes:
+
+- `/SSO/SAML2`
+- `/SSO/SAML2/logout`
+- `/SSO/SAML2/metadata`
+- `/SSO/SAML2/metadata.xml`
 
 Run the dedicated SSO smoke test:
 

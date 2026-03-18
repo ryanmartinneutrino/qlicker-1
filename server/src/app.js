@@ -15,7 +15,7 @@ import uploadPlugin from './plugins/upload.js';
 import samlPlugin from './plugins/saml.js';
 import websocketPlugin from './plugins/websocket.js';
 import { authenticate, requireRole } from './middleware/auth.js';
-import authRoutes from './routes/auth.js';
+import authRoutes, { legacySamlRoutes } from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import settingsRoutes from './routes/settings.js';
 import imageRoutes from './routes/images.js';
@@ -98,6 +98,7 @@ export async function buildApp(opts = {}) {
   const CSRF_EXEMPT_PATHS = [
     '/api/v1/auth/sso/callback',
     '/api/v1/auth/sso/logout',
+    '/SSO/SAML2',
   ];
   app.addHook('onRequest', async (request, reply) => {
     const method = request.method;
@@ -181,6 +182,7 @@ export async function buildApp(opts = {}) {
   });
 
   // Routes
+  await app.register(legacySamlRoutes);
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
   await app.register(userRoutes, { prefix: '/api/v1/users' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });

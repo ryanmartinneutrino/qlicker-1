@@ -4,7 +4,7 @@ import Settings from '../models/Settings.js';
 import { normalizeCertificatePem, normalizePrivateKeyPem } from '../utils/certificate.js';
 
 async function samlPlugin(fastify) {
-  fastify.decorate('getSamlProvider', async function getSamlProvider() {
+  fastify.decorate('getSamlProvider', async function getSamlProvider(options = {}) {
     const settings = await Settings.findOne();
     if (!settings?.SSO_enabled) {
       return null;
@@ -15,8 +15,14 @@ async function samlPlugin(fastify) {
       return null;
     }
 
-    const callbackUrl = `${fastify.config.rootUrl}/api/v1/auth/sso/callback`;
-    const logoutCallbackUrl = `${fastify.config.rootUrl}/api/v1/auth/sso/logout`;
+    const callbackPath = options.callbackPath || '/api/v1/auth/sso/callback';
+    const logoutCallbackPath = options.logoutCallbackPath || '/api/v1/auth/sso/logout';
+    const callbackUrl = callbackPath.startsWith('http')
+      ? callbackPath
+      : `${fastify.config.rootUrl}${callbackPath}`;
+    const logoutCallbackUrl = logoutCallbackPath.startsWith('http')
+      ? logoutCallbackPath
+      : `${fastify.config.rootUrl}${logoutCallbackPath}`;
 
     const samlOptions = {
       entryPoint: settings.SSO_entrypoint,
@@ -45,6 +51,8 @@ async function samlPlugin(fastify) {
 
     // Attach settings for use in routes (to generate metadata with SP cert)
     saml._qlickerSettings = settings;
+    saml._qlickerCallbackPath = callbackPath;
+    saml._qlickerLogoutCallbackPath = logoutCallbackPath;
 
     return saml;
   });
