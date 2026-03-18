@@ -35,7 +35,7 @@ qlicker-1/
 │   │   ├── routes/         # Route modules (auth, users, settings, courses, sessions, questions, grades, images)
 │   │   ├── services/       # Business logic (grading, email)
 │   │   └── utils/          # Small pure helpers (meteorId, password, email, regex)
-│   └── test/               # Vitest tests (9 files, 173+ tests)
+│   └── test/               # Vitest tests (13 files, 284 tests)
 ├── client/                 # React SPA (Vite + MUI)
 │   ├── src/
 │   │   ├── api/            # Axios client with JWT interceptors
@@ -571,6 +571,25 @@ const responseCount = allResponses.length;
 // ❌ Wrong — two separate queries for overlapping data
 const count = await Response.countDocuments({ questionId, attempt });
 const studentResponse = await Response.findOne({ questionId, attempt, studentUserId: userId });
+```
+
+### Avoid N+1 Query Loops
+
+**Never** run a database query inside a loop. Use `$in` batch queries instead:
+
+```javascript
+// ✅ Correct — single batch query
+const allCourseIds = [...new Set([...directIds, ...sessionIds])];
+const courses = await Course.find({ _id: { $in: allCourseIds } })
+  .select('_id instructors')
+  .lean();
+return courses.some((c) => c.instructors.includes(userId));
+
+// ❌ Wrong — N+1 queries in a loop
+for (const courseId of courseIds) {
+  const course = await Course.findById(courseId);  // one query per iteration
+  if (course?.instructors.includes(userId)) return true;
+}
 ```
 
 ---
@@ -1109,7 +1128,9 @@ export default function MyComponent() { /* ... */ }
 Before submitting any PR, verify:
 
 - [ ] All user-facing strings use `t()` with keys in both `en.json` and `fr.json`
+- [ ] All `aria-label` attributes use `t()` — no hardcoded English in accessibility labels
 - [ ] Read-only queries use `.lean()`
+- [ ] No database queries inside loops — use `$in` batch queries instead
 - [ ] Array access from `.lean()` queries uses `|| []` fallback
 - [ ] User input in regex is escaped with `escapeForRegex()`
 - [ ] HTML rendered with `dangerouslySetInnerHTML` is sanitized through `richTextUtils.js`
@@ -1123,3 +1144,4 @@ Before submitting any PR, verify:
 - [ ] Tests follow the existing Vitest pattern with proper `beforeEach`/`afterEach`
 - [ ] MUI components are used (no raw HTML/CSS)
 - [ ] Autosave uses `AutoSaveStatus` component
+- [ ] Interactive elements (IconButton, etc.) have `aria-label` for accessibility

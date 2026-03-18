@@ -49,7 +49,7 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | **UI Framework** | Material UI v6 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest + Playwright | Unit tests (241 server + 15 client) plus E2E flows |
+| **Testing** | Vitest + Playwright | Unit tests (284 server + 39 client) plus E2E flows |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -131,7 +131,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 283 tests across 13 test files
+- **Server:** 284 tests across 13 test files
 - **Client:** 39 tests across 14 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
@@ -163,7 +163,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 
 ### Phase 8 Checklist
 
-- [ ] Full E2E test suite with Playwright
+- [ ] Full E2E test suite with Playwright (currently 6 flows; grading, groups, question copy/export missing)
 - [ ] Load testing with realistic concurrent user counts
 - [ ] Security scanning and penetration testing
 - [ ] Production Docker Compose validation with Nginx load balancer
@@ -173,8 +173,16 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] Complete user manual
 - [x] Refresh token rotation
 - [x] Account lockout after repeated failures
+- [x] npm audit 0 vulnerabilities (server + client)
+- [x] Patch-level dependency updates applied
+- [ ] Major dependency upgrades (React 19, MUI 7, Vite 8, Mongoose 9, react-router-dom 7)
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Component tests for critical UI components
+- [ ] Service unit tests for email, questionCopy, sessionCopy, questionImportExport
+- [ ] Redis pub/sub for multi-instance WebSocket scaling
+- [ ] Session list pagination (`GET /courses/:courseId/sessions`)
+- [ ] Audit logging for settings/role/grade changes
+- [ ] French translation review by native speaker (71 identical en/fr keys to verify)
 
 ### Planned Private-Bucket Cutover
 
@@ -218,17 +226,27 @@ Work is divided into **8 parallel lanes**. Dependencies between agents are minim
 
 ---
 
-## Code Review Findings (2026-03-12, refreshed 2026-03-17)
+## Code Review Findings (2026-03-12, refreshed 2026-03-18)
 
-A comprehensive security and performance code review was conducted and refreshed after the latest Phase 7 hardening work. Below are the remaining findings that still need attention after addressing the straightforward items in this PR.
+A comprehensive security, performance, i18n, accessibility, dependency, and testing review was conducted. Below are the remaining findings that still need attention, followed by items fixed in this review.
 
 ### Security — Remaining
 
 | Issue | Severity | Recommendation | Target |
 |-------|----------|----------------|--------|
 | **Settings PATCH accepts unvalidated SSO keys** | LOW | While field whitelist is in place, individual value validation for sensitive SSO fields should be added | Phase 8 |
+| **SSO logout XML fallback uses regex** | LOW | The SAML logout handler falls back to regex-based XML extraction when crypto validation fails; consider a proper XML parser with XXE protection | Phase 8 |
+| **No audit logging** | LOW | Settings changes, role changes, and grade overrides are not logged to an audit trail | Phase 8 |
+| **WebSocket state not multi-instance** | MEDIUM | In-process WebSocket rooms won't sync across multiple server instances; Redis pub/sub needed for horizontal scaling | Phase 8 |
 
 ### Security — Fixed (This Review)
+
+| Issue | Severity | Fix Applied |
+|-------|----------|-------------|
+| **npm audit vulnerabilities** | HIGH | Server: `fast-xml-parser` override to >=5.5.6 resolves all 19 high-severity @aws-sdk CVEs; file-type/yauzl moderate CVEs fixed. Client: jspdf critical CVE fixed via audit fix. **0 vulnerabilities remaining in both packages.** |
+| **Hardcoded English aria-labels** | LOW | 15+ hardcoded English aria-label strings replaced with `t()` i18n calls |
+
+### Security — Fixed (Previously)
 
 | Issue | Severity | Fix Applied |
 |-------|----------|-------------|
@@ -250,9 +268,16 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 
 | Issue | Severity | Recommendation | Target |
 |-------|----------|----------------|--------|
-| **N+1 grade/response query in review** | MEDIUM | Batch-load responses instead of per-grade loop queries in session review/results endpoints | Phase 7/8 |
+| **N+1 grade/response query in review** | MEDIUM | Batch-load responses instead of per-grade loop queries in session review/results endpoints | Phase 8 |
 | **Sessions list no pagination** | MEDIUM | Add pagination to `GET /courses/:courseId/sessions` | Phase 8 |
-| **Missing field projections** | LOW | Add `.select()` to Question queries in live session endpoint | Phase 8 |
+| **Missing field projections on live session** | LOW | Add `.select()` to Question queries in live session endpoint to limit transferred fields | Phase 8 |
+| **Remaining Session reads without `.lean()`** | LOW | ~10 Session.findById() calls in sessions.js still return full Mongoose documents because they use `.toObject()`; converting these requires replacing `.toObject()` with plain spread | Phase 8 |
+
+### Performance — Fixed (This Review)
+
+- ✅ **N+1 in `userCanManageQuestion()`** — replaced two N+1 Course.findById() loops with a single batch `Course.find({ $in })` query with `.select('_id instructors').lean()`
+- ✅ **N+1 in `userCanViewQuestion()`** — replaced Session.findById() loop with a single batch `Session.find({ $in })` query with targeted `.select().lean()`
+- ✅ **29 missing `.lean()` calls** — added `.lean()` to 16 read-only Course/Session queries in sessions.js and 13 in courses.js
 
 ### Performance — Fixed (Previously)
 
@@ -263,20 +288,57 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 - ✅ `.lean()` on all hot-path read-only queries
 - ✅ `wsSendToUsers()` single-serialize broadcast
 
+### i18n & Accessibility — Remaining
+
+| Issue | Severity | Recommendation | Target |
+|-------|----------|----------------|--------|
+| **71 identical en/fr translations** | LOW | Most are legitimate (abbreviations, proper nouns like PDF, JSON, SSO) but a native French speaker should review the remaining ones | Phase 8 |
+| **`vendor-pdf` chunk >500 kB** | LOW | The html2pdf.js/jspdf bundle (984 kB) is already lazy-loaded but could benefit from on-demand loading only when PDF export is triggered | Phase 8 |
+
+### i18n & Accessibility — Fixed (This Review)
+
+- ✅ **15+ hardcoded English aria-labels** replaced with i18n `t()` calls across 8 components
+- ✅ **20+ missing aria-labels** added to IconButton elements across 7 components
+- ✅ **35+ new translation keys** added to both `en.json` and `fr.json` with proper French translations
+- ✅ **en/fr key parity confirmed** — both locale files have identical key structures (1396+ lines each)
+
+### Dependencies — Status (This Review)
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| **npm audit** | ✅ 0 vulnerabilities | Server: fast-xml-parser override; Client: jspdf fix |
+| **Patch-level updates** | ✅ Applied | @tiptap/* 3.20.4, dompurify 3.3.3, katex 0.16.38, fastify 5.8.2, file-type 21.3.3, jsonwebtoken 9.0.3 |
+| **Major updates available** | 📋 Noted | React 19, MUI 7, Vite 8, Mongoose 9, react-router-dom 7, nodemailer 8, dotenv 17 — all major versions with breaking changes; defer to Phase 8 |
+| **Dependency minimization** | ✅ Good | No lodash/moment/styled-components; only essential packages; native JS used where possible |
+
+### Testing Suite — Review (This Review)
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| **Server coverage** | ✅ Good (284 tests/13 files) | All 11 route modules have tests |
+| **Client coverage** | ⚠️ Moderate (39 tests/14 files) | Only ~10% of 60+ components have unit tests |
+| **E2E coverage** | ⚠️ Moderate (6 Playwright flows) | Covers login, course, session, live session; missing grading, groups, question copy/export |
+| **Test granularity** | ✅ Appropriate | Auth/permission tests are individually useful for catching regressions; no excessive duplication |
+| **Consolidation opportunity** | LOW | Authorization 403 tests could share a parametrized matrix, but individual tests are clearer for debugging |
+| **Missing service tests** | MEDIUM | `email.js`, `questionCopy.js`, `sessionCopy.js`, `questionImportExport.js` lack unit tests | Phase 8 |
+| **Setup efficiency** | LOW | Per-test `createApp()` adds overhead but ensures isolation; consider shared fixtures in Phase 8 |
+
 ### Alignment with Requirements
 
 | Requirement | Status |
 |-------------|--------|
 | Same functionality as MeteorJS | 🔄 In progress — only SSO production confirmation and follow-up decisions remain from Phase 7 |
 | Same database compatibility | ✅ Verified — see [LEGACY_DB.md](LEGACY_DB.md) |
-| Fewer dependencies / well-maintained | ✅ On track |
+| Fewer dependencies / well-maintained | ✅ Verified — 0 npm audit vulnerabilities, patch updates applied, no unnecessary packages |
 | API-first design | ✅ Complete — 30+ REST endpoints + WebSocket |
-| Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()`, single-serialize broadcast |
+| Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()` on 29+ additional queries, N+1 fixes, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 322 automated checks (283 server + 39 client) plus 6 Playwright E2E flows |
+| Unit tests | ✅ 323 automated checks (284 server + 39 client) plus 6 Playwright E2E flows |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
+| Internationalization | ✅ Complete — 1085+ keys in en/fr, all components wired, no hardcoded English in aria-labels |
+| Accessibility | ✅ Improved — axe-core E2E checks, aria-labels on all interactive elements |
 
 ---
 
@@ -294,7 +356,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (283 tests, 13 files)
+# Server tests (284 tests, 13 files)
 cd server && npm install && npx vitest run
 
 # Client build
