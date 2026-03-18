@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 
 const WS_MESSAGE_RATE_LIMIT_MAX = 60;
 const WS_MESSAGE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const REDIS_CHANNEL = 'qlicker:ws';
 
 async function websocketPlugin(fastify) {
   await fastify.register(import('@fastify/websocket'));
@@ -10,8 +11,11 @@ async function websocketPlugin(fastify) {
   /** @type {Map<string, Set<import('ws').WebSocket>>} */
   const wsClients = new Map();
 
-  function wsBroadcast(event, data) {
-    const message = JSON.stringify({ event, data });
+  const useRedis = typeof fastify.redis !== 'undefined' && fastify.redis !== null;
+
+  // ── Local delivery helpers (send to sockets on THIS instance only) ──
+
+  function localBroadcast(message) {
     for (const connections of wsClients.values()) {
       for (const ws of connections) {
         if (ws.readyState === WebSocket.OPEN) {
@@ -21,14 +25,71 @@ async function websocketPlugin(fastify) {
     }
   }
 
-  function wsSendToUser(userId, event, data) {
+  function localSendToUser(userId, message) {
     const connections = wsClients.get(userId);
     if (!connections) return;
-    const message = JSON.stringify({ event, data });
     for (const ws of connections) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(message);
       }
+    }
+  }
+
+  function localSendToUsers(userIds, message) {
+    for (const userId of userIds) {
+      const connections = wsClients.get(userId);
+      if (!connections) continue;
+      for (const ws of connections) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+        }
+      }
+    }
+  }
+
+  // ── Redis subscriber (if enabled) ──
+
+  if (useRedis) {
+    fastify.redisSub.subscribe(REDIS_CHANNEL, (err) => {
+      if (err) {
+        fastify.log.error({ err }, 'Failed to subscribe to Redis channel');
+      } else {
+        fastify.log.info({ channel: REDIS_CHANNEL }, 'Subscribed to Redis pub/sub channel');
+      }
+    });
+
+    fastify.redisSub.on('message', (_channel, raw) => {
+      try {
+        const envelope = JSON.parse(raw);
+        const { type, userIds, message } = envelope;
+        if (type === 'broadcast') {
+          localBroadcast(message);
+        } else if (type === 'users') {
+          localSendToUsers(userIds, message);
+        }
+      } catch {
+        fastify.log.warn('Ignoring malformed Redis pub/sub message');
+      }
+    });
+  }
+
+  // ── Public broadcast functions (same API as before) ──
+
+  function wsBroadcast(event, data) {
+    const message = JSON.stringify({ event, data });
+    if (useRedis) {
+      fastify.redis.publish(REDIS_CHANNEL, JSON.stringify({ type: 'broadcast', message }));
+    } else {
+      localBroadcast(message);
+    }
+  }
+
+  function wsSendToUser(userId, event, data) {
+    const message = JSON.stringify({ event, data });
+    if (useRedis) {
+      fastify.redis.publish(REDIS_CHANNEL, JSON.stringify({ type: 'users', userIds: [userId], message }));
+    } else {
+      localSendToUser(userId, message);
     }
   }
 
@@ -40,14 +101,10 @@ async function websocketPlugin(fastify) {
   function wsSendToUsers(userIds, event, data) {
     if (!userIds || userIds.length === 0) return;
     const message = JSON.stringify({ event, data });
-    for (const userId of userIds) {
-      const connections = wsClients.get(userId);
-      if (!connections) continue;
-      for (const ws of connections) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(message);
-        }
-      }
+    if (useRedis) {
+      fastify.redis.publish(REDIS_CHANNEL, JSON.stringify({ type: 'users', userIds, message }));
+    } else {
+      localSendToUsers(userIds, message);
     }
   }
 
@@ -98,7 +155,7 @@ async function websocketPlugin(fastify) {
         }
 
         try {
-          const { event, data } = JSON.parse(raw.toString());
+          const { event, data: msgData } = JSON.parse(raw.toString());
           if (event === 'ping') {
             socket.send(JSON.stringify({ event: 'pong', data: null }));
           }
@@ -121,4 +178,4 @@ async function websocketPlugin(fastify) {
   });
 }
 
-export default fp(websocketPlugin, { name: 'websocket' });
+export default fp(websocketPlugin, { name: 'websocket', dependencies: [] });

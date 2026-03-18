@@ -31,11 +31,11 @@ qlicker-1/
 │   │   ├── config/         # Environment config (dotenv → export)
 │   │   ├── middleware/      # Auth middleware (authenticate, requireRole)
 │   │   ├── models/         # Mongoose schemas (7 models)
-│   │   ├── plugins/        # Fastify plugins (db, upload, saml, websocket)
+│   │   ├── plugins/        # Fastify plugins (db, upload, saml, redis, websocket)
 │   │   ├── routes/         # Route modules (auth, users, settings, courses, sessions, questions, grades, images)
 │   │   ├── services/       # Business logic (grading, email)
 │   │   └── utils/          # Small pure helpers (meteorId, password, email, regex)
-│   └── test/               # Vitest tests (13 files, 292 tests)
+│   └── test/               # Vitest tests (14 files, 299 tests)
 ├── client/                 # React SPA (Vite + MUI)
 │   ├── src/
 │   │   ├── api/            # Axios client with JWT interceptors
@@ -76,6 +76,7 @@ qlicker-1/
 | `@fastify/helmet` | Security headers | CSP disabled (managed by nginx/proxy) |
 | `@fastify/rate-limit` | Rate limiting | `global: false` — opt-in per route |
 | `@fastify/websocket` | WebSocket | Real-time session events |
+| `ioredis` | Redis client | Pub/sub for multi-instance WebSocket scaling (optional) |
 | `@fastify/formbody` | Form body parsing | URL-encoded form support |
 | `@fastify/multipart` | File uploads | Image upload handling |
 | `@fastify/swagger` | API documentation | Swagger/OpenAPI spec generation |
@@ -521,6 +522,38 @@ sendToInstructors(app, course, 'session:response-added', {
 sendToUsersById(app, session.joined || [], 'session:response-added', {
   sessionId, questionId, attempt, responseCount, joinedCount,
 });
+```
+
+### Redis Pub/Sub for Multi-Instance Scaling
+
+When `REDIS_URL` is set, all WebSocket broadcast functions automatically publish messages to a shared Redis channel (`qlicker:ws`). Every server instance subscribes to that channel and delivers messages to its local WebSocket connections. This enables horizontal scaling behind a load balancer.
+
+**Architecture:**
+
+```
+┌──────────────┐     PUBLISH      ┌───────────────┐     SUBSCRIBE     ┌──────────────┐
+│  Instance A  │ ──────────────▶  │  Redis Server  │ ◀──────────────  │  Instance B  │
+│  (WS users)  │                  │  (channel:     │                  │  (WS users)  │
+│              │ ◀──────────────  │  qlicker:ws)   │ ──────────────▶  │              │
+│              │    SUBSCRIBE     │               │    SUBSCRIBE     │              │
+└──────────────┘                  └───────────────┘                  └──────────────┘
+```
+
+**Key design decisions:**
+
+- **Optional:** When `REDIS_URL` is empty (default for development), the system falls back to in-process delivery — no Redis required for single-instance deployments.
+- **Two Redis connections:** A publish client (`app.redis`) and a dedicated subscriber client (`app.redisSub`), as required by Redis subscriber mode restrictions.
+- **Same public API:** Route code uses `app.wsBroadcast()`, `app.wsSendToUser()`, and `app.wsSendToUsers()` unchanged — the pub/sub layer is transparent.
+- **Envelope format:** Redis messages use `{ type: 'broadcast' | 'users', userIds?: string[], message: string }` — the `message` field is the pre-serialized JSON WebSocket payload.
+
+**Configuration:**
+
+```bash
+# Enable Redis pub/sub for multi-instance WebSocket scaling
+REDIS_URL=redis://localhost:6379
+
+# Or leave empty for single-instance mode (default)
+REDIS_URL=
 ```
 
 ### Throttled Re-fetches
