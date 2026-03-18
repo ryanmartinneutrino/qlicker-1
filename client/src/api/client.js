@@ -5,6 +5,15 @@ import axios from 'axios';
 // httpOnly cookie, which transparently restores the access token.
 let accessToken = null;
 let refreshRequest = null;
+const EXPLICIT_LOGOUT_KEY = 'qlicker_explicit_logout';
+
+function safeStorage(action) {
+  try {
+    return action();
+  } catch {
+    return null;
+  }
+}
 
 export function setAccessToken(token) {
   accessToken = token;
@@ -18,7 +27,22 @@ export function clearAccessToken() {
   accessToken = null;
 }
 
+export function markExplicitLogout() {
+  safeStorage(() => localStorage.setItem(EXPLICIT_LOGOUT_KEY, '1'));
+}
+
+export function clearExplicitLogout() {
+  safeStorage(() => localStorage.removeItem(EXPLICIT_LOGOUT_KEY));
+}
+
+export function hasExplicitLogout() {
+  return safeStorage(() => localStorage.getItem(EXPLICIT_LOGOUT_KEY) === '1') === true;
+}
+
 export async function refreshAccessToken() {
+  if (hasExplicitLogout()) {
+    throw new Error('Refresh suppressed after explicit logout');
+  }
   if (!refreshRequest) {
     refreshRequest = axios.post('/api/v1/auth/refresh', {}, {
       withCredentials: true,

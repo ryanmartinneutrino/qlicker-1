@@ -887,7 +887,7 @@ function LiveSessionContent() {
             size="medium"
             variant={activePanel === 'question' ? 'contained' : 'outlined'}
             onClick={() => setActivePanel('question')}
-            aria-label={pageProgress ? t('professor.liveSession.pageProgressAria', { current: currentPageIdx + 1, total: totalPages }) : ''}
+            aria-label={pageProgress ? t('professor.liveSession.pageProgressAria', { current: pageProgress.current, total: pageProgress.total }) : ''}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
             {pageProgress

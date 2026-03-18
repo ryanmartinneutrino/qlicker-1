@@ -21,6 +21,7 @@ This repository contains the **migration** from the original MeteorJS implementa
 ├── meteorjs_version/                       # Original MeteorJS app (reference)
 ├── server/                                 # Fastify backend
 ├── client/                                 # React frontend (Vite)
+├── ssoserver/                              # Isolated local SimpleSAMLphp IdP for SSO smoke tests
 ├── scripts/                                # Setup and utility scripts
 ├── docker-compose.yml                      # Docker orchestration
 └── .env.example                            # Environment variable template
@@ -157,6 +158,79 @@ Port behavior:
 - By default, Playwright uses client port `3000` and API port `3001`
 - If the repository root `.env` file defines `APP_PORT` and/or `API_PORT`, the Playwright config will use those values automatically
 - The E2E web servers still run locally on those ports; they do not reuse an already-running development stack
+
+### Local SAML SSO Smoke Environment
+
+The repository now includes an isolated `ssoserver/` workspace that runs a local SimpleSAMLphp IdP without changing the root Docker setup. It is intended to validate SSO login, encrypted assertions, and single logout against the new Fastify/React app before testing with the real Microsoft/Azure IdP.
+
+Quick start:
+
+```bash
+cd ssoserver
+cp .env.example .env
+./scripts/generate-certs.sh
+node ./scripts/render-config.mjs
+docker compose up -d --build
+```
+
+For manual setup, the `ssoserver` helper scripts follow the repository root `.env` app/API URLs automatically unless you override the `QCLICKER_*` values in `ssoserver/.env` with non-default values.
+
+Print the exact Qlicker SSO settings payload:
+
+```bash
+cd ssoserver
+node ./scripts/print-qlicker-settings.mjs
+```
+
+The generated payload configures Qlicker with:
+
+- `SSO_enabled=true`
+- `SSO_entrypoint=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleSignOnService`
+- `SSO_logoutUrl=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleLogout`
+- `SSO_EntityId` derived from the repository root `.env` app URL (for example `http://localhost:3200/api/v1/auth/sso/metadata`)
+- `SSO_identifierFormat=urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress`
+- `SSO_institutionName=Local SimpleSAMLphp`
+- `SSO_emailIdentifier=mail`
+- `SSO_firstNameIdentifier=givenName`
+- `SSO_lastNameIdentifier=sn`
+- `SSO_roleIdentifier=role`
+- `SSO_roleProfName=professor`
+- `SSO_studentNumberIdentifier=studentNumber`
+- `SSO_cert` from `ssoserver/certs/idp.crt`
+- `SSO_privCert` and `SSO_privKey` from `ssoserver/certs/qlicker-sp.*`
+
+For production cutover compatibility, the Fastify app also serves the legacy Meteor SAML surface alongside the newer `/api/v1/auth/sso/*` routes:
+
+- `/SSO/SAML2`
+- `/SSO/SAML2/logout`
+- `/SSO/SAML2/metadata`
+- `/SSO/SAML2/metadata.xml`
+
+Run the dedicated SSO smoke test:
+
+```bash
+./ssoserver/scripts/run-smoke.sh
+```
+
+The standard `./scripts/qlicker.sh e2e` / `cd client && npm run test:e2e` commands still run the baseline non-SSO Playwright suite only. The SSO smoke uses `client/playwright.sso.config.js` so it can stay isolated from the default browser test stack.
+
+That wrapper:
+
+- creates `ssoserver/.env` from `.env.example` if needed
+- generates local-only certs and rendered SimpleSAMLphp config
+- starts the isolated IdP on `http://127.0.0.1:4100`
+- ensures Playwright Chromium is installed
+- runs `client/e2e-sso/sso.spec.js` via `client/playwright.sso.config.js` against a dedicated Qlicker E2E stack on `3300/3301`
+- stops the IdP when the smoke run exits
+
+`run-smoke.sh` intentionally uses the `QCLICKER_*` values from `ssoserver/.env` (default `3300/3301`) for that temporary stack, even if your main repo `.env` points at a different local app already running on `3200/3201`.
+
+Default seeded IdP users:
+
+- Professor: `sso-professor` / `Password123!`
+- Student: `sso-student` / `Password123!`
+
+For the full setup, helper scripts, troubleshooting, and metadata details, see [ssoserver/README.md](/home/rmartin/qlicker-1/ssoserver/README.md).
 
 ## Scripts Reference
 

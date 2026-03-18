@@ -53,7 +53,13 @@ export default defineConfig(({ mode }) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: './test/setup.js',
-      exclude: [...configDefaults.exclude, 'e2e/**', 'playwright.config.js'],
+      exclude: [
+        ...configDefaults.exclude,
+        'e2e/**',
+        'e2e-sso/**',
+        'playwright.config.js',
+        'playwright.sso.config.js',
+      ],
     },
   };
 });

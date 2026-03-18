@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
+import apiClient from '../../api/client';
 import ConnectionStatus from '../common/ConnectionStatus';
 
 export default function AppLayout() {
@@ -22,7 +23,21 @@ export default function AppLayout() {
 
   const handleLogout = async () => {
     handleMenuClose();
+    let ssoLogoutUrl = '';
+    if (user?.lastAuthProvider === 'sso') {
+      try {
+        const { data } = await apiClient.get('/auth/sso/logout-url');
+        ssoLogoutUrl = data?.url || '';
+      } catch {
+        ssoLogoutUrl = '';
+      }
+    }
+
     await logout();
+    if (ssoLogoutUrl) {
+      window.location.assign(ssoLogoutUrl);
+      return;
+    }
     navigate('/login', { replace: true });
   };
 

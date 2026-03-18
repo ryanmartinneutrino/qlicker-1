@@ -4,6 +4,9 @@ import apiClient, {
   getAccessToken,
   clearAccessToken,
   refreshAccessToken,
+  markExplicitLogout,
+  clearExplicitLogout,
+  hasExplicitLogout,
 } from '../api/client';
 
 const AuthContext = createContext(null);
@@ -15,6 +18,12 @@ export function AuthProvider({ children }) {
   const loadUser = useCallback(async () => {
     // On initial load, try refreshing via httpOnly cookie (access token is memory-only)
     if (!getAccessToken()) {
+      if (hasExplicitLogout()) {
+        clearAccessToken();
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       try {
         await refreshAccessToken();
       } catch {
@@ -25,6 +34,7 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await apiClient.get('/users/me');
       setUser(data.user);
+      clearExplicitLogout();
     } catch {
       clearAccessToken();
       setUser(null);
@@ -43,9 +53,11 @@ export function AuthProvider({ children }) {
     const handleStorageChange = (e) => {
       if (e.key === 'qlicker_auth_event') {
         if (e.newValue === 'logout') {
+          markExplicitLogout();
           clearAccessToken();
           setUser(null);
         } else if (e.newValue === 'login') {
+          clearExplicitLogout();
           loadUser();
         }
       }
@@ -56,6 +68,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await apiClient.post('/auth/login', { email, password });
+    clearExplicitLogout();
     setAccessToken(data.token);
     setUser(data.user);
     // Signal other tabs
@@ -66,6 +79,7 @@ export function AuthProvider({ children }) {
 
   const register = async (email, password, firstname, lastname) => {
     const { data } = await apiClient.post('/auth/register', { email, password, firstname, lastname });
+    clearExplicitLogout();
     setAccessToken(data.token);
     setUser(data.user);
     localStorage.setItem('qlicker_auth_event', 'login');
@@ -77,6 +91,7 @@ export function AuthProvider({ children }) {
     try {
       await apiClient.post('/auth/logout');
     } catch { /* ignore */ }
+    markExplicitLogout();
     clearAccessToken();
     setUser(null);
     // Signal other tabs

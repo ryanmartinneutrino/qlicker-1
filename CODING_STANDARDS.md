@@ -35,7 +35,7 @@ qlicker-1/
 │   │   ├── routes/         # Route modules (auth, users, settings, courses, sessions, questions, grades, images)
 │   │   ├── services/       # Business logic (grading, email)
 │   │   └── utils/          # Small pure helpers (meteorId, password, email, regex)
-│   └── test/               # Vitest tests (13 files, 284 tests)
+│   └── test/               # Vitest tests (13 files, 292 tests)
 ├── client/                 # React SPA (Vite + MUI)
 │   ├── src/
 │   │   ├── api/            # Axios client with JWT interceptors

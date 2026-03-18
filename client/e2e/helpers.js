@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 
 const STATE_FILE = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
-const ADMIN_STATE_FILE = '/tmp/qlicker-e2e-admin.json';
+const ADMIN_STATE_FILE = process.env.QCLICKER_E2E_ADMIN_STATE_FILE || '/tmp/qlicker-e2e-admin.json';
 const CSRF_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
 
 let cachedState = null;
@@ -134,6 +134,12 @@ export async function loginViaUi(page, email, password, expectedPathPattern) {
   await expect(page).toHaveURL(expectedPathPattern);
 }
 
+export async function logoutViaUi(page, expectedPathPattern = /\/login$/) {
+  await page.getByLabel(/open account menu/i).click();
+  await page.getByRole('menuitem', { name: /^logout$/i }).click();
+  await expect(page).toHaveURL(expectedPathPattern);
+}
+
 export async function expectNoCriticalAccessibilityViolations(page) {
   const results = await new AxeBuilder({ page }).analyze();
   // Fail the regression checks on critical issues first; serious violations can
@@ -154,6 +160,26 @@ export async function loginViaApi(request, email, password) {
   });
   expect(response.status(), JSON.stringify(body)).toBe(200);
   return body;
+}
+
+export async function patchSettingsViaApi(request, token, payload) {
+  const { response, body } = await apiJson(request, 'PATCH', '/settings', {
+    token,
+    payload,
+  });
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+  return body;
+}
+
+export async function findUserByEmailViaApi(request, token, email) {
+  const { response, body } = await apiJson(
+    request,
+    'GET',
+    `/users?search=${encodeURIComponent(email)}`,
+    { token }
+  );
+  expect(response.status(), JSON.stringify(body)).toBe(200);
+  return (body.users || []).find((user) => user?.emails?.some((entry) => entry.address === email));
 }
 
 export async function createCourseViaApi(request, token, overrides = {}) {
