@@ -924,7 +924,7 @@ export default function CourseDetail() {
                     startIcon={<LaunchIcon />}
                     onClick={() => handleLaunchSession(s._id)}
                     disabled={!!sessionUpdatesInFlight[s._id]}
-                    aria-label={`Launch session ${s.name}`}
+                    aria-label={t('professor.course.launchSessionAria', { name: s.name })}
                   >
                     {t('professor.course.launch')}
                   </Button>
@@ -936,7 +936,7 @@ export default function CourseDetail() {
                     color="success"
                     startIcon={<JoinIcon />}
                     onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
-                    aria-label={`Join live session ${s.name}`}
+                    aria-label={t('professor.course.joinLiveSessionAria', { name: s.name })}
                   >
                     {t('professor.course.joinSession')}
                   </Button>
@@ -951,7 +951,7 @@ export default function CourseDetail() {
                       `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
                       { state: { returnTab: tab } }
                     )}
-                    aria-label={`Review live quiz session ${s.name}`}
+                    aria-label={t('professor.course.reviewLiveQuizAria', { name: s.name })}
                   >
                     {t('professor.course.reviewLiveSessionResults')}
                   </Button>
@@ -966,7 +966,7 @@ export default function CourseDetail() {
                       `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
                       { state: { returnTab: tab } }
                     )}
-                    aria-label={`Review session ${s.name}`}
+                    aria-label={t('professor.course.reviewSessionAria', { name: s.name })}
                   >
                     {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
                       ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
@@ -1002,6 +1002,7 @@ export default function CourseDetail() {
                 <Tooltip title={t('professor.course.copySession')}>
                   <IconButton
                     size="small"
+                    aria-label={t('common.copySession')}
                     onClick={() => {
                       setCopySessionTarget(s);
                       setCopySessionTargetCourseId(id);
@@ -1012,7 +1013,7 @@ export default function CourseDetail() {
                   </IconButton>
                 </Tooltip>
                 <Tooltip title={t('professor.course.deleteSession')}>
-                  <IconButton size="small" color="error" onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
+                  <IconButton size="small" color="error" aria-label={t('common.deleteSession')} onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
                     <DeleteIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -1198,6 +1199,7 @@ export default function CourseDetail() {
                             edge="end"
                             color="error"
                             size="small"
+                            aria-label={t('common.removeInstructor')}
                             disabled={instructors.length <= 1}
                             onClick={() => setRemoveInstructorTarget(inst)}
                           >

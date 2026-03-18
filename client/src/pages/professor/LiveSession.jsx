@@ -887,9 +887,7 @@ function LiveSessionContent() {
             size="medium"
             variant={activePanel === 'question' ? 'contained' : 'outlined'}
             onClick={() => setActivePanel('question')}
-            aria-label={pageProgress
-              ? t('professor.liveSession.pageControlsProgress', pageProgress)
-              : t('professor.liveSession.questionControls')}
+            aria-label={pageProgress ? t('professor.liveSession.pageProgressAria', { current: currentPageIdx + 1, total: totalPages }) : ''}
             sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
           >
             {pageProgress
@@ -992,7 +990,7 @@ function LiveSessionContent() {
                         label={session.currentJoinCode}
                         color="primary"
                         sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: 2 }}
-                        aria-label={`Current join code: ${session.currentJoinCode}`}
+                        aria-label={t('professor.liveSession.currentJoinCodeAria', { code: session.currentJoinCode })}
                       />
                       <Tooltip title={t('professor.liveSession.refreshJoinCodeNow')}>
                         <IconButton

@@ -500,7 +500,7 @@ function UsersTab({ currentUserId }) {
                             outlineOffset: 2,
                           },
                         }}
-                        aria-label={u.profile?.profileImage ? `View profile image for ${getFullName(u)}` : `${getFullName(u)} has no profile image`}
+                        aria-label={u.profile?.profileImage ? t('admin.users.viewProfileImageAria', { name: getFullName(u) }) : t('admin.users.noProfileImageAria', { name: getFullName(u) })}
                       >
                         <Avatar
                           src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
@@ -536,7 +536,7 @@ function UsersTab({ currentUserId }) {
                       </Tooltip>
                     ) : (
                       <Tooltip title={t('admin.users.clickToVerify')}>
-                        <IconButton size="small" onClick={() => handleVerifyEmail(u._id)}>
+                        <IconButton size="small" aria-label={t('common.verifyEmail')} onClick={() => handleVerifyEmail(u._id)}>
                           <Cancel color="error" fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -564,7 +564,7 @@ function UsersTab({ currentUserId }) {
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right">
-                    <IconButton color="error" size="small" onClick={() => setDeleteTarget(u)}>
+                    <IconButton color="error" size="small" aria-label={t('common.deleteUser')} onClick={() => setDeleteTarget(u)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </TableCell>

@@ -37,7 +37,24 @@
     "pm": "PM",
     "solution": "Solution",
     "noContent": "(no content)",
-    "noAnswer": "(no answer)"
+    "noAnswer": "(no answer)",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "moreActions": "More actions",
+    "removeOption": "Remove option",
+    "approve": "Approve",
+    "makePublic": "Make public",
+    "confirmRename": "Confirm rename",
+    "cancelRename": "Cancel rename",
+    "rename": "Rename",
+    "removeInstructor": "Remove instructor",
+    "openReview": "Open review",
+    "recalculate": "Recalculate",
+    "copySession": "Copy session",
+    "verifyEmail": "Verify email",
+    "deleteUser": "Delete user",
+    "deleteSession": "Delete session",
+    "option": "Option {{letter}}"
   },
   "autoSave": {
     "errorNotSaved": "Changes could not be saved. Your last change was not recorded.",
@@ -228,7 +245,9 @@
       "emailLoginDisabled": "Email login disabled",
       "never": "Never",
       "cannotChangeOwnRole": "You cannot change your own role",
-      "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?"
+      "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?",
+      "viewProfileImageAria": "View profile image for {{name}}",
+      "noProfileImageAria": "{{name}} has no profile image"
     },
     "storage": {
       "storageType": "Storage Type",
@@ -422,7 +441,11 @@
       "destinationCourse": "Destination course",
       "copyingSession": "Copying session…",
       "sessionsCopied": "Copied {{count}} session",
-      "sessionsCopied_other": "Copied {{count}} sessions"
+      "sessionsCopied_other": "Copied {{count}} sessions",
+      "launchSessionAria": "Launch session {{name}}",
+      "joinLiveSessionAria": "Join live session {{name}}",
+      "reviewLiveQuizAria": "Review live quiz session {{name}}",
+      "reviewSessionAria": "Review session {{name}}"
     },
     "sessionEditor": {
       "sessionSettings": "Session Settings",
@@ -539,7 +562,8 @@
       "failedLoadSession": "Failed to load session",
       "failedUpdateSession": "Failed to update session.",
       "failedDeleteSession": "Failed to delete session",
-      "importPreviewDescription": "Review the imported questions, remove any you do not want, and choose tags to apply to all imported questions."
+      "importPreviewDescription": "Review the imported questions, remove any you do not want, and choose tags to apply to all imported questions.",
+      "addQuestionAtPositionAria": "Add question at position {{position}}"
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -633,7 +657,9 @@
       "hidden": "Hidden",
       "correctAnswerAria": "Correct answer",
       "joinTimeUnavailable": "Join time unavailable",
-      "ending": "Ending…"
+      "ending": "Ending…",
+      "currentJoinCodeAria": "Current join code: {{code}}",
+      "pageProgressAria": "Page {{current}} of {{total}}"
     },
     "sessionReview": {
       "questions": "Questions",
@@ -718,7 +744,8 @@
       "mean": "Mean",
       "median": "Median",
       "min": "Min",
-      "max": "Max"
+      "max": "Max",
+      "joinCodeAria": "Join code: {{code}}"
     }
   },
   "student": {
@@ -1104,7 +1131,9 @@
       "importParse": "The selected file is not valid question-library JSON.",
       "import": "Failed to import questions.",
       "selectRandom": "Failed to select random filtered questions."
-    }
+    },
+    "studentLibraryAria": "Student Library",
+    "professorLibraryAria": "Professor Library"
   },
   "grades": {
     "coursePanel": {

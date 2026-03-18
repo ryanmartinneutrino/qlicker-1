@@ -1017,7 +1017,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
   const currentTagValues = selectedTags;
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }} aria-label={isStudentLibrary ? t('questionLibrary.studentLibraryAria') : t('questionLibrary.professorLibraryAria')}>
       {message ? (
         <Alert severity={message.severity} onClose={() => setMessage(null)}>
           {message.text}
@@ -1363,7 +1363,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                             {!isStudentLibrary && !question.approved ? (
                               <Tooltip title={t('questionLibrary.actions.approve', { defaultValue: 'Approve question' })}>
                                 <span>
-                                  <IconButton size="small" disabled={saving} onClick={() => handleApproveQuestion(questionId)}>
+                                  <IconButton size="small" aria-label={t('common.approve')} disabled={saving} onClick={() => handleApproveQuestion(questionId)}>
                                     <ApproveIcon fontSize="small" />
                                   </IconButton>
                                 </span>
@@ -1372,7 +1372,7 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
                             {!isStudentLibrary && !!question.studentCreated && !question.public ? (
                               <Tooltip title={t('questionLibrary.actions.makePublic', { defaultValue: 'Make question public to the course' })}>
                                 <span>
-                                  <IconButton size="small" disabled={saving} onClick={() => handleMakeQuestionPublic(questionId)}>
+                                  <IconButton size="small" aria-label={t('common.makePublic')} disabled={saving} onClick={() => handleMakeQuestionPublic(questionId)}>
                                     <PublicIcon fontSize="small" />
                                   </IconButton>
                                 </span>

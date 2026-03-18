@@ -702,29 +702,18 @@ async function userCanManageQuestion(question, user) {
     .map((courseId) => String(courseId || '').trim())
     .filter(Boolean);
 
-  for (const courseId of candidateCourseIds) {
-    const course = await Course.findById(courseId);
-    if (course && course.instructors.includes(user.userId)) {
-      return true;
-    }
-  }
+  const linkedSessionCourseIds = (await getLinkedSessionsForQuestion(question))
+    .map((session) => String(session?.courseId || '').trim())
+    .filter(Boolean);
 
-  const linkedSessionCourseIds = new Set(
-    (await getLinkedSessionsForQuestion(question))
-      .map((session) => String(session?.courseId || '').trim())
-      .filter(Boolean)
-  );
+  const allCourseIds = [...new Set([...candidateCourseIds, ...linkedSessionCourseIds])];
+  if (allCourseIds.length === 0) return false;
 
-  for (const sessionCourseId of linkedSessionCourseIds) {
-    if (!candidateCourseIds.includes(sessionCourseId)) {
-      const sessionCourse = await Course.findById(sessionCourseId);
-      if (sessionCourse && sessionCourse.instructors.includes(user.userId)) {
-        return true;
-      }
-    }
-  }
+  const courses = await Course.find({ _id: { $in: allCourseIds } })
+    .select('_id instructors')
+    .lean();
 
-  return false;
+  return courses.some((course) => (course.instructors || []).includes(user.userId));
 }
 
 function isStudentAccount(user) {
@@ -786,17 +775,22 @@ export async function userCanViewQuestion(question, user) {
 
   if (question.public && isMemberOfLinkedCourse) return true;
 
-  for (const session of linkedSessions) {
-    const course = courseById.get(String(session?.courseId || '').trim());
-    if (!course) continue;
-    const isMember = (course.students || []).includes(user.userId) || (course.instructors || []).includes(user.userId);
-    if (!isMember) continue;
+  const memberSessionIds = linkedSessions
+    .filter((session) => {
+      const course = courseById.get(String(session?.courseId || '').trim());
+      if (!course) return false;
+      return (course.students || []).includes(user.userId) || (course.instructors || []).includes(user.userId);
+    })
+    .map((session) => session._id);
 
-    const fullSession = await Session.findById(session._id).lean();
-    if (!fullSession) continue;
-    if (fullSession.reviewable) return true;
-
-    if (isQuestionOpenInLinkedQuiz(fullSession, user.userId)) return true;
+  if (memberSessionIds.length > 0) {
+    const fullSessions = await Session.find({ _id: { $in: memberSessionIds } })
+      .select('_id reviewable status quiz practiceQuiz quizStart quizEnd quizExtensions joined currentQuestion questions')
+      .lean();
+    for (const fullSession of fullSessions) {
+      if (fullSession.reviewable) return true;
+      if (isQuestionOpenInLinkedQuiz(fullSession, user.userId)) return true;
+    }
   }
 
   return false;
