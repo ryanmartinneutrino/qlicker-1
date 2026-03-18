@@ -6,6 +6,12 @@ export function getPreferredManualRole(roles = []) {
   return 'student';
 }
 
+export function getManualDashboardPath(roles = []) {
+  if (roles.includes('admin')) return '/admin';
+  if (roles.includes('professor')) return '/manage';
+  return '/student';
+}
+
 export function getManualPath(role) {
   return `/manual/${role}`;
 }

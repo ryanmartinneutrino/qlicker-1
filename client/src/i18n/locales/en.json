@@ -1471,7 +1471,11 @@
       "screenshotFeedback": "Feedback and points",
       "screenshotCorrectAnswer": "Correct answer",
       "screenshotAttempts": "Attempts",
-      "screenshotPracticeNext": "Practice next"
+      "screenshotPracticeNext": "Practice next",
+      "navigationTitle": "Navigation",
+      "backToDashboard": "Back to dashboard",
+      "openProfile": "Open profile",
+      "navigationHint": "The usual app bar stays available while you read. Use these shortcuts when you want to jump back into Qlicker quickly."
     },
     "admin": {
       "title": "Admin user manual",

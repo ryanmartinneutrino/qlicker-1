@@ -50,6 +50,8 @@ describe('UserManual', () => {
 
     expect(await screen.findByText('Access Denied')).toBeInTheDocument();
     expect(screen.getByText(/do not have access to the Admin manual/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/student');
+    expect(screen.getByRole('link', { name: /open profile/i })).toHaveAttribute('href', '/profile');
     expect(screen.getByRole('link', { name: /open student manual/i })).toHaveAttribute('href', '/manual/student');
   });
 
@@ -57,6 +59,8 @@ describe('UserManual', () => {
     renderManual('/manual/student');
 
     expect(await screen.findByRole('heading', { name: /student user manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/student');
+    expect(screen.getByText(/usual app bar stays available while you read/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /enroll in a course and learn the course tabs/i })).toBeInTheDocument();
     expect(screen.getByText(/student course page preview/i)).toBeInTheDocument();
     expect(screen.getByText(/review and practice preview/i)).toBeInTheDocument();
@@ -74,6 +78,7 @@ describe('UserManual', () => {
     renderManual('/manual/professor');
 
     expect(await screen.findByRole('heading', { name: /professor user manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/manage');
     expect(screen.getByRole('link', { name: /student/i })).toHaveAttribute('href', '/manual/student');
     const courseHeading = screen.getByRole('heading', { name: /create a course and add topics before you scale up/i });
     const groupsHeading = screen.getByRole('heading', { name: /set up groups before you need them in class/i });

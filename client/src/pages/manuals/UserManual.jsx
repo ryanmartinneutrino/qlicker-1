@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   canAccessManualRole,
   getAvailableManualRoles,
+  getManualDashboardPath,
   getManualPath,
   getPreferredManualRole,
   USER_MANUAL_ROLES,
@@ -482,6 +483,27 @@ function Section({ section, index, t }) {
   );
 }
 
+function ManualNavigation({ dashboardPath, t }) {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+        {t('manuals.shared.navigationTitle')}
+      </Typography>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        <Button component={RouterLink} to={dashboardPath} variant="contained">
+          {t('manuals.shared.backToDashboard')}
+        </Button>
+        <Button component={RouterLink} to="/profile" variant="outlined">
+          {t('manuals.shared.openProfile')}
+        </Button>
+      </Stack>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        {t('manuals.shared.navigationHint')}
+      </Typography>
+    </Box>
+  );
+}
+
 export default function UserManual() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -489,6 +511,7 @@ export default function UserManual() {
   const roles = user?.profile?.roles || [];
   const preferredRole = getPreferredManualRole(roles);
   const manualRole = USER_MANUAL_ROLES.includes(requestedRole) ? requestedRole : preferredRole;
+  const dashboardPath = getManualDashboardPath(roles);
 
   if (!USER_MANUAL_ROLES.includes(requestedRole || '')) {
     return <Navigate to={getManualPath(manualRole)} replace />;
@@ -506,6 +529,7 @@ export default function UserManual() {
           <Stack spacing={2}>
             <Typography variant="h4">{t('accessDenied.title')}</Typography>
             <Alert severity="warning">{t('manuals.shared.accessDenied', { manual: t(`manuals.shared.roles.${manualRole}`) })}</Alert>
+            <ManualNavigation dashboardPath={dashboardPath} t={t} />
             {!!availableRoles.length && (
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                 {availableRoles.map((role) => (
@@ -521,7 +545,12 @@ export default function UserManual() {
     );
   }
 
-  const roleColor = manualRole === 'admin' ? 'error' : manualRole === 'student' ? 'success' : 'primary';
+  const roleColors = {
+    admin: 'error',
+    professor: 'primary',
+    student: 'success',
+  };
+  const roleColor = roleColors[manualRole] || 'primary';
   const sections = Array.isArray(manual.sections) ? manual.sections : [];
   const relatedManualRoles = availableRoles;
 
@@ -573,6 +602,10 @@ export default function UserManual() {
                 </Stack>
               </Box>
             </Stack>
+
+            <Divider />
+
+            <ManualNavigation dashboardPath={dashboardPath} t={t} />
           </Stack>
         </Paper>
 
