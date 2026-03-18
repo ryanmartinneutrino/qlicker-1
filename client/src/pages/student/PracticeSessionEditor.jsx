@@ -426,7 +426,14 @@ export default function PracticeSessionEditor() {
             ) : null}
           </Box>
           {selectedQuestions.length === 0 ? (
-            <Alert severity="info">
+            <Alert
+              severity="info"
+              action={(
+                <Button color="inherit" size="small" startIcon={<AddIcon />} onClick={() => openAddQuestionDialog()}>
+                  {t('student.course.addQuestion', { defaultValue: 'Add question' })}
+                </Button>
+              )}
+            >
               {t('student.course.noPracticeQuestionsSelected', {
                 defaultValue: 'Add or create questions to build this practice session.',
               })}
