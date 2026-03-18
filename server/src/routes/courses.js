@@ -2,6 +2,7 @@ import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
 import User from '../models/User.js';
 import { normalizeTags } from '../services/questionImportExport.js';
+import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
 
 function generateEnrollmentCode() {
@@ -20,6 +21,18 @@ async function generateUniqueEnrollmentCode() {
   const err = new Error('Failed to generate a unique enrollment code');
   err.statusCode = 500;
   throw err;
+}
+
+function buildUserEmailLookup(identifier = '') {
+  const normalizedIdentifier = String(identifier || '').trim().toLowerCase();
+  if (!normalizedIdentifier) return null;
+  const emailMatch = emailRegex(normalizedIdentifier);
+  return {
+    $or: [
+      { 'emails.address': emailMatch },
+      { 'services.sso.email': emailMatch },
+    ],
+  };
 }
 
 const createCourseSchema = {
@@ -432,7 +445,7 @@ export default async function courseRoutes(app) {
       }
 
       const { email } = request.body;
-      const student = await User.findOne({ 'emails.address': email.toLowerCase().trim() });
+      const student = await User.findOne(buildUserEmailLookup(email));
       if (!student) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found with that email' });
       }
@@ -482,12 +495,18 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only the course owner or an admin can add instructors' });
       }
 
-      const { userId: newInstructorId } = request.body;
-
-      const instructor = await User.findById(newInstructorId).lean();
+      const instructorIdentifier = String(request.body.userId || '').trim();
+      const instructor = await User.findOne({
+        $or: [
+          { _id: instructorIdentifier },
+          ...(buildUserEmailLookup(instructorIdentifier)?.$or || []),
+        ],
+      }).lean();
       if (!instructor) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
+
+      const newInstructorId = String(instructor._id);
 
       await Course.findByIdAndUpdate(course._id, {
         $addToSet: { instructors: newInstructorId },

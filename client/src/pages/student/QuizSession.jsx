@@ -160,6 +160,11 @@ export default function QuizSession() {
 
   const autosaveTimersRef = useRef(new Map());
   const latestQuestionsRef = useRef([]);
+  const courseQuizTabLink = useMemo(() => (
+    session?.studentCreated
+      ? `/student/course/${courseId}?tab=2`
+      : `/student/course/${courseId}?tab=1`
+  ), [courseId, session?.studentCreated]);
 
   const hydrateFromPayload = useCallback((payload) => {
     const nextSession = payload?.session || null;
@@ -437,9 +442,6 @@ export default function QuizSession() {
   }, [draftByQuestion, fetchQuiz, questions, responsesByQuestion, saveDraftNow, sessionId]);
 
   const practiceQuiz = !!session?.practiceQuiz;
-  const courseQuizTabLink = session?.studentCreated
-    ? `/student/course/${courseId}?tab=2`
-    : `/student/course/${courseId}?tab=1`;
   const answerableQuestions = useMemo(
     () => questions.filter((question) => isResponseQuestionType(normalizeQuestionType(question))),
     [questions]

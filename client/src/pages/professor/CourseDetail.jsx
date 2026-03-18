@@ -122,6 +122,19 @@ function sortPeopleByLastName(items = []) {
   });
 }
 
+function matchesPersonSearch(person, term) {
+  const normalized = toText(term).trim().toLowerCase();
+  if (!normalized) return true;
+  const first = toText(person?.profile?.firstname).trim().toLowerCase();
+  const last = toText(person?.profile?.lastname).trim().toLowerCase();
+  const fullName = `${first} ${last}`.trim();
+  const email = toText(person?.emails?.[0]?.address || person?.email).trim().toLowerCase();
+  return first.includes(normalized)
+    || last.includes(normalized)
+    || fullName.includes(normalized)
+    || email.includes(normalized);
+}
+
 function getCourseEditFields(course = {}) {
   return {
     name: toText(course.name),
@@ -227,6 +240,7 @@ export default function CourseDetail() {
 
   // Student info modal
   const [studentInfoTarget, setStudentInfoTarget] = useState(null);
+  const [studentSearch, setStudentSearch] = useState('');
 
   // Settings
   const [editFields, setEditFields] = useState(EMPTY_COURSE_EDIT_FIELDS);
@@ -829,6 +843,7 @@ export default function CourseDetail() {
 
   const students = sortPeopleByLastName(course.students || []);
   const instructors = sortPeopleByLastName(course.instructors || []);
+  const filteredStudents = students.filter((student) => matchesPersonSearch(student, studentSearch));
   const sortedSessions = sortSessions((sessions || []).filter((session) => !session.studentCreated));
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
@@ -1135,18 +1150,28 @@ export default function CourseDetail() {
 
       {/* Students Tab */}
       <TabPanel value={tab} index={3}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6">{t('professor.course.students')}</Typography>
           <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
             {t('professor.course.addStudent')}
           </Button>
         </Box>
+        <TextField
+          label={t('grades.coursePanel.searchStudents')}
+          value={studentSearch}
+          onChange={(event) => setStudentSearch(event.target.value)}
+          fullWidth
+          size="small"
+          sx={{ mb: 2, maxWidth: 420 }}
+        />
         {students.length === 0 ? (
           <Typography variant="body2" color="text.secondary">{t('professor.course.noStudents')}</Typography>
+        ) : filteredStudents.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">{t('groups.noStudentsMatch')}</Typography>
         ) : (
           <Paper variant="outlined">
             <List disablePadding>
-              {students.map((s, i) => (
+              {filteredStudents.map((s, i) => (
                 <Box key={s._id || i}>
                   {i > 0 && <Divider />}
                   <StudentListItem
@@ -1420,7 +1445,7 @@ export default function CourseDetail() {
         >
           <DialogContent sx={{ pt: '8px !important' }}>
             <TextField
-              label={t('professor.course.userId')}
+              label={t('professor.course.userIdOrEmail', { defaultValue: 'User ID or email' })}
               value={instructorUserId}
               onChange={(e) => setInstructorUserId(e.target.value)}
               fullWidth

@@ -14,6 +14,7 @@ import {
   getStudentSessionAction,
   isQuizSession,
   isSubmittedLiveQuiz,
+  shouldShowStudentSessionQuestionCount,
   sortStudentSessions,
 } from '../../utils/studentSessions';
 import {
@@ -54,6 +55,17 @@ function buildWebsocketUrl(token) {
 function TabPanel({ children, value, index }) {
   if (value !== index) return null;
   return <Box sx={{ pt: 2 }}>{children}</Box>;
+}
+
+function buildSessionSubtitle(session, t) {
+  const details = [];
+  if (shouldShowStudentSessionQuestionCount(session)) {
+    details.push(t('student.course.questionCount', { count: (session.questions || []).length }));
+  }
+  if (getSessionSortTime(session) > 0) {
+    details.push(formatDisplayDate(getSessionSortTime(session)));
+  }
+  return details.join(' · ');
 }
 
 export default function StudentCourseDetail() {
@@ -294,7 +306,7 @@ export default function StudentCourseDetail() {
                   )}
                 </>
               )}
-              subtitle={`${t('student.course.questionCount', { count: (s.questions || []).length })}${getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}`}
+              subtitle={buildSessionSubtitle(s, t)}
             />
           );
         })}
@@ -395,7 +407,7 @@ export default function StudentCourseDetail() {
                   key={session._id}
                   title={session.name}
                   onClick={action.path ? () => navigate(action.path) : undefined}
-                  subtitle={t('student.course.questionCount', { count: (session.questions || []).length })}
+                  subtitle={buildSessionSubtitle(session, t)}
                   badges={(
                     <>
                       <Chip label={t('student.course.practice', { defaultValue: 'Practice' })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />
@@ -450,7 +462,7 @@ export default function StudentCourseDetail() {
             courseId={id}
             currentCourse={course}
             availableSessions={sortedSessions}
-            allowQuestionCreate={!!course.allowStudentQuestions}
+            allowQuestionCreate
             permissionMode="student"
           />
         </Suspense>

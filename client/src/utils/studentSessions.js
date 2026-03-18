@@ -42,6 +42,13 @@ export function isSubmittedLiveQuiz(session) {
   );
 }
 
+export function shouldShowStudentSessionQuestionCount(session) {
+  if (session?.studentCreated && session?.practiceQuiz) {
+    return true;
+  }
+  return !!session?.reviewable;
+}
+
 export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
   const isQuiz = isQuizSession(session);
   const submittedQuiz = isQuiz && session?.quizSubmittedByCurrentUser && !session?.practiceQuiz;

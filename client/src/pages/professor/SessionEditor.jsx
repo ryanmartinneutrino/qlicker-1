@@ -100,6 +100,14 @@ function toTagObjects(tags = []) {
   return normalizeTagValues(tags).map((tag) => ({ value: tag, label: tag }));
 }
 
+function mergeQuestionTagsWithSessionTags(questionTags = [], sessionTags = [], allowedTags = []) {
+  const allowedTagSet = new Set(normalizeTagValues(allowedTags).map((tag) => tag.toLowerCase()));
+  return [...new Set([
+    ...normalizeTagValues(questionTags).filter((tag) => allowedTagSet.has(tag.toLowerCase())),
+    ...normalizeTagValues(sessionTags).filter((tag) => allowedTagSet.has(tag.toLowerCase())),
+  ])];
+}
+
 function buildExtendedQuizEnd(endValue = '', startValue = '') {
   const parsedEnd = endValue ? new Date(endValue) : null;
   const parsedStart = startValue ? new Date(startValue) : null;
@@ -165,6 +173,7 @@ export default function SessionEditor() {
   const [savingSession, setSavingSession] = useState(false);
   const [sessionSaveStatus, setSessionSaveStatus] = useState('idle');
   const [sessionSaveError, setSessionSaveError] = useState('');
+  const [applyingSessionTags, setApplyingSessionTags] = useState(false);
 
   // Quiz settings
   const [quiz, setQuiz] = useState(false);
@@ -602,6 +611,39 @@ export default function SessionEditor() {
     if (!question) return null;
     return JSON.parse(JSON.stringify(question));
   };
+
+  const handleApplySessionTagsToQuestions = useCallback(async () => {
+    if (!sessionTags.length || !questions.length) return;
+
+    const allowedTags = normalizeTagValues(course?.tags || []);
+    setApplyingSessionTags(true);
+    try {
+      const updatedQuestions = await Promise.all(questions.map(async (question) => {
+        const nextTags = mergeQuestionTagsWithSessionTags(question.tags || [], sessionTags, allowedTags);
+        const { data } = await apiClient.patch(`/questions/${question._id}`, { tags: toTagObjects(nextTags) });
+        return data.question || data;
+      }));
+      updatedQuestions.forEach((question) => upsertQuestionLocally(question));
+      setMsg({
+        severity: 'success',
+        text: t('professor.sessionEditor.appliedSessionTagsToQuestions', {
+          count: updatedQuestions.length,
+          defaultValue: updatedQuestions.length === 1
+            ? 'Applied the session tags to 1 question.'
+            : `Applied the session tags to ${updatedQuestions.length} questions.`,
+        }),
+      });
+    } catch (err) {
+      setMsg({
+        severity: 'error',
+        text: err.response?.data?.message || t('professor.sessionEditor.failedApplySessionTagsToQuestions', {
+          defaultValue: 'Failed to apply the session tags to the questions.',
+        }),
+      });
+    } finally {
+      setApplyingSessionTags(false);
+    }
+  }, [course?.tags, questions, sessionTags, t, upsertQuestionLocally]);
 
   const hasResponseDataForQuestion = useCallback(
     (questionId) => responseBackedQuestionIds.has(String(questionId)),
@@ -1445,27 +1487,42 @@ export default function SessionEditor() {
             </Typography>
           </FormControl>
 
-          <Autocomplete
-            multiple
-            freeSolo={false}
-            options={normalizeTagValues(course?.tags || [])}
-            value={sessionTags}
-            onChange={(_event, nextValue) => {
-              const normalizedTags = normalizeTagValues(nextValue);
-              setSessionTags(normalizedTags);
-              saveSessionPatch({ tags: toTagObjects(normalizedTags) });
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
-                placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
-                helperText={t('professor.sessionEditor.tagsHelp', {
-                  defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
-                })}
-              />
-            )}
-          />
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Autocomplete
+              multiple
+              freeSolo={false}
+              options={normalizeTagValues(course?.tags || [])}
+              value={sessionTags}
+              onChange={(_event, nextValue) => {
+                const normalizedTags = normalizeTagValues(nextValue);
+                setSessionTags(normalizedTags);
+                saveSessionPatch({ tags: toTagObjects(normalizedTags) });
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
+                  placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
+                  helperText={t('professor.sessionEditor.tagsHelp', {
+                    defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
+                  })}
+                />
+              )}
+              sx={{ flex: 1, minWidth: 260 }}
+            />
+            {sessionTags.length > 0 ? (
+              <Button
+                variant="outlined"
+                onClick={handleApplySessionTagsToQuestions}
+                disabled={applyingSessionTags || questions.length === 0}
+                sx={{ mt: { xs: 0, sm: 0.5 } }}
+              >
+                {applyingSessionTags
+                  ? t('professor.sessionEditor.applyingTagsToQuestions', { defaultValue: 'Applying tags…' })
+                  : t('professor.sessionEditor.applyTagsToAllQuestions', { defaultValue: 'Apply tags to all questions' })}
+              </Button>
+            ) : null}
+          </Box>
 
           {(quiz || practiceQuiz) && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: SETTINGS_STACK_GAP }}>
