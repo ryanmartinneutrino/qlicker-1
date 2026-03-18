@@ -7,28 +7,33 @@ const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
 const RICH_TEXT_ALLOWED_ATTRIBUTES = ['width', 'height', 'data-width', 'data-height'];
 
+function isBlobUrl(value) {
+  return /^blob:/i.test(String(value || '').trim());
+}
+
 function stripTransientBlobUrls(html) {
-  if (!html || typeof document === 'undefined') return html || '';
+  if (!html || typeof document === 'undefined') return html ?? '';
   const container = document.createElement('div');
   container.innerHTML = html;
 
-  container.querySelectorAll('[src], [href]').forEach((node) => {
-    ['src', 'href'].forEach((attribute) => {
-      const value = String(node.getAttribute(attribute) || '').trim();
-      if (!/^blob:/i.test(value)) return;
-
-      if (attribute === 'src' && node.tagName === 'IMG') {
-        node.remove();
-        return;
-      }
-      node.removeAttribute(attribute);
-    });
-  });
-
   container.querySelectorAll('img').forEach((node) => {
     const source = String(node.getAttribute('src') || '').trim();
-    if (!source) {
+    if (isBlobUrl(source)) {
       node.remove();
+    }
+  });
+
+  container.querySelectorAll('[src]:not(img)').forEach((node) => {
+    const source = String(node.getAttribute('src') || '').trim();
+    if (isBlobUrl(source)) {
+      node.removeAttribute('src');
+    }
+  });
+
+  container.querySelectorAll('[href]').forEach((node) => {
+    const href = String(node.getAttribute('href') || '').trim();
+    if (isBlobUrl(href)) {
+      node.removeAttribute('href');
     }
   });
 
@@ -188,11 +193,10 @@ export function sanitizeRichHtml(html) {
   if (!source) return '';
   if (typeof window === 'undefined') return source;
 
-  const sanitized = DOMPurify.sanitize(source, {
+  return DOMPurify.sanitize(stripTransientBlobUrls(source), {
     USE_PROFILES: { html: true },
     ADD_ATTR: RICH_TEXT_ALLOWED_ATTRIBUTES,
   });
-  return stripTransientBlobUrls(sanitized);
 }
 
 export function normalizeStoredHtml(html) {
