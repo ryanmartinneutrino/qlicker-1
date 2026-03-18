@@ -1558,7 +1558,8 @@
           "bullets": [
             "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite si vous avez besoin d'un format personnalisé ou hérité.",
             "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'autorisation des questions étudiantes.",
-            "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible."
+            "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible.",
+            "Chaque cours possède un code d'inscription que les étudiants saisissent depuis leur tableau de bord pour rejoindre ce cours précis. Partagez le code actuel avec votre classe et modifiez-le dans les réglages du cours si vous devez empêcher la réutilisation d'un ancien code."
           ],
           "note": "Si vous enseignez des cours semblables à chaque session, gardez une convention de nommage stable afin que le matériel copié reste facile à repérer.",
           "screenshot": {
@@ -1653,7 +1654,8 @@
           "bullets": [
             "Entrez le code d'inscription exactement comme votre enseignant vous le donne. Une fois inscrit, le cours apparaît sur votre tableau de bord.",
             "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux.",
-            "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais."
+            "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais.",
+            "En général, vous n'avez besoin du code d'inscription qu'une seule fois par cours. Une fois accepté, le cours reste sur votre tableau de bord jusqu'à ce que vous en soyez retiré ou qu'il soit archivé pour votre compte."
           ],
           "screenshot": {
             "variant": "studentCourse",

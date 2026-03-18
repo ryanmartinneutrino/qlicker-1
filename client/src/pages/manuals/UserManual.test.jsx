@@ -62,6 +62,7 @@ describe('UserManual', () => {
     expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/student');
     expect(screen.getByText(/usual app bar stays available while you read/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /enroll in a course and learn the course tabs/i })).toBeInTheDocument();
+    expect(screen.getByText(/you usually only need the join code once per course/i)).toBeInTheDocument();
     expect(screen.getByText(/student course page preview/i)).toBeInTheDocument();
     expect(screen.getByText(/review and practice preview/i)).toBeInTheDocument();
   });
@@ -85,6 +86,7 @@ describe('UserManual', () => {
     const sessionsHeading = screen.getByRole('heading', { name: /build sessions with questions, slides, and visibility in mind/i });
     expect(courseHeading.compareDocumentPosition(groupsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(groupsHeading.compareDocumentPosition(sessionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/students enter from their dashboard to join that specific course/i)).toBeInTheDocument();
     expect(screen.getByText(/each student can belong to only one group inside a category/i)).toBeInTheDocument();
     expect(screen.getByText(/session editor preview/i)).toBeInTheDocument();
   });

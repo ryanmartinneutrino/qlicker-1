@@ -1558,7 +1558,8 @@
           "bullets": [
             "The course creation dialog combines a semester season and year into one label, which you can edit later if you need a custom or legacy format.",
             "Use course settings to manage the title, enrollment rules, quiz time display, active state, and whether students may submit questions.",
-            "Add course topics early so your own questions stay organized and students can search the library material you make visible to them."
+            "Add course topics early so your own questions stay organized and students can search the library material you make visible to them.",
+            "Each course has an enrollment or join code that students enter from their dashboard to join that specific course. Share the current code with your class and update it in course settings if you need to stop an old code from being reused."
           ],
           "note": "If you teach similar courses each term, use the same naming convention so copied material remains easy to identify.",
           "screenshot": {
@@ -1653,7 +1654,8 @@
           "bullets": [
             "Enter the enrollment code exactly as your instructor provides it. Once enrolled, the course appears on your dashboard.",
             "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly.",
-            "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong."
+            "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong.",
+            "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account."
           ],
           "screenshot": {
             "variant": "studentCourse",
