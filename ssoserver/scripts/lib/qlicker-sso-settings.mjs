@@ -4,8 +4,10 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ssoserverDir = path.resolve(__dirname, '../..');
+const repoRootDir = path.resolve(ssoserverDir, '..');
 const envExamplePath = path.join(ssoserverDir, '.env.example');
 const envPath = path.join(ssoserverDir, '.env');
+const rootEnvPath = path.join(repoRootDir, '.env');
 
 function parseEnv(raw) {
   return raw.split(/\r?\n/).reduce((acc, line) => {
@@ -22,8 +24,63 @@ function parseEnv(raw) {
 
 export function loadSsoEnv() {
   const defaults = fs.existsSync(envExamplePath) ? parseEnv(fs.readFileSync(envExamplePath, 'utf8')) : {};
+  const rootEnv = fs.existsSync(rootEnvPath) ? parseEnv(fs.readFileSync(rootEnvPath, 'utf8')) : {};
   const fromFile = fs.existsSync(envPath) ? parseEnv(fs.readFileSync(envPath, 'utf8')) : {};
-  return { ...defaults, ...fromFile, ...process.env };
+
+  const derivedFromRoot = deriveQlickerEnv(rootEnv);
+  const merged = { ...defaults, ...fromFile, ...process.env };
+
+  for (const key of ['QCLICKER_APP_URL', 'QCLICKER_API_URL', 'QCLICKER_SP_ENTITY_ID']) {
+    const explicitProcessValue = process.env[key];
+    const fileValue = fromFile[key];
+    const defaultValue = defaults[key];
+    const rootValue = derivedFromRoot[key];
+
+    if (explicitProcessValue) {
+      merged[key] = explicitProcessValue;
+    } else if (fileValue && fileValue !== defaultValue) {
+      merged[key] = fileValue;
+    } else if (rootValue) {
+      merged[key] = rootValue;
+    } else if (fileValue) {
+      merged[key] = fileValue;
+    } else if (defaultValue) {
+      merged[key] = defaultValue;
+    }
+  }
+
+  return merged;
+}
+
+function normalizeUrlCandidate(value) {
+  return String(value || '').trim().replace(/\/$/, '');
+}
+
+function ensureApiV1Path(value) {
+  const trimmed = normalizeUrlCandidate(value);
+  if (!trimmed) return '';
+  if (trimmed.endsWith('/api/v1')) return trimmed;
+  if (trimmed.endsWith('/api')) return `${trimmed}/v1`;
+  return `${trimmed}/api/v1`;
+}
+
+function deriveQlickerEnv(rootEnv) {
+  const appUrl = normalizeUrlCandidate(
+    rootEnv.QCLICKER_APP_URL
+      || rootEnv.ROOT_URL
+      || (rootEnv.APP_PORT ? `http://127.0.0.1:${rootEnv.APP_PORT}` : '')
+  );
+  const apiUrl = ensureApiV1Path(
+    rootEnv.QCLICKER_API_URL
+      || rootEnv.VITE_API_URL
+      || (rootEnv.API_PORT ? `http://127.0.0.1:${rootEnv.API_PORT}` : '')
+  );
+
+  return {
+    QCLICKER_APP_URL: appUrl,
+    QCLICKER_API_URL: apiUrl,
+    QCLICKER_SP_ENTITY_ID: appUrl ? `${appUrl}/api/v1/auth/sso/metadata` : '',
+  };
 }
 
 function normalizeBasePath(input) {

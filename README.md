@@ -173,6 +173,8 @@ node ./scripts/render-config.mjs
 docker compose up -d --build
 ```
 
+If the repository root `.env` already defines `ROOT_URL` / `APP_PORT` and `VITE_API_URL` / `API_PORT`, the `ssoserver` helper scripts will follow those ports automatically unless you override the `QCLICKER_*` values in `ssoserver/.env` with non-default values.
+
 Print the exact Qlicker SSO settings payload:
 
 ```bash

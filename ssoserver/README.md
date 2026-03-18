@@ -31,6 +31,8 @@ This directory contains an isolated SimpleSAMLphp IdP used to verify Qlicker SAM
 - Qlicker app URL under smoke tests: `http://127.0.0.1:3300`
 - Qlicker API URL under smoke tests: `http://127.0.0.1:3301/api/v1`
 
+If the repository root `.env` defines `ROOT_URL` / `APP_PORT` and `VITE_API_URL` / `API_PORT`, the helper scripts now use those values automatically unless `ssoserver/.env` overrides `QCLICKER_APP_URL`, `QCLICKER_API_URL`, or `QCLICKER_SP_ENTITY_ID` with non-default values.
+
 ## Seeded Users
 
 Defaults come from `.env` / `.env.example`.
@@ -55,6 +57,8 @@ cp .env.example .env
 node ./scripts/render-config.mjs
 docker compose up -d --build
 ```
+
+If your main Qlicker app is already running on non-default ports, you do not need to edit `ssoserver/.env` just to match those ports as long as the repository root `.env` is correct. Re-run `node ./scripts/render-config.mjs` after changing the main app ports so the generated SAML metadata follows the updated callback URLs.
 
 Check the IdP:
 

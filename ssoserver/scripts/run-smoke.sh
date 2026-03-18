@@ -13,23 +13,22 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "Created $ENV_FILE from .env.example. Review it before re-running if you need custom ports or credentials."
 fi
 
-load_env_file() {
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    local key="${line%%=*}"
-    local value="${line#*=}"
-    value="${value%$'\r'}"
-    if [[ "$value" =~ ^\".*\"$ || "$value" =~ ^\'.*\'$ ]]; then
-      value="${value:1:-1}"
-    fi
-    export "$key=$value"
-  done < "$ENV_FILE"
-}
-
-load_env_file
-
 "$SCRIPT_DIR/generate-certs.sh"
 node "$SCRIPT_DIR/render-config.mjs"
+
+readarray -t CONFIG_VALUES < <(
+  cd "$REPO_ROOT" && node --input-type=module -e "
+    import { getSsoConfig } from './ssoserver/scripts/lib/qlicker-sso-settings.mjs';
+    const config = getSsoConfig();
+    console.log(config.ssoserverBaseUrl);
+    console.log(config.qlickerAppUrl);
+    console.log(config.qlickerApiUrl);
+  "
+)
+
+SSOSERVER_BASE_URL="${CONFIG_VALUES[0]}"
+QCLICKER_APP_URL="${CONFIG_VALUES[1]}"
+QCLICKER_API_URL="${CONFIG_VALUES[2]}"
 
 cleanup() {
   (cd "$SSO_DIR" && docker compose down >/dev/null 2>&1 || true)
