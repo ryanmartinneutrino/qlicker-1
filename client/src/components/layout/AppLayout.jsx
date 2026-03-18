@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button,
+  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button, Tooltip,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import ConnectionStatus from '../common/ConnectionStatus';
+import { getManualPath, getPreferredManualRole } from '../../utils/userManuals';
 
 export default function AppLayout() {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export default function AppLayout() {
   const mainContentRef = useRef(null);
   const roles = user?.profile?.roles || [];
   const isAdmin = roles.includes('admin');
+  const manualPath = getManualPath(getPreferredManualRole(roles));
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -116,14 +118,16 @@ export default function AppLayout() {
             </Button>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
-          <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
-            <Avatar
-              src={user?.profile?.profileImage}
-              sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
-            >
-              {getInitials()}
-            </Avatar>
-          </IconButton>
+          <Tooltip title={t('nav.openAccountMenuTooltip')} arrow>
+            <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
+              <Avatar
+                src={user?.profile?.profileImage}
+                sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
+              >
+                {getInitials()}
+              </Avatar>
+            </IconButton>
+          </Tooltip>
           <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
             <MenuItem disabled>
               {user?.profile?.firstname} {user?.profile?.lastname}
@@ -133,6 +137,9 @@ export default function AppLayout() {
             )}
             {currentPath !== '/profile' && (
               <MenuItem onClick={handleProfile}>{t('nav.profile')}</MenuItem>
+            )}
+            {currentPath !== manualPath && (
+              <MenuItem onClick={() => { handleMenuClose(); navigate(manualPath); }}>{t('nav.userManual')}</MenuItem>
             )}
             {isAdmin && !isOnCourseList && (
               <MenuItem onClick={() => { handleMenuClose(); navigate('/manage'); }}>{t('nav.courses')}</MenuItem>

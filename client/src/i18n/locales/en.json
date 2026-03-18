@@ -85,7 +85,9 @@
     "dashboard": "Dashboard",
     "profile": "Profile",
     "courses": "Courses",
-    "logout": "Logout"
+    "logout": "Logout",
+    "userManual": "User manual",
+    "openAccountMenuTooltip": "Open account menu and quick links"
   },
   "dashboard": {
     "liveSessions": "Live Sessions"
@@ -1309,7 +1311,11 @@
     "studentDashboard": "Student Dashboard",
     "course": "Course",
     "quiz": "Quiz",
-    "videoChat": "Video Chat"
+    "videoChat": "Video Chat",
+    "userManual": "User Manual",
+    "adminManual": "Admin Manual",
+    "professorManual": "Professor Manual",
+    "studentManual": "Student Manual"
   },
   "semesters": {
     "fall": "Fall",
@@ -1421,5 +1427,287 @@
     "noConnectionInfo": "No connection info",
     "videoNotEnabled": "Video chat is not enabled for this course",
     "jitsiNotAvailable": "Jitsi video is not available. Contact your administrator."
+  },
+  "manuals": {
+    "shared": {
+      "roles": {
+        "admin": "Admin",
+        "professor": "Professor",
+        "student": "Student"
+      },
+      "quickStartTitle": "Quick start",
+      "relatedManualsTitle": "Available manuals",
+      "contentsTitle": "On this page",
+      "relatedManualTooltip": "Open the {{role}} manual in this tab.",
+      "openManualForRole": "Open {{role}} manual",
+      "accessDenied": "You do not have access to the {{manual}} manual with your current role.",
+      "screenshotAutosave": "Autosave after short pauses",
+      "screenshotAreas": "Main areas",
+      "screenshotPolicies": "Policies and defaults",
+      "screenshotSupport": "Support workflow",
+      "screenshotManualSwitcher": "Use the role switcher here to jump to the professor or student guide while helping someone.",
+      "screenshotProviderFields": "Provider-specific fields",
+      "screenshotStorageModes": "Storage modes",
+      "screenshotSecretFields": "Secret fields",
+      "screenshotEndpoint": "Endpoint",
+      "screenshotVerification": "Verify with an image upload",
+      "screenshotCourseSetup": "Start with the course structure",
+      "screenshotCourseActions": "Course actions",
+      "screenshotOrganization": "Organization first",
+      "screenshotReuse": "Reuse later",
+      "questionsLabel": "Questions",
+      "screenshotQuizScheduling": "Quiz scheduling",
+      "screenshotSessionFlow": "Questions and slides share one order",
+      "screenshotEditorActions": "Editor actions",
+      "screenshotOrdering": "Build the flow",
+      "screenshotQuizControls": "Quiz controls",
+      "screenshotStudentCourseDashboard": "Student course dashboard",
+      "screenshotChooseActivity": "Choose the right activity type",
+      "screenshotStudentActions": "Student actions",
+      "screenshotActivityTypes": "Activity types",
+      "screenshotStayOriented": "Stay oriented",
+      "screenshotQuestionAtATime": "Study one question at a time",
+      "screenshotReviewTools": "Review tools",
+      "screenshotFeedback": "Feedback and points",
+      "screenshotCorrectAnswer": "Correct answer",
+      "screenshotAttempts": "Attempts",
+      "screenshotPracticeNext": "Practice next",
+      "navigationTitle": "Navigation",
+      "backToDashboard": "Back to dashboard",
+      "openProfile": "Open profile",
+      "navigationHint": "The usual app bar stays available while you read. Use these shortcuts when you want to jump back into Qlicker quickly."
+    },
+    "admin": {
+      "title": "Admin user manual",
+      "intro": "Use this guide when configuring Qlicker for your institution or helping instructors and students.",
+      "summary": "The admin dashboard saves after short pauses, so review sensitive values like SSO certificates, storage credentials, and video settings carefully before leaving a tab.",
+      "quickStart": [
+        "Confirm institution-wide defaults in Settings before a new term starts.",
+        "Configure storage, SSO, and video before onboarding users when your deployment depends on shared services.",
+        "Use the Users and Courses tabs to verify that roles, enrollments, and active courses match reality."
+      ],
+      "sections": [
+        {
+          "title": "Start with the required formats and deployment assumptions",
+          "subtitle": "Most admin problems come from a small mismatch between expected field formats and the environment.",
+          "bullets": [
+            "Run the server, client, and database with the deployment environment values you actually plan to support before testing admin workflows.",
+            "Allowed email domains are a comma-separated list; login token expiry is a whole number of minutes; locale, date format, and time format become global defaults.",
+            "SSO values are plain text fields for URLs, entity IDs, and attribute names. Certificates and keys should be pasted exactly as your identity provider supplies them.",
+            "Storage forms expect the provider-specific fields shown in the UI, and you should always confirm the setup by uploading an image afterward."
+          ],
+          "note": "When someone reports a user-facing issue, compare this guide with the professor or student guide so the support answer matches the current workflow.",
+          "screenshot": {
+            "variant": "adminOverview",
+            "title": "Admin dashboard overview",
+            "description": "The dashboard groups institution settings into focused tabs so you can audit one area at a time."
+          }
+        },
+        {
+          "title": "Configure local, S3, or Azure storage correctly",
+          "subtitle": "Storage must be configured both in Qlicker and in the cloud provider itself.",
+          "bullets": [
+            "Local storage is the simplest option, but the server environment must preserve uploaded files safely across restarts and deployments.",
+            "Amazon S3 mode needs bucket, region, access key ID, secret key, and optional endpoint plus path-style support for compatible services such as MinIO.",
+            "Azure Blob mode needs storage account, access key, and container name. The bucket or container must already exist and allow the app to read and write.",
+            "After saving storage changes, upload a sample image from the rich-text editor and confirm that it appears again in review pages."
+          ],
+          "warning": "Treat storage keys and private credentials as secrets. Rotate them if they are exposed.",
+          "screenshot": {
+            "variant": "adminStorage",
+            "title": "Storage configuration preview",
+            "description": "Switch providers in the Storage tab and fill only the fields that apply to the chosen backend."
+          }
+        },
+        {
+          "title": "Set up SSO and institution-wide video before opening access broadly",
+          "subtitle": "These settings affect how people enter the platform and how instructors use real-time tools.",
+          "bullets": [
+            "Enable SSO only after you have the identity provider entry point, logout URL, entity ID, attribute mappings, and the correct certificates or private keys.",
+            "Paste certificates and private keys exactly as issued. Private keys usually include BEGIN and END markers and should not be edited by hand.",
+            "Enable Jitsi only after the Jitsi domain and optional Etherpad domain are correct, then choose which courses can use video.",
+            "Retest login, logout, and a video-enabled course after every change so instructors are not surprised during class time."
+          ],
+          "warning": "Incorrect SSO values can block sign-in for every user, so make changes during a maintenance window whenever possible."
+        },
+        {
+          "title": "Manage users, courses, and role-based support",
+          "subtitle": "Once global settings are correct, the Users and Courses tabs become your daily support tools.",
+          "bullets": [
+            "Search users by name or email, change roles, verify email addresses, create accounts, and open per-user properties when local email login or professor promotion rules must change.",
+            "Review courses to confirm the correct instructors, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
+            "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view."
+          ],
+          "warning": "Role changes and SSO login approvals take effect immediately, so confirm the request before saving."
+        }
+      ]
+    },
+    "professor": {
+      "title": "Professor user manual",
+      "intro": "Use this guide to create courses, organize questions, run sessions or quizzes, and interpret student results.",
+      "summary": "Good course topics and consistent semester names make almost every later workflow easier: search, copying, import/export, and grading all benefit from a tidy course structure.",
+      "quickStart": [
+        "Create the course with a consistent semester name such as Fall 2026 or Winter 2027.",
+        "Add course topics first, then set up groups if you plan to use them for in-class organization or reporting.",
+        "Build sessions from the course page, decide which ones are interactive or quiz-based, and review results after students have participated."
+      ],
+      "sections": [
+        {
+          "title": "Create a course and add topics before you scale up",
+          "subtitle": "A clean course setup saves time when you copy or search later.",
+          "bullets": [
+            "The course creation dialog combines a semester season and year into one label, which you can edit later if you need a custom or legacy format.",
+            "Use course settings to manage the title, enrollment rules, quiz time display, active state, and whether students may submit questions.",
+            "Add course topics early so your own questions stay organized and students can search the library material you make visible to them.",
+            "Each course has an enrollment or join code that students enter from their dashboard to join that specific course. Share the current code with your class and update it in course settings if you need to stop an old code from being reused."
+          ],
+          "note": "If you teach similar courses each term, use the same naming convention so copied material remains easy to identify.",
+          "screenshot": {
+            "variant": "professorCourse",
+            "title": "Professor course workspace preview",
+            "description": "Course pages gather sessions, settings, question-library tools, and grades into one workspace."
+          }
+        },
+        {
+          "title": "Set up groups before you need them in class",
+          "subtitle": "Groups work best when categories and membership are prepared before a live session begins.",
+          "bullets": [
+            "Use the Groups tab on the course page to create a category, choose how many groups it should contain, and rename groups if you want clearer labels than the defaults.",
+            "Each student can belong to only one group inside a category, but the same course can have multiple categories for different activities or labs.",
+            "Add or remove students directly in the group management view, or import a CSV when you already have a roster prepared in spreadsheet form.",
+            "Download the CSV export when you want a record of the current group makeup or when you want a starting point for editing and re-uploading membership.",
+            "If you use groups for participation analysis or group-specific activities, verify the membership before launching the relevant session."
+          ],
+          "note": "Groups are course-specific, so copied sessions do not replace the need to review group categories in the destination course."
+        },
+        {
+          "title": "Build sessions with questions, slides, and visibility in mind",
+          "subtitle": "Sessions are ordered learning flows, not just containers.",
+          "bullets": [
+            "Use the session editor to set the session name, description, visibility, reviewability, passcode requirement, quiz window, extensions, and multi-select scoring method.",
+            "Add new questions, pick from the question library, import session JSON, or insert slides anywhere in the sequence.",
+            "Slides are content-only pages, so they are ideal for instructions, worked examples, or discussion prompts between graded questions.",
+            "Question visibility matters: keep private content private, share course-public material intentionally, and use Qlicker-wide visibility only when broad reuse is really desired."
+          ],
+          "warning": "Once a question has response data, some edits are intentionally restricted to protect the meaning of past results.",
+          "screenshot": {
+            "variant": "professorSession",
+            "title": "Session editor preview",
+            "description": "The session editor keeps ordering, settings, and import/export actions together so you can build a complete activity in one place."
+          }
+        },
+        {
+          "title": "Use the rich-text editor for math, images, and clear prompts",
+          "subtitle": "Questions, slides, solutions, and some feedback fields all support rich content.",
+          "bullets": [
+            "Use formatting tools like bold, lists, colors, links, and code only when they make the prompt easier to read, not busier.",
+            "Simple LaTeX examples include $a^2+b^2=c^2$, $\\frac{1}{2}$, and $$\\int_0^1 x^2\\,dx=\\frac{1}{3}$$.",
+            "Upload images directly in the editor, resize them for readability, and preview the rendered result before publishing.",
+            "Keep your wording concise so students can focus on the concept rather than on deciphering the prompt."
+          ]
+        },
+        {
+          "title": "Use the library, import/export, and copy tools to prepare efficiently",
+          "subtitle": "Once the course structure is in place, reuse becomes one of the fastest ways to prepare.",
+          "bullets": [
+            "Use the question library to search by course, type, tags, sessions, and approval state; export or import JSON bundles when sharing content.",
+            "Copy sessions within a course or across your courses after checking that the destination course topics still make sense for the imported material.",
+            "Review imported or copied content before class so visibility, passcodes, quiz dates, and tags match the destination course."
+          ]
+        },
+        {
+          "title": "Run interactive sessions and quizzes intentionally",
+          "subtitle": "Different session types are best for different teaching moments.",
+          "bullets": [
+            "Interactive sessions are for live teaching: you control navigation, response windows, statistics, answer reveals, attempts, and the presentation window.",
+            "Quizzes are scheduled windows where students answer on their own timeline. Use start and end times plus extensions for accommodation workflows.",
+            "Practice quizzes feel more like guided rehearsal and are well suited for self-study or optional reinforcement.",
+            "If a session depends on passcodes, groups, or visible statistics, confirm those settings before students begin joining."
+          ]
+        },
+        {
+          "title": "Review results, grade consistently, and communicate feedback",
+          "subtitle": "After students participate, Qlicker gives you several ways to inspect outcomes and respond.",
+          "bullets": [
+            "Session review lets you inspect results, response data, grading state, and student summaries once the activity is over.",
+            "Grades show participation, automatic marks, and manual-grading needs. Recalculate grades when scoring rules change or when you want automatic results rebuilt.",
+            "Students receive a notification when you publish new feedback, so use short, actionable comments that tell them what to revisit.",
+            "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
+          ],
+          "success": "Professors can open the student manual from the switcher above to preview the learner workflow before class."
+        }
+      ]
+    },
+    "student": {
+      "title": "Student user manual",
+      "intro": "Use this guide to enroll in courses, join live activities, complete quizzes, review feedback, and build practice sessions.",
+      "summary": "Your course page is the best starting point because it separates live activities, quizzes, practice sessions, review links, and library content into clear tabs.",
+      "quickStart": [
+        "Enroll with the course code from your instructor.",
+        "Open the course page and check which tab contains the activity you need right now.",
+        "Use review pages and practice sessions to turn feedback into another round of learning."
+      ],
+      "sections": [
+        {
+          "title": "Enroll in a course and learn the course tabs",
+          "subtitle": "Most student work begins from the course dashboard.",
+          "bullets": [
+            "Enter the enrollment code exactly as your instructor provides it. Once enrolled, the course appears on your dashboard.",
+            "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly.",
+            "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong.",
+            "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account."
+          ],
+          "screenshot": {
+            "variant": "studentCourse",
+            "title": "Student course page preview",
+            "description": "The course dashboard helps you pick the correct activity before you start answering."
+          }
+        },
+        {
+          "title": "Join live sessions and understand how quizzes differ",
+          "subtitle": "Interactive sessions, quizzes, and practice sessions may look similar, but they behave differently.",
+          "bullets": [
+            "Interactive sessions usually happen live. You may need a passcode, and your instructor decides when responses open, close, or show statistics.",
+            "Quizzes have a defined time window and normally expect you to answer the whole set before final submission. Your work saves while you move between questions.",
+            "Practice sessions are for self-study and can feel more flexible because they are designed to help you rehearse instead of keeping pace with a live class.",
+            "Slides can appear between questions. They are content pages, so read them carefully before moving on."
+          ]
+        },
+        {
+          "title": "Use the response editor for text, math, and images when the question allows it",
+          "subtitle": "Some questions accept richer responses than plain text only.",
+          "bullets": [
+            "Use the editor toolbar only when it makes your answer clearer, for example a short list, emphasis, or a clean link.",
+            "Simple math examples include $\\frac{1}{2}$, $x^2+1$, or \\(\\sum_{i=1}^{n} i\\). Use display math for expressions that deserve their own line.",
+            "If image uploads are available, attach clear photos or diagrams and avoid unrelated background details.",
+            "Preview what you typed when equations or symbols matter, because a small formatting mistake can change the meaning of your answer."
+          ]
+        },
+        {
+          "title": "Review sessions one question at a time and use feedback",
+          "subtitle": "Review mode is one of the best study tools in the app.",
+          "bullets": [
+            "Open reviewable sessions from the course page after your instructor ends the activity and turns on review.",
+            "Move one question at a time to compare your answer, the released answer, the explanation, and any instructor feedback without rushing past details.",
+            "Watch for feedback notifications because they tell you when new comments or grading updates are available."
+          ],
+          "success": "Students often improve fastest when they read the feedback and then immediately try a similar question again.",
+          "screenshot": {
+            "variant": "studentReview",
+            "title": "Review and practice preview",
+            "description": "Review pages explain your results and help you decide what to practice next."
+          }
+        },
+        {
+          "title": "Use the question library to build practice sessions",
+          "subtitle": "Library access depends on what your instructor has made visible to students.",
+          "bullets": [
+            "Search the question library for accessible material on the topic you want to revisit.",
+            "Create practice sessions from library questions so you can rehearse at your own pace and then review the results right away.",
+            "If a question contains math, images, or a worked solution, keep those visible while practicing so you can learn from the full example."
+          ]
+        }
+      ]
+    }
   }
 }

@@ -1128,6 +1128,7 @@ export default function MyComponent() { /* ... */ }
 Before submitting any PR, verify:
 
 - [ ] All user-facing strings use `t()` with keys in both `en.json` and `fr.json`
+- [ ] User manuals and their `en.json`/`fr.json` translations are updated whenever UI labels, workflows, or behavior change
 - [ ] All `aria-label` attributes use `t()` — no hardcoded English in accessibility labels
 - [ ] Read-only queries use `.lean()`
 - [ ] No database queries inside loops — use `$in` batch queries instead
