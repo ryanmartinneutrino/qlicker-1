@@ -1479,7 +1479,7 @@
       "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage et les réglages vidéo avant de quitter un onglet.",
       "quickStart": [
         "Confirmez les valeurs par défaut de l'établissement dans Paramètres avant le début d'une nouvelle session.",
-        "Configurez le stockage et le SSO avant l'arrivée des utilisateurs si votre déploiement dépend de services infonuagiques ou d'une connexion institutionnelle.",
+        "Configurez le stockage, le SSO et la vidéo avant l'arrivée des utilisateurs si votre déploiement dépend de services partagés.",
         "Utilisez les onglets Utilisateurs et Cours pour vérifier que les rôles, les inscriptions et les cours actifs correspondent à la réalité."
       ],
       "sections": [
@@ -1500,16 +1500,6 @@
           }
         },
         {
-          "title": "Gérer les utilisateurs, les cours et le soutien par rôle",
-          "subtitle": "Les onglets Utilisateurs et Cours sont les principaux outils de soutien au quotidien.",
-          "bullets": [
-            "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
-            "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
-            "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
-          ],
-          "warning": "Les changements de rôle et les approbations de connexion SSO prennent effet immédiatement; confirmez donc la demande avant l'enregistrement."
-        },
-        {
           "title": "Configurer correctement le stockage local, S3 ou Azure",
           "subtitle": "Le stockage doit être configuré à la fois dans Qlicker et chez le fournisseur infonuagique.",
           "bullets": [
@@ -1526,14 +1516,25 @@
           }
         },
         {
-          "title": "Mettre en place le SSO, la vidéo et le relais documentaire",
+          "title": "Mettre en place le SSO et la vidéo à l'échelle de l'établissement avant d'ouvrir l'accès largement",
           "subtitle": "Ces réglages influencent la façon dont les personnes entrent dans la plateforme et utilisent les outils temps réel.",
           "bullets": [
             "Activez le SSO seulement lorsque vous possédez le point d'entrée du fournisseur d'identité, l'URL de déconnexion, l'identifiant d'entité, les correspondances d'attributs et les bons certificats ou clés privées.",
+            "Collez les certificats et les clés privées exactement comme ils sont émis. Les clés privées incluent souvent les marqueurs BEGIN et END et ne devraient pas être modifiées à la main.",
             "Activez Jitsi seulement après avoir confirmé le domaine Jitsi et, si nécessaire, le domaine Etherpad, puis choisissez les cours qui peuvent utiliser la vidéo.",
-            "Retestez la connexion, la déconnexion et un cours avec vidéo après chaque changement afin d'éviter les surprises pendant un cours.",
-            "Gardez les guides professeur et étudiant à portée de main, car ils expliquent les flux que vous soutenez du côté administrateur."
-          ]
+            "Retestez la connexion, la déconnexion et un cours avec vidéo après chaque changement afin d'éviter les surprises pendant un cours."
+          ],
+          "warning": "Des valeurs SSO incorrectes peuvent bloquer la connexion de tous les utilisateurs; faites donc les changements pendant une fenêtre de maintenance lorsque c'est possible."
+        },
+        {
+          "title": "Gérer les utilisateurs, les cours et le soutien par rôle",
+          "subtitle": "Une fois les réglages globaux corrects, les onglets Utilisateurs et Cours deviennent vos outils de soutien quotidiens.",
+          "bullets": [
+            "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
+            "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
+            "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
+          ],
+          "warning": "Les changements de rôle et les approbations de connexion SSO prennent effet immédiatement; confirmez donc la demande avant l'enregistrement."
         }
       ]
     },
@@ -1543,17 +1544,17 @@
       "summary": "De bons sujets de cours et des noms de session cohérents rendent presque tous les autres flux plus simples : la recherche, la copie, l'importation/exportation et la notation profitent tous d'une structure propre.",
       "quickStart": [
         "Créez le cours avec un nom de session cohérent comme Fall 2026 ou Winter 2027.",
-        "Ajoutez des sujets de cours avant de bâtir une grande banque de questions afin que vos étiquettes restent organisées et faciles à rechercher.",
-        "Créez les séances depuis la page du cours, puis décidez si chacune sera interactive, un quiz ou une activité de pratique."
+        "Ajoutez d'abord les sujets du cours, puis configurez les groupes si vous comptez les utiliser pour l'organisation ou l'analyse.",
+        "Construisez les séances depuis la page du cours, décidez lesquelles sont interactives ou basées sur des quiz, puis révisez les résultats après la participation des étudiants."
       ],
       "sections": [
         {
           "title": "Créer un cours et ajouter les sujets avant de grandir",
           "subtitle": "Une configuration de cours propre fait gagner du temps lorsque vous copiez ou recherchez plus tard.",
           "bullets": [
-            "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite dans les réglages du cours si vous avez besoin d'un format hérité ou personnalisé.",
+            "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite si vous avez besoin d'un format personnalisé ou hérité.",
             "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'autorisation des questions étudiantes.",
-            "Ajoutez tôt les sujets de cours. Ils deviennent les étiquettes recommandées pour vos propres questions et aident les étudiants à rechercher le matériel que vous rendez visible."
+            "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible."
           ],
           "note": "Si vous enseignez des cours semblables à chaque session, gardez une convention de nommage stable afin que le matériel copié reste facile à repérer.",
           "screenshot": {
@@ -1561,6 +1562,18 @@
             "title": "Aperçu de l'espace de travail du cours",
             "description": "Les pages de cours rassemblent les séances, les réglages, les outils de bibliothèque et les notes dans un même espace."
           }
+        },
+        {
+          "title": "Préparer les groupes avant d'en avoir besoin en classe",
+          "subtitle": "Les groupes fonctionnent mieux lorsque les catégories et les membres sont prêts avant le début d'une séance en direct.",
+          "bullets": [
+            "Utilisez l'onglet Groupes du cours pour créer une catégorie, choisir le nombre de groupes et renommer les groupes si vous voulez des libellés plus parlants que les valeurs par défaut.",
+            "Chaque étudiant peut appartenir à un seul groupe à l'intérieur d'une catégorie, mais un même cours peut avoir plusieurs catégories pour différents laboratoires ou activités.",
+            "Ajoutez ou retirez directement les étudiants dans l'interface de gestion des groupes, ou importez un CSV si vous avez déjà une liste préparée dans un tableur.",
+            "Téléchargez le CSV exporté lorsque vous voulez garder une trace de la composition actuelle des groupes ou lorsque vous voulez partir de ce fichier pour modifier puis réimporter la répartition.",
+            "Si vous utilisez les groupes pour l'analyse de participation ou des activités ciblées, vérifiez les membres avant de lancer la séance concernée."
+          ],
+          "note": "Les groupes appartiennent au cours; la copie d'une séance ne remplace donc pas la vérification des catégories de groupes dans le cours de destination."
         },
         {
           "title": "Construire des séances avec questions, diapositives et visibilité",
@@ -1589,23 +1602,32 @@
           ]
         },
         {
-          "title": "Animer les séances interactives, les quiz et les révisions avec intention",
-          "subtitle": "Chaque mode soutient un moment différent du cycle d'enseignement.",
-          "bullets": [
-            "Les séances interactives servent à l'enseignement en direct : vous contrôlez la navigation, les fenêtres de réponse, les statistiques, la révélation des réponses, les essais et la fenêtre de présentation.",
-            "Les quiz sont des fenêtres planifiées pendant lesquelles les étudiants répondent à leur rythme. Utilisez les heures de début, de fin et les prolongations pour les accommodements.",
-            "Les quiz de pratique ressemblent davantage à une répétition guidée et conviennent bien à l'étude personnelle.",
-            "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants une fois l'activité terminée."
-          ]
-        },
-        {
-          "title": "Réutiliser le matériel grâce à la bibliothèque, à la copie et aux outils de notation",
-          "subtitle": "Une fois le contenu organisé, Qlicker devient un excellent système de réutilisation.",
+          "title": "Utiliser la bibliothèque, l'importation/exportation et la copie pour préparer efficacement",
+          "subtitle": "Une fois la structure du cours en place, la réutilisation devient l'un des moyens les plus rapides de préparer.",
           "bullets": [
             "Utilisez la bibliothèque de questions pour chercher par cours, type, étiquettes, séances ou état d'approbation; exportez ou importez des lots JSON pour partager du contenu.",
             "Copiez des séances dans un même cours ou entre vos cours après avoir vérifié que les sujets du cours de destination ont encore du sens pour le matériel importé.",
+            "Révisez le contenu importé ou copié avant le cours afin que la visibilité, les codes d'accès, les dates de quiz et les étiquettes correspondent bien au cours cible."
+          ]
+        },
+        {
+          "title": "Animer les séances interactives et les quiz avec intention",
+          "subtitle": "Différents types de séance conviennent à différents moments d'enseignement.",
+          "bullets": [
+            "Les séances interactives servent à l'enseignement en direct : vous contrôlez la navigation, les fenêtres de réponse, les statistiques, la révélation des réponses, les essais et la fenêtre de présentation.",
+            "Les quiz sont des fenêtres planifiées pendant lesquelles les étudiants répondent à leur rythme. Utilisez les heures de début, de fin et les prolongations pour les accommodements.",
+            "Les quiz de pratique conviennent bien à l'étude personnelle ou au renforcement facultatif.",
+            "Si une séance dépend des codes d'accès, des groupes ou des statistiques visibles, confirmez ces réglages avant que les étudiants commencent à se joindre."
+          ]
+        },
+        {
+          "title": "Réviser les résultats, corriger de façon cohérente et communiquer la rétroaction",
+          "subtitle": "Après la participation des étudiants, Qlicker offre plusieurs façons d'inspecter les résultats et d'agir.",
+          "bullets": [
+            "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants une fois l'activité terminée.",
             "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
-            "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables."
+            "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables.",
+            "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],
           "success": "Les professeurs peuvent ouvrir le guide étudiant depuis le sélecteur ci-dessus afin de prévisualiser le flux de l'apprenant avant un cours."
         }
@@ -1646,10 +1668,10 @@
           ]
         },
         {
-          "title": "Utiliser l'éditeur de réponse pour le texte, les maths et les images",
+          "title": "Utiliser l'éditeur de réponse pour le texte, les maths et les images lorsque la question le permet",
           "subtitle": "Certaines questions acceptent un contenu plus riche qu'une simple ligne de texte.",
           "bullets": [
-            "Utilisez la barre d'outils de l'éditeur pour la mise en forme seulement lorsqu'elle rend votre réponse plus claire, par exemple une courte liste, une emphase ou un lien propre.",
+            "Utilisez la barre d'outils de l'éditeur seulement lorsqu'elle rend votre réponse plus claire, par exemple une courte liste, une emphase ou un lien propre.",
             "Quelques exemples simples de maths sont $\\frac{1}{2}$, $x^2+1$ ou \\(\\sum_{i=1}^{n} i\\). Utilisez les maths affichées pour les expressions qui méritent leur propre ligne.",
             "Si le téléversement d'images est disponible, joignez des photos ou schémas clairs et évitez les arrière-plans inutiles.",
             "Prévisualisez ce que vous avez écrit lorsque les équations ou les symboles sont importants, car une petite erreur de mise en forme peut changer le sens."
@@ -1661,7 +1683,7 @@
           "bullets": [
             "Ouvrez les séances révisables depuis la page du cours après la fin de l'activité et l'activation de la révision par votre enseignant.",
             "Avancez une question à la fois pour comparer votre réponse, la réponse publiée, l'explication et la rétroaction de l'enseignant sans passer trop vite sur les détails.",
-            "Surveillez les notifications de rétroaction : elles indiquent que de nouveaux commentaires ou ajustements de note sont disponibles."
+            "Surveillez les notifications de rétroaction parce qu'elles indiquent que de nouveaux commentaires ou ajustements de note sont disponibles."
           ],
           "success": "Les étudiants progressent souvent le plus lorsqu'ils lisent la rétroaction puis refont immédiatement une question semblable.",
           "screenshot": {

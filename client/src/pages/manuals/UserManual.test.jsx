@@ -75,6 +75,12 @@ describe('UserManual', () => {
 
     expect(await screen.findByRole('heading', { name: /professor user manual/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /student/i })).toHaveAttribute('href', '/manual/student');
+    const courseHeading = screen.getByRole('heading', { name: /create a course and add topics before you scale up/i });
+    const groupsHeading = screen.getByRole('heading', { name: /set up groups before you need them in class/i });
+    const sessionsHeading = screen.getByRole('heading', { name: /build sessions with questions, slides, and visibility in mind/i });
+    expect(courseHeading.compareDocumentPosition(groupsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(groupsHeading.compareDocumentPosition(sessionsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/each student can belong to only one group inside a category/i)).toBeInTheDocument();
     expect(screen.getByText(/session editor preview/i)).toBeInTheDocument();
   });
 });

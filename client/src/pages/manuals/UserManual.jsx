@@ -11,11 +11,6 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import {
-  AdminPanelSettings as AdminPanelSettingsIcon,
-  MenuBook as MenuBookIcon,
-  School as SchoolIcon,
-} from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -25,21 +20,6 @@ import {
   getPreferredManualRole,
   USER_MANUAL_ROLES,
 } from '../../utils/userManuals';
-
-const ROLE_META = {
-  admin: {
-    icon: AdminPanelSettingsIcon,
-    color: 'error',
-  },
-  professor: {
-    icon: SchoolIcon,
-    color: 'primary',
-  },
-  student: {
-    icon: MenuBookIcon,
-    color: 'success',
-  },
-};
 
 function ManualScreenshot({ screenshot, figureId }) {
   const tabs = Array.isArray(screenshot?.tabs) ? screenshot.tabs : [];
@@ -53,31 +33,31 @@ function ManualScreenshot({ screenshot, figureId }) {
         variant="outlined"
         sx={{
           overflow: 'hidden',
-          borderRadius: 3,
-          bgcolor: 'background.default',
+          bgcolor: 'background.paper',
         }}
       >
         <Box
           sx={{
             px: 2,
-            py: 1.5,
+            py: 1.25,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 2,
-            color: 'primary.contrastText',
-            bgcolor: 'primary.main',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'action.hover',
           }}
         >
           <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
-            <Chip label={screenshot.windowBadge} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'inherit' }} />
+            <Chip label={screenshot.windowBadge} size="small" color="primary" variant="outlined" />
             <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>{screenshot.windowTitle}</Typography>
           </Stack>
-          <Typography variant="caption" sx={{ opacity: 0.88, textAlign: 'right' }}>{screenshot.windowNote}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'right' }}>{screenshot.windowNote}</Typography>
         </Box>
 
         <Box sx={{ p: { xs: 1.5, md: 2 }, display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '200px minmax(0, 1fr)' } }}>
-          <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.paper' }}>
+          <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
             <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 1, fontWeight: 700 }}>
               {screenshot.sidebarTitle}
             </Typography>
@@ -88,7 +68,6 @@ function ManualScreenshot({ screenshot, figureId }) {
                   sx={{
                     px: 1.25,
                     py: 0.9,
-                    borderRadius: 1.5,
                     bgcolor: 'action.hover',
                     border: '1px solid',
                     borderColor: 'divider',
@@ -111,13 +90,13 @@ function ManualScreenshot({ screenshot, figureId }) {
             {!!chips.length && (
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                 {chips.map((chip) => (
-                  <Chip key={chip} label={chip} size="small" sx={{ borderRadius: 1.5 }} />
+                  <Chip key={chip} label={chip} size="small" variant="outlined" />
                 ))}
               </Stack>
             )}
             <Stack spacing={1.5}>
               {cards.map((card) => (
-                <Paper key={card.title} variant="outlined" sx={{ p: 1.5, borderRadius: 2, bgcolor: 'background.paper' }}>
+                <Paper key={card.title} variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
                   <Stack spacing={1}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{card.title}</Typography>
                     {Array.isArray(card.lines) && card.lines.map((line) => (
@@ -466,7 +445,7 @@ function Section({ section, index, t }) {
   const screenshot = getScreenshotPreset(t, section?.screenshot);
 
   return (
-    <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: 3 }}>
+    <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
       <Stack spacing={2}>
         <Box>
           <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
@@ -523,7 +502,7 @@ export default function UserManual() {
   if (!canAccess) {
     return (
       <Box sx={{ p: 3, maxWidth: 860, mx: 'auto' }}>
-        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 }, borderRadius: 3 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
           <Stack spacing={2}>
             <Typography variant="h4">{t('accessDenied.title')}</Typography>
             <Alert severity="warning">{t('manuals.shared.accessDenied', { manual: t(`manuals.shared.roles.${manualRole}`) })}</Alert>
@@ -542,55 +521,29 @@ export default function UserManual() {
     );
   }
 
-  const HeroIcon = ROLE_META[manualRole]?.icon || MenuBookIcon;
-  const roleColor = ROLE_META[manualRole]?.color || 'primary';
-  const roleBackgroundColor = roleColor === 'error' ? '#fdecea' : roleColor === 'success' ? '#edf7ed' : '#e8f0fe';
+  const roleColor = manualRole === 'admin' ? 'error' : manualRole === 'student' ? 'success' : 'primary';
   const sections = Array.isArray(manual.sections) ? manual.sections : [];
   const relatedManualRoles = availableRoles;
 
   return (
-    <Box sx={{ p: 3, maxWidth: 1040, mx: 'auto' }}>
+    <Box sx={{ p: 3, maxWidth: 960, mx: 'auto' }}>
       <Stack spacing={3}>
-        <Paper
-          variant="outlined"
-          sx={{
-            p: { xs: 2.5, md: 3.5 },
-            borderRadius: 3,
-            background: (theme) => `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${theme.palette.action.hover} 100%)`,
-          }}
-        >
+        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
           <Stack spacing={2.5}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Box
-                  sx={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: '50%',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: `${roleColor}.main`,
-                    bgcolor: roleBackgroundColor,
-                    border: '1px solid',
-                    borderColor: `${roleColor}.light`,
-                  }}
-                >
-                  <HeroIcon />
-                </Box>
-                <Box>
-                  <Typography variant="h4" component="h1">{manual.title}</Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ mt: 0.5 }}>
-                    {manual.intro}
-                  </Typography>
-                </Box>
-              </Stack>
+              <Box>
+                <Typography variant="h4" component="h1" gutterBottom>{manual.title}</Typography>
+                <Typography variant="body1" color="text.secondary">
+                  {manual.intro}
+                </Typography>
+              </Box>
               <Chip color={roleColor} label={t(`manuals.shared.roles.${manualRole}`)} />
             </Stack>
 
             <Alert severity="info">{manual.summary}</Alert>
 
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} divider={<Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />}>
-              <Box sx={{ flex: 1 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                   {t('manuals.shared.quickStartTitle')}
                 </Typography>
@@ -600,7 +553,8 @@ export default function UserManual() {
                   ))}
                 </Box>
               </Box>
-              <Box sx={{ flex: 1 }}>
+              <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                   {t('manuals.shared.relatedManualsTitle')}
                 </Typography>
@@ -622,7 +576,7 @@ export default function UserManual() {
           </Stack>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 }, borderRadius: 3 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>{t('manuals.shared.contentsTitle')}</Typography>
           <Stack spacing={1.25}>
             {sections.map((section, index) => (
