@@ -1055,6 +1055,7 @@ export default function SessionEditor() {
             </Tooltip>
             <IconButton
               size="small"
+              aria-label={t('common.moreActions')}
               onClick={(event) => openQuestionActions(event, {
                 mode: initialQuestion ? 'edit' : 'insert',
                 index,
@@ -1084,6 +1085,7 @@ export default function SessionEditor() {
             <span>
               <IconButton
                 size="small"
+                aria-label={t('common.moveUp')}
                 disabled={!canMoveUp}
                 onClick={() => {
                   if (initialQuestion?._id) moveQuestionByQuestionId(initialQuestion._id, -1);
@@ -1101,6 +1103,7 @@ export default function SessionEditor() {
             <span>
               <IconButton
                 size="small"
+                aria-label={t('common.moveDown')}
                 disabled={!canMoveDown}
                 onClick={() => {
                   if (initialQuestion?._id) moveQuestionByQuestionId(initialQuestion._id, 1);
@@ -1118,6 +1121,7 @@ export default function SessionEditor() {
                   <IconButton
                     size="small"
                     color="error"
+                    aria-label={t('common.delete')}
                     disabled={questionsEditingLocked || questionHasResponses}
                     onClick={() => setDeleteQTarget(initialQuestion)}
                   >
@@ -1672,7 +1676,7 @@ export default function SessionEditor() {
                       startIcon={<AddIcon />}
                       onClick={() => openAddQuestionDialogAt(slotIdx)}
                       disabled={questionsEditingLocked}
-                      aria-label={`Add question at position ${slotIdx + 1}`}
+                      aria-label={t('professor.sessionEditor.addQuestionAtPositionAria', { position: slotIdx + 1 })}
                     >
                       {t('professor.sessionEditor.addQuestion')}
                     </Button>
@@ -1682,7 +1686,7 @@ export default function SessionEditor() {
                       size="small"
                       onClick={() => openAddQuestionDialogAt(slotIdx)}
                       disabled={questionsEditingLocked}
-                      aria-label={`Add question at position ${slotIdx + 1}`}
+                      aria-label={t('professor.sessionEditor.addQuestionAtPositionAria', { position: slotIdx + 1 })}
                       sx={{
                         width: '100%',
                         minWidth: 0,
@@ -1742,6 +1746,7 @@ export default function SessionEditor() {
                         </Typography>
                         <IconButton
                           size="small"
+                          aria-label={t('common.moreActions')}
                           disabled={questionsEditingLocked}
                           onClick={(event) => openQuestionActions(event, {
                             mode: 'view',
@@ -1778,6 +1783,7 @@ export default function SessionEditor() {
                           <span>
                             <IconButton
                               size="small"
+                              aria-label={t('common.moveUp')}
                               disabled={!canMoveCurrentQuestionUp}
                               onClick={() => moveQuestionByQuestionId(currentQuestion._id, -1)}
                             >
@@ -1792,6 +1798,7 @@ export default function SessionEditor() {
                           <span>
                             <IconButton
                               size="small"
+                              aria-label={t('common.moveDown')}
                               disabled={!canMoveCurrentQuestionDown}
                               onClick={() => moveQuestionByQuestionId(currentQuestion._id, 1)}
                             >
@@ -1804,6 +1811,7 @@ export default function SessionEditor() {
                             <IconButton
                               size="small"
                               color="error"
+                              aria-label={t('common.delete')}
                               disabled={questionsEditingLocked || questionHasResponses}
                               onClick={() => setDeleteQTarget(currentQuestion)}
                             >

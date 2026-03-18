@@ -14,7 +14,7 @@ function generateEnrollmentCode() {
 async function generateUniqueEnrollmentCode() {
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generateEnrollmentCode();
-    const existing = await Course.findOne({ enrollmentCode: code });
+    const existing = await Course.findOne({ enrollmentCode: code }).lean();
     if (!existing) return code;
   }
   const err = new Error('Failed to generate a unique enrollment code');
@@ -179,7 +179,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -194,7 +194,7 @@ export default async function courseRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Course is inactive for students' });
       }
 
-      const obj = course.toObject();
+      const obj = { ...course };
 
       // Populate instructor data for any authenticated viewer
       if (obj.instructors && obj.instructors.length > 0) {
@@ -247,7 +247,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -287,7 +287,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -331,7 +331,7 @@ export default async function courseRoutes(app) {
       const { enrollmentCode } = request.body;
       const userId = request.user.userId;
 
-      const course = await Course.findOne({ enrollmentCode });
+      const course = await Course.findOne({ enrollmentCode }).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Invalid enrollment code' });
       }
@@ -342,7 +342,7 @@ export default async function courseRoutes(app) {
       if (course.requireVerified) {
         const settings = await Settings.findOne().select('SSO_enabled').lean();
         if (!settings?.SSO_enabled) {
-          const enrollingUser = await User.findById(userId);
+          const enrollingUser = await User.findById(userId).lean();
           if (!enrollingUser?.emails?.[0]?.verified) {
             return reply.code(403).send({ error: 'Forbidden', message: 'Email verification required to enroll in this course' });
           }
@@ -365,7 +365,7 @@ export default async function courseRoutes(app) {
         $addToSet: { 'profile.courses': course._id },
       });
 
-      return { course: course.toObject() };
+      return { course };
     }
   );
 
@@ -379,7 +379,7 @@ export default async function courseRoutes(app) {
       const isAdmin = roles.includes('admin');
       const { studentId } = request.params;
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -422,7 +422,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -473,7 +473,7 @@ export default async function courseRoutes(app) {
       const callerUserId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -484,7 +484,7 @@ export default async function courseRoutes(app) {
 
       const { userId: newInstructorId } = request.body;
 
-      const instructor = await User.findById(newInstructorId);
+      const instructor = await User.findById(newInstructorId).lean();
       if (!instructor) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
@@ -510,7 +510,7 @@ export default async function courseRoutes(app) {
       const callerUserId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -546,7 +546,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -586,7 +586,7 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
 
-      const course = await Course.findById(request.params.id);
+      const course = await Course.findById(request.params.id).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
