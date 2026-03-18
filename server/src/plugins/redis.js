@@ -31,12 +31,12 @@ async function redisPlugin(fastify) {
   // Wait for both connections to be ready
   await Promise.all([
     new Promise((resolve, reject) => {
-      pub.on('ready', resolve);
-      pub.on('error', reject);
+      pub.once('ready', resolve);
+      pub.once('error', reject);
     }),
     new Promise((resolve, reject) => {
-      sub.on('ready', resolve);
-      sub.on('error', reject);
+      sub.once('ready', resolve);
+      sub.once('error', reject);
     }),
   ]);
 

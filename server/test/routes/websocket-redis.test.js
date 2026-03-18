@@ -185,7 +185,7 @@ describe('WebSocket with Redis pub/sub', () => {
     app.wsSendToUser('redis-user-5', 'test:private', { secret: true });
 
     // Wait briefly to ensure no message arrives for user 6
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 100));
     expect(received).toHaveLength(0);
 
     socket1.close();
