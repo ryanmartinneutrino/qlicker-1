@@ -245,7 +245,9 @@
       "emailLoginDisabled": "Email login disabled",
       "never": "Never",
       "cannotChangeOwnRole": "You cannot change your own role",
-      "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?"
+      "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?",
+      "viewProfileImageAria": "View profile image for {{name}}",
+      "noProfileImageAria": "{{name}} has no profile image"
     },
     "storage": {
       "storageType": "Storage Type",

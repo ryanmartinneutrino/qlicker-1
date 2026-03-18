@@ -245,7 +245,9 @@
       "emailLoginDisabled": "Connexion par courriel désactivée",
       "never": "Jamais",
       "cannotChangeOwnRole": "Vous ne pouvez pas changer votre propre rôle",
-      "confirmDeleteMessage": "Êtes-vous sûr de vouloir supprimer <strong>{{name}}</strong> ({{email}}) ?"
+      "confirmDeleteMessage": "Êtes-vous sûr de vouloir supprimer <strong>{{name}}</strong> ({{email}}) ?",
+      "viewProfileImageAria": "Voir l'image de profil de {{name}}",
+      "noProfileImageAria": "{{name}} n'a pas d'image de profil"
     },
     "storage": {
       "storageType": "Type de stockage",

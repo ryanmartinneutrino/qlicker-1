@@ -500,7 +500,7 @@ function UsersTab({ currentUserId }) {
                             outlineOffset: 2,
                           },
                         }}
-                        aria-label={u.profile?.profileImage ? `View profile image for ${getFullName(u)}` : `${getFullName(u)} has no profile image`}
+                        aria-label={u.profile?.profileImage ? t('admin.users.viewProfileImageAria', { name: getFullName(u) }) : t('admin.users.noProfileImageAria', { name: getFullName(u) })}
                       >
                         <Avatar
                           src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
