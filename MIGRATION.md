@@ -2,7 +2,7 @@
 
 > **This is the master migration document.** All agents should consult this file to understand the overall plan, current status, and what remains. For coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md). For legacy database details, see [LEGACY_DB.md](LEGACY_DB.md). For completed work history, see [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md).
 
-## Status: Phase 7 In Progress — Only SSO Production Confirmation and Follow-Up Items Remain
+## Status: Phase 7 In Progress — Local SSO Validation Is Complete; Production IdP Confirmation and Follow-Up Items Remain
 
 ---
 
@@ -109,6 +109,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
 - ✅ JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
 - ✅ SAML logout validation — node-saml crypto validation with XML fallback
+- ✅ Local SAML smoke infrastructure — `ssoserver/` now provides an isolated SimpleSAMLphp IdP with seeded users, generated local certificates, signed + encrypted assertions, SP-initiated logout coverage, Qlicker settings helper scripts, and a dedicated Playwright smoke run that verifies professor/student SSO login plus logout against the new app on local test ports
 - ✅ SSO account controls — SSO-created accounts are tracked separately, profile name/password edits are disabled when SSO governs them, password reset/email login stay blocked until an admin explicitly approves local email login, and the admin users table now includes a per-user properties modal for toggles such as `canPromote`
 - ✅ Profile/question-library/admin/grading polish — the Profile page now leads with per-user language selection and fully locks SSO-managed name/password fields; question visibility controls are confined to the library with clearer “any prof on Qlicker” wording plus bulk visibility changes and reviewable-session warnings; student-only accounts cannot retain `canPromote`; and manual grading can now explicitly save zero-point grades while the row-selection UI avoids unnecessary full-row rerenders
 - ✅ File upload content validation — magic bytes via `file-type` library
@@ -131,11 +132,12 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 283 tests across 13 test files
+- **Server:** 285 tests across 13 test files
 - **Client:** 39 tests across 14 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
-- **E2E:** 6 Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
+- **E2E:** 6 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
+- **SSO Smoke:** `./ssoserver/scripts/run-smoke.sh` provisions the isolated SimpleSAMLphp IdP and runs 2 dedicated Playwright SSO login/logout flows via `client/playwright.sso.config.js` on ports `3300/3301/4100`
 
 ---
 
@@ -143,12 +145,12 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Priority 1: SSO SAML Production Confirmation
 
-- [ ] Verify SAML login/callback/metadata work end-to-end in a production-like environment
+- [x] Verify SAML login/callback/metadata/logout work end-to-end against the local SimpleSAMLphp test IdP in `ssoserver/`
 - [ ] Test with institutional IdP (Azure AD, ADFS, Shibboleth)
 - [ ] Verify SP-initiated logout generates correct redirect URL
 - [ ] Confirm encrypted assertion decryption works with production certificates
 
-All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 work is the SSO production confirmation above plus the follow-up decisions below.
+All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 work is confirmation against the real institutional IdP above plus the follow-up decisions below.
 
 ### Remaining Follow-Up Items
 

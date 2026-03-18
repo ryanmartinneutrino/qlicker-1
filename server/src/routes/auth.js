@@ -5,6 +5,7 @@ import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
+import { normalizeCertificatePem } from '../utils/certificate.js';
 
 const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 const LOGIN_LOCKOUT_THRESHOLD = 5;
@@ -725,8 +726,9 @@ export default async function authRoutes(app) {
     }
 
     const settings = saml._qlickerSettings || await Settings.findOne();
-    const decryptionCert = settings.SSO_privCert || null;
-    const metadata = saml.generateServiceProviderMetadata(decryptionCert, null);
+    const decryptionCert = normalizeCertificatePem(settings.SSO_privCert || '') || null;
+    const signingCert = normalizeCertificatePem(settings.SSO_privCert || '') || null;
+    const metadata = saml.generateServiceProviderMetadata(decryptionCert, signingCert);
     return reply.type('application/xml').send(metadata);
   });
 }

@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import { SAML } from '@node-saml/node-saml';
 import Settings from '../models/Settings.js';
+import { normalizeCertificatePem } from '../utils/certificate.js';
 
 async function samlPlugin(fastify) {
   fastify.decorate('getSamlProvider', async function getSamlProvider() {
@@ -20,7 +21,7 @@ async function samlPlugin(fastify) {
     const samlOptions = {
       entryPoint: settings.SSO_entrypoint,
       issuer: settings.SSO_EntityId,
-      cert: settings.SSO_cert,
+      idpCert: normalizeCertificatePem(settings.SSO_cert),
       callbackUrl,
       logoutCallbackUrl,
       logoutUrl: settings.SSO_logoutUrl || undefined,

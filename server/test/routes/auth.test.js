@@ -731,6 +731,98 @@ describe('POST /api/v1/auth/sso/callback', () => {
   });
 });
 
+// ---------- GET /api/v1/auth/sso/logout-url ----------
+describe('GET /api/v1/auth/sso/logout-url', () => {
+  it('returns an SP-initiated logout URL for an authenticated SSO session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_emailIdentifier: 'mail',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+      SSO_logoutUrl: 'https://idp.example.com/logout',
+    });
+
+    const user = await User.create({
+      emails: [{ address: 'sso-session@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: {
+          id: 'name-id-1',
+          nameID: 'name-id-1',
+          nameIDFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+          email: 'sso-session@example.com',
+          sessions: [{ sessionIndex: 'session-123' }],
+        },
+      },
+      profile: { firstname: 'SSO', lastname: 'Session', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, user);
+
+    app.getSamlProvider = async () => ({
+      getLogoutUrlAsync: async (profile) => {
+        expect(profile.nameID).toBe('name-id-1');
+        expect(profile.sessionIndex).toBe('session-123');
+        return 'https://idp.example.com/logout?SAMLRequest=stub';
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/auth/sso/logout-url', { token });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ url: 'https://idp.example.com/logout?SAMLRequest=stub' });
+  });
+});
+
+// ---------- POST /api/v1/auth/sso/logout ----------
+describe('POST /api/v1/auth/sso/logout', () => {
+  it('removes the matching SSO session when logout XML includes a session index', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await User.create({
+      emails: [{ address: 'logout@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: {
+          id: 'logout-user',
+          nameID: 'logout-user',
+          nameIDFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+          email: 'logout@example.com',
+          sessions: [{ sessionIndex: 'keep-me' }, { sessionIndex: 'remove-me' }],
+        },
+      },
+      profile: { firstname: 'SSO', lastname: 'Logout', roles: ['student'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+      createdAt: new Date(),
+    });
+
+    const xml = [
+      '<saml2p:LogoutRequest xmlns:saml2p="urn:oasis:names:tc:SAML:2.0:protocol">',
+      '<saml2p:SessionIndex>remove-me</saml2p:SessionIndex>',
+      '</saml2p:LogoutRequest>',
+    ].join('');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/sso/logout',
+      payload: { SAMLRequest: Buffer.from(xml, 'utf8').toString('base64') },
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe(`${app.config.rootUrl}/login`);
+
+    const updated = await User.findById(user._id);
+    expect(updated.services.sso.sessions.map((session) => session.toObject())).toEqual([
+      { sessionIndex: 'keep-me' },
+    ]);
+  });
+});
+
 // ---------- GET /api/v1/users/me ----------
 describe('GET /api/v1/users/me', () => {
   it('returns current user profile', async (ctx) => {
