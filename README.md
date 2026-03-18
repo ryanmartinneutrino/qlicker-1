@@ -173,7 +173,7 @@ node ./scripts/render-config.mjs
 docker compose up -d --build
 ```
 
-If the repository root `.env` already defines `ROOT_URL` / `APP_PORT` and `VITE_API_URL` / `API_PORT`, the `ssoserver` helper scripts will follow those ports automatically unless you override the `QCLICKER_*` values in `ssoserver/.env` with non-default values.
+For manual setup, the `ssoserver` helper scripts follow the repository root `.env` app/API URLs automatically unless you override the `QCLICKER_*` values in `ssoserver/.env` with non-default values.
 
 Print the exact Qlicker SSO settings payload:
 
@@ -222,6 +222,8 @@ That wrapper:
 - ensures Playwright Chromium is installed
 - runs `client/e2e-sso/sso.spec.js` via `client/playwright.sso.config.js` against a dedicated Qlicker E2E stack on `3300/3301`
 - stops the IdP when the smoke run exits
+
+`run-smoke.sh` intentionally uses the `QCLICKER_*` values from `ssoserver/.env` (default `3300/3301`) for that temporary stack, even if your main repo `.env` points at a different local app already running on `3200/3201`.
 
 Default seeded IdP users:
 

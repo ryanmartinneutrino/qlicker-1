@@ -31,7 +31,7 @@ This directory contains an isolated SimpleSAMLphp IdP used to verify Qlicker SAM
 - Qlicker app URL under smoke tests: `http://127.0.0.1:3300`
 - Qlicker API URL under smoke tests: `http://127.0.0.1:3301/api/v1`
 
-If the repository root `.env` defines `ROOT_URL` / `APP_PORT` and `VITE_API_URL` / `API_PORT`, the helper scripts now use those values automatically unless `ssoserver/.env` overrides `QCLICKER_APP_URL`, `QCLICKER_API_URL`, or `QCLICKER_SP_ENTITY_ID` with non-default values.
+For manual setup, the helper scripts use the repository root `.env` app/API URLs automatically unless `ssoserver/.env` overrides `QCLICKER_APP_URL`, `QCLICKER_API_URL`, or `QCLICKER_SP_ENTITY_ID` with non-default values.
 
 ## Seeded Users
 
@@ -114,6 +114,8 @@ The payload sets these fields:
 ```
 
 This smoke run is intentionally separate from the default `cd client && npm run test:e2e` suite. It uses `client/playwright.sso.config.js` so the normal baseline Playwright flows remain usable without starting the local IdP.
+
+Unlike the manual helper scripts, `run-smoke.sh` intentionally uses the `QCLICKER_*` values from `ssoserver/.env` for its temporary Qlicker stack so it can run in parallel with a normal local app using the repo root `.env` ports.
 
 The smoke wrapper:
 
