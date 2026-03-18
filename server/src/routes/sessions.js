@@ -1418,9 +1418,14 @@ export default async function sessionRoutes(app) {
         .filter((session) => session.status === 'running')
         .filter((session) => (
           isInstructorView
-            || !isQuizLikeSession(session)
-            || session.practiceQuiz
-            || !session.quizSubmittedByCurrentUser
+            || (
+              !session.studentCreated
+              && (
+                !isQuizLikeSession(session)
+                || session.practiceQuiz
+                || !session.quizSubmittedByCurrentUser
+              )
+            )
         ))
         .map((s) => {
         const c = courseById.get(String(s.courseId));

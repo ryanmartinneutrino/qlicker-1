@@ -51,6 +51,14 @@ function toTagObjects(tags = []) {
   return normalizeTagValues(tags).map((tag) => ({ value: tag, label: tag }));
 }
 
+function mergeQuestionTagsWithSessionTags(questionTags = [], sessionTags = [], allowedTags = []) {
+  const allowedTagSet = new Set(normalizeTagValues(allowedTags).map((tag) => tag.toLowerCase()));
+  return [...new Set([
+    ...normalizeTagValues(questionTags).filter((tag) => allowedTagSet.has(tag.toLowerCase())),
+    ...normalizeTagValues(sessionTags).filter((tag) => allowedTagSet.has(tag.toLowerCase())),
+  ])];
+}
+
 function insertQuestionsAtIndex(existingQuestions, incomingQuestions, insertAtIndex) {
   const normalizedInsertAtIndex = Math.max(0, Math.min(Number(insertAtIndex) || 0, existingQuestions.length));
   const existingIds = new Set(existingQuestions.map((question) => normalizeQuestionId(question)).filter(Boolean));
@@ -88,6 +96,7 @@ export default function PracticeSessionEditor() {
   const [randomAddCount, setRandomAddCount] = useState(10);
   const [sessionTags, setSessionTags] = useState([]);
   const [editingQuestionId, setEditingQuestionId] = useState('');
+  const [applyingSessionTags, setApplyingSessionTags] = useState(false);
 
   const selectedQuestionIds = useMemo(
     () => selectedQuestions.map((question) => normalizeQuestionId(question)).filter(Boolean),
@@ -212,6 +221,42 @@ export default function PracticeSessionEditor() {
     setAddDialogOpen(false);
   }, [insertAtIndex, selectedQuestionIds, selectedQuestions]);
 
+  const handleApplySessionTagsToQuestions = async () => {
+    if (!sessionTags.length || !selectedQuestions.length) return;
+
+    const allowedTags = normalizeTagValues(course?.tags || []);
+    setApplyingSessionTags(true);
+    try {
+      const updatedQuestions = await Promise.all(selectedQuestions.map(async (question) => {
+        const nextTags = mergeQuestionTagsWithSessionTags(question.tags || [], sessionTags, allowedTags);
+        await apiClient.patch(`/questions/${question._id}`, { tags: toTagObjects(nextTags) });
+        return {
+          ...question,
+          tags: toTagObjects(nextTags),
+        };
+      }));
+      setSelectedQuestions(updatedQuestions);
+      setMessage({
+        severity: 'success',
+        text: t('student.course.appliedSessionTagsToQuestions', {
+          count: updatedQuestions.length,
+          defaultValue: updatedQuestions.length === 1
+            ? 'Applied the session tags to 1 question.'
+            : `Applied the session tags to ${updatedQuestions.length} questions.`,
+        }),
+      });
+    } catch (err) {
+      setMessage({
+        severity: 'error',
+        text: err.response?.data?.message || t('student.course.failedApplySessionTagsToQuestions', {
+          defaultValue: 'Failed to apply the session tags to the questions.',
+        }),
+      });
+    } finally {
+      setApplyingSessionTags(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       setMessage({
@@ -290,42 +335,44 @@ export default function PracticeSessionEditor() {
             onChange={(event) => setName(event.target.value)}
             fullWidth
           />
-          <Autocomplete
-            multiple
-            freeSolo={false}
-            options={normalizeTagValues(course?.tags || [])}
-            value={sessionTags}
-            onChange={(_event, nextValue) => setSessionTags(normalizeTagValues(nextValue))}
-            renderTags={(value, getTagProps) => value.map((tag, index) => (
-              <Chip
-                {...getTagProps({ index })}
-                key={tag}
-                size="small"
-                label={tag}
-              />
-            ))}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
-                placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
-                helperText={t('professor.sessionEditor.tagsHelp', {
-                  defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
-                })}
-              />
-            )}
-          />
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={() => openAddQuestionDialog()}>
-              {t('student.course.addQuestion', { defaultValue: 'Add question' })}
-            </Button>
-            {selectedQuestionIds.length > 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
-                {t('student.course.selectedPracticeQuestions', {
-                  count: selectedQuestionIds.length,
-                  defaultValue: selectedQuestionIds.length === 1 ? '1 question selected' : `${selectedQuestionIds.length} questions selected`,
-                })}
-              </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+            <Autocomplete
+              multiple
+              freeSolo={false}
+              options={normalizeTagValues(course?.tags || [])}
+              value={sessionTags}
+              onChange={(_event, nextValue) => setSessionTags(normalizeTagValues(nextValue))}
+              renderTags={(value, getTagProps) => value.map((tag, index) => (
+                <Chip
+                  {...getTagProps({ index })}
+                  key={tag}
+                  size="small"
+                  label={tag}
+                />
+              ))}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label={t('professor.sessionEditor.tags', { defaultValue: 'Session tags' })}
+                  placeholder={t('professor.sessionEditor.tagsPlaceholder', { defaultValue: 'Add a topic tag' })}
+                  helperText={t('professor.sessionEditor.tagsHelp', {
+                    defaultValue: 'Use tags that describe the specific topic covered by this session and its questions.',
+                  })}
+                />
+              )}
+              sx={{ flex: 1, minWidth: 260 }}
+            />
+            {sessionTags.length > 0 ? (
+              <Button
+                variant="outlined"
+                onClick={handleApplySessionTagsToQuestions}
+                disabled={applyingSessionTags || selectedQuestions.length === 0}
+                sx={{ mt: { xs: 0, sm: 0.5 } }}
+              >
+                {applyingSessionTags
+                  ? t('professor.sessionEditor.applyingTagsToQuestions', { defaultValue: 'Applying tags…' })
+                  : t('professor.sessionEditor.applyTagsToAllQuestions', { defaultValue: 'Apply tags to all questions' })}
+              </Button>
             ) : null}
           </Box>
         </Stack>
@@ -365,11 +412,28 @@ export default function PracticeSessionEditor() {
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
         <Stack spacing={1.5}>
-          <Typography variant="subtitle2" color="text.secondary">
-            {t('student.course.practiceSessionQuestions', { defaultValue: 'Questions in this practice session' })}
-          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="subtitle2" color="text.secondary">
+              {t('student.course.practiceSessionQuestions', { defaultValue: 'Questions in this practice session' })}
+            </Typography>
+            {selectedQuestionIds.length > 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t('student.course.selectedPracticeQuestions', {
+                  count: selectedQuestionIds.length,
+                  defaultValue: selectedQuestionIds.length === 1 ? '1 question selected' : `${selectedQuestionIds.length} questions selected`,
+                })}
+              </Typography>
+            ) : null}
+          </Box>
           {selectedQuestions.length === 0 ? (
-            <Alert severity="info">
+            <Alert
+              severity="info"
+              action={(
+                <Button color="inherit" size="small" startIcon={<AddIcon />} onClick={() => openAddQuestionDialog()}>
+                  {t('student.course.addQuestion', { defaultValue: 'Add question' })}
+                </Button>
+              )}
+            >
               {t('student.course.noPracticeQuestionsSelected', {
                 defaultValue: 'Add or create questions to build this practice session.',
               })}

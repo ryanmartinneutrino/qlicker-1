@@ -119,6 +119,7 @@ describe('SessionEditor inline close behavior', () => {
               msScoringMethod: 'right-minus-wrong',
               reviewable: false,
               status: 'hidden',
+              tags: [{ value: 'kinematics', label: 'kinematics' }],
               questions: ['q1'],
               quizExtensions: [],
             },
@@ -158,6 +159,10 @@ describe('SessionEditor inline close behavior', () => {
               deptCode: 'CS',
               courseNumber: '101',
               section: '001',
+              tags: [
+                { value: 'kinematics', label: 'kinematics' },
+                { value: 'vectors', label: 'vectors' },
+              ],
               quizTimeFormat: 'inherit',
               students: [],
             },
@@ -273,6 +278,32 @@ describe('SessionEditor inline close behavior', () => {
         '/manage/course/course-1/session/imported-session-1?returnTab=1',
         { state: { returnTab: 1, returnTo: undefined } }
       );
+    });
+  });
+
+  it('applies session tags to every question in the session', async () => {
+    apiClientMock.patch.mockResolvedValue({
+      data: {
+        question: {
+          _id: 'q1',
+          type: 2,
+          content: 'Original content',
+          plainText: 'Original content',
+          options: [],
+          tags: [{ value: 'kinematics', label: 'kinematics' }],
+          sessionOptions: { points: 1 },
+        },
+      },
+    });
+
+    render(<SessionEditor />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'professor.sessionEditor.applyTagsToAllQuestions' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/questions/q1', {
+        tags: [{ value: 'kinematics', label: 'kinematics' }],
+      });
     });
   });
 });

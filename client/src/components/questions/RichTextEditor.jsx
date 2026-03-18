@@ -4,6 +4,7 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
 import Color from '@tiptap/extension-color';
 import Link from '@tiptap/extension-link';
+import TextAlign from '@tiptap/extension-text-align';
 import { FontSize, TextStyle } from '@tiptap/extension-text-style';
 import Underline from '@tiptap/extension-underline';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -21,6 +22,10 @@ import {
   FormatColorText as ColorIcon,
   Image as ImageIcon,
   InsertLink as LinkIcon,
+  FormatAlignLeft as AlignLeftIcon,
+  FormatAlignCenter as AlignCenterIcon,
+  FormatAlignRight as AlignRightIcon,
+  FormatAlignJustify as AlignJustifyIcon,
   FormatSize as FontSizeIcon,
   FormatUnderlined as UnderlineIcon,
   ExpandLess as CollapseToolbarIcon,
@@ -110,6 +115,12 @@ function getMaxEditorImageWidth(view) {
 }
 
 const FONT_SIZE_OPTIONS = ['', '12px', '14px', '16px', '18px', '24px', '32px'];
+const TEXT_ALIGN_OPTIONS = [
+  { value: 'left', labelKey: 'questions.richText.alignLeft', Icon: AlignLeftIcon },
+  { value: 'center', labelKey: 'questions.richText.alignCenter', Icon: AlignCenterIcon },
+  { value: 'right', labelKey: 'questions.richText.alignRight', Icon: AlignRightIcon },
+  { value: 'justify', labelKey: 'questions.richText.alignJustify', Icon: AlignJustifyIcon },
+];
 
 function normalizeLinkValue(value) {
   const trimmed = String(value || '').trim();
@@ -216,6 +227,9 @@ export default function RichTextEditor({
         TextStyle,
         Color,
         FontSize,
+        TextAlign.configure({
+          types: ['paragraph'],
+        }),
         Underline,
         ResizableImage.configure({ allowBase64: false }),
         Placeholder.configure({
@@ -301,6 +315,7 @@ export default function RichTextEditor({
 
   const currentColor = editor?.getAttributes('textStyle')?.color || '#000000';
   const currentFontSize = editor?.getAttributes('textStyle')?.fontSize || '';
+  const currentTextAlign = editor?.getAttributes('paragraph')?.textAlign || 'left';
 
   const openLinkEditor = () => {
     if (!editor) return;
@@ -567,6 +582,20 @@ export default function RichTextEditor({
                     onChange={handleToolbarImageInput}
                   />
                 </Button>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                  {TEXT_ALIGN_OPTIONS.map(({ value, labelKey, Icon }) => (
+                    <IconButton
+                      key={value}
+                      size="small"
+                      aria-label={t(labelKey)}
+                      onClick={() => editor.chain().focus().setTextAlign(value).run()}
+                      color={currentTextAlign === value ? 'primary' : 'default'}
+                      disabled={disabled}
+                    >
+                      <Icon fontSize="small" />
+                    </IconButton>
+                  ))}
+                </Box>
                 <TextField
                   size="small"
                   select

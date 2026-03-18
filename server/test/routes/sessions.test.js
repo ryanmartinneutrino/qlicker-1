@@ -535,6 +535,16 @@ describe('GET /api/v1/sessions/live', () => {
       { $set: { status: 'visible', submittedQuiz: [student._id] } }
     );
 
+    const studentPracticeRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Student Practice Session',
+      practiceQuiz: true,
+    });
+    const studentPracticeSession = studentPracticeRes.json().session;
+    await Session.updateOne(
+      { _id: studentPracticeSession._id },
+      { $set: { status: 'running' } }
+    );
+
     const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live', {
       token: studentToken,
     });
@@ -544,6 +554,7 @@ describe('GET /api/v1/sessions/live', () => {
     expect(rows.map((row) => row._id)).toContain(liveSession._id);
     expect(rows.map((row) => row._id)).toContain(openQuiz._id);
     expect(rows.map((row) => row._id)).not.toContain(submittedQuiz._id);
+    expect(rows.map((row) => row._id)).not.toContain(studentPracticeSession._id);
 
     const listedQuiz = rows.find((row) => row._id === openQuiz._id);
     expect(listedQuiz.quiz).toBe(true);

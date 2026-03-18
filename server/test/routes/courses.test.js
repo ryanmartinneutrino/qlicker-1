@@ -477,6 +477,39 @@ describe('POST /api/v1/courses/:id/instructors', () => {
     const body = res.json();
     expect(body.success).toBe(true);
   });
+
+  it('owner can add an SSO-created instructor by email address', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'owner@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+
+    const ssoInstructor = await User.create({
+      emails: [{ address: 'sso-instructor@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        sso: { id: 'sso-instructor-1', email: 'sso-instructor@example.com' },
+      },
+      profile: { firstname: 'SSO', lastname: 'Instructor', roles: ['professor'] },
+      ssoCreated: true,
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+
+    const res = await authenticatedRequest(
+      app,
+      'POST',
+      `/api/v1/courses/${course._id}/instructors`,
+      { token: profToken, payload: { userId: 'sso-instructor@example.com' } }
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+
+    const updatedCourse = await Course.findById(course._id).lean();
+    expect(updatedCourse.instructors).toContain(String(ssoInstructor._id));
+  });
 });
 
 // ---------- DELETE /api/v1/courses/:id/instructors/:instructorId ----------

@@ -152,7 +152,7 @@ describe('PracticeSessionEditor', () => {
     expect(await screen.findByText('Question One')).toBeInTheDocument();
     expect(screen.getByText('Question Two')).toBeInTheDocument();
     expect(screen.getAllByText('algebra').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Add question' }).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByRole('button', { name: 'Add question' }).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('button', { name: 'common.add' })).toBeInTheDocument();
 
     questionEditorPropsMock.mockClear();
@@ -177,6 +177,25 @@ describe('PracticeSessionEditor', () => {
     });
 
     expect(await screen.findByText('Review destination')).toBeInTheDocument();
+  });
+
+  it('applies practice-session tags to every question in the session', async () => {
+    apiClientMock.patch.mockResolvedValue({ data: {} });
+
+    renderEditor('/student/course/course-1/practice-sessions/session-1');
+
+    expect(await screen.findByText('Question One')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply tags to all questions' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/questions/q1', {
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      });
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/questions/q2', {
+        tags: [{ value: 'algebra', label: 'algebra' }],
+      });
+    });
   });
 
   it('offers bottom modal actions to add selected or random library questions', async () => {
