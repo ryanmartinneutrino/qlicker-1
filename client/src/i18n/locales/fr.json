@@ -37,7 +37,24 @@
     "pm": "PM",
     "solution": "Solution",
     "noContent": "(aucun contenu)",
-    "noAnswer": "(pas de réponse)"
+    "noAnswer": "(pas de réponse)",
+    "moveUp": "Déplacer vers le haut",
+    "moveDown": "Déplacer vers le bas",
+    "moreActions": "Plus d'actions",
+    "removeOption": "Supprimer l'option",
+    "approve": "Approuver",
+    "makePublic": "Rendre public",
+    "confirmRename": "Confirmer le renommage",
+    "cancelRename": "Annuler le renommage",
+    "rename": "Renommer",
+    "removeInstructor": "Retirer l'instructeur",
+    "openReview": "Ouvrir la révision",
+    "recalculate": "Recalculer",
+    "copySession": "Copier la session",
+    "verifyEmail": "Vérifier le courriel",
+    "deleteUser": "Supprimer l'utilisateur",
+    "deleteSession": "Supprimer la session",
+    "option": "Option {{letter}}"
   },
   "autoSave": {
     "errorNotSaved": "Les modifications n'ont pas pu être enregistrées. Votre dernière modification n'a pas été enregistrée.",
@@ -422,7 +439,11 @@
       "destinationCourse": "Cours de destination",
       "copyingSession": "Copie de la séance…",
       "sessionsCopied": "{{count}} séance copiée",
-      "sessionsCopied_other": "{{count}} séances copiées"
+      "sessionsCopied_other": "{{count}} séances copiées",
+      "launchSessionAria": "Lancer la session {{name}}",
+      "joinLiveSessionAria": "Rejoindre la session en direct {{name}}",
+      "reviewLiveQuizAria": "Réviser la session de quiz en direct {{name}}",
+      "reviewSessionAria": "Réviser la session {{name}}"
     },
     "sessionEditor": {
       "sessionSettings": "Paramètres de la séance",
@@ -539,7 +560,8 @@
       "failedLoadSession": "Échec du chargement de la session",
       "failedUpdateSession": "Échec de la mise à jour de la session.",
       "failedDeleteSession": "Échec de la suppression de la session",
-      "importPreviewDescription": "Passez en revue les questions importées, retirez celles que vous ne voulez pas et choisissez les étiquettes à appliquer à toutes les questions importées."
+      "importPreviewDescription": "Passez en revue les questions importées, retirez celles que vous ne voulez pas et choisissez les étiquettes à appliquer à toutes les questions importées.",
+      "addQuestionAtPositionAria": "Ajouter une question à la position {{position}}"
     },
     "liveSession": {
       "currentQuestion": "Question actuelle",
@@ -633,7 +655,9 @@
       "hidden": "Masquée",
       "correctAnswerAria": "Bonne réponse",
       "joinTimeUnavailable": "Heure de connexion indisponible",
-      "ending": "Fin en cours…"
+      "ending": "Fin en cours…",
+      "currentJoinCodeAria": "Code d'accès actuel : {{code}}",
+      "pageProgressAria": "Page {{current}} sur {{total}}"
     },
     "sessionReview": {
       "questions": "Questions",
@@ -718,7 +742,8 @@
       "mean": "Moyenne",
       "median": "Médiane",
       "min": "Min",
-      "max": "Max"
+      "max": "Max",
+      "joinCodeAria": "Code d'accès : {{code}}"
     }
   },
   "student": {
@@ -1104,7 +1129,9 @@
       "importParse": "Le fichier sélectionné n'est pas un JSON valide de bibliothèque de questions.",
       "import": "Échec de l'importation des questions.",
       "selectRandom": "Impossible de sélectionner des questions filtrées au hasard."
-    }
+    },
+    "studentLibraryAria": "Bibliothèque étudiante",
+    "professorLibraryAria": "Bibliothèque du professeur"
   },
   "grades": {
     "coursePanel": {

@@ -2191,6 +2191,7 @@ export default function CourseGradesPanel({
                                     <span>
                                       <IconButton
                                         size="small"
+                                        aria-label={t('common.openReview')}
                                         onClick={() => onOpenSession(session._id)}
                                         sx={{ p: 0.25 }}
                                       >
@@ -2204,6 +2205,7 @@ export default function CourseGradesPanel({
                                     <span>
                                       <IconButton
                                         size="small"
+                                        aria-label={t('common.recalculate')}
                                         onClick={() => handleRecalculateSession(session._id)}
                                         disabled={recalculateAllProgress.active || !!refreshingSessionIds[session._id]}
                                       >

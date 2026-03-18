@@ -535,7 +535,7 @@ export default function PresentationWindow() {
             fontFamily: 'monospace',
             color: 'text.primary',
           }}
-          aria-label={`Join code: ${session.currentJoinCode}`}
+          aria-label={t('professor.secondDesktop.joinCodeAria', { code: session.currentJoinCode })}
         >
           {session.currentJoinCode}
         </Typography>

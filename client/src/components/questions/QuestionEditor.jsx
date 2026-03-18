@@ -757,7 +757,7 @@ const QuestionEditor = forwardRef(function QuestionEditor({
                   />
                 </Box>
                 {form.options.length > 2 && (
-                  <IconButton size="small" disabled={disableOptionCountChanges} onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" aria-label={t('common.removeOption')} disabled={disableOptionCountChanges} onClick={() => removeOption(i)} sx={{ mt: 0.5 }}><DeleteIcon fontSize="small" /></IconButton>
                 )}
               </Box>
             ))}

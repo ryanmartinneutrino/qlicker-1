@@ -746,7 +746,7 @@ function LiveSessionContent() {
                     control={<Radio disabled={isLocked} sx={{ p: 0.5 }} onClick={(e) => e.stopPropagation()} />}
                     label=""
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
-                    aria-label={`Option ${OPTION_LETTERS[i]}`}
+                    aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}
@@ -854,7 +854,7 @@ function LiveSessionContent() {
                     }
                     label=""
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
-                    aria-label={`Option ${OPTION_LETTERS[i]}`}
+                    aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
                   <Chip
                     label={OPTION_LETTERS[i]}

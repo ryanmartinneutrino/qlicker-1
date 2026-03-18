@@ -456,20 +456,20 @@ export default function GroupManagementPanel({ courseId, students = [] }) {
                     autoFocus
                     onKeyDown={(e) => { if (e.key === 'Enter') handleRenameGroup(); }}
                   />
-                  <IconButton size="small" onClick={handleRenameGroup} color="primary"><CheckIcon fontSize="small" /></IconButton>
-                  <IconButton size="small" onClick={() => setRenamingGroup(false)}><CloseIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" aria-label={t('common.confirmRename')} onClick={handleRenameGroup} color="primary"><CheckIcon fontSize="small" /></IconButton>
+                  <IconButton size="small" aria-label={t('common.cancelRename')} onClick={() => setRenamingGroup(false)}><CloseIcon fontSize="small" /></IconButton>
                 </>
               ) : (
                 <>
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>{selectedGroup.name}</Typography>
                   <Tooltip title={t('groups.renameGroup')}>
-                    <IconButton size="small" onClick={() => { setRenamingGroup(true); setRenameValue(selectedGroup.name); }}>
+                    <IconButton size="small" aria-label={t('common.rename')} onClick={() => { setRenamingGroup(true); setRenameValue(selectedGroup.name); }}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   {nGroups > 1 && (
                     <Tooltip title={t('groups.deleteGroup')}>
-                      <IconButton size="small" color="error" onClick={handleDeleteGroup}>
+                      <IconButton size="small" color="error" aria-label={t('common.delete')} onClick={handleDeleteGroup}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
