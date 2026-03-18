@@ -1,0 +1,80 @@
+import { render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { I18nextProvider } from 'react-i18next';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import i18n from '../../i18n';
+import UserManual from './UserManual';
+
+const { authState } = vi.hoisted(() => ({
+  authState: {
+    user: {
+      profile: {
+        firstname: 'Student',
+        lastname: 'User',
+        roles: ['student'],
+      },
+    },
+  },
+}));
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => authState,
+}));
+
+function renderManual(initialEntry) {
+  return render(
+    <I18nextProvider i18n={i18n}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/manual" element={<UserManual />} />
+          <Route path="/manual/:role" element={<UserManual />} />
+        </Routes>
+      </MemoryRouter>
+    </I18nextProvider>
+  );
+}
+
+describe('UserManual', () => {
+  beforeEach(() => {
+    authState.user = {
+      profile: {
+        firstname: 'Student',
+        lastname: 'User',
+        roles: ['student'],
+      },
+    };
+  });
+
+  it('shows an access warning when a student opens the admin manual', async () => {
+    renderManual('/manual/admin');
+
+    expect(await screen.findByText('Access Denied')).toBeInTheDocument();
+    expect(screen.getByText(/do not have access to the Admin manual/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /open student manual/i })).toHaveAttribute('href', '/manual/student');
+  });
+
+  it('renders the student manual content and screenshots for student users', async () => {
+    renderManual('/manual/student');
+
+    expect(await screen.findByRole('heading', { name: /student user manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /enroll in a course and learn the course tabs/i })).toBeInTheDocument();
+    expect(screen.getByText(/student course page preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/review and practice preview/i)).toBeInTheDocument();
+  });
+
+  it('renders the professor manual for professor users and keeps the student manual available', async () => {
+    authState.user = {
+      profile: {
+        firstname: 'Prof',
+        lastname: 'User',
+        roles: ['professor'],
+      },
+    };
+
+    renderManual('/manual/professor');
+
+    expect(await screen.findByRole('heading', { name: /professor user manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /student/i })).toHaveAttribute('href', '/manual/student');
+    expect(screen.getByText(/session editor preview/i)).toBeInTheDocument();
+  });
+});

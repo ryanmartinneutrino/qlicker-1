@@ -31,6 +31,7 @@ const SessionReview = lazy(() => import('./pages/student/SessionReview'));
 const StudentLiveSession = lazy(() => import('./pages/student/LiveSession'));
 const StudentQuizSession = lazy(() => import('./pages/student/QuizSession'));
 const JitsiWindow = lazy(() => import('./pages/JitsiWindow'));
+const UserManual = lazy(() => import('./pages/manuals/UserManual'));
 
 function RouteAccessibility() {
   const location = useLocation();
@@ -58,6 +59,10 @@ function RouteAccessibility() {
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/review$/, t('pageTitles.sessionReview')],
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/live$/, t('pageTitles.liveSession')],
       [/^\/student\/course\/[^/]+\/session\/[^/]+\/quiz$/, t('pageTitles.quiz')],
+      [/^\/manual\/admin$/, t('pageTitles.adminManual')],
+      [/^\/manual\/professor$/, t('pageTitles.professorManual')],
+      [/^\/manual\/student$/, t('pageTitles.studentManual')],
+      [/^\/manual$/, t('pageTitles.userManual')],
     ];
 
     const appName = t('common.appName');
@@ -119,6 +124,8 @@ export default function App() {
                 <Route path="/student/course/:courseId/session/:sessionId/review" element={<RequireRole role="student" allowAdmin={false}><SessionReview /></RequireRole>} />
                 <Route path="/student/course/:courseId/session/:sessionId/live" element={<RequireRole role="student" allowAdmin={false}><StudentLiveSession /></RequireRole>} />
                 <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<RequireRole role="student" allowAdmin={false}><StudentQuizSession /></RequireRole>} />
+                <Route path="/manual" element={<UserManual />} />
+                <Route path="/manual/:role" element={<UserManual />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

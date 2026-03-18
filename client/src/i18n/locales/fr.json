@@ -85,7 +85,9 @@
     "dashboard": "Tableau de bord",
     "profile": "Profil",
     "courses": "Cours",
-    "logout": "Déconnexion"
+    "logout": "Déconnexion",
+    "userManual": "Guide d'utilisation",
+    "openAccountMenuTooltip": "Ouvrir le menu du compte et les liens rapides"
   },
   "dashboard": {
     "liveSessions": "Séances en direct"
@@ -1309,7 +1311,11 @@
     "studentDashboard": "Tableau de bord étudiant",
     "course": "Cours",
     "quiz": "Quiz",
-    "videoChat": "Chat vidéo"
+    "videoChat": "Chat vidéo",
+    "userManual": "Guide d'utilisation",
+    "adminManual": "Guide administrateur",
+    "professorManual": "Guide professeur",
+    "studentManual": "Guide étudiant"
   },
   "semesters": {
     "fall": "Automne",
@@ -1421,5 +1427,259 @@
     "noConnectionInfo": "Aucune info de connexion",
     "videoNotEnabled": "Le chat vidéo n'est pas activé pour ce cours",
     "jitsiNotAvailable": "La vidéo Jitsi n'est pas disponible. Contactez votre administrateur."
+  },
+  "manuals": {
+    "shared": {
+      "roles": {
+        "admin": "Administrateur",
+        "professor": "Professeur",
+        "student": "Étudiant"
+      },
+      "quickStartTitle": "Démarrage rapide",
+      "relatedManualsTitle": "Guides disponibles",
+      "contentsTitle": "Sur cette page",
+      "relatedManualTooltip": "Ouvrir le guide {{role}} dans cet onglet.",
+      "openManualForRole": "Ouvrir le guide {{role}}",
+      "accessDenied": "Vous n'avez pas accès au guide {{manual}} avec votre rôle actuel.",
+      "screenshotAutosave": "Enregistrement automatique après une courte pause",
+      "screenshotAreas": "Zones principales",
+      "screenshotPolicies": "Politiques et valeurs par défaut",
+      "screenshotSupport": "Flux de soutien",
+      "screenshotManualSwitcher": "Utilisez ici le sélecteur de guide pour passer au guide professeur ou étudiant lorsque vous aidez quelqu'un.",
+      "screenshotProviderFields": "Champs propres au fournisseur",
+      "screenshotStorageModes": "Modes de stockage",
+      "screenshotSecretFields": "Champs secrets",
+      "screenshotEndpoint": "Point de terminaison",
+      "screenshotVerification": "Vérifier avec un téléversement d'image",
+      "screenshotCourseSetup": "Commencez par la structure du cours",
+      "screenshotCourseActions": "Actions du cours",
+      "screenshotOrganization": "Organiser d'abord",
+      "screenshotReuse": "Réutiliser ensuite",
+      "questionsLabel": "Questions",
+      "screenshotQuizScheduling": "Planification du quiz",
+      "screenshotSessionFlow": "Les questions et les diapositives partagent le même ordre",
+      "screenshotEditorActions": "Actions de l'éditeur",
+      "screenshotOrdering": "Construire le déroulement",
+      "screenshotQuizControls": "Contrôles du quiz",
+      "screenshotStudentCourseDashboard": "Tableau de bord du cours étudiant",
+      "screenshotChooseActivity": "Choisir le bon type d'activité",
+      "screenshotStudentActions": "Actions étudiantes",
+      "screenshotActivityTypes": "Types d'activité",
+      "screenshotStayOriented": "Rester orienté",
+      "screenshotQuestionAtATime": "Étudier une question à la fois",
+      "screenshotReviewTools": "Outils de révision",
+      "screenshotFeedback": "Rétroaction et points",
+      "screenshotCorrectAnswer": "Bonne réponse",
+      "screenshotAttempts": "Essais",
+      "screenshotPracticeNext": "Pratiquer ensuite"
+    },
+    "admin": {
+      "title": "Guide d'utilisation administrateur",
+      "intro": "Utilisez ce guide pour configurer Qlicker pour votre établissement ou aider les professeurs et les étudiants.",
+      "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage et les réglages vidéo avant de quitter un onglet.",
+      "quickStart": [
+        "Confirmez les valeurs par défaut de l'établissement dans Paramètres avant le début d'une nouvelle session.",
+        "Configurez le stockage et le SSO avant l'arrivée des utilisateurs si votre déploiement dépend de services infonuagiques ou d'une connexion institutionnelle.",
+        "Utilisez les onglets Utilisateurs et Cours pour vérifier que les rôles, les inscriptions et les cours actifs correspondent à la réalité."
+      ],
+      "sections": [
+        {
+          "title": "Commencer par les formats requis et les hypothèses de déploiement",
+          "subtitle": "La plupart des problèmes d'administration viennent d'un petit écart entre le format attendu et l'environnement réel.",
+          "bullets": [
+            "Exécutez le serveur, le client et la base de données avec les variables d'environnement du déploiement que vous comptez réellement supporter avant de tester les flux administrateurs.",
+            "Les domaines de courriel autorisés forment une liste séparée par des virgules; l'expiration des jetons de connexion est un nombre entier de minutes; la langue, la date et l'heure deviennent des valeurs par défaut globales.",
+            "Les valeurs SSO sont des champs de texte brut pour les URL, les identifiants d'entité et les noms d'attributs. Les certificats et les clés doivent être collés exactement comme le fournisseur les donne.",
+            "Les formulaires de stockage attendent les champs propres au fournisseur affichés dans l'interface; confirmez toujours la configuration par un téléversement d'image."
+          ],
+          "note": "Lorsqu'une personne signale un problème d'interface, comparez ce guide avec le guide professeur ou étudiant afin que votre réponse corresponde au flux actuel.",
+          "screenshot": {
+            "variant": "adminOverview",
+            "title": "Aperçu du tableau de bord administrateur",
+            "description": "Le tableau de bord regroupe les réglages institutionnels par onglets afin de vérifier un domaine à la fois."
+          }
+        },
+        {
+          "title": "Gérer les utilisateurs, les cours et le soutien par rôle",
+          "subtitle": "Les onglets Utilisateurs et Cours sont les principaux outils de soutien au quotidien.",
+          "bullets": [
+            "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
+            "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
+            "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
+          ],
+          "warning": "Les changements de rôle et les approbations de connexion SSO prennent effet immédiatement; confirmez donc la demande avant l'enregistrement."
+        },
+        {
+          "title": "Configurer correctement le stockage local, S3 ou Azure",
+          "subtitle": "Le stockage doit être configuré à la fois dans Qlicker et chez le fournisseur infonuagique.",
+          "bullets": [
+            "Le stockage local est l'option la plus simple, mais l'environnement serveur doit conserver les fichiers téléversés de façon sûre à travers les redémarrages et les déploiements.",
+            "Le mode Amazon S3 exige le compartiment, la région, l'identifiant de clé, la clé secrète et, au besoin, un point de terminaison avec le style path pour des services compatibles comme MinIO.",
+            "Le mode Azure Blob exige le compte de stockage, la clé d'accès et le nom du conteneur. Le compartiment ou le conteneur doit déjà exister et permettre la lecture et l'écriture.",
+            "Après avoir enregistré les changements de stockage, téléversez une image d'essai depuis l'éditeur riche et confirmez qu'elle réapparaît dans les pages de révision."
+          ],
+          "warning": "Traitez les clés de stockage et les identifiants privés comme des secrets et renouvelez-les s'ils sont exposés.",
+          "screenshot": {
+            "variant": "adminStorage",
+            "title": "Aperçu de la configuration du stockage",
+            "description": "Changez de fournisseur dans l'onglet Stockage et remplissez seulement les champs propres au backend choisi."
+          }
+        },
+        {
+          "title": "Mettre en place le SSO, la vidéo et le relais documentaire",
+          "subtitle": "Ces réglages influencent la façon dont les personnes entrent dans la plateforme et utilisent les outils temps réel.",
+          "bullets": [
+            "Activez le SSO seulement lorsque vous possédez le point d'entrée du fournisseur d'identité, l'URL de déconnexion, l'identifiant d'entité, les correspondances d'attributs et les bons certificats ou clés privées.",
+            "Activez Jitsi seulement après avoir confirmé le domaine Jitsi et, si nécessaire, le domaine Etherpad, puis choisissez les cours qui peuvent utiliser la vidéo.",
+            "Retestez la connexion, la déconnexion et un cours avec vidéo après chaque changement afin d'éviter les surprises pendant un cours.",
+            "Gardez les guides professeur et étudiant à portée de main, car ils expliquent les flux que vous soutenez du côté administrateur."
+          ]
+        }
+      ]
+    },
+    "professor": {
+      "title": "Guide d'utilisation professeur",
+      "intro": "Utilisez ce guide pour créer des cours, organiser les questions, animer des séances ou des quiz et interpréter les résultats des étudiants.",
+      "summary": "De bons sujets de cours et des noms de session cohérents rendent presque tous les autres flux plus simples : la recherche, la copie, l'importation/exportation et la notation profitent tous d'une structure propre.",
+      "quickStart": [
+        "Créez le cours avec un nom de session cohérent comme Fall 2026 ou Winter 2027.",
+        "Ajoutez des sujets de cours avant de bâtir une grande banque de questions afin que vos étiquettes restent organisées et faciles à rechercher.",
+        "Créez les séances depuis la page du cours, puis décidez si chacune sera interactive, un quiz ou une activité de pratique."
+      ],
+      "sections": [
+        {
+          "title": "Créer un cours et ajouter les sujets avant de grandir",
+          "subtitle": "Une configuration de cours propre fait gagner du temps lorsque vous copiez ou recherchez plus tard.",
+          "bullets": [
+            "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite dans les réglages du cours si vous avez besoin d'un format hérité ou personnalisé.",
+            "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'autorisation des questions étudiantes.",
+            "Ajoutez tôt les sujets de cours. Ils deviennent les étiquettes recommandées pour vos propres questions et aident les étudiants à rechercher le matériel que vous rendez visible."
+          ],
+          "note": "Si vous enseignez des cours semblables à chaque session, gardez une convention de nommage stable afin que le matériel copié reste facile à repérer.",
+          "screenshot": {
+            "variant": "professorCourse",
+            "title": "Aperçu de l'espace de travail du cours",
+            "description": "Les pages de cours rassemblent les séances, les réglages, les outils de bibliothèque et les notes dans un même espace."
+          }
+        },
+        {
+          "title": "Construire des séances avec questions, diapositives et visibilité",
+          "subtitle": "Une séance est un déroulement d'apprentissage ordonné, pas seulement un conteneur.",
+          "bullets": [
+            "Utilisez l'éditeur de séance pour définir le nom, la description, la visibilité, la révision, le code d'accès, la fenêtre du quiz, les prolongations et la méthode de notation des questions multi-sélection.",
+            "Ajoutez de nouvelles questions, choisissez du contenu dans la bibliothèque, importez du JSON de séance ou insérez des diapositives à n'importe quel endroit de la séquence.",
+            "Les diapositives sont des pages de contenu seulement, idéales pour les consignes, les exemples travaillés ou les pauses de discussion entre les questions notées.",
+            "La visibilité des questions compte : gardez le contenu privé quand il doit l'être, partagez volontairement au niveau du cours et utilisez la visibilité globale seulement si vous voulez réellement une réutilisation large."
+          ],
+          "warning": "Lorsqu'une question possède déjà des réponses, certaines modifications sont volontairement limitées pour protéger le sens des résultats passés.",
+          "screenshot": {
+            "variant": "professorSession",
+            "title": "Aperçu de l'éditeur de séance",
+            "description": "L'éditeur de séance garde l'ordre, les réglages et les actions d'importation/exportation au même endroit."
+          }
+        },
+        {
+          "title": "Utiliser l'éditeur riche pour les maths, les images et des consignes claires",
+          "subtitle": "Les questions, diapositives, solutions et certains champs de rétroaction prennent tous en charge du contenu enrichi.",
+          "bullets": [
+            "Utilisez les outils de mise en forme comme le gras, les listes, les couleurs, les liens et le code seulement lorsqu'ils rendent la consigne plus lisible, non plus chargée.",
+            "Quelques exemples simples de LaTeX sont $a^2+b^2=c^2$, $\\frac{1}{2}$ et $$\\int_0^1 x^2\\,dx=\\frac{1}{3}$$.",
+            "Téléversez les images directement dans l'éditeur, redimensionnez-les pour la lisibilité et prévisualisez toujours le résultat rendu avant la publication.",
+            "Gardez votre texte concis afin que les étudiants se concentrent sur le concept plutôt que sur une formulation trop dense."
+          ]
+        },
+        {
+          "title": "Animer les séances interactives, les quiz et les révisions avec intention",
+          "subtitle": "Chaque mode soutient un moment différent du cycle d'enseignement.",
+          "bullets": [
+            "Les séances interactives servent à l'enseignement en direct : vous contrôlez la navigation, les fenêtres de réponse, les statistiques, la révélation des réponses, les essais et la fenêtre de présentation.",
+            "Les quiz sont des fenêtres planifiées pendant lesquelles les étudiants répondent à leur rythme. Utilisez les heures de début, de fin et les prolongations pour les accommodements.",
+            "Les quiz de pratique ressemblent davantage à une répétition guidée et conviennent bien à l'étude personnelle.",
+            "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants une fois l'activité terminée."
+          ]
+        },
+        {
+          "title": "Réutiliser le matériel grâce à la bibliothèque, à la copie et aux outils de notation",
+          "subtitle": "Une fois le contenu organisé, Qlicker devient un excellent système de réutilisation.",
+          "bullets": [
+            "Utilisez la bibliothèque de questions pour chercher par cours, type, étiquettes, séances ou état d'approbation; exportez ou importez des lots JSON pour partager du contenu.",
+            "Copiez des séances dans un même cours ou entre vos cours après avoir vérifié que les sujets du cours de destination ont encore du sens pour le matériel importé.",
+            "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
+            "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables."
+          ],
+          "success": "Les professeurs peuvent ouvrir le guide étudiant depuis le sélecteur ci-dessus afin de prévisualiser le flux de l'apprenant avant un cours."
+        }
+      ]
+    },
+    "student": {
+      "title": "Guide d'utilisation étudiant",
+      "intro": "Utilisez ce guide pour vous inscrire à des cours, rejoindre des activités en direct, compléter des quiz, relire la rétroaction et créer des séances de pratique.",
+      "summary": "La page du cours est votre meilleur point de départ, car elle sépare clairement les activités en direct, les quiz, la pratique, les liens de révision et le contenu de bibliothèque.",
+      "quickStart": [
+        "Inscrivez-vous avec le code donné par votre enseignant.",
+        "Ouvrez la page du cours et vérifiez quel onglet contient l'activité dont vous avez besoin maintenant.",
+        "Utilisez les pages de révision et les séances de pratique pour transformer la rétroaction en un nouvel apprentissage."
+      ],
+      "sections": [
+        {
+          "title": "S'inscrire à un cours et apprendre les onglets du cours",
+          "subtitle": "La plupart des tâches étudiantes commencent sur le tableau de bord du cours.",
+          "bullets": [
+            "Entrez le code d'inscription exactement comme votre enseignant vous le donne. Une fois inscrit, le cours apparaît sur votre tableau de bord.",
+            "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux.",
+            "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais."
+          ],
+          "screenshot": {
+            "variant": "studentCourse",
+            "title": "Aperçu de la page de cours étudiant",
+            "description": "Le tableau de bord du cours vous aide à choisir l'activité appropriée avant de commencer à répondre."
+          }
+        },
+        {
+          "title": "Rejoindre les séances en direct et comprendre la différence avec les quiz",
+          "subtitle": "Les séances interactives, les quiz et les séances de pratique peuvent se ressembler, mais leur fonctionnement diffère.",
+          "bullets": [
+            "Les séances interactives se déroulent généralement en direct. Un code d'accès peut être requis et l'enseignant décide quand les réponses ouvrent, ferment ou affichent des statistiques.",
+            "Les quiz ont une fenêtre de temps définie et demandent généralement de répondre à tout l'ensemble avant la remise finale. Votre travail s'enregistre pendant la navigation.",
+            "Les séances de pratique servent à l'étude personnelle et peuvent sembler plus flexibles parce qu'elles sont conçues pour la répétition, non pour suivre un cours en direct.",
+            "Des diapositives peuvent apparaître entre les questions. Ce sont des pages de contenu; lisez-les attentivement avant de continuer."
+          ]
+        },
+        {
+          "title": "Utiliser l'éditeur de réponse pour le texte, les maths et les images",
+          "subtitle": "Certaines questions acceptent un contenu plus riche qu'une simple ligne de texte.",
+          "bullets": [
+            "Utilisez la barre d'outils de l'éditeur pour la mise en forme seulement lorsqu'elle rend votre réponse plus claire, par exemple une courte liste, une emphase ou un lien propre.",
+            "Quelques exemples simples de maths sont $\\frac{1}{2}$, $x^2+1$ ou \\(\\sum_{i=1}^{n} i\\). Utilisez les maths affichées pour les expressions qui méritent leur propre ligne.",
+            "Si le téléversement d'images est disponible, joignez des photos ou schémas clairs et évitez les arrière-plans inutiles.",
+            "Prévisualisez ce que vous avez écrit lorsque les équations ou les symboles sont importants, car une petite erreur de mise en forme peut changer le sens."
+          ]
+        },
+        {
+          "title": "Réviser les séances une question à la fois et utiliser la rétroaction",
+          "subtitle": "Le mode révision est l'un des meilleurs outils d'étude dans l'application.",
+          "bullets": [
+            "Ouvrez les séances révisables depuis la page du cours après la fin de l'activité et l'activation de la révision par votre enseignant.",
+            "Avancez une question à la fois pour comparer votre réponse, la réponse publiée, l'explication et la rétroaction de l'enseignant sans passer trop vite sur les détails.",
+            "Surveillez les notifications de rétroaction : elles indiquent que de nouveaux commentaires ou ajustements de note sont disponibles."
+          ],
+          "success": "Les étudiants progressent souvent le plus lorsqu'ils lisent la rétroaction puis refont immédiatement une question semblable.",
+          "screenshot": {
+            "variant": "studentReview",
+            "title": "Aperçu de la révision et de la pratique",
+            "description": "Les pages de révision expliquent vos résultats et vous aident à décider quoi pratiquer ensuite."
+          }
+        },
+        {
+          "title": "Utiliser la bibliothèque de questions pour créer des séances de pratique",
+          "subtitle": "L'accès à la bibliothèque dépend de ce que votre enseignant a rendu visible aux étudiants.",
+          "bullets": [
+            "Recherchez dans la bibliothèque le matériel accessible sur le sujet que vous voulez retravailler.",
+            "Créez des séances de pratique à partir des questions de bibliothèque afin de vous exercer à votre rythme et de revoir immédiatement les résultats.",
+            "Si une question contient des maths, des images ou une solution travaillée, laissez ces éléments visibles pendant la pratique pour apprendre à partir de l'exemple complet."
+          ]
+        }
+      ]
+    }
   }
 }
