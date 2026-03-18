@@ -566,7 +566,12 @@
       "failedUpdateSession": "Failed to update session.",
       "failedDeleteSession": "Failed to delete session",
       "importPreviewDescription": "Review the imported questions, remove any you do not want, and choose tags to apply to all imported questions.",
-      "addQuestionAtPositionAria": "Add question at position {{position}}"
+      "addQuestionAtPositionAria": "Add question at position {{position}}",
+      "applyTagsToAllQuestions": "Apply tags to all questions",
+      "applyingTagsToQuestions": "Applying tags…",
+      "appliedSessionTagsToQuestions_one": "Applied the session tags to 1 question.",
+      "appliedSessionTagsToQuestions_other": "Applied the session tags to {{count}} questions.",
+      "failedApplySessionTagsToQuestions": "Failed to apply the session tags to the questions."
     },
     "liveSession": {
       "currentQuestion": "Current question",
@@ -999,6 +1004,10 @@
       "bold": "Bold",
       "italic": "Italic",
       "underline": "Underline",
+      "alignLeft": "Align left",
+      "alignCenter": "Align center",
+      "alignRight": "Align right",
+      "alignJustify": "Justify",
       "link": "Link",
       "bulletList": "Bulleted list",
       "inlineCode": "Inline code",
