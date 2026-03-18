@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
@@ -685,6 +686,36 @@ describe('POST /api/v1/auth/reset-password', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('SSO_EMAIL_LOGIN_DISABLED');
+  });
+});
+
+// ---------- GET /api/v1/auth/sso/login ----------
+describe('GET /api/v1/auth/sso/login', () => {
+  it('accepts SSO private keys stored with escaped newlines', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const escapedPrivateKey = privateKey.export({ type: 'pkcs8', format: 'pem' }).replace(/\n/g, '\\n');
+
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_emailIdentifier: 'mail',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+      SSO_cert: 'ZmFrZS1pZHAtY2VydA==',
+      SSO_privKey: escapedPrivateKey,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/sso/login',
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toMatch(/^https:\/\/idp\.example\.com\/login\?/);
+    expect(res.headers.location).toContain('SAMLRequest=');
+    expect(res.headers.location).toContain('Signature=');
   });
 });
 

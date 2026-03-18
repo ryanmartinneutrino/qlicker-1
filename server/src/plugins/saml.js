@@ -1,7 +1,7 @@
 import fp from 'fastify-plugin';
 import { SAML } from '@node-saml/node-saml';
 import Settings from '../models/Settings.js';
-import { normalizeCertificatePem } from '../utils/certificate.js';
+import { normalizeCertificatePem, normalizePrivateKeyPem } from '../utils/certificate.js';
 
 async function samlPlugin(fastify) {
   fastify.decorate('getSamlProvider', async function getSamlProvider() {
@@ -36,8 +36,9 @@ async function samlPlugin(fastify) {
 
     // Private key for decryption of encrypted assertions/logout requests
     if (settings.SSO_privKey) {
-      samlOptions.decryptionPvk = settings.SSO_privKey;
-      samlOptions.privateKey = settings.SSO_privKey;
+      const normalizedPrivateKey = normalizePrivateKeyPem(settings.SSO_privKey);
+      samlOptions.decryptionPvk = normalizedPrivateKey;
+      samlOptions.privateKey = normalizedPrivateKey;
     }
 
     const saml = new SAML(samlOptions);
