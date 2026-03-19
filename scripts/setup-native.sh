@@ -209,6 +209,7 @@ echo "  Leave the URL blank to skip (single-instance mode)."
 DEFAULT_REDIS_PORT="${REDIS_PORT:-6379}"
 read -r -p "Redis port [$DEFAULT_REDIS_PORT]: " REDIS_PORT_INPUT
 REDIS_PORT=${REDIS_PORT_INPUT:-$DEFAULT_REDIS_PORT}
+check_port "$REDIS_PORT" "Redis"
 
 DEFAULT_REDIS_URL="${REDIS_URL:-}"
 read -r -p "REDIS_URL [redis://localhost:$REDIS_PORT]: " REDIS_URL_INPUT

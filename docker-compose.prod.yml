@@ -10,8 +10,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--port", "${REDIS_PORT:-6379}"]
     expose:
-      - "6379"
+      - "${REDIS_PORT:-6379}"
     restart: unless-stopped
 
   server:
@@ -27,7 +28,7 @@ services:
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=production
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:${REDIS_PORT:-6379}
     volumes:
       - uploads:/app/uploads
     depends_on:

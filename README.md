@@ -142,7 +142,7 @@ Qlicker uses Redis pub/sub to synchronize WebSocket events across multiple serve
 
 #### Docker Compose (recommended for dev)
 
-The development `docker-compose.yml` already includes a Redis container. When you run `docker compose up -d`, Redis is started automatically and the server connects to it via `REDIS_URL=redis://redis:6379`.
+The development `docker-compose.yml` already includes a Redis container. When you run `docker compose up -d`, Redis is started automatically and the server connects to it via `REDIS_URL=redis://redis:$REDIS_PORT` (default `6379`).
 
 If you run the server **natively** but want Redis via Docker:
 

@@ -18,8 +18,14 @@ API_PORT=${API_PORT:-3001}
 MONGO_PORT=${MONGO_PORT:-27017}
 MONGO_DBPATH=${MONGO_DBPATH:-data/db}
 MONGO_LOG_PATH=${MONGO_LOG_PATH:-.data/mongodb.log}
-REDIS_PORT=${REDIS_PORT:-6379}
 REDIS_URL=${REDIS_URL:-}
+REDIS_PORT=${REDIS_PORT:-}
+if [ -z "$REDIS_PORT" ] && [ -n "$REDIS_URL" ] && [[ "$REDIS_URL" =~ :([0-9]+)(/|$) ]]; then
+  REDIS_PORT="${BASH_REMATCH[1]}"
+fi
+REDIS_PORT=${REDIS_PORT:-6379}
+REDIS_PID_PATH=${REDIS_PID_PATH:-.data/redis-$REDIS_PORT.pid}
+REDIS_LOG_PATH=${REDIS_LOG_PATH:-.data/redis-$REDIS_PORT.log}
 
 resolve_path() {
   local input_path="$1"
@@ -119,12 +125,30 @@ listening_pid_for_port() {
     lsof -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | head -n 1
     return 0
   fi
+
+  if command -v ss &>/dev/null; then
+    ss -ltnp 2>/dev/null | awk -v port="$port" '
+      $1 == "LISTEN" && $4 ~ ":" port "$" {
+        if (match($0, /pid=([0-9]+)/, matches)) {
+          print matches[1]
+          exit
+        }
+      }
+    '
+    return 0
+  fi
+
   return 1
 }
 
 pid_cwd() {
   local pid="$1"
   readlink "/proc/$pid/cwd" 2>/dev/null || true
+}
+
+pid_command() {
+  local pid="$1"
+  ps -p "$pid" -o command= 2>/dev/null || true
 }
 
 wait_for_port() {
@@ -199,6 +223,52 @@ stop_orphan_on_port() {
   return 0
 }
 
+stop_orphan_qlicker_redis() {
+  local pidfile pid cmd
+
+  pidfile="$(resolve_path "$REDIS_PID_PATH")"
+  if [ ! -f "$pidfile" ]; then
+    return 1
+  fi
+
+  pid="$(tr -dc '0-9' < "$pidfile" 2>/dev/null || true)"
+  if [ -z "$pid" ]; then
+    rm -f "$pidfile"
+    return 1
+  fi
+
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$pidfile"
+    return 1
+  fi
+
+  cmd="$(pid_command "$pid")"
+  if [[ "$cmd" != *redis-server* ]]; then
+    rm -f "$pidfile"
+    return 1
+  fi
+
+  if [[ "$cmd" != *":$REDIS_PORT"* && "$cmd" != *"--port $REDIS_PORT"* ]]; then
+    echo "  [SKIP] Redis PID file points to redis-server on a different port (PID: $pid)"
+    return 1
+  fi
+
+  if command -v redis-cli &>/dev/null; then
+    redis-cli -p "$REDIS_PORT" shutdown nosave >/dev/null 2>&1 || true
+  fi
+
+  kill_pid_gracefully "$pid"
+  rm -f "$pidfile"
+
+  if is_port_listening "$REDIS_PORT"; then
+    echo "  [WARN] Failed to stop qlicker-managed redis-server on port $REDIS_PORT (PID: $pid)"
+    return 1
+  fi
+
+  echo "  [OK] Stopped qlicker-managed redis-server on port $REDIS_PORT (PID: $pid)"
+  return 0
+}
+
 stop_orphaned_services() {
   local found=false
 
@@ -207,6 +277,10 @@ stop_orphaned_services() {
   fi
 
   if stop_orphan_on_port "$APP_PORT" "$PROJECT_ROOT/client" "client"; then
+    found=true
+  fi
+
+  if stop_orphan_qlicker_redis; then
     found=true
   fi
 
@@ -281,9 +355,16 @@ start() {
       echo "  [OK] Redis already listening on port $REDIS_PORT"
     else
       if command -v redis-server &>/dev/null; then
+        REDIS_PID_FILE="$(resolve_path "$REDIS_PID_PATH")"
+        REDIS_LOG_FILE="$(resolve_path "$REDIS_LOG_PATH")"
+        mkdir -p "$(dirname "$REDIS_PID_FILE")"
+        mkdir -p "$(dirname "$REDIS_LOG_FILE")"
         echo "  Starting Redis on port $REDIS_PORT..."
-        redis-server --port "$REDIS_PORT" --daemonize yes --loglevel warning
-        REDIS_PID=$(pgrep -f "redis-server.*:$REDIS_PORT" | tail -1 || true)
+        redis-server --port "$REDIS_PORT" --daemonize yes --loglevel warning --pidfile "$REDIS_PID_FILE" --logfile "$REDIS_LOG_FILE"
+        REDIS_PID="$(tr -dc '0-9' < "$REDIS_PID_FILE" 2>/dev/null || true)"
+        if [ -z "$REDIS_PID" ]; then
+          REDIS_PID=$(pgrep -f "redis-server.*:$REDIS_PORT" | tail -1 || true)
+        fi
         if [ -n "$REDIS_PID" ]; then
           PIDS+=("redis:$REDIS_PID")
           echo "  [OK] Redis started (PID: $REDIS_PID)"

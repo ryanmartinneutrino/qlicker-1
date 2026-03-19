@@ -96,6 +96,10 @@ DEFAULT_MONGO_PORT="${MONGO_PORT:-27017}"
 read -r -p "MongoDB port [$DEFAULT_MONGO_PORT]: " MONGO_PORT_INPUT
 MONGO_PORT=${MONGO_PORT_INPUT:-$DEFAULT_MONGO_PORT}
 
+DEFAULT_REDIS_PORT="${REDIS_PORT:-6379}"
+read -r -p "Redis port [$DEFAULT_REDIS_PORT]: " REDIS_PORT_INPUT
+REDIS_PORT=${REDIS_PORT_INPUT:-$DEFAULT_REDIS_PORT}
+
 # --------------------------------------------------
 # Ask for MAIL_URL
 # --------------------------------------------------
@@ -133,7 +137,7 @@ cat > "$PROJECT_ROOT/.env" <<EOF
 APP_PORT=$APP_PORT
 API_PORT=$API_PORT
 MONGO_PORT=$MONGO_PORT
-REDIS_PORT=6379
+REDIS_PORT=$REDIS_PORT
 
 # Server
 JWT_SECRET=$JWT_SECRET
@@ -186,6 +190,7 @@ echo "  Endpoints:"
 echo "    Client:  http://localhost:$APP_PORT"
 echo "    API:     http://localhost:$API_PORT"
 echo "    MongoDB: localhost:$MONGO_PORT"
+echo "    Redis:   localhost:$REDIS_PORT"
 echo ""
 echo "  Production (with load balancing):"
 echo "    docker compose -f docker-compose.prod.yml up -d"
