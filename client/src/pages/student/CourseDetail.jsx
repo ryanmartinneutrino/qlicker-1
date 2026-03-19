@@ -190,9 +190,9 @@ export default function StudentCourseDetail() {
           const evt = message?.event;
           const d = message?.data;
           if (String(d?.courseId || '') !== String(id)) return;
-          // React to granular delta events and generic fallback
-          if (evt === 'session:updated' || evt === 'session:status-changed'
-            || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
+          if (evt === 'session:metadata-changed' || evt === 'session:status-changed'
+            || evt === 'session:question-changed' || evt === 'session:visibility-changed'
+            || evt === 'session:feedback-updated' || evt === 'session:quiz-submitted') {
             fetchSessions();
           }
           if (evt === 'video:updated') {

@@ -343,7 +343,7 @@ export default function PresentationWindow() {
               if (d.status === 'done') { setSessionEnded(true); }
               fetchLive();
               break;
-            case 'session:updated':
+            case 'session:metadata-changed':
               fetchLive();
               break;
             default:

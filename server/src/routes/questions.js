@@ -1749,17 +1749,17 @@ export default async function questionRoutes(app) {
     async (request, reply) => {
       const userId = request.user.userId;
 
-      const question = await Question.findById(request.params.id);
+      const question = await Question.findById(request.params.id).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      const session = await Session.findById(request.body.sessionId);
+      const session = await Session.findById(request.body.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1770,8 +1770,8 @@ export default async function questionRoutes(app) {
 
       const copy = await copyQuestionToSession({
         sourceQuestion: question,
-        targetSessionId: session._id,
-        targetCourseId: course._id,
+        targetSessionId: String(session._id),
+        targetCourseId: String(course._id),
         userId,
       });
 
@@ -1787,12 +1787,12 @@ export default async function questionRoutes(app) {
       schema: addQuestionToSessionSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.sessionId);
+      const session = await Session.findById(request.params.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1802,24 +1802,19 @@ export default async function questionRoutes(app) {
       }
 
       const { questionId } = request.body;
-
-      if (session.questions.includes(questionId)) {
-        return { session: session.toObject() };
-      }
-
       const question = await Question.findById(questionId).lean();
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
-      const nextQuestionIds = [...(session.questions || []), String(questionId)];
+      await copyQuestionToSession({
+        sourceQuestion: question,
+        targetSessionId: String(session._id),
+        targetCourseId: String(course._id),
+        userId: request.user.userId,
+      });
 
-      const updated = await Session.findByIdAndUpdate(
-        session._id,
-        { $set: { questions: nextQuestionIds } },
-        { new: true }
-      );
-
-      return { session: updated.toObject() };
+      const updated = await Session.findById(session._id).lean();
+      return { session: updated };
     }
   );
 

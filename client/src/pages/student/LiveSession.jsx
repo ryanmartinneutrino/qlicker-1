@@ -218,7 +218,7 @@ function LiveSessionContent() {
       case 'session:question-changed':
       case 'session:visibility-changed':
       case 'session:status-changed':
-      case 'session:updated':
+      case 'session:metadata-changed':
         fetchLive();
         break;
       case 'session:question-updated':

@@ -322,7 +322,7 @@ describe('Grading routes', () => {
     expect(wsSendToUserSpy).toHaveBeenCalledTimes(1);
     expect(wsSendToUserSpy).toHaveBeenCalledWith(
       String(students[0]._id),
-      'session:updated',
+      'session:feedback-updated',
       expect.objectContaining({
         courseId: course._id,
         sessionId: session._id,

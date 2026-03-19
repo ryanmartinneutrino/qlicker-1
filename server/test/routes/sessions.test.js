@@ -1676,7 +1676,7 @@ describe('Student quiz routes', () => {
     expect(wsSendToUserSpy).toHaveBeenCalledTimes(1);
     expect(wsSendToUserSpy).toHaveBeenCalledWith(
       String(student._id),
-      'session:updated',
+      'session:quiz-submitted',
       expect.objectContaining({
         courseId: course._id,
         sessionId: session._id,
@@ -1826,6 +1826,12 @@ describe('Student quiz routes', () => {
       payload: { questionIds: [libraryQuestion._id] },
     });
     expect(setQuestionsRes.statusCode).toBe(200);
+    const copiedQuestionId = String(setQuestionsRes.json().session.questions[0]);
+    expect(copiedQuestionId).not.toBe(String(libraryQuestion._id));
+    const copiedQuestion = await Question.findById(copiedQuestionId).lean();
+    expect(copiedQuestion).toBeTruthy();
+    expect(String(copiedQuestion.sessionId)).toBe(String(practiceSession._id));
+    expect(String(copiedQuestion.originalQuestion)).toBe(String(libraryQuestion._id));
 
     const quizRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${practiceSession._id}/quiz`, {
       token: studentToken,
@@ -1835,13 +1841,13 @@ describe('Student quiz routes', () => {
 
     const answerRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${practiceSession._id}/quiz-response`, {
       token: studentToken,
-      payload: { questionId: libraryQuestion._id, answer: '0' },
+      payload: { questionId: copiedQuestionId, answer: '0' },
     });
     expect(answerRes.statusCode).toBe(200);
 
     const lockRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${practiceSession._id}/quiz-question-submit`, {
       token: studentToken,
-      payload: { questionId: libraryQuestion._id },
+      payload: { questionId: copiedQuestionId },
     });
     expect(lockRes.statusCode).toBe(200);
   });

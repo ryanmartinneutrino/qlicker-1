@@ -117,7 +117,7 @@ export default function StudentDashboard() {
             || evt === 'session:question-changed'
             || evt === 'session:visibility-changed'
             || evt === 'session:attempt-changed'
-            || evt === 'session:updated') {
+            || evt === 'session:quiz-submitted') {
             refreshLiveSessions();
           }
         } catch {
