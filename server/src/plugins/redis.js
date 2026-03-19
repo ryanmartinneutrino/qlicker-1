@@ -29,16 +29,16 @@ async function redisPlugin(fastify) {
   const sub = new Redis(url, sharedOpts);
 
   // Wait for both connections to be ready
-  await Promise.all([
-    new Promise((resolve, reject) => {
-      pub.once('ready', resolve);
-      pub.once('error', reject);
-    }),
-    new Promise((resolve, reject) => {
-      sub.once('ready', resolve);
-      sub.once('error', reject);
-    }),
-  ]);
+  function waitForReady(client) {
+    return new Promise((resolve, reject) => {
+      const onReady = () => { client.removeListener('error', onError); resolve(); };
+      const onError = (err) => { client.removeListener('ready', onReady); reject(err); };
+      client.once('ready', onReady);
+      client.once('error', onError);
+    });
+  }
+
+  await Promise.all([waitForReady(pub), waitForReady(sub)]);
 
   fastify.log.info('Redis pub/sub connected');
 

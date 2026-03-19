@@ -155,7 +155,7 @@ async function websocketPlugin(fastify) {
         }
 
         try {
-          const { event, data: msgData } = JSON.parse(raw.toString());
+          const { event } = JSON.parse(raw.toString());
           if (event === 'ping') {
             socket.send(JSON.stringify({ event: 'pong', data: null }));
           }
