@@ -1047,6 +1047,72 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
     expect(res.json().message).toBe('Questions can only use the course topics');
   });
 
+  it('student sees only visible questions via batch filtering (public and session-linked)', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'batch-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
+
+    const student = await createTestUser({ email: 'batch-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    // Create a session and mark it reviewable + done
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Reviewable' });
+    const session = sessRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    });
+
+    // Create a public question (visible to student)
+    const q1Res = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Public question',
+      courseId: course._id,
+      public: true,
+      options: [{ answer: 'A', correct: true }],
+    });
+    expect(q1Res.statusCode).toBe(201);
+
+    // Create a private question in a reviewable session (visible after review)
+    const q2Res = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Session question',
+      courseId: course._id,
+      sessionId: session._id,
+    });
+    expect(q2Res.statusCode).toBe(201);
+    const q2 = q2Res.json().question;
+    await Session.findByIdAndUpdate(session._id, {
+      $set: { questions: [q2._id], reviewable: true, status: 'done' },
+    });
+
+    // Create a private question NOT in any session (invisible to student)
+    const q3Res = await createQuestionAsProf(profToken, {
+      type: 2,
+      content: 'Hidden question',
+      courseId: course._id,
+    });
+    expect(q3Res.statusCode).toBe(201);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/questions`, {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // Student should see the public question and the session question, but not the hidden one
+    const visibleContents = body.questions.map((q) => q.content);
+    expect(visibleContents).toContain('Public question');
+    expect(visibleContents).toContain('Session question');
+    expect(visibleContents).not.toContain('Hidden question');
+    expect(body.total).toBe(2);
+  });
+
   it('returns autocomplete tag suggestions for a course library', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course } = await setupCourseAndSession();

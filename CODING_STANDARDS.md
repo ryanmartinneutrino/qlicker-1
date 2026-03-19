@@ -278,7 +278,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | DELETE | `/courses/:id/unenroll` | Token | Unenroll |
 | **Sessions** | | | |
 | POST | `/courses/:courseId/sessions` | Prof+ | Create session |
-| GET | `/courses/:courseId/sessions` | Token | List course sessions |
+| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`) |
 | GET | `/sessions/:id` | Token | Session detail |
 | PATCH | `/sessions/:id` | Prof+ | Update session |
 | DELETE | `/sessions/:id` | Prof+ | Delete session |
@@ -623,6 +623,65 @@ for (const courseId of courseIds) {
   const course = await Course.findById(courseId);  // one query per iteration
   if (course?.instructors.includes(userId)) return true;
 }
+```
+
+### Server-Side Pagination Pattern
+
+All list endpoints that can return unbounded result sets **should** support pagination. Use opt-in pagination (backward-compatible) with `page`/`limit` query params:
+
+```javascript
+// Schema
+const listSchema = {
+  querystring: {
+    type: 'object',
+    properties: {
+      page: { type: 'integer', minimum: 1 },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+    },
+    additionalProperties: false,
+  },
+};
+
+// Handler
+const usePagination = request.query.page !== undefined || request.query.limit !== undefined;
+const page = Math.max(Number(request.query.page) || 1, 1);
+const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
+
+let total, items;
+if (usePagination) {
+  [total, items] = await Promise.all([
+    Model.countDocuments(filter),
+    Model.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+  ]);
+} else {
+  items = await Model.find(filter).lean();
+  total = items.length;
+}
+
+const result = { items, total };
+if (usePagination) {
+  result.page = page;
+  result.pages = Math.ceil(total / limit);
+}
+return result;
+```
+
+**Endpoints with pagination:** `GET /courses`, `GET /users`, `GET /courses/:id/questions`, `GET /courses/:id/sessions`.
+
+### Batch Visibility Filtering
+
+When checking per-item visibility for a large result set (e.g., student question library), **never** call a per-item function that issues DB queries. Pre-load all needed data in batch queries, then evaluate visibility in-memory:
+
+```javascript
+// ✅ Correct — 2 batch queries regardless of question count
+const allSessions = await Session.find({ questions: { $in: questionIds } }).select('…').lean();
+const allCourses = await Course.find({ _id: { $in: courseIds } }).select('…').lean();
+// Then evaluate visibility in-memory using Maps
+
+// ❌ Wrong — N DB queries for N questions
+const results = await Promise.all(
+  questions.map((q) => userCanViewQuestion(q, user))  // each call issues DB queries
+);
 ```
 
 ---

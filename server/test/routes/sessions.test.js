@@ -479,6 +479,64 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     expect(profSession.status).toBe('running');
     expect(profSession.quizHasActiveExtensions).toBe(true);
   });
+
+  it('supports server-side pagination with page and limit params', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-pg@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+
+    // Create 5 sessions
+    for (let i = 0; i < 5; i++) {
+      const sessRes = await createSessionInCourse(profToken, course._id, { name: `Session ${i + 1}` });
+      expect(sessRes.statusCode).toBe(201);
+    }
+
+    // Page 1, limit 2
+    const page1 = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: profToken,
+    });
+    expect(page1.statusCode).toBe(200);
+    const body1 = page1.json();
+    expect(body1.sessions.length).toBe(2);
+    expect(body1.total).toBe(5);
+    expect(body1.page).toBe(1);
+    expect(body1.pages).toBe(3);
+
+    // Page 3, limit 2 (should have 1 session)
+    const page3 = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=3&limit=2`, {
+      token: profToken,
+    });
+    expect(page3.statusCode).toBe(200);
+    const body3 = page3.json();
+    expect(body3.sessions.length).toBe(1);
+    expect(body3.total).toBe(5);
+    expect(body3.page).toBe(3);
+    expect(body3.pages).toBe(3);
+  });
+
+  it('returns all sessions without pagination fields when no page/limit params', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-nopg@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+
+    for (let i = 0; i < 3; i++) {
+      await createSessionInCourse(profToken, course._id, { name: `Sess ${i + 1}` });
+    }
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: profToken,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.sessions.length).toBe(3);
+    expect(body.total).toBe(3);
+    expect(body.page).toBeUndefined();
+    expect(body.pages).toBeUndefined();
+  });
 });
 
 // ---------- GET /api/v1/sessions/live ----------

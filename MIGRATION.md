@@ -129,13 +129,14 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Session/editor/search follow-up polish — professor and student session editors can now apply session topic tags to all questions using course-topic-only tags; student-created practice sessions no longer surface as live dashboard items and the quiz return-tab crash is fixed; professor course student lists can be filtered by name/email; instructor assignment and admin user search now match SSO-backed email fields; student course question-library tabs once again expose new-question creation; practice-session question counts now follow reviewability rules for non-practice items; and the TipTap toolbar now includes text-alignment controls
 - ✅ Remaining Phase 7 security hardening — refresh tokens now rotate on each use and are invalidated on logout/password changes, password logins temporarily lock after repeated failures, development JWT secrets are generated at runtime when env values are omitted outside production, profile image URLs accept only http(s) or site-relative paths, and file uploads plus inbound websocket messages are rate limited
 - ✅ Remaining Phase 7 additional items — professor/student live-session pages now share a common websocket context, Playwright uses axe-core accessibility regression checks across the existing browser flows, the student question approval workflow is complete, and the question library expansion work is complete enough that only SSO confirmation plus follow-up decisions remain in Phase 7
+- ✅ Performance pagination improvements — session list API now supports optional `page`/`limit` pagination (backward-compatible); student question-library visibility filtering replaced per-question N+1 DB calls with a batch approach using 2 queries; client-side session tabs paginate at 15 items per page with Previous/Next controls
 
 See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 history and all completed Phase 7 items.
 
 ### Test Summary
 
-- **Server:** 292 tests across 13 test files
-- **Client:** 41 tests across 15 files
+- **Server:** 302 tests across 14 test files
+- **Client:** 54 tests across 18 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** 6 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -184,7 +185,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] Component tests for critical UI components
 - [ ] Service unit tests for email, questionCopy, sessionCopy, questionImportExport
 - [x] Redis pub/sub for multi-instance WebSocket scaling
-- [ ] Session list pagination (`GET /courses/:courseId/sessions`)
+- [x] Session list pagination (`GET /courses/:courseId/sessions`)
 - [ ] Audit logging for settings/role/grade changes
 - [ ] French translation review by native speaker (71 identical en/fr keys to verify)
 
@@ -273,7 +274,6 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Issue | Severity | Recommendation | Target |
 |-------|----------|----------------|--------|
 | **N+1 grade/response query in review** | MEDIUM | Batch-load responses instead of per-grade loop queries in session review/results endpoints | Phase 8 |
-| **Sessions list no pagination** | MEDIUM | Add pagination to `GET /courses/:courseId/sessions` | Phase 8 |
 | **Missing field projections on live session** | LOW | Add `.select()` to Question queries in live session endpoint to limit transferred fields | Phase 8 |
 | **Remaining Session reads without `.lean()`** | LOW | ~10 Session.findById() calls in sessions.js still return full Mongoose documents because they use `.toObject()`; converting these requires replacing `.toObject()` with plain spread | Phase 8 |
 
@@ -282,6 +282,9 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 - ✅ **N+1 in `userCanManageQuestion()`** — replaced two N+1 Course.findById() loops with a single batch `Course.find({ $in })` query with `.select('_id instructors').lean()`
 - ✅ **N+1 in `userCanViewQuestion()`** — replaced Session.findById() loop with a single batch `Session.find({ $in })` query with targeted `.select().lean()`
 - ✅ **29 missing `.lean()` calls** — added `.lean()` to 16 read-only Course/Session queries in sessions.js and 13 in courses.js
+- ✅ **Sessions list pagination** — `GET /courses/:courseId/sessions` now accepts optional `page`/`limit` query params; returns `total`/`page`/`pages` when pagination is active; backward-compatible (returns all sessions when params omitted)
+- ✅ **Student question-library batch visibility** — replaced per-question `userCanViewQuestion()` calls with `batchFilterVisibleQuestions()` that pre-loads all linked sessions and courses in 2 batch queries, then evaluates visibility in-memory
+- ✅ **Client-side session list pagination** — student and professor CourseDetail pages now paginate session lists within each tab (15 per page) with Previous/Next controls
 
 ### Performance — Fixed (Previously)
 
