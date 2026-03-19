@@ -77,6 +77,11 @@ const CourseSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for query performance — students and instructors are the most frequent lookups
+CourseSchema.index({ students: 1 });
+CourseSchema.index({ instructors: 1 });
+CourseSchema.index({ owner: 1 });
+
 const Course = mongoose.model('Course', CourseSchema);
 
 export default Course;

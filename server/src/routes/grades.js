@@ -283,7 +283,7 @@ export default async function gradeRoutes(app) {
       schema: markUpdateSchema,
     },
     async (request, reply) => {
-      const grade = await Grade.findById(request.params.gradeId);
+      const grade = await Grade.findById(request.params.gradeId).lean();
       if (!grade) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
@@ -298,7 +298,7 @@ export default async function gradeRoutes(app) {
       }
 
       const questionId = String(request.params.questionId);
-      const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark.toObject?.() || mark })) : [];
+      const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark })) : [];
       const markIndex = marks.findIndex((mark) => String(mark.questionId) === questionId);
 
       if (markIndex === -1) {
@@ -340,7 +340,7 @@ export default async function gradeRoutes(app) {
       marks[markIndex] = nextMark;
 
       const nextGrade = {
-        ...grade.toObject(),
+        ...grade,
         marks,
       };
       if (scoreStateChanged) {
@@ -378,7 +378,7 @@ export default async function gradeRoutes(app) {
     '/grades/:gradeId/marks/:questionId/set-automatic',
     { preHandler: authenticate },
     async (request, reply) => {
-      const grade = await Grade.findById(request.params.gradeId);
+      const grade = await Grade.findById(request.params.gradeId).lean();
       if (!grade) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
@@ -399,7 +399,7 @@ export default async function gradeRoutes(app) {
       session = msNormalization.session || session;
 
       const questionId = String(request.params.questionId);
-      const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark.toObject?.() || mark })) : [];
+      const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark })) : [];
       const markIndex = marks.findIndex((mark) => String(mark.questionId) === questionId);
 
       if (markIndex === -1) {
@@ -445,7 +445,7 @@ export default async function gradeRoutes(app) {
       marks[markIndex] = mark;
 
       const nextGrade = {
-        ...grade.toObject(),
+        ...grade,
         marks,
         automatic: true,
       };
@@ -481,7 +481,7 @@ export default async function gradeRoutes(app) {
       schema: gradeValueSchema,
     },
     async (request, reply) => {
-      const grade = await Grade.findById(request.params.gradeId);
+      const grade = await Grade.findById(request.params.gradeId).lean();
       if (!grade) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
@@ -515,7 +515,7 @@ export default async function gradeRoutes(app) {
     '/grades/:gradeId/value/set-automatic',
     { preHandler: authenticate },
     async (request, reply) => {
-      const grade = await Grade.findById(request.params.gradeId);
+      const grade = await Grade.findById(request.params.gradeId).lean();
       if (!grade) {
         return reply.code(404).send({ error: 'Not Found', message: 'Grade not found' });
       }
@@ -530,7 +530,7 @@ export default async function gradeRoutes(app) {
       }
 
       const nextGrade = {
-        ...grade.toObject(),
+        ...grade,
         automatic: true,
       };
       recomputeGradeAggregates(nextGrade);
