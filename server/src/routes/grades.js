@@ -571,7 +571,9 @@ export default async function gradeRoutes(app) {
         sessionQuery._id = { $in: requestedSessionIds };
       }
 
-      if (!instructorView) {
+      if (instructorView) {
+        sessionQuery.studentCreated = { $ne: true };
+      } else {
         sessionQuery.reviewable = true;
         sessionQuery.status = { $ne: 'hidden' };
       }

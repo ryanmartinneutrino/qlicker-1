@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import apiClient from '../../api/client';
+import apiClient, { getAccessToken } from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
   getStudentSessionAction,
@@ -15,6 +15,12 @@ import {
   sortStudentSessions,
 } from '../../utils/studentSessions';
 import SessionListCard from '../../components/common/SessionListCard';
+
+function buildWebsocketUrl(token) {
+  const encodedToken = encodeURIComponent(token);
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
+}
 
 export default function StudentDashboard() {
   const { t } = useTranslation();
@@ -29,23 +35,132 @@ export default function StudentDashboard() {
   const [enrollCode, setEnrollCode] = useState('');
   const [enrolling, setEnrolling] = useState(false);
 
-  const fetchCourses = useCallback(async () => {
-    setLoading(true);
+  const fetchLiveSessions = useCallback(async () => {
     try {
-      const [coursesRes, liveRes] = await Promise.all([
-        apiClient.get('/courses'),
-        apiClient.get('/sessions/live').catch(() => ({ data: { liveSessions: [] } })),
-      ]);
-      setCourses(coursesRes.data.courses || []);
+      const liveRes = await apiClient.get('/sessions/live');
       setLiveSessions(liveRes.data.liveSessions || []);
     } catch {
-      setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
-    } finally {
-      setLoading(false);
+      setLiveSessions([]);
     }
   }, []);
 
-  useEffect(() => { fetchCourses(); }, [fetchCourses]);
+  const fetchCourses = useCallback(async () => {
+    try {
+      const coursesRes = await apiClient.get('/courses');
+      setCourses(coursesRes.data.courses || []);
+    } catch {
+      setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
+    }
+  }, [t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchCourses(),
+        fetchLiveSessions(),
+      ]);
+      if (!cancelled) {
+        setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchCourses, fetchLiveSessions]);
+
+  useEffect(() => {
+    let ws = null;
+    let reconnectTimer = null;
+    let pollingTimer = null;
+    let closed = false;
+
+    const refreshLiveSessions = () => {
+      if (document.visibilityState !== 'visible') return;
+      fetchLiveSessions();
+    };
+
+    const startPolling = () => {
+      if (pollingTimer || closed) return;
+      pollingTimer = setInterval(refreshLiveSessions, 6000);
+    };
+
+    const stopPolling = () => {
+      if (!pollingTimer) return;
+      clearInterval(pollingTimer);
+      pollingTimer = null;
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const latestToken = getAccessToken();
+      if (!latestToken) return;
+      try {
+        ws = new WebSocket(buildWebsocketUrl(latestToken));
+      } catch {
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+        return;
+      }
+
+      ws.onopen = () => {
+        stopPolling();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          const evt = message?.event;
+          if (evt === 'session:status-changed'
+            || evt === 'session:question-changed'
+            || evt === 'session:visibility-changed'
+            || evt === 'session:attempt-changed'
+            || evt === 'session:updated') {
+            refreshLiveSessions();
+          }
+        } catch {
+          // Ignore malformed websocket payloads.
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        startPolling();
+        reconnectTimer = setTimeout(connect, 2500);
+      };
+    };
+
+    const initializeTransport = async () => {
+      try {
+        const { data } = await apiClient.get('/health');
+        if (data?.websocket === true) {
+          connect();
+          return;
+        }
+        startPolling();
+      } catch {
+        startPolling();
+      }
+    };
+
+    initializeTransport();
+
+    window.addEventListener('focus', refreshLiveSessions);
+    document.addEventListener('visibilitychange', refreshLiveSessions);
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        ws.close();
+      }
+      window.removeEventListener('focus', refreshLiveSessions);
+      document.removeEventListener('visibilitychange', refreshLiveSessions);
+    };
+  }, [fetchLiveSessions]);
 
   const handleEnroll = async () => {
     if (!enrollCode.trim()) return;
@@ -54,7 +169,7 @@ export default function StudentDashboard() {
       await apiClient.post('/courses/enroll', { enrollmentCode: enrollCode.trim() });
       setEnrollOpen(false);
       setEnrollCode('');
-      fetchCourses();
+      await Promise.all([fetchCourses(), fetchLiveSessions()]);
       setMsg({ severity: 'success', text: t('student.dashboard.enrollSuccess') });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('student.dashboard.failedEnroll') });

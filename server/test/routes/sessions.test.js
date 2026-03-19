@@ -619,6 +619,37 @@ describe('GET /api/v1/sessions/live', () => {
     expect(listedQuiz.quizHasResponsesByCurrentUser).toBe(true);
     expect(listedQuiz.quizAllQuestionsAnsweredByCurrentUser).toBe(true);
   });
+
+  it('instructor does not see student-created practice sessions in live sessions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const instructorSessionRes = await createSessionInCourse(profToken, course._id, { name: 'Instructor Live Poll' });
+    const instructorSession = instructorSessionRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${instructorSession._id}`, {
+      token: profToken,
+      payload: { status: 'running' },
+    });
+
+    const studentPracticeRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Student Practice Session',
+      practiceQuiz: true,
+    });
+    const studentPracticeSession = studentPracticeRes.json().session;
+    await Session.updateOne(
+      { _id: studentPracticeSession._id },
+      { $set: { status: 'running' } }
+    );
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live', {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const sessionIds = (res.json().liveSessions || []).map((row) => String(row._id));
+    expect(sessionIds).toContain(String(instructorSession._id));
+    expect(sessionIds).not.toContain(String(studentPracticeSession._id));
+  });
 });
 
 // ---------- GET /api/v1/sessions/:id ----------
@@ -2331,6 +2362,23 @@ describe('GET /api/v1/sessions/:id/results', () => {
     expect(row).toBeDefined();
     expect(row.participation).toBe(100);
     expect(row.questionResults[0].responses.length).toBe(1);
+  });
+
+  it('rejects instructor results access for student-created practice sessions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const studentPracticeRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Student Practice Session',
+      practiceQuiz: true,
+    });
+    const studentPracticeSession = studentPracticeRes.json().session;
+
+    const resultsRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${studentPracticeSession._id}/results`, {
+      token: profToken,
+    });
+
+    expect(resultsRes.statusCode).toBe(404);
   });
 });
 

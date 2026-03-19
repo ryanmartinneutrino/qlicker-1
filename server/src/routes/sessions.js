@@ -1343,7 +1343,7 @@ export default async function sessionRoutes(app) {
       const courseIds = courses.map((c) => String(c._id));
       const courseById = new Map(courses.map((c) => [String(c._id), c]));
 
-      const sessions = await Session.find({
+      const sessionFilter = {
         courseId: { $in: courseIds },
         $or: [
           { status: 'running' },
@@ -1355,7 +1355,12 @@ export default async function sessionRoutes(app) {
             ],
           },
         ],
-      })
+      };
+      if (isInstructorView) {
+        sessionFilter.studentCreated = { $ne: true };
+      }
+
+      const sessions = await Session.find(sessionFilter)
         .select('_id name courseId status quiz practiceQuiz quizStart quizEnd extensions submittedQuiz joined studentCreated creator questions')
         .lean();
 
@@ -1484,7 +1489,9 @@ export default async function sessionRoutes(app) {
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
 
       const filter = { courseId: course._id };
-      if (!isInstrOrAdmin) {
+      if (isInstrOrAdmin) {
+        filter.studentCreated = { $ne: true };
+      } else {
         filter.$or = [
           { status: { $ne: 'hidden' }, studentCreated: { $ne: true } },
           { studentCreated: true, creator: request.user.userId },
@@ -3930,6 +3937,9 @@ export default async function sessionRoutes(app) {
 
       if (!isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      if (session.studentCreated) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
