@@ -668,21 +668,41 @@ return result;
 
 **Endpoints with pagination:** `GET /courses`, `GET /users`, `GET /courses/:id/questions`, `GET /courses/:id/sessions`.
 
-### Batch Visibility Filtering
+### DB-Level Visibility Filtering
 
-When checking per-item visibility for a large result set (e.g., student question library), **never** call a per-item function that issues DB queries. Pre-load all needed data in batch queries, then evaluate visibility in-memory:
+When listing items with per-item visibility rules (e.g., student question library), build a MongoDB query that encodes the visibility rules, so invisible items **never leave the database**:
 
 ```javascript
-// ✅ Correct — 2 batch queries regardless of question count
-const allSessions = await Session.find({ questions: { $in: questionIds } }).select('…').lean();
-const allCourses = await Course.find({ _id: { $in: courseIds } }).select('…').lean();
-// Then evaluate visibility in-memory using Maps
+// ✅ Correct — 1 targeted session query + 1 question query with $or visibility
+const eligibleSessions = await Session.find({
+  courseId, $or: [{ reviewable: true }, /* active quiz conditions */],
+}).select('_id questions …').lean();
 
-// ❌ Wrong — N DB queries for N questions
-const results = await Promise.all(
-  questions.map((q) => userCanViewQuestion(q, user))  // each call issues DB queries
-);
+const sessionVisibleIds = new Set();
+for (const s of eligibleSessions) {
+  if (s.reviewable || isQuestionOpenInLinkedQuiz(s, userId))
+    for (const qId of s.questions) sessionVisibleIds.add(String(qId));
+}
+
+const studentQuery = { $and: [baseFilters, { $or: [
+  { owner: userId },
+  { public: true },
+  { publicOnQlicker: true, publicOnQlickerForStudents: true },
+  ...(sessionVisibleIds.size > 0 ? [{ _id: { $in: [...sessionVisibleIds] } }] : []),
+] }] };
+
+// DB-level pagination now works correctly
+const [total, docs] = await Promise.all([
+  Question.countDocuments(studentQuery),
+  Question.find(studentQuery).sort(sort).skip(offset).limit(limit).lean(),
+]);
+
+// ❌ Wrong — loads all questions into memory, then filters
+const allQuestions = await Question.find(baseFilters).lean();
+const visible = allQuestions.filter((q) => checkVisibility(q, user));
 ```
+
+**Key principle:** `userCanViewQuestion()` (the per-item exported function) is reserved for single-item authorization checks (e.g., adding a question to a session). For list endpoints, always push visibility into the MongoDB query.
 
 ---
 
