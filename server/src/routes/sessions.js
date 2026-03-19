@@ -1353,21 +1353,35 @@ export default async function sessionRoutes(app) {
       const courseIds = courses.map((c) => String(c._id));
       const courseById = new Map(courses.map((c) => [String(c._id), c]));
 
+      const statusConditions = [
+        { status: 'running' },
+        {
+          status: 'visible',
+          $or: [
+            { quiz: true },
+            { practiceQuiz: true },
+          ],
+        },
+      ];
+
       const sessionFilter = {
         courseId: { $in: courseIds },
-        $or: [
-          { status: 'running' },
-          {
-            status: 'visible',
-            $or: [
-              { quiz: true },
-              { practiceQuiz: true },
-            ],
-          },
+        $and: [
+          { $or: statusConditions },
         ],
       };
+
       if (isInstructorView) {
+        // Instructors never see student-created sessions
         sessionFilter.studentCreated = { $ne: true };
+      } else {
+        // Students see non-student-created sessions + their own student-created sessions
+        sessionFilter.$and.push({
+          $or: [
+            { studentCreated: { $ne: true } },
+            { creator: userId },
+          ],
+        });
       }
 
       const sessions = await Session.find(sessionFilter)
@@ -1377,8 +1391,7 @@ export default async function sessionRoutes(app) {
       const normalizedSessions = sessions
         .map((session) => buildSessionForUser(session, request.user, {
           instructorView: isInstructorView,
-        }))
-        .filter((session) => isInstructorView || !session.studentCreated || isStudentOwnedSession(session, request.user));
+        }));
 
       if (!isInstructorView) {
         const runningQuizSessions = normalizedSessions.filter((session) => (
@@ -1661,7 +1674,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -1679,7 +1692,7 @@ export default async function sessionRoutes(app) {
       if (!isInstrOrAdmin && session.studentCreated && !isStudentOwnedSession(session, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
-      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session.toObject());
+      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
       if (isInstrOrAdmin) {
         const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
         normalizedSession = msNormalization.session || normalizedSession;
@@ -1709,7 +1722,7 @@ export default async function sessionRoutes(app) {
       schema: updateSessionSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -1750,7 +1763,7 @@ export default async function sessionRoutes(app) {
         updates.practiceQuiz = false;
       }
 
-      const quizWindowValidationError = getQuizWindowValidationMessage(session.toObject(), updates);
+      const quizWindowValidationError = getQuizWindowValidationMessage(session, updates);
       if (quizWindowValidationError) {
         return reply.code(400).send({ error: 'Bad Request', message: quizWindowValidationError });
       }
@@ -1774,7 +1787,7 @@ export default async function sessionRoutes(app) {
 
       if (!isStudentOwner && updates.reviewable === true) {
         const previewSession = {
-          ...session.toObject(),
+          ...session,
           ...updates,
         };
         const runtime = getQuizRuntimeState(previewSession, {
@@ -1792,7 +1805,7 @@ export default async function sessionRoutes(app) {
         const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
         if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
           return {
-            session: session.toObject(),
+            session,
             grading: null,
             nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
           };
@@ -1984,7 +1997,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/end',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2002,7 +2015,7 @@ export default async function sessionRoutes(app) {
       let nonAutoGradeableWarning = null;
       if (makingReviewable) {
         if (isQuizLikeSession(session)) {
-          const runtime = getQuizRuntimeState(session.toObject(), {
+          const runtime = getQuizRuntimeState(session, {
             instructorView: true,
           });
           if (runtime.quizHasActiveExtensions) {
@@ -2016,7 +2029,7 @@ export default async function sessionRoutes(app) {
         const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
         if (nonAutoGradeable.length > 0 && !request.body?.acknowledgeNonAutoGradeable) {
           return {
-            session: session.toObject(),
+            session,
             grading: null,
             nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
           };
@@ -2125,7 +2138,7 @@ export default async function sessionRoutes(app) {
       schema: toggleReviewableSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2148,7 +2161,7 @@ export default async function sessionRoutes(app) {
       }
 
       if (request.body.reviewable === true && isQuizLikeSession(session)) {
-        const runtime = getQuizRuntimeState(session.toObject(), {
+        const runtime = getQuizRuntimeState(session, {
           instructorView: true,
         });
         if (runtime.quizHasActiveExtensions) {
@@ -2163,7 +2176,7 @@ export default async function sessionRoutes(app) {
         const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
         if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
           return {
-            session: session.toObject(),
+            session,
             grading: null,
             nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
           };
@@ -2211,7 +2224,7 @@ export default async function sessionRoutes(app) {
       schema: setExtensionsSchema,
     },
     async (request, reply) => {
-      const session = await Session.findById(request.params.id);
+      const session = await Session.findById(request.params.id).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2663,7 +2676,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/quiz',
     { preHandler: authenticate },
     async (request, reply) => {
-      const sessionDoc = await Session.findById(request.params.id);
+      const sessionDoc = await Session.findById(request.params.id).lean();
       if (!sessionDoc) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2681,7 +2694,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can access quiz mode' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -2799,7 +2812,7 @@ export default async function sessionRoutes(app) {
       schema: saveQuizResponseSchema,
     },
     async (request, reply) => {
-      const sessionDoc = await Session.findById(request.params.id);
+      const sessionDoc = await Session.findById(request.params.id).lean();
       if (!sessionDoc) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2817,7 +2830,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -2914,7 +2927,7 @@ export default async function sessionRoutes(app) {
       schema: submitQuizQuestionSchema,
     },
     async (request, reply) => {
-      const sessionDoc = await Session.findById(request.params.id);
+      const sessionDoc = await Session.findById(request.params.id).lean();
       if (!sessionDoc) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -2932,7 +2945,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -2999,7 +3012,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/submit',
     { preHandler: authenticate },
     async (request, reply) => {
-      const sessionDoc = await Session.findById(request.params.id);
+      const sessionDoc = await Session.findById(request.params.id).lean();
       if (!sessionDoc) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
@@ -3017,7 +3030,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quizzes' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc.toObject());
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
