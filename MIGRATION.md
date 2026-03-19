@@ -174,7 +174,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] Backup and restore scripts
 - [ ] Private-bucket cutover for S3 images (see [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [ ] Complete developer guide
-- [ ] Complete user manual
+- [x] Complete user manual
 - [x] Refresh token rotation
 - [x] Account lockout after repeated failures
 - [x] npm audit 0 vulnerabilities (server + client)
@@ -183,7 +183,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Component tests for critical UI components
 - [ ] Service unit tests for email, questionCopy, sessionCopy, questionImportExport
-- [ ] Redis pub/sub for multi-instance WebSocket scaling
+- [x] Redis pub/sub for multi-instance WebSocket scaling
 - [ ] Session list pagination (`GET /courses/:courseId/sessions`)
 - [ ] Audit logging for settings/role/grade changes
 - [ ] French translation review by native speaker (71 identical en/fr keys to verify)
@@ -241,7 +241,7 @@ A comprehensive security, performance, i18n, accessibility, dependency, and test
 | **Settings PATCH accepts unvalidated SSO keys** | LOW | While field whitelist is in place, individual value validation for sensitive SSO fields should be added | Phase 8 |
 | **SSO logout XML fallback uses regex** | LOW | The SAML logout handler falls back to regex-based XML extraction when crypto validation fails; consider a proper XML parser with XXE protection | Phase 8 |
 | **No audit logging** | LOW | Settings changes, role changes, and grade overrides are not logged to an audit trail | Phase 8 |
-| **WebSocket state not multi-instance** | MEDIUM | In-process WebSocket rooms won't sync across multiple server instances; Redis pub/sub needed for horizontal scaling | Phase 8 |
+| **WebSocket state now multi-instance** | ✅ RESOLVED | Redis pub/sub added via `ioredis`; when `REDIS_URL` is set, all `wsBroadcast`/`wsSendToUser`/`wsSendToUsers` calls publish to a shared Redis channel so every server instance delivers messages to its local WebSocket connections | Phase 8 |
 
 ### Security — Fixed (This Review)
 

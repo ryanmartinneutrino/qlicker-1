@@ -8,6 +8,12 @@ services:
       - mongo-data:/data/db
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    restart: unless-stopped
+
   server:
     build: ./server
     deploy:
@@ -21,10 +27,12 @@ services:
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=production
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
+      - REDIS_URL=redis://redis:6379
     volumes:
       - uploads:/app/uploads
     depends_on:
       - mongo
+      - redis
     restart: unless-stopped
 
   nginx:

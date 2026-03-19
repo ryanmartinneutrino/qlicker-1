@@ -36,6 +36,7 @@ This repository contains the **migration** from the original MeteorJS implementa
 - Node.js >= 20.x
 - npm >= 10.x
 - MongoDB >= 6.x (or Docker)
+- Redis >= 7.x (optional — or Docker; enables multi-instance WebSocket pub/sub)
 
 ### Native Setup
 
@@ -46,8 +47,9 @@ This repository contains the **migration** from the original MeteorJS implementa
 
 The script will:
 - Check and offer to install dependencies (Node.js, npm, MongoDB)
-- Ask which ports to use (defaults: 3000 for app, 3001 for API, 27017 for MongoDB)
+- Ask which ports to use (defaults: 3000 for app, 3001 for API, 27017 for MongoDB, 6379 for Redis)
 - Ask for MongoDB data path (default: `data/db`)
+- Ask for Redis URL (default: `redis://localhost:6379`)
 - Generate `.env` files with secure tokens (using OpenSSL)
 - Run `npm install` for both server and client
 
@@ -63,7 +65,7 @@ The script will:
 - Generate a `.env` file for Docker Compose
 - Optionally build Docker images
 
-Then start the stack:
+Then start the stack (includes MongoDB, Redis, server, and client):
 
 ```bash
 docker compose up -d
@@ -133,6 +135,65 @@ cd client && npm run dev
 cd server && npm test
 cd client && npm test
 ```
+
+### Redis Setup (Optional — Enables Multi-Instance WebSocket Pub/Sub)
+
+Qlicker uses Redis pub/sub to synchronize WebSocket events across multiple server instances. Without Redis, the app runs in single-instance mode (all WebSocket connections are handled in-process). When `REDIS_URL` is set, all broadcast functions automatically fan out across instances.
+
+#### Docker Compose (recommended for dev)
+
+The development `docker-compose.yml` already includes a Redis container. When you run `docker compose up -d`, Redis is started automatically and the server connects to it via `REDIS_URL=redis://redis:6379`.
+
+If you run the server **natively** but want Redis via Docker:
+
+```bash
+# Start only the Redis container
+docker run -d --name qlicker-redis -p 6379:6379 redis:7-alpine
+
+# Set REDIS_URL in your .env
+REDIS_URL=redis://localhost:6379
+```
+
+To stop the standalone container:
+
+```bash
+docker stop qlicker-redis && docker rm qlicker-redis
+```
+
+#### Native Redis
+
+Install Redis on your system and start it:
+
+```bash
+# macOS (Homebrew)
+brew install redis
+redis-server --port 6379 --daemonize yes
+
+# Ubuntu/Debian
+sudo apt-get install redis-server
+redis-server --port 6379 --daemonize yes
+```
+
+Then set in your `.env`:
+
+```env
+REDIS_URL=redis://localhost:6379
+```
+
+#### Using `qlicker.sh` with Redis
+
+The service manager script (`scripts/qlicker.sh`) automatically starts and stops Redis alongside MongoDB when `REDIS_URL` is set in `.env` and `redis-server` is available on the host. If `redis-server` is not found, the script prints a helpful message suggesting the Docker alternative.
+
+#### Verifying Redis is Active
+
+Check the health endpoint after starting the server:
+
+```bash
+curl http://localhost:3001/api/v1/health
+# {"status":"ok","timestamp":"...","websocket":true,"redis":true}
+```
+
+When `redis` is `true`, the server is using Redis pub/sub. When `false`, it's running in single-instance mode.
 
 ### E2E Tests (Playwright)
 

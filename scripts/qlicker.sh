@@ -18,6 +18,8 @@ API_PORT=${API_PORT:-3001}
 MONGO_PORT=${MONGO_PORT:-27017}
 MONGO_DBPATH=${MONGO_DBPATH:-data/db}
 MONGO_LOG_PATH=${MONGO_LOG_PATH:-.data/mongodb.log}
+REDIS_PORT=${REDIS_PORT:-6379}
+REDIS_URL=${REDIS_URL:-}
 
 resolve_path() {
   local input_path="$1"
@@ -271,6 +273,30 @@ start() {
     else
       echo "  [SKIP] mongod not found — expecting MongoDB on localhost:$MONGO_PORT"
     fi
+  fi
+
+  # Start Redis if REDIS_URL is set and redis-server is available
+  if [ -n "$REDIS_URL" ]; then
+    if is_port_listening "$REDIS_PORT"; then
+      echo "  [OK] Redis already listening on port $REDIS_PORT"
+    else
+      if command -v redis-server &>/dev/null; then
+        echo "  Starting Redis on port $REDIS_PORT..."
+        redis-server --port "$REDIS_PORT" --daemonize yes --loglevel warning
+        REDIS_PID=$(pgrep -f "redis-server.*:$REDIS_PORT" | tail -1 || true)
+        if [ -n "$REDIS_PID" ]; then
+          PIDS+=("redis:$REDIS_PID")
+          echo "  [OK] Redis started (PID: $REDIS_PID)"
+        else
+          echo "  [OK] Redis started"
+        fi
+      else
+        echo "  [WARN] redis-server not found — expecting Redis on localhost:$REDIS_PORT"
+        echo "         Install Redis or run: docker run -d -p $REDIS_PORT:6379 redis:7-alpine"
+      fi
+    fi
+  else
+    echo "  [SKIP] REDIS_URL not set — running in single-instance mode (no pub/sub)"
   fi
 
   # Start server

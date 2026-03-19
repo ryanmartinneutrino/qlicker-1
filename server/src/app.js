@@ -13,6 +13,7 @@ import config from './config/index.js';
 import dbPlugin from './plugins/db.js';
 import uploadPlugin from './plugins/upload.js';
 import samlPlugin from './plugins/saml.js';
+import redisPlugin from './plugins/redis.js';
 import websocketPlugin from './plugins/websocket.js';
 import { authenticate, requireRole } from './middleware/auth.js';
 import authRoutes, { legacySamlRoutes } from './routes/auth.js';
@@ -120,6 +121,11 @@ export async function buildApp(opts = {}) {
   // SAML SSO plugin
   await app.register(samlPlugin);
 
+  // Redis pub/sub (skip in test if opts.skipRedis, no-op when REDIS_URL is unset)
+  if (!opts.skipRedis) {
+    await app.register(redisPlugin);
+  }
+
   // WebSocket plugin (skip in test if opts.skipWs)
   if (!opts.skipWs) {
     await app.register(websocketPlugin);
@@ -135,6 +141,7 @@ export async function buildApp(opts = {}) {
             status: { type: 'string' },
             timestamp: { type: 'string', format: 'date-time' },
             websocket: { type: 'boolean' },
+            redis: { type: 'boolean' },
           },
         },
       },
@@ -143,6 +150,7 @@ export async function buildApp(opts = {}) {
     status: 'ok',
     timestamp: new Date().toISOString(),
     websocket: typeof app.wsSendToUser === 'function',
+    redis: typeof app.redis !== 'undefined' && app.redis !== null,
   }));
 
   // Serve local uploads as static files
