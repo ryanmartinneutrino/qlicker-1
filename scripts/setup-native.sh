@@ -200,6 +200,26 @@ mkdir -p "$MONGO_DBPATH_RESOLVED"
 echo "[OK] MongoDB dbpath: $MONGO_DBPATH_RESOLVED"
 
 # --------------------------------------------------
+# Ask for Redis
+# --------------------------------------------------
+echo ""
+echo "--- Redis Configuration (optional) ---"
+echo "  Redis enables multi-instance WebSocket pub/sub."
+echo "  Leave the URL blank to skip (single-instance mode)."
+DEFAULT_REDIS_PORT="${REDIS_PORT:-6379}"
+read -r -p "Redis port [$DEFAULT_REDIS_PORT]: " REDIS_PORT_INPUT
+REDIS_PORT=${REDIS_PORT_INPUT:-$DEFAULT_REDIS_PORT}
+
+DEFAULT_REDIS_URL="${REDIS_URL:-}"
+read -r -p "REDIS_URL [redis://localhost:$REDIS_PORT]: " REDIS_URL_INPUT
+if [ -z "$REDIS_URL_INPUT" ] && [ -z "$DEFAULT_REDIS_URL" ]; then
+  REDIS_URL="redis://localhost:$REDIS_PORT"
+else
+  REDIS_URL="${REDIS_URL_INPUT:-$DEFAULT_REDIS_URL}"
+fi
+echo "[OK] REDIS_URL=$REDIS_URL"
+
+# --------------------------------------------------
 # Ask for MAIL_URL
 # --------------------------------------------------
 echo ""
@@ -245,6 +265,10 @@ APP_PORT=$APP_PORT
 API_PORT=$API_PORT
 MONGO_PORT=$MONGO_PORT
 MONGO_DBPATH=$MONGO_DBPATH
+REDIS_PORT=$REDIS_PORT
+
+# Redis (optional — enables multi-instance WebSocket pub/sub)
+REDIS_URL=$REDIS_URL
 
 # Storage (optional)
 STORAGE_TYPE=local
@@ -294,7 +318,8 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
 fi
 echo "  Next steps:"
 echo "    1. Start MongoDB:  mongod --port $MONGO_PORT --dbpath $MONGO_DBPATH_RESOLVED"
-echo "    2. Seed database:  ./scripts/seed-db.sh"
-echo "    3. Start Qlicker:  ./scripts/qlicker.sh start"
-echo "    4. Run E2E tests: ./scripts/qlicker.sh e2e --install-browser"
+echo "    2. Start Redis:    redis-server --port $REDIS_PORT  (optional)"
+echo "    3. Seed database:  ./scripts/seed-db.sh"
+echo "    4. Start Qlicker:  ./scripts/qlicker.sh start"
+echo "    5. Run E2E tests: ./scripts/qlicker.sh e2e --install-browser"
 echo ""
