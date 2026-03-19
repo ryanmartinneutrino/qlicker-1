@@ -444,6 +444,10 @@ Every model defines Mongoose indexes matching legacy database indexes. Add index
 ResponseSchema.index({ questionId: 1, studentUserId: 1, attempt: 1 });
 ResponseSchema.index({ questionId: 1, attempt: 1 });
 GradeSchema.index({ userId: 1, sessionId: 1 });
+CourseSchema.index({ students: 1 });     // student course listing
+CourseSchema.index({ instructors: 1 });  // instructor course listing
+CourseSchema.index({ owner: 1 });        // ownership lookups
+SessionSchema.index({ courseId: 1, status: 1 }); // live session queries
 ```
 
 ### Sanitizing User Data
@@ -475,7 +479,21 @@ const courses = await Course.find({ students: userId }).lean();
 const session = await Session.findById(id);  // Only do this if you need .save()
 ```
 
-**Exception:** Don't use `.lean()` when you need to call Mongoose instance methods or `.save()`.
+**Exception:** Don't use `.lean()` when you need to call Mongoose instance methods (`.save()`, `.markModified()`, `.verifyPassword()`, etc.). Common example: video.js helpers need `.save()` to update embedded video-chat options on the Course document.
+
+**Read-then-update pattern:** When loading a document only to read its fields and then performing the update via `findByIdAndUpdate()` or `updateOne()`, always use `.lean()` for the initial load — the returned plain object is sufficient for reading fields and the update operation does not require a Mongoose document:
+
+```javascript
+// ✅ Correct — .lean() + updateOne()
+const grade = await Grade.findById(id).lean();
+// ... read grade.marks, grade.courseId, etc.
+await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
+
+// ❌ Wrong — loads full Mongoose document only to read properties
+const grade = await Grade.findById(id);
+const nextGrade = { ...grade.toObject(), ... };  // .toObject() was unnecessary
+await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
+```
 
 ### Delta WebSocket Events (Not Generic Broadcasts)
 
