@@ -22,6 +22,7 @@
     "back": "Back",
     "next": "Next",
     "previous": "Previous",
+    "paginationSummary": "Page {{page}} of {{pages}}",
     "required": "required",
     "actions": "Actions",
     "status": "Status",

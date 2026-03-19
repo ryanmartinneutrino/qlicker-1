@@ -278,7 +278,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | DELETE | `/courses/:id/unenroll` | Token | Unenroll |
 | **Sessions** | | | |
 | POST | `/courses/:courseId/sessions` | Prof+ | Create session |
-| GET | `/courses/:courseId/sessions` | Token | List course sessions |
+| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`) |
 | GET | `/sessions/:id` | Token | Session detail |
 | PATCH | `/sessions/:id` | Prof+ | Update session |
 | DELETE | `/sessions/:id` | Prof+ | Delete session |
@@ -624,6 +624,85 @@ for (const courseId of courseIds) {
   if (course?.instructors.includes(userId)) return true;
 }
 ```
+
+### Server-Side Pagination Pattern
+
+All list endpoints that can return unbounded result sets **should** support pagination. Use opt-in pagination (backward-compatible) with `page`/`limit` query params:
+
+```javascript
+// Schema
+const listSchema = {
+  querystring: {
+    type: 'object',
+    properties: {
+      page: { type: 'integer', minimum: 1 },
+      limit: { type: 'integer', minimum: 1, maximum: 100 },
+    },
+    additionalProperties: false,
+  },
+};
+
+// Handler
+const usePagination = request.query.page !== undefined || request.query.limit !== undefined;
+const page = Math.max(Number(request.query.page) || 1, 1);
+const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
+
+let total, items;
+if (usePagination) {
+  [total, items] = await Promise.all([
+    Model.countDocuments(filter),
+    Model.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+  ]);
+} else {
+  items = await Model.find(filter).lean();
+  total = items.length;
+}
+
+const result = { items, total };
+if (usePagination) {
+  result.page = page;
+  result.pages = Math.ceil(total / limit);
+}
+return result;
+```
+
+**Endpoints with pagination:** `GET /courses`, `GET /users`, `GET /courses/:id/questions`, `GET /courses/:id/sessions`.
+
+### DB-Level Visibility Filtering
+
+When listing items with per-item visibility rules (e.g., student question library), build a MongoDB query that encodes the visibility rules, so invisible items **never leave the database**:
+
+```javascript
+// ✅ Correct — 1 targeted session query + 1 question query with $or visibility
+const eligibleSessions = await Session.find({
+  courseId, $or: [{ reviewable: true }, /* active quiz conditions */],
+}).select('_id questions …').lean();
+
+const sessionVisibleIds = new Set();
+for (const s of eligibleSessions) {
+  if (s.reviewable || isQuestionOpenInLinkedQuiz(s, userId))
+    for (const qId of s.questions) sessionVisibleIds.add(String(qId));
+}
+
+const studentQuery = { $and: [baseFilters, { $or: [
+  { owner: userId },
+  { public: true },
+  { publicOnQlicker: true, publicOnQlickerForStudents: true },
+  ...(sessionVisibleIds.size > 0 ? [{ _id: { $in: [...sessionVisibleIds] } }] : []),
+] }] };
+
+// DB-level pagination now works correctly
+const [total, docs] = await Promise.all([
+  Question.countDocuments(studentQuery),
+  Question.find(studentQuery).sort(sort).skip(offset).limit(limit).lean(),
+]);
+
+// ❌ Wrong — loads all questions into memory, then filters
+const allQuestions = await Question.find(baseFilters).lean();
+const visible = allQuestions.filter((q) => checkVisibility(q, user));
+```
+
+**Key principle:** `userCanViewQuestion()` (the per-item exported function) is reserved for single-item authorization checks (e.g., adding a question to a session). For list endpoints, always push visibility into the MongoDB query.
 
 ---
 
