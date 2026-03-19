@@ -1,7 +1,7 @@
 import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Autocomplete, Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip,
+  Autocomplete, Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip, Stack,
   List, ListItem, ListItemAvatar, ListItemText, ListItemButton, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar, MenuItem,
@@ -79,6 +79,8 @@ function sortSessions(items) {
     return getSessionSortTime(b) - getSessionSortTime(a);
   });
 }
+
+const SESSION_PAGE_SIZE = 15;
 
 // Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Video?, 7=Settings, 8=Question Library
 const MAX_COURSE_TAB_INDEX = 8;
@@ -252,6 +254,7 @@ export default function CourseDetail() {
   // Sessions
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionPages, setSessionPages] = useState({});
   const [gradingSummaryBySessionId, setGradingSummaryBySessionId] = useState({});
   const [createSessionOpen, setCreateSessionOpen] = useState(false);
   const [creatingSess, setCreatingSess] = useState(false);
@@ -897,14 +900,22 @@ export default function CourseDetail() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const renderSessionList = (sessionItems, emptyText) => {
+  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
     if (sessionsLoading) return <CircularProgress size={24} />;
     if (sessionItems.length === 0) {
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
     }
+
+    const currentPage = sessionPages[listTabIndex] || 1;
+    const totalPages = Math.max(Math.ceil(sessionItems.length / SESSION_PAGE_SIZE), 1);
+    const safePage = Math.min(currentPage, totalPages);
+    const startIdx = (safePage - 1) * SESSION_PAGE_SIZE;
+    const pageItems = sessionItems.slice(startIdx, startIdx + SESSION_PAGE_SIZE);
+
     return (
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-        {sessionItems.map((s) => (
+      <>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          {pageItems.map((s) => (
           <SessionListCard
             key={s._id}
             highlighted={s.status === 'running'}
@@ -1037,6 +1048,34 @@ export default function CourseDetail() {
           />
         ))}
       </Box>
+      {totalPages > 1 && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            {t('common.paginationSummary', {
+              page: safePage,
+              pages: totalPages,
+              defaultValue: `Page ${safePage} of ${totalPages}`,
+            })}
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Button
+              size="small"
+              disabled={safePage <= 1}
+              onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
+            >
+              {t('common.previous')}
+            </Button>
+            <Button
+              size="small"
+              disabled={safePage >= totalPages}
+              onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+            >
+              {t('common.next')}
+            </Button>
+          </Stack>
+        </Box>
+      )}
+      </>
     );
   };
 
@@ -1111,7 +1150,7 @@ export default function CourseDetail() {
             {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(interactiveSessions, t('professor.course.noInteractiveSessions'))}
+        {renderSessionList(interactiveSessions, t('professor.course.noInteractiveSessions'), 0)}
       </TabPanel>
 
       {/* Quizzes Tab */}
@@ -1130,7 +1169,7 @@ export default function CourseDetail() {
             {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(quizSessions, t('professor.course.noQuizzes'))}
+        {renderSessionList(quizSessions, t('professor.course.noQuizzes'), 1)}
       </TabPanel>
 
       {/* Grades Tab */}

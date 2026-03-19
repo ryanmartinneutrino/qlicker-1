@@ -1448,9 +1448,20 @@ export default async function sessionRoutes(app) {
   );
 
   // GET /courses/:courseId/sessions - List sessions for a course
+  const listSessionsSchema = {
+    querystring: {
+      type: 'object',
+      properties: {
+        page: { type: 'integer', minimum: 1 },
+        limit: { type: 'integer', minimum: 1, maximum: 100 },
+      },
+      additionalProperties: false,
+    },
+  };
+
   app.get(
     '/courses/:courseId/sessions',
-    { preHandler: authenticate },
+    { preHandler: authenticate, schema: listSessionsSchema },
     async (request, reply) => {
       const course = await Course.findById(request.params.courseId).lean();
       if (!course) {
@@ -1463,6 +1474,10 @@ export default async function sessionRoutes(app) {
 
       const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
 
+      const usePagination = request.query.page !== undefined || request.query.limit !== undefined;
+      const page = Math.max(Number(request.query.page) || 1, 1);
+      const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
+
       const filter = { courseId: course._id };
       if (!isInstrOrAdmin) {
         filter.$or = [
@@ -1471,7 +1486,21 @@ export default async function sessionRoutes(app) {
         ];
       }
 
-      const sessions = await Session.find(filter).lean();
+      let total;
+      let sessions;
+      if (usePagination) {
+        [total, sessions] = await Promise.all([
+          Session.countDocuments(filter),
+          Session.find(filter)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+        ]);
+      } else {
+        sessions = await Session.find(filter).lean();
+        total = sessions.length;
+      }
       const normalizedSessions = [];
 
       for (const rawSession of sessions) {
@@ -1596,7 +1625,12 @@ export default async function sessionRoutes(app) {
         return sessionForUser;
       });
 
-      return { sessions: hydratedSessions };
+      const result = { sessions: hydratedSessions, total };
+      if (usePagination) {
+        result.page = page;
+        result.pages = Math.ceil(total / limit);
+      }
+      return result;
     }
   );
 
