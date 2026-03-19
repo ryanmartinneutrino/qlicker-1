@@ -1586,10 +1586,17 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.session.questions).toContain(question._id);
+    expect(body.session.questions).toHaveLength(1);
+    const copiedQuestionId = String(body.session.questions[0]);
+    expect(copiedQuestionId).not.toBe(String(question._id));
+
+    const copiedQuestion = await Question.findById(copiedQuestionId).lean();
+    expect(copiedQuestion).toBeTruthy();
+    expect(String(copiedQuestion.originalQuestion)).toBe(String(question._id));
+    expect(String(copiedQuestion.sessionId)).toBe(String(session._id));
   });
 
-  it('adding same question twice is idempotent', async (ctx) => {
+  it('adding the same source question twice creates distinct session copies', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, session } = await setupCourseAndSession();
 
@@ -1608,8 +1615,10 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    const count = body.session.questions.filter((q) => q === question._id).length;
-    expect(count).toBe(1);
+    expect(body.session.questions).toHaveLength(2);
+    const copiedQuestionIds = body.session.questions.map((questionId) => String(questionId));
+    expect(new Set(copiedQuestionIds).size).toBe(2);
+    expect(copiedQuestionIds).not.toContain(String(question._id));
   });
 
   it('keeps the session questions array authoritative when adding a question to session', async (ctx) => {
@@ -1654,7 +1663,15 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.session.questions).toEqual([q1._id, slide._id, libraryQuestion._id]);
+    expect(body.session.questions).toHaveLength(3);
+    expect(String(body.session.questions[0])).toBe(String(q1._id));
+    expect(String(body.session.questions[1])).toBe(String(slide._id));
+    expect(String(body.session.questions[2])).not.toBe(String(libraryQuestion._id));
+
+    const copiedQuestion = await Question.findById(String(body.session.questions[2])).lean();
+    expect(copiedQuestion).toBeTruthy();
+    expect(String(copiedQuestion.originalQuestion)).toBe(String(libraryQuestion._id));
+    expect(String(copiedQuestion.sessionId)).toBe(String(session._id));
     expect(body.session.activities).toBeUndefined();
   });
 

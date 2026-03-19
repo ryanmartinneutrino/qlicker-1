@@ -407,7 +407,7 @@ function LiveSessionContent() {
         setLiveData((prev) => applyParticipantJoined(prev, data));
         break;
       case 'session:question-changed':
-      case 'session:updated':
+      case 'session:metadata-changed':
         fetchLive();
         break;
       case 'session:question-updated':

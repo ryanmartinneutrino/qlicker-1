@@ -68,18 +68,18 @@ function isCourseMember(course, user) {
     || (course.students || []).includes(user.userId);
 }
 
-function notifySessionUpdatedForUser(app, userId, course, sessionId) {
+function notifyFeedbackUpdatedForUser(app, userId, course, sessionId) {
   const normalizedUserId = normalizeAnswerValue(userId);
   if (!normalizedUserId || !course || !sessionId) return;
   if (typeof app.wsSendToUser === 'function') {
-    app.wsSendToUser(normalizedUserId, 'session:updated', {
+    app.wsSendToUser(normalizedUserId, 'session:feedback-updated', {
       courseId: String(course._id),
       sessionId: String(sessionId),
     });
     return;
   }
   if (typeof app.wsSendToUsers === 'function') {
-    app.wsSendToUsers([normalizedUserId], 'session:updated', {
+    app.wsSendToUsers([normalizedUserId], 'session:feedback-updated', {
       courseId: String(course._id),
       sessionId: String(sessionId),
     });
@@ -368,7 +368,7 @@ export default async function gradeRoutes(app) {
 
       const updated = await Grade.findById(grade._id).lean();
       if (feedbackStateChanged) {
-        notifySessionUpdatedForUser(app, grade.userId, course, grade.sessionId);
+        notifyFeedbackUpdatedForUser(app, grade.userId, course, grade.sessionId);
       }
       return { grade: updated };
     }
@@ -571,7 +571,9 @@ export default async function gradeRoutes(app) {
         sessionQuery._id = { $in: requestedSessionIds };
       }
 
-      if (!instructorView) {
+      if (instructorView) {
+        sessionQuery.studentCreated = { $ne: true };
+      } else {
         sessionQuery.reviewable = true;
         sessionQuery.status = { $ne: 'hidden' };
       }

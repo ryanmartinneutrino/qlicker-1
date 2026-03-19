@@ -6,6 +6,7 @@ import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
 import { copySessionToCourse } from '../services/sessionCopy.js';
+import { copyQuestionToSession } from '../services/questionCopy.js';
 import {
   getNormalizedTagValue,
   normalizeTags,
@@ -1114,10 +1115,10 @@ function sendToUser(app, userId, event, payload) {
   }
 }
 
-/** Generic session:updated — used for non-live or single-user mutations that still rely on a refetch. */
-function notifySessionUpdated(app, course, sessionId) {
+/** Delta: session metadata changed (name/description/reviewable/extensions/etc). */
+function notifySessionMetadataChanged(app, course, sessionId) {
   if (!sessionId) return;
-  sendToCourseMembers(app, course, 'session:updated', {
+  sendToCourseMembers(app, course, 'session:metadata-changed', {
     courseId: String(course._id),
     sessionId: String(sessionId),
   });
@@ -1193,6 +1194,15 @@ function notifyAttemptChanged(app, course, sessionId, question, data = {}) {
     correct: !!question?.sessionOptions?.correct,
     resetResponses: false,
     ...data,
+  });
+}
+
+/** Delta: student submitted a quiz. Target only the submitting user for dashboard/session refresh. */
+function notifyQuizSubmitted(app, course, sessionId, userId) {
+  if (!sessionId || !userId) return;
+  sendToUser(app, userId, 'session:quiz-submitted', {
+    courseId: String(course._id),
+    sessionId: String(sessionId),
   });
 }
 
@@ -1343,7 +1353,7 @@ export default async function sessionRoutes(app) {
       const courseIds = courses.map((c) => String(c._id));
       const courseById = new Map(courses.map((c) => [String(c._id), c]));
 
-      const sessions = await Session.find({
+      const sessionFilter = {
         courseId: { $in: courseIds },
         $or: [
           { status: 'running' },
@@ -1355,7 +1365,12 @@ export default async function sessionRoutes(app) {
             ],
           },
         ],
-      })
+      };
+      if (isInstructorView) {
+        sessionFilter.studentCreated = { $ne: true };
+      }
+
+      const sessions = await Session.find(sessionFilter)
         .select('_id name courseId status quiz practiceQuiz quizStart quizEnd extensions submittedQuiz joined studentCreated creator questions')
         .lean();
 
@@ -1484,7 +1499,9 @@ export default async function sessionRoutes(app) {
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
 
       const filter = { courseId: course._id };
-      if (!isInstrOrAdmin) {
+      if (isInstrOrAdmin) {
+        filter.studentCreated = { $ne: true };
+      } else {
         filter.$or = [
           { status: { $ne: 'hidden' }, studentCreated: { $ne: true } },
           { studentCreated: true, creator: request.user.userId },
@@ -1812,7 +1829,7 @@ export default async function sessionRoutes(app) {
         });
       }
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifySessionMetadataChanged(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject(), grading, nonAutoGradeableWarning: null };
     }
@@ -1886,13 +1903,29 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'One or more questions are not available to this student' });
       }
 
+      const sourceQuestionsById = new Map(questions.map((question) => [String(question._id), question]));
+      const copiedQuestionIds = [];
+      for (const sourceQuestionId of questionIds) {
+        const sourceQuestion = sourceQuestionsById.get(String(sourceQuestionId));
+        if (!sourceQuestion) continue;
+        // eslint-disable-next-line no-await-in-loop
+        const copiedQuestion = await copyQuestionToSession({
+          sourceQuestion,
+          targetSessionId: String(session._id),
+          targetCourseId: String(course._id),
+          userId: request.user.userId,
+          addToSession: false,
+        });
+        copiedQuestionIds.push(String(copiedQuestion._id));
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { questions: questionIds, currentQuestion: questionIds[0] || '' } },
+        { $set: { questions: copiedQuestionIds, currentQuestion: copiedQuestionIds[0] || '' } },
         { new: true }
-      );
+      ).lean();
 
-      return { session: updated.toObject() };
+      return { session: updated };
     }
   );
 
@@ -2164,7 +2197,7 @@ export default async function sessionRoutes(app) {
         });
       }
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifySessionMetadataChanged(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject(), grading, nonAutoGradeableWarning: null };
     }
@@ -2246,7 +2279,7 @@ export default async function sessionRoutes(app) {
         { new: true }
       );
 
-      notifySessionUpdated(app, course, updated?._id || request.params.id);
+      notifySessionMetadataChanged(app, course, updated?._id || request.params.id);
 
       return { session: updated.toObject() };
     }
@@ -2612,7 +2645,7 @@ export default async function sessionRoutes(app) {
 
       const modifiedCount = Number(updateResult?.modifiedCount ?? updateResult?.nModified ?? 0);
       if (modifiedCount > 0) {
-        sendToUser(app, request.user.userId, 'session:updated', {
+        sendToUser(app, request.user.userId, 'session:feedback-updated', {
           courseId: String(course._id),
           sessionId: String(normalizedSession._id),
         });
@@ -3069,10 +3102,7 @@ export default async function sessionRoutes(app) {
           : { new: true }
       );
 
-      sendToUser(app, request.user.userId, 'session:updated', {
-        courseId: String(course._id),
-        sessionId: String(updated?._id || request.params.id),
-      });
+      notifyQuizSubmitted(app, course, updated?._id || request.params.id, request.user.userId);
 
       return {
         success: true,
@@ -3930,6 +3960,9 @@ export default async function sessionRoutes(app) {
 
       if (!isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      if (session.studentCreated) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
       const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);

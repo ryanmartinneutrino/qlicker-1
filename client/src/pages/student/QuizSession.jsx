@@ -263,7 +263,8 @@ export default function QuizSession() {
             case 'session:visibility-changed':
             case 'session:status-changed':
             case 'session:question-updated':
-            case 'session:updated':
+            case 'session:metadata-changed':
+            case 'session:quiz-submitted':
               fetchQuiz();
               break;
             default:
