@@ -752,144 +752,6 @@ function courseTopicValidationMessage(label = 'Questions') {
   return `${label} can only use the course topics`;
 }
 
-/**
- * Batch-optimised visibility filter for student question listings.
- *
- * Instead of calling `userCanViewQuestion` per question (which issues DB
- * queries per question), this function pre-loads all linked sessions and
- * courses in two batch queries and then evaluates visibility in-memory.
- * The visibility logic mirrors `userCanViewQuestion` exactly.
- */
-async function batchFilterVisibleQuestions(questions, user) {
-  if (!questions.length || !user) return [];
-
-  const userId = String(user.userId || '').trim();
-  const isStudent = isStudentAccount(user);
-  const isAdmin = (user.roles || []).includes('admin');
-
-  // Collect all sessionId refs and question _ids so we can batch-load sessions
-  const sessionIdsFromQuestions = questions
-    .map((q) => String(q.sessionId || '').trim())
-    .filter(Boolean);
-  const questionIds = questions
-    .map((q) => String(q._id || '').trim())
-    .filter(Boolean);
-
-  // Batch: load every session linked to any candidate question
-  const sessionFilter = {};
-  if (sessionIdsFromQuestions.length > 0 && questionIds.length > 0) {
-    sessionFilter.$or = [
-      { _id: { $in: sessionIdsFromQuestions } },
-      { questions: { $in: questionIds } },
-    ];
-  } else if (sessionIdsFromQuestions.length > 0) {
-    sessionFilter._id = { $in: sessionIdsFromQuestions };
-  } else if (questionIds.length > 0) {
-    sessionFilter.questions = { $in: questionIds };
-  }
-
-  const allSessions = Object.keys(sessionFilter).length > 0
-    ? await Session.find(sessionFilter)
-      .select('_id courseId questions currentQuestion reviewable status quiz practiceQuiz quizStart quizEnd quizExtensions')
-      .lean()
-    : [];
-
-  // Index sessions by session._id and by the question IDs they contain
-  const sessionsById = new Map(allSessions.map((s) => [String(s._id), s]));
-  const sessionsByQuestionId = new Map();
-  for (const session of allSessions) {
-    for (const qId of (session.questions || [])) {
-      const key = String(qId);
-      if (!sessionsByQuestionId.has(key)) sessionsByQuestionId.set(key, []);
-      sessionsByQuestionId.get(key).push(session);
-    }
-  }
-  // Also link sessions referenced via question.sessionId
-  for (const question of questions) {
-    const sid = String(question.sessionId || '').trim();
-    if (!sid) continue;
-    const session = sessionsById.get(sid);
-    if (!session) continue;
-    const key = String(question._id);
-    if (!sessionsByQuestionId.has(key)) sessionsByQuestionId.set(key, []);
-    const existing = sessionsByQuestionId.get(key);
-    if (!existing.some((s) => String(s._id) === sid)) {
-      existing.push(session);
-    }
-  }
-
-  // Batch: load all courses referenced by sessions + questions
-  const allCourseIds = [...new Set([
-    ...questions.map((q) => String(q.courseId || '').trim()),
-    ...allSessions.map((s) => String(s.courseId || '').trim()),
-  ].filter(Boolean))];
-
-  const allCourses = allCourseIds.length > 0
-    ? await Course.find({ _id: { $in: allCourseIds } })
-      .select('_id students instructors')
-      .lean()
-    : [];
-  const courseById = new Map(allCourses.map((c) => [String(c._id), c]));
-
-  // Evaluate visibility in-memory (mirrors userCanViewQuestion logic)
-  return questions.filter((question) => {
-    // 1. Admin sees everything
-    if (isAdmin) return true;
-
-    // 2. Owner
-    if (userOwnsQuestion(question, user)) return true;
-
-    // 3. Public outside course (publicOnQlicker + publicOnQlickerForStudents)
-    if (isQuestionVisibleOutsideCourse(question, user)) return true;
-
-    // 4. Gather linked sessions for this question
-    const linkedSessions = sessionsByQuestionId.get(String(question._id)) || [];
-
-    // 5. Gather unique courseIds from question + linked sessions
-    const relatedCourseIds = [...new Set([
-      String(question.courseId || '').trim(),
-      ...linkedSessions.map((s) => String(s.courseId || '').trim()),
-    ].filter(Boolean))];
-
-    // 6. Determine which of those courses the user is a member of
-    const memberCourseIds = relatedCourseIds.filter((cId) => {
-      const course = courseById.get(cId);
-      if (!course) return false;
-      return (course.students || []).includes(userId)
-        || (course.instructors || []).includes(userId);
-    });
-
-    // 7. Instructor-of-linked-course ≈ canManage
-    if (!isStudent) {
-      const isInstructorOfLinked = memberCourseIds.some((cId) => {
-        const course = courseById.get(cId);
-        return course && (course.instructors || []).includes(userId);
-      });
-      if (isInstructorOfLinked) return true;
-    }
-
-    // 8. Public question + member of a linked course
-    if (question.public && memberCourseIds.length > 0) return true;
-
-    // 9. Session-based visibility (reviewable or open quiz)
-    const memberSessionIds = linkedSessions
-      .filter((session) => {
-        const cId = String(session.courseId || '').trim();
-        return memberCourseIds.includes(cId);
-      })
-      .map((s) => String(s._id));
-
-    for (const sessionId of memberSessionIds) {
-      const fullSession = sessionsById.get(sessionId);
-      if (!fullSession) continue;
-      if (fullSession.reviewable) return true;
-      if (isQuestionOpenInLinkedQuiz(fullSession, userId)) return true;
-    }
-
-    return false;
-  });
-}
-
 export async function userCanViewQuestion(question, user) {
   if (!question || !user) return false;
   if (await userCanManageQuestion(question, user)) return true;
@@ -1078,22 +940,72 @@ export default async function questionRoutes(app) {
           Question.distinct('type', { courseId: String(course._id) }),
         ]);
       } else {
-        const studentCandidates = await Question.find(query)
-          .sort(sort)
-          .lean();
-        const visibleQuestions = await batchFilterVisibleQuestions(studentCandidates, request.user);
+        // Student path — build a DB-level visibility query so MongoDB only
+        // returns questions the student is allowed to see.  This avoids
+        // loading invisible questions into server memory and enables true
+        // DB-level pagination (skip/limit).
+        const courseIdStr = String(course._id);
+        const userId = request.user.userId;
+
+        // Pre-compute session-based visibility: find sessions in this course
+        // that are reviewable or have an active quiz window for this student.
+        const candidateSessions = await Session.find({
+          courseId: courseIdStr,
+          $or: [
+            { reviewable: true },
+            { status: 'running', $or: [{ quiz: true }, { practiceQuiz: true }] },
+            { status: 'visible', $or: [{ quiz: true }, { practiceQuiz: true }] },
+          ],
+        }).select('_id questions reviewable status quiz practiceQuiz quizStart quizEnd quizExtensions').lean();
+
+        const sessionVisibleQuestionIds = new Set();
+        const eligibleSessionIds = [];
+        for (const session of candidateSessions) {
+          if (session.reviewable || isQuestionOpenInLinkedQuiz(session, userId)) {
+            eligibleSessionIds.push(String(session._id));
+            for (const qId of (session.questions || [])) {
+              sessionVisibleQuestionIds.add(String(qId));
+            }
+          }
+        }
+
+        // Build the $or conditions expressing every way a student can see a question.
+        const visibilityConditions = [
+          { owner: userId },
+          { publicOnQlicker: true, publicOnQlickerForStudents: true },
+          { public: true },
+        ];
+        if (sessionVisibleQuestionIds.size > 0) {
+          visibilityConditions.push({ _id: { $in: [...sessionVisibleQuestionIds] } });
+        }
+        if (eligibleSessionIds.length > 0) {
+          visibilityConditions.push({ sessionId: { $in: eligibleSessionIds } });
+        }
+
+        // Combine user-supplied filters with visibility.
+        const studentQuery = { $and: [query, { $or: visibilityConditions }] };
 
         if (idsOnly) {
-          const questionIds = visibleQuestions.map((question) => String(question._id));
+          const questionIds = (await Question.find(studentQuery)
+            .sort(sort)
+            .select('_id')
+            .lean())
+            .map((question) => String(question._id));
           return {
             questionIds,
             total: questionIds.length,
           };
         }
 
-        total = visibleQuestions.length;
-        questionDocs = visibleQuestions.slice((page - 1) * limit, page * limit);
-        questionTypes = [...new Set(visibleQuestions.map((question) => Number(question.type)).filter(Number.isInteger))];
+        [total, questionDocs, questionTypes] = await Promise.all([
+          Question.countDocuments(studentQuery),
+          Question.find(studentQuery)
+            .sort(sort)
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .lean(),
+          Question.distinct('type', studentQuery),
+        ]);
       }
 
       let questions = await buildQuestionLibraryDetails(questionDocs || [], String(course._id));
