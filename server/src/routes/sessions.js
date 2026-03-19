@@ -1461,7 +1461,12 @@ export default async function sessionRoutes(app) {
 
   app.get(
     '/courses/:courseId/sessions',
-    { preHandler: authenticate, schema: listSessionsSchema },
+    {
+      preHandler: authenticate,
+      schema: listSessionsSchema,
+      rateLimit: { max: 60, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const course = await Course.findById(request.params.courseId).lean();
       if (!course) {
