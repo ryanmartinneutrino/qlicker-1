@@ -6,38 +6,50 @@ const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
 const RICH_TEXT_ALLOWED_ATTRIBUTES = ['width', 'height', 'data-width', 'data-height'];
+const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
+
+function createInertContainer(html) {
+  const template = document.createElement('template');
+  template.innerHTML = html || '';
+  return {
+    root: template.content || template,
+    toHtml: () => template.innerHTML,
+  };
+}
 
 function isBlobUrl(value) {
   return /^blob:/i.test(String(value || '').trim());
 }
 
+function hasBlobUrlAttributeValue(attribute, value) {
+  if (attribute === 'srcset') {
+    return /(^|,)\s*blob:/i.test(String(value || '').trim());
+  }
+  return isBlobUrl(value);
+}
+
 function stripTransientBlobUrls(html) {
   if (!html || typeof document === 'undefined') return html ?? '';
-  const container = document.createElement('div');
-  container.innerHTML = html;
+  const { root, toHtml } = createInertContainer(html);
 
-  container.querySelectorAll('img').forEach((node) => {
-    const source = String(node.getAttribute('src') || '').trim();
-    if (isBlobUrl(source)) {
+  root.querySelectorAll('*').forEach((node) => {
+    let shouldRemoveNode = false;
+    URL_ATTRIBUTES.forEach((attribute) => {
+      if (shouldRemoveNode) return;
+      const value = node.getAttribute(attribute);
+      if (!hasBlobUrlAttributeValue(attribute, value)) return;
+      if (node.tagName === 'IMG' && (attribute === 'src' || attribute === 'srcset')) {
+        shouldRemoveNode = true;
+        return;
+      }
+      node.removeAttribute(attribute);
+    });
+    if (shouldRemoveNode) {
       node.remove();
     }
   });
 
-  container.querySelectorAll('[src]:not(img)').forEach((node) => {
-    const source = String(node.getAttribute('src') || '').trim();
-    if (isBlobUrl(source)) {
-      node.removeAttribute('src');
-    }
-  });
-
-  container.querySelectorAll('[href]').forEach((node) => {
-    const href = String(node.getAttribute('href') || '').trim();
-    if (isBlobUrl(href)) {
-      node.removeAttribute('href');
-    }
-  });
-
-  return container.innerHTML;
+  return toHtml();
 }
 
 function isHtmlLike(value) {
@@ -67,10 +79,9 @@ function normalizeLatexForKatex(latex) {
 
 function convertLegacyMathScriptTags(html) {
   if (!html || typeof document === 'undefined') return html;
-  const container = document.createElement('div');
-  container.innerHTML = html;
+  const { root, toHtml } = createInertContainer(html);
 
-  container.querySelectorAll('script[type^="math/tex"]').forEach((scriptEl) => {
+  root.querySelectorAll('script[type^="math/tex"]').forEach((scriptEl) => {
     const type = (scriptEl.getAttribute('type') || '').toLowerCase();
     const displayMode = type.includes('mode=display');
     const latex = normalizeLatexForKatex((scriptEl.textContent || '').trim());
@@ -78,15 +89,14 @@ function convertLegacyMathScriptTags(html) {
     scriptEl.parentNode?.replaceChild(textNode, scriptEl);
   });
 
-  return container.innerHTML;
+  return toHtml();
 }
 
 function convertStoredMathNodesToDelimiters(html) {
   if (!html || typeof document === 'undefined') return html;
-  const container = document.createElement('div');
-  container.innerHTML = html;
+  const { root, toHtml } = createInertContainer(html);
 
-  container.querySelectorAll('[data-type="inline-math"], [data-type="block-math"]').forEach((node) => {
+  root.querySelectorAll('[data-type="inline-math"], [data-type="block-math"]').forEach((node) => {
     const rawLatex = decodeHtmlAttribute(node.getAttribute('data-latex') || '');
     const latex = normalizeLatexForKatex(rawLatex);
     const isBlock = node.getAttribute('data-type') === 'block-math';
@@ -94,7 +104,7 @@ function convertStoredMathNodesToDelimiters(html) {
     node.parentNode?.replaceChild(replacement, node);
   });
 
-  return container.innerHTML;
+  return toHtml();
 }
 
 function normalizeBlockMathMarkup(container) {
@@ -178,7 +188,8 @@ export function prepareRichTextInput(value, fallback = '') {
   const source = ((value && String(value)) || (fallback && String(fallback)) || '').trim();
   if (!source) return '';
 
-  let normalized = convertLegacyMathScriptTags(source);
+  let normalized = stripTransientBlobUrls(source);
+  normalized = convertLegacyMathScriptTags(normalized);
   normalized = convertStoredMathNodesToDelimiters(normalized);
 
   if (!isHtmlLike(normalized)) {

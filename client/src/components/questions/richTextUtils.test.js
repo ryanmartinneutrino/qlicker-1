@@ -15,28 +15,32 @@ describe('richTextUtils image attribute preservation', () => {
   });
 
   it('removes persisted blob image URLs that cannot be reloaded safely', () => {
+    const staleBlobUrl = 'blob:https://stale-origin.invalid/a4504e7d-e942-4fca-a441-d2a9ccb2c176';
     const html = [
       '<p>Prompt</p>',
-      '<p><img src="blob:https://qlicker.queensu.ca/a4504e7d-e942-4fca-a441-d2a9ccb2c176" width="240" data-width="240"></p>',
+      `<p><img src="${staleBlobUrl}" width="240" data-width="240"></p>`,
       '<p><img src="https://example.com/keep.png" width="160" data-width="160"></p>',
-      '<p><a href="blob:https://qlicker.queensu.ca/a4504e7d-e942-4fca-a441-d2a9ccb2c176">download</a></p>',
+      `<p><a href="${staleBlobUrl}">download</a></p>`,
+      `<p><video src="${staleBlobUrl}" controls></video></p>`,
     ].join('');
 
     const prepared = prepareRichTextInput(html);
     const normalized = normalizeStoredHtml(html);
 
     expect(prepared).toContain('<p>Prompt</p>');
-    expect(prepared).not.toContain('blob:https://qlicker.queensu.ca/');
+    expect(prepared).not.toContain('blob:');
     expect(prepared).toContain('src="https://example.com/keep.png"');
     expect(prepared).toContain('width="160"');
     expect(prepared).toContain('data-width="160"');
     expect(prepared).toContain('<a>download</a>');
+    expect(prepared).not.toContain('<video src=');
 
     expect(normalized).toContain('<p>Prompt</p>');
-    expect(normalized).not.toContain('blob:https://qlicker.queensu.ca/');
+    expect(normalized).not.toContain('blob:');
     expect(normalized).toContain('src="https://example.com/keep.png"');
     expect(normalized).toContain('width="160"');
     expect(normalized).toContain('data-width="160"');
     expect(normalized).toContain('<a>download</a>');
+    expect(normalized).not.toContain('<video src=');
   });
 });
