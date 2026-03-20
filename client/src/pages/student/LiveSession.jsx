@@ -7,9 +7,8 @@ import {
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import BackLinkButton from '../../components/common/BackLinkButton';
-import { buildHistogramData } from '../../utils/histogram';
-import HistogramBars from '../../components/common/HistogramBars';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
+import HistogramPanel from '../../components/questions/HistogramPanel';
 import {
   QUESTION_TYPES,
   TYPE_COLORS,
@@ -234,6 +233,9 @@ function LiveSessionContent() {
       case 'session:word-cloud-updated':
         setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
         break;
+      case 'session:histogram-updated':
+        setLiveData((prev) => prev ? { ...prev, histogramData: data.histogramData } : prev);
+        break;
       default:
         break;
     }
@@ -345,6 +347,7 @@ function LiveSessionContent() {
   const questionHidden = liveData?.questionHidden;
   const responseStats = liveData?.responseStats;
   const wordCloudData = liveData?.wordCloudData || null;
+  const histogramData = liveData?.histogramData || null;
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
   const pageProgress = liveData?.pageProgress || (
@@ -985,18 +988,13 @@ function LiveSessionContent() {
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
             {t('student.liveSession.responseStatistics')}
           </Typography>
-          {(() => {
-            const values = (responseStats.values || []).map(Number).filter((v) => !isNaN(v));
-            const histogramData = buildHistogramData(values);
-            return histogramData.length > 0 ? (
-              <HistogramBars data={histogramData} height={150} />
-            ) : null;
-          })()}
+          <HistogramPanel histogramData={histogramData} />
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             {[
-              { label: 'Count', value: responseStats.total ?? responseStats.count ?? 0 },
-              { label: 'Mean', value: responseStats.mean != null ? Number(responseStats.mean).toFixed(2) : '—' },
-              { label: 'Median', value: responseStats.median != null ? Number(responseStats.median).toFixed(2) : '—' },
+              { label: t('common.count'), value: responseStats.total ?? responseStats.count ?? 0 },
+              { label: t('professor.secondDesktop.mean'), value: responseStats.mean != null ? Number(responseStats.mean).toFixed(2) : '—' },
+              { label: t('professor.secondDesktop.stdev'), value: responseStats.stdev != null ? Number(responseStats.stdev).toFixed(2) : '—' },
+              { label: t('professor.secondDesktop.median'), value: responseStats.median != null ? Number(responseStats.median).toFixed(2) : '—' },
             ].map((e) => (
               <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 80, textAlign: 'center' }}>
                 <Typography variant="caption" color="text.secondary">{e.label}</Typography>
@@ -1004,6 +1002,15 @@ function LiveSessionContent() {
               </Paper>
             ))}
           </Box>
+          {Array.isArray(responseStats.answers) && responseStats.answers.length > 0 && (
+            <Box sx={{ maxHeight: 300, overflow: 'auto', mt: 1.5 }}>
+              {responseStats.answers.map((r, i) => (
+                <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                  <Typography variant="body2">{r.answer ?? t('common.noAnswer')}</Typography>
+                </Paper>
+              ))}
+            </Box>
+          )}
         </Paper>
       )}
 

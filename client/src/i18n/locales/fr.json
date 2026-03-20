@@ -754,6 +754,7 @@
       "backToCourse": "Retour au cours",
       "mean": "Moyenne",
       "median": "Médiane",
+      "stdev": "Écart type",
       "min": "Min",
       "max": "Max",
       "joinCodeAria": "Code d'accès : {{code}}"
@@ -1734,6 +1735,21 @@
     "hidden": "Le nuage de mots est masqué.",
     "noData": "Pas assez de données pour afficher un nuage de mots.",
     "ariaLabel": "Visualisation en nuage de mots"
+  },
+  "histogram": {
+    "generate": "Générer l'histogramme",
+    "refresh": "Mettre à jour l'histogramme",
+    "hide": "Masquer l'histogramme",
+    "show": "Afficher l'histogramme",
+    "hidden": "L'histogramme est masqué.",
+    "noData": "Pas assez de données pour afficher un histogramme.",
+    "ariaLabel": "Visualisation en histogramme",
+    "min": "Min",
+    "max": "Max",
+    "bins": "Classes",
+    "redraw": "Redessiner",
+    "overflowLow": "< {{value}}",
+    "overflowHigh": "> {{value}}"
   },
   "stopWords": [
     "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "mais",

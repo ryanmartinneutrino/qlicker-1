@@ -754,6 +754,7 @@
       "backToCourse": "Back to course",
       "mean": "Mean",
       "median": "Median",
+      "stdev": "Std Dev",
       "min": "Min",
       "max": "Max",
       "joinCodeAria": "Join code: {{code}}"
@@ -1734,6 +1735,21 @@
     "hidden": "Word cloud is hidden.",
     "noData": "Not enough word data to display.",
     "ariaLabel": "Word cloud visualization"
+  },
+  "histogram": {
+    "generate": "Generate Histogram",
+    "refresh": "Update Histogram",
+    "hide": "Hide Histogram",
+    "show": "Show Histogram",
+    "hidden": "Histogram is hidden.",
+    "noData": "Not enough data to display a histogram.",
+    "ariaLabel": "Histogram visualization",
+    "min": "Min",
+    "max": "Max",
+    "bins": "Bins",
+    "redraw": "Redraw",
+    "overflowLow": "< {{value}}",
+    "overflowHigh": "> {{value}}"
   },
   "stopWords": [
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
