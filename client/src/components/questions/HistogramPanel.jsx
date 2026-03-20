@@ -59,9 +59,12 @@ export default function HistogramPanel({
 
   const handleRedraw = useCallback(() => {
     const opts = {};
-    if (customMin !== '') opts.rangeMin = Number(customMin);
-    if (customMax !== '') opts.rangeMax = Number(customMax);
-    if (customBins !== '') opts.numBins = Math.max(1, Math.round(Number(customBins)));
+    const parsedMin = Number(customMin);
+    const parsedMax = Number(customMax);
+    const parsedBins = Number(customBins);
+    if (customMin !== '' && !isNaN(parsedMin)) opts.rangeMin = parsedMin;
+    if (customMax !== '' && !isNaN(parsedMax)) opts.rangeMax = parsedMax;
+    if (customBins !== '' && !isNaN(parsedBins)) opts.numBins = Math.max(1, Math.round(parsedBins));
     handleGenerate(opts);
   }, [handleGenerate, customMin, customMax, customBins]);
 
