@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar,
+  Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar, Collapse,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TableSortLabel, Tabs, Tab, LinearProgress, TextField, Autocomplete,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
   Edit as EditIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import {
@@ -22,6 +24,7 @@ import {
 } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
+import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildCourseTitle } from '../../utils/courseTitle';
 
@@ -547,6 +550,8 @@ export default function SessionReview() {
   const [groupCategories, setGroupCategories] = useState([]);
   const [selectedCatIdx, setSelectedCatIdx] = useState(-1);
   const [selectedGroupIdx, setSelectedGroupIdx] = useState(-1);
+  const [expandedSARows, setExpandedSARows] = useState({});
+  const [wordCloudByRow, setWordCloudByRow] = useState({});
   const requestedReturnTab = Number.parseInt(searchParams.get('returnTab') || '', 10);
   const resolvedReturnTab = Number.isInteger(requestedReturnTab) && requestedReturnTab >= 0 ? requestedReturnTab : 0;
   const backToCoursePath = resolvedReturnTab > 0
@@ -650,6 +655,23 @@ export default function SessionReview() {
     });
   }, []);
 
+  const toggleSARow = useCallback((rowKey) => {
+    setExpandedSARows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
+  }, []);
+
+  const handleGenerateWordCloudForQuestion = useCallback(async (questionId, rowKey) => {
+    const stopWords = t('stopWords', { returnObjects: true });
+    const payload = Array.isArray(stopWords) ? { stopWords } : {};
+    try {
+      const res = await apiClient.post(`/questions/${questionId}/word-cloud`, payload);
+      if (res.data?.wordCloudData) {
+        setWordCloudByRow((prev) => ({ ...prev, [rowKey]: res.data.wordCloudData }));
+      }
+    } catch {
+      // silently fail — user can retry
+    }
+  }, [t]);
+
   // ---- Stats data for ALL questions / attempts ----
 
   const questionAttemptRows = useMemo(() => questions.flatMap((q, qi) => {
@@ -708,6 +730,15 @@ export default function SessionReview() {
         }))
         : null;
 
+      // For SA questions, collect the answer text for display in the expandable section.
+      const saResponses = qType === QUESTION_TYPES.SHORT_ANSWER
+        ? attemptResponses.map((r) => ({
+          answer: r?.answer,
+          answerWysiwyg: r?.answerWysiwyg,
+          studentName: r?.studentName || '',
+        }))
+        : null;
+
       return {
         key: `${String(q._id || qi)}-attempt-${attemptNumber}`,
         question: q,
@@ -721,6 +752,7 @@ export default function SessionReview() {
         chartData,
         correctIndices,
         responseCount: attemptResponses.length,
+        saResponses,
       };
     });
   }), [progressList, questions, studentResults]);
@@ -1132,6 +1164,44 @@ export default function SessionReview() {
                       <Typography variant="body2" color="text.secondary">
                         {t('professor.sessionReview.tolerance', { value: q.toleranceNumerical ?? 0 })}
                       </Typography>
+                    </Box>
+                  )}
+
+                  {/* SA: expandable responses + word cloud */}
+                  {qT === QUESTION_TYPES.SHORT_ANSWER && row.saResponses && row.saResponses.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => toggleSARow(row.key)}
+                        startIcon={expandedSARows[row.key] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      >
+                        {expandedSARows[row.key]
+                          ? t('professor.sessionReview.hideResponses')
+                          : t('professor.sessionReview.showResponses')}
+                      </Button>
+                      <Collapse in={!!expandedSARows[row.key]}>
+                        <Box sx={{ mt: 1 }}>
+                          <WordCloudPanel
+                            wordCloudData={wordCloudByRow[row.key] || q.wordCloudData}
+                            onGenerate={() => handleGenerateWordCloudForQuestion(q._id, row.key)}
+                            showControls
+                          />
+                          <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                            {row.saResponses.map((r, idx) => (
+                              <Paper key={idx} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                                {r.answerWysiwyg ? (
+                                  <RichContent html={r.answerWysiwyg} />
+                                ) : (
+                                  <Typography variant="body2">
+                                    {normalizeAnswerValue(r.answer) || t('common.noAnswer')}
+                                  </Typography>
+                                )}
+                              </Paper>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Collapse>
                     </Box>
                   )}
                 </Paper>

@@ -160,6 +160,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 
 - Decide whether to support legacy `users.services.password.reset.*` path directly or transform into the new `services.resetPassword` path
 - Confirm whether `meteor_accounts_loginServiceConfiguration` should be deprecated or migrated
+- **Statistical data storage on questions:** In MeteorJS, per-question statistical summaries (e.g. response distributions, word frequency maps) were stored directly on the question document to avoid every client device computing them independently. The new app follows this same pattern for the word cloud feature (`wordCloudData` on the Question schema stores word frequencies, visibility, and generation timestamp). This pattern should be considered for other aggregate statistics as well. Currently, `buildResponseStats()` in `sessions.js` recomputes distribution/numerical stats on each API call. For high-concurrency sessions, pre-computing and caching these stats on the question document (like `wordCloudData`) would reduce redundant computation. This is a future optimization opportunity — it is not blocking for the current release but should be addressed when scaling to thousands of concurrent users.
 
 ---
 

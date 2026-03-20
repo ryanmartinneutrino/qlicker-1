@@ -623,8 +623,10 @@ describe('PATCH /api/v1/questions/:id', () => {
       payload: { questionId: question._id },
     });
     expect(addRes.statusCode).toBe(200);
+    const addResQs = addRes.json().session.questions;
+    const copiedQId = addResQs[addResQs.length - 1];
 
-    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${copiedQId}`, {
       token: profToken,
       payload: {
         type: 6,
@@ -719,8 +721,10 @@ describe('PATCH /api/v1/questions/:id', () => {
       payload: { questionId: question._id },
     });
     expect(addRes.statusCode).toBe(200);
+    const addResQs = addRes.json().session.questions;
+    const copiedQId = addResQs[addResQs.length - 1];
 
-    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${question._id}`, {
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${copiedQId}`, {
       token: profToken,
       payload: {
         type: 6,
@@ -737,7 +741,7 @@ describe('PATCH /api/v1/questions/:id', () => {
       expect.objectContaining({
         courseId: course._id,
         sessionId: session._id,
-        questionId: question._id,
+        questionId: copiedQId,
       })
     );
   });
