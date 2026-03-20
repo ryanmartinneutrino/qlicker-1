@@ -11,6 +11,7 @@ import {
 } from '../services/questionImportExport.js';
 import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
+import { computeHistogramData } from '../utils/histogram.js';
 
 const createQuestionSchema = {
   body: {
@@ -2166,6 +2167,87 @@ export default async function questionRoutes(app) {
         : updatedQuestion?.sessionOptions?.wordCloudData;
 
       return { wordCloudData };
+    }
+  );
+
+  // POST /questions/:id/histogram - Generate histogram data for a question (prof review)
+  app.post(
+    '/questions/:id/histogram',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            numBins: { type: 'number' },
+            rangeMin: { type: 'number' },
+            rangeMax: { type: 'number' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const question = await Question.findById(request.params.id).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
+      if (Number(question.type) !== 4) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Histogram is only supported for numerical questions' });
+      }
+
+      // Authorization: must be instructor/admin of the course containing this question
+      const courseId = question.courseId || '';
+      const sessionId = question.sessionId || '';
+      let course = null;
+      if (courseId) {
+        course = await Course.findById(courseId).lean();
+      } else if (sessionId) {
+        const session = await Session.findById(sessionId).lean();
+        if (session?.courseId) {
+          course = await Course.findById(session.courseId).lean();
+        }
+      }
+      if (!course || !isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      // Get all responses for this question (across all attempts, for review context)
+      const responses = await Response.find({ questionId: question._id }).lean();
+
+      const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
+
+      const histOpts = {};
+      if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;
+      if (request.body?.rangeMin != null) histOpts.rangeMin = request.body.rangeMin;
+      if (request.body?.rangeMax != null) histOpts.rangeMax = request.body.rangeMax;
+
+      const computed = computeHistogramData(values, histOpts);
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        question._id,
+        {
+          $set: {
+            'sessionOptions.histogramData.bins': computed.bins,
+            'sessionOptions.histogramData.overflowLow': computed.overflowLow,
+            'sessionOptions.histogramData.overflowHigh': computed.overflowHigh,
+            'sessionOptions.histogramData.rangeMin': computed.rangeMin,
+            'sessionOptions.histogramData.rangeMax': computed.rangeMax,
+            'sessionOptions.histogramData.numBins': computed.numBins,
+            'sessionOptions.histogramData.visible': true,
+            'sessionOptions.histogramData.generatedAt': new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject
+        ? updatedQuestion.sessionOptions.histogramData.toObject()
+        : updatedQuestion?.sessionOptions?.histogramData;
+
+      return { histogramData };
     }
   );
 }

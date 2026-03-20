@@ -12,10 +12,9 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
-import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
-import HistogramBars from '../../components/common/HistogramBars';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
+import HistogramPanel from '../../components/questions/HistogramPanel';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -154,7 +153,7 @@ function RichContent({ html, fallback }) {
 }
 
 /** Numerical statistics display (large format) with histogram. */
-function NumericalStats({ stats, allResponses }) {
+function NumericalStats({ stats }) {
   const { t } = useTranslation();
   if (!stats) {
     return (
@@ -164,31 +163,21 @@ function NumericalStats({ stats, allResponses }) {
     );
   }
 
-  const values = (allResponses || [])
-    .map((r) => Number(r.answer))
-    .filter((v) => !isNaN(v));
-
-  const histogramData = buildHistogramData(values);
-
   const entries = [
     { label: t('professor.secondDesktop.mean'), value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.stdev'), value: stats.stdev != null ? Number(stats.stdev).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.median'), value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.min'), value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.max'), value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
-    <Box>
-      {histogramData.length > 0 && (
-        <HistogramBars data={histogramData} height={190} />
-      )}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}>
-        {entries.map((e) => (
-          <Paper key={e.label} variant="outlined" sx={{ p: 2, minWidth: 110, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">{e.label}</Typography>
-            <Typography variant="h5" sx={{ fontWeight: 700 }}>{e.value}</Typography>
-          </Paper>
-        ))}
-      </Box>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, justifyContent: 'center' }}>
+      {entries.map((e) => (
+        <Paper key={e.label} variant="outlined" sx={{ p: 2, minWidth: 110, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">{e.label}</Typography>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>{e.value}</Typography>
+        </Paper>
+      ))}
     </Box>
   );
 }
@@ -343,6 +332,9 @@ export default function PresentationWindow() {
             case 'session:word-cloud-updated':
               setLiveData((prev) => prev ? { ...prev, wordCloudData: d.wordCloudData } : prev);
               break;
+            case 'session:histogram-updated':
+              setLiveData((prev) => prev ? { ...prev, histogramData: d.histogramData } : prev);
+              break;
             case 'session:status-changed':
               if (d.status === 'done') { setSessionEnded(true); }
               fetchLive();
@@ -403,6 +395,7 @@ export default function PresentationWindow() {
   const currentQ = liveData?.currentQuestion;
   const responseStats = liveData?.responseStats;
   const wordCloudData = liveData?.wordCloudData || currentQ?.sessionOptions?.wordCloudData || null;
+  const histogramData = liveData?.histogramData || currentQ?.sessionOptions?.histogramData || null;
   const allResponses = liveData?.allResponses || [];
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
@@ -743,7 +736,11 @@ export default function PresentationWindow() {
               <ShortAnswerList responses={responseStats.answers || allResponses} />
             </>
           ) : responseStats?.type === 'numerical' ? (
-            <NumericalStats stats={responseStats} allResponses={allResponses} />
+            <>
+              <HistogramPanel histogramData={histogramData} />
+              <NumericalStats stats={responseStats} />
+              <ShortAnswerList responses={responseStats.answers || allResponses} />
+            </>
           ) : allResponses.length > 0 ? (
             <ShortAnswerList responses={allResponses} />
           ) : (

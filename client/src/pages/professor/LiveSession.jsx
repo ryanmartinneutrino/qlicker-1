@@ -23,13 +23,12 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
-import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
-import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import StudentIdentity from '../../components/common/StudentIdentity';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
+import HistogramPanel from '../../components/questions/HistogramPanel';
 import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
@@ -281,39 +280,28 @@ function ShortAnswerList({ responses, showStudentNames = false }) {
 }
 
 /** Numerical statistics display with histogram. */
-function NumericalStats({ stats, allResponses }) {
+function NumericalStats({ stats }) {
   const { t } = useTranslation();
   if (!stats) {
     return <Typography variant="body2" color="text.secondary">{t('professor.liveSession.noResponsesYet')}</Typography>;
   }
 
-  // Build histogram bins from raw values
-  const values = (allResponses || [])
-    .map((r) => Number(r.answer))
-    .filter((v) => !isNaN(v));
-
-  const histogramData = buildHistogramData(values);
-
   const entries = [
     { label: t('common.count'), value: stats.total ?? stats.count ?? 0 },
     { label: t('professor.secondDesktop.mean'), value: stats.mean != null ? Number(stats.mean).toFixed(2) : '—' },
+    { label: t('professor.secondDesktop.stdev'), value: stats.stdev != null ? Number(stats.stdev).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.median'), value: stats.median != null ? Number(stats.median).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.min'), value: stats.min != null ? Number(stats.min).toFixed(2) : '—' },
     { label: t('professor.secondDesktop.max'), value: stats.max != null ? Number(stats.max).toFixed(2) : '—' },
   ];
   return (
-    <Box>
-      {histogramData.length > 0 && (
-        <HistogramBars data={histogramData} height={170} />
-      )}
-      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-        {entries.map((e) => (
-          <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 90, textAlign: 'center' }}>
-            <Typography variant="caption" color="text.secondary">{e.label}</Typography>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>{e.value}</Typography>
-          </Paper>
-        ))}
-      </Box>
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+      {entries.map((e) => (
+        <Paper key={e.label} variant="outlined" sx={{ p: 1.5, minWidth: 90, textAlign: 'center' }}>
+          <Typography variant="caption" color="text.secondary">{e.label}</Typography>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>{e.value}</Typography>
+        </Paper>
+      ))}
     </Box>
   );
 }
@@ -425,6 +413,9 @@ function LiveSessionContent() {
         break;
       case 'session:word-cloud-updated':
         setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
+        break;
+      case 'session:histogram-updated':
+        setLiveData((prev) => prev ? { ...prev, histogramData: data.histogramData } : prev);
         break;
       case 'session:status-changed':
         if (data.status === 'done') {
@@ -722,6 +713,26 @@ function LiveSessionContent() {
     }
   }, [sessionId]);
 
+  const handleGenerateHistogram = useCallback(async (opts = {}) => {
+    if (!sessionId) return;
+    try {
+      const res = await apiClient.post(`/sessions/${sessionId}/histogram`, opts);
+      setLiveData((prev) => prev ? { ...prev, histogramData: res.data?.histogramData } : prev);
+    } catch {
+      // silently fail — user can retry
+    }
+  }, [sessionId]);
+
+  const handleToggleHistogramVisibility = useCallback(async (visible) => {
+    if (!sessionId) return;
+    try {
+      const res = await apiClient.patch(`/sessions/${sessionId}/histogram-visibility`, { visible });
+      setLiveData((prev) => prev ? { ...prev, histogramData: res.data?.histogramData } : prev);
+    } catch {
+      // silently fail
+    }
+  }, [sessionId]);
+
   // --------------------------------------------------
   // Derived values
   // --------------------------------------------------
@@ -738,6 +749,7 @@ function LiveSessionContent() {
   const currentAttempt = liveData?.currentAttempt;
   const responseStats = liveData?.responseStats;
   const wordCloudData = liveData?.wordCloudData || currentQ?.sessionOptions?.wordCloudData || null;
+  const histogramData = liveData?.histogramData || currentQ?.sessionOptions?.histogramData || null;
   const allResponses = liveData?.allResponses || [];
   const responseCount = liveData?.responseCount ?? allResponses.length;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
@@ -1367,7 +1379,19 @@ function LiveSessionContent() {
                     />
                   </>
                 ) : responseStats?.type === 'numerical' ? (
-                  <NumericalStats stats={responseStats} allResponses={allResponses} />
+                  <>
+                    <HistogramPanel
+                      histogramData={histogramData}
+                      onGenerate={handleGenerateHistogram}
+                      onToggleVisible={handleToggleHistogramVisibility}
+                      showControls
+                    />
+                    <NumericalStats stats={responseStats} />
+                    <ShortAnswerList
+                      responses={responseStats.answers || allResponses}
+                      showStudentNames
+                    />
+                  </>
                 ) : allResponses.length > 0 ? (
                   <ShortAnswerList
                     responses={allResponses}

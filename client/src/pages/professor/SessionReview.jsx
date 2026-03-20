@@ -25,6 +25,7 @@ import {
 import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
+import HistogramPanel from '../../components/questions/HistogramPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildCourseTitle } from '../../utils/courseTitle';
 
@@ -551,7 +552,9 @@ export default function SessionReview() {
   const [selectedCatIdx, setSelectedCatIdx] = useState(-1);
   const [selectedGroupIdx, setSelectedGroupIdx] = useState(-1);
   const [expandedSARows, setExpandedSARows] = useState({});
+  const [expandedNURows, setExpandedNURows] = useState({});
   const [wordCloudByRow, setWordCloudByRow] = useState({});
+  const [histogramByRow, setHistogramByRow] = useState({});
   const requestedReturnTab = Number.parseInt(searchParams.get('returnTab') || '', 10);
   const resolvedReturnTab = Number.isInteger(requestedReturnTab) && requestedReturnTab >= 0 ? requestedReturnTab : 0;
   const backToCoursePath = resolvedReturnTab > 0
@@ -659,6 +662,10 @@ export default function SessionReview() {
     setExpandedSARows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
   }, []);
 
+  const toggleNURow = useCallback((rowKey) => {
+    setExpandedNURows((prev) => ({ ...prev, [rowKey]: !prev[rowKey] }));
+  }, []);
+
   const handleGenerateWordCloudForQuestion = useCallback(async (questionId, rowKey) => {
     const stopWords = t('stopWords', { returnObjects: true });
     const payload = Array.isArray(stopWords) ? { stopWords } : {};
@@ -671,6 +678,17 @@ export default function SessionReview() {
       // silently fail — user can retry
     }
   }, [t]);
+
+  const handleGenerateHistogramForQuestion = useCallback(async (questionId, rowKey, opts = {}) => {
+    try {
+      const res = await apiClient.post(`/questions/${questionId}/histogram`, opts);
+      if (res.data?.histogramData) {
+        setHistogramByRow((prev) => ({ ...prev, [rowKey]: res.data.histogramData }));
+      }
+    } catch {
+      // silently fail — user can retry
+    }
+  }, []);
 
   // ---- Stats data for ALL questions / attempts ----
 
@@ -739,6 +757,14 @@ export default function SessionReview() {
         }))
         : null;
 
+      // For NU questions, collect the answer values for display in the expandable section.
+      const nuResponses = qType === QUESTION_TYPES.NUMERICAL
+        ? attemptResponses.map((r) => ({
+          answer: r?.answer,
+          studentName: r?.studentName || '',
+        }))
+        : null;
+
       return {
         key: `${String(q._id || qi)}-attempt-${attemptNumber}`,
         question: q,
@@ -753,6 +779,7 @@ export default function SessionReview() {
         correctIndices,
         responseCount: attemptResponses.length,
         saResponses,
+        nuResponses,
       };
     });
   }), [progressList, questions, studentResults]);
@@ -1197,6 +1224,40 @@ export default function SessionReview() {
                                     {normalizeAnswerValue(r.answer) || t('common.noAnswer')}
                                   </Typography>
                                 )}
+                              </Paper>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Collapse>
+                    </Box>
+                  )}
+
+                  {/* NU: expandable responses + histogram */}
+                  {qT === QUESTION_TYPES.NUMERICAL && row.nuResponses && row.nuResponses.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => toggleNURow(row.key)}
+                        startIcon={expandedNURows[row.key] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      >
+                        {expandedNURows[row.key]
+                          ? t('professor.sessionReview.hideResponses')
+                          : t('professor.sessionReview.showResponses')}
+                      </Button>
+                      <Collapse in={!!expandedNURows[row.key]}>
+                        <Box sx={{ mt: 1 }}>
+                          <HistogramPanel
+                            histogramData={histogramByRow[row.key] || q.sessionOptions?.histogramData}
+                            onGenerate={(opts) => handleGenerateHistogramForQuestion(q._id, row.key, opts)}
+                            showControls
+                          />
+                          <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                            {row.nuResponses.map((r, idx) => (
+                              <Paper key={idx} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                                <Typography variant="body2">
+                                  {normalizeAnswerValue(r.answer) || t('common.noAnswer')}
+                                </Typography>
                               </Paper>
                             ))}
                           </Box>

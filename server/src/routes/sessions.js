@@ -26,6 +26,7 @@ import {
 } from '../services/grading.js';
 import { userCanViewQuestion } from './questions.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
+import { computeHistogramData } from '../utils/histogram.js';
 
 const createSessionSchema = {
   body: {
@@ -826,10 +827,11 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
     delete sanitized.solutionHtml;
   }
 
-  // Strip word cloud data — students should not see it during quizzes.
+  // Strip word cloud data and histogram data — students should not see it during quizzes.
   if (sanitized.sessionOptions) {
     sanitized.sessionOptions = { ...sanitized.sessionOptions };
     delete sanitized.sessionOptions.wordCloudData;
+    delete sanitized.sessionOptions.histogramData;
   }
 
   return sanitized;
@@ -880,10 +882,12 @@ function buildResponseStats(question, responses) {
     };
   }
 
-  // Numerical: stats
+  // Numerical: stats + individual answers
   if (type === 4) {
     const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
     const mean = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    const variance = values.length > 0 ? values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length : 0;
+    const stdev = Math.sqrt(variance);
     const sorted = [...values].sort((a, b) => a - b);
     const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
     const min = sorted.length > 0 ? sorted[0] : 0;
@@ -892,7 +896,12 @@ function buildResponseStats(question, responses) {
     return {
       type: 'numerical',
       values,
+      answers: responses.map((r) => ({
+        studentUserId: getResponseStudentId(r),
+        answer: r.answer,
+      })),
       mean: Math.round(mean * 100) / 100,
+      stdev: Math.round(stdev * 100) / 100,
       median,
       min,
       max,
@@ -3369,6 +3378,17 @@ export default async function sessionRoutes(app) {
               })),
             };
           }
+          if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
+            responseStats = {
+              ...responseStats,
+              answers: responseStats.answers.map((entry) => ({
+                answer: entry.answer,
+                ...(includeNamesInPayload
+                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+                  : {}),
+              })),
+            };
+          }
         } else if (isJoined && !questionHidden) {
           if (showStats) {
             // Single query: get all responses (includes student's own)
@@ -3387,6 +3407,14 @@ export default async function sessionRoutes(app) {
                 answers: responseStats.answers.map((entry) => ({
                   answer: entry.answer,
                   answerWysiwyg: entry.answerWysiwyg,
+                })),
+              };
+            }
+            if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
+              responseStats = {
+                ...responseStats,
+                answers: responseStats.answers.map((entry) => ({
+                  answer: entry.answer,
                 })),
               };
             }
@@ -3505,6 +3533,10 @@ export default async function sessionRoutes(app) {
           if (currentQuestion.sessionOptions?.wordCloudData) {
             result.wordCloudData = currentQuestion.sessionOptions.wordCloudData;
           }
+          // Include histogram data for instructors (always)
+          if (currentQuestion.sessionOptions?.histogramData) {
+            result.histogramData = currentQuestion.sessionOptions.histogramData;
+          }
         }
       } else {
         // Student view
@@ -3526,16 +3558,21 @@ export default async function sessionRoutes(app) {
             delete studentQ.solutionText;
             delete studentQ.solutionHtml;
           }
-          // Strip word cloud data from student question payload — sent separately.
+          // Strip word cloud data and histogram data from student question payload — sent separately.
           if (studentQ.sessionOptions) {
             studentQ.sessionOptions = { ...studentQ.sessionOptions };
             delete studentQ.sessionOptions.wordCloudData;
+            delete studentQ.sessionOptions.histogramData;
           }
           result.currentQuestion = studentQ;
 
           // Students/presentation only see word cloud when stats are visible AND cloud is visible
           if (showStats && currentQuestion.sessionOptions?.wordCloudData?.visible) {
             result.wordCloudData = currentQuestion.sessionOptions.wordCloudData;
+          }
+          // Students/presentation only see histogram when stats are visible AND histogram is visible
+          if (showStats && currentQuestion.sessionOptions?.histogramData?.visible) {
+            result.histogramData = currentQuestion.sessionOptions.histogramData;
           }
         }
         result.studentResponse = studentResponse;
@@ -3871,6 +3908,161 @@ export default async function sessionRoutes(app) {
       return { wordCloudData };
     }
   );
+
+  // POST /sessions/:id/histogram - Generate / refresh histogram data for current NU question
+  app.post(
+    '/sessions/:id/histogram',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            numBins: { type: 'number' },
+            rangeMin: { type: 'number' },
+            rangeMax: { type: 'number' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionId = session.currentQuestion;
+      if (!questionId) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
+      }
+
+      const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
+      if (Number(question.type) !== 4) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Histogram is only supported for numerical questions' });
+      }
+
+      const attempts = question.sessionOptions?.attempts || [];
+      const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
+
+      const responses = await Response.find({
+        questionId,
+        attempt: currentAttempt.number,
+      }).lean();
+
+      const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
+
+      const histOpts = {};
+      if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;
+      if (request.body?.rangeMin != null) histOpts.rangeMin = request.body.rangeMin;
+      if (request.body?.rangeMax != null) histOpts.rangeMax = request.body.rangeMax;
+
+      const computed = computeHistogramData(values, histOpts);
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        questionId,
+        {
+          $set: {
+            'sessionOptions.histogramData.bins': computed.bins,
+            'sessionOptions.histogramData.overflowLow': computed.overflowLow,
+            'sessionOptions.histogramData.overflowHigh': computed.overflowHigh,
+            'sessionOptions.histogramData.rangeMin': computed.rangeMin,
+            'sessionOptions.histogramData.rangeMax': computed.rangeMax,
+            'sessionOptions.histogramData.numBins': computed.numBins,
+            'sessionOptions.histogramData.visible': true,
+            'sessionOptions.histogramData.generatedAt': new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject
+        ? updatedQuestion.sessionOptions.histogramData.toObject()
+        : updatedQuestion?.sessionOptions?.histogramData;
+
+      sendToCourseMembers(app, course, 'session:histogram-updated', {
+        courseId: String(course._id),
+        sessionId: String(session._id),
+        questionId: String(questionId),
+        histogramData,
+      });
+
+      return { histogramData };
+    }
+  );
+
+  // PATCH /sessions/:id/histogram-visibility - Toggle histogram visibility
+  app.patch(
+    '/sessions/:id/histogram-visibility',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+      schema: {
+        body: {
+          type: 'object',
+          required: ['visible'],
+          properties: {
+            visible: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionId = session.currentQuestion;
+      if (!questionId) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
+      }
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        questionId,
+        { $set: { 'sessionOptions.histogramData.visible': request.body.visible } },
+        { new: true }
+      );
+
+      const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject
+        ? updatedQuestion.sessionOptions.histogramData.toObject()
+        : updatedQuestion?.sessionOptions?.histogramData;
+
+      sendToCourseMembers(app, course, 'session:histogram-updated', {
+        courseId: String(course._id),
+        sessionId: String(session._id),
+        questionId: String(questionId),
+        histogramData,
+      });
+
+      return { histogramData };
+    }
+  );
+
   app.post(
     '/sessions/:id/new-attempt',
     { preHandler: authenticate },

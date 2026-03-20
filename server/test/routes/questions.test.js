@@ -1817,3 +1817,68 @@ describe('PATCH /api/v1/sessions/:sessionId/questions/order', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+// ---------- POST /api/v1/questions/:id/histogram ----------
+describe('POST /api/v1/questions/:id/histogram', () => {
+  it('generates histogram data for a numerical question in review mode', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>What value?</p>',
+      plainText: 'What value?',
+    });
+
+    // The copied question ID is needed; get it from the session
+    const sessRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+    const copiedQuestionId = sessRes.json().session.questions[sessRes.json().session.questions.length - 1];
+
+    await Response.create([
+      { questionId: copiedQuestionId, studentUserId: 'user1', attempt: 1, answer: '10' },
+      { questionId: copiedQuestionId, studentUserId: 'user2', attempt: 1, answer: '20' },
+      { questionId: copiedQuestionId, studentUserId: 'user3', attempt: 1, answer: '30' },
+    ]);
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/questions/${copiedQuestionId}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.histogramData).toBeDefined();
+    expect(Array.isArray(body.histogramData.bins)).toBe(true);
+    expect(body.histogramData.bins.length).toBeGreaterThan(0);
+    expect(body.histogramData.visible).toBe(true);
+  });
+
+  it('rejects histogram for non-numerical question', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 2,
+      content: '<p>SA question</p>',
+      plainText: 'SA question',
+    });
+
+    const sessRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+    });
+    const copiedQuestionId = sessRes.json().session.questions[sessRes.json().session.questions.length - 1];
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/questions/${copiedQuestionId}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});

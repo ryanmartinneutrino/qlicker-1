@@ -46,6 +46,30 @@ const WordCloudDataSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const HistogramBinSchema = new mongoose.Schema(
+  {
+    label: { type: String, required: true },
+    count: { type: Number, required: true },
+    min: { type: Number },
+    max: { type: Number },
+  },
+  { _id: false }
+);
+
+const HistogramDataSchema = new mongoose.Schema(
+  {
+    bins: { type: [HistogramBinSchema], default: [] },
+    overflowLow: { type: Number, default: 0 },
+    overflowHigh: { type: Number, default: 0 },
+    rangeMin: { type: Number },
+    rangeMax: { type: Number },
+    numBins: { type: Number },
+    visible: { type: Boolean, default: false },
+    generatedAt: { type: Date },
+  },
+  { _id: false }
+);
+
 const SessionOptionsSchema = new mongoose.Schema(
   {
     hidden: { type: Boolean, default: false },
@@ -56,6 +80,7 @@ const SessionOptionsSchema = new mongoose.Schema(
     attemptWeights: { type: [Number], default: [] },
     attempts: { type: [AttemptSchema], default: [] },
     wordCloudData: { type: WordCloudDataSchema },
+    histogramData: { type: HistogramDataSchema },
   },
   { _id: false }
 );
