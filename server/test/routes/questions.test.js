@@ -623,7 +623,8 @@ describe('PATCH /api/v1/questions/:id', () => {
       payload: { questionId: question._id },
     });
     expect(addRes.statusCode).toBe(200);
-    const copiedQId = addRes.json().session.questions[addRes.json().session.questions.length - 1];
+    const addResQs = addRes.json().session.questions;
+    const copiedQId = addResQs[addResQs.length - 1];
 
     const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${copiedQId}`, {
       token: profToken,
@@ -720,7 +721,8 @@ describe('PATCH /api/v1/questions/:id', () => {
       payload: { questionId: question._id },
     });
     expect(addRes.statusCode).toBe(200);
-    const copiedQId = addRes.json().session.questions[addRes.json().session.questions.length - 1];
+    const addResQs = addRes.json().session.questions;
+    const copiedQId = addResQs[addResQs.length - 1];
 
     const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${copiedQId}`, {
       token: profToken,
