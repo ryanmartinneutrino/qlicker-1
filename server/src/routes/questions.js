@@ -2175,6 +2175,7 @@ export default async function questionRoutes(app) {
     '/questions/:id/histogram',
     {
       preHandler: authenticate,
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',

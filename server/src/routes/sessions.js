@@ -3914,6 +3914,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/histogram',
     {
       preHandler: authenticate,
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
@@ -4009,6 +4010,7 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/histogram-visibility',
     {
       preHandler: authenticate,
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
