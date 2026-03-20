@@ -727,7 +727,9 @@
       "filterByGroup": "Filtrer par groupe",
       "allStudentsFilter": "Tous les étudiants",
       "selectCategoryFilter": "Catégorie",
-      "selectGroupFilter": "Groupe"
+      "selectGroupFilter": "Groupe",
+      "showResponses": "Afficher les réponses",
+      "hideResponses": "Masquer les réponses"
     },
     "secondDesktop": {
       "joinCode": "Code d'inscription",
@@ -1723,5 +1725,30 @@
         }
       ]
     }
-  }
+  },
+  "wordCloud": {
+    "generate": "Générer le nuage de mots",
+    "refresh": "Actualiser le nuage de mots",
+    "hide": "Masquer le nuage de mots",
+    "show": "Afficher le nuage de mots",
+    "hidden": "Le nuage de mots est masqué.",
+    "noData": "Pas assez de données pour afficher un nuage de mots.",
+    "ariaLabel": "Visualisation en nuage de mots",
+    "showResponses": "Afficher les réponses",
+    "hideResponses": "Masquer les réponses"
+  },
+  "stopWords": [
+    "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "mais",
+    "en", "dans", "sur", "à", "au", "aux", "pour", "par", "avec", "sans",
+    "est", "sont", "été", "être", "avoir", "eu", "fait", "faire",
+    "ce", "cette", "ces", "il", "elle", "ils", "elles", "on", "nous",
+    "vous", "je", "tu", "me", "te", "se", "lui", "leur", "mon", "ton",
+    "son", "ma", "ta", "sa", "mes", "tes", "ses", "nos", "vos", "leurs",
+    "qui", "que", "quoi", "dont", "où", "quand", "comment", "pourquoi",
+    "ne", "pas", "ni", "si", "alors", "plus", "moins", "très", "aussi",
+    "tout", "tous", "toute", "toutes", "même", "autre", "autres",
+    "comme", "bien", "encore", "entre", "ici", "avant", "après",
+    "pendant", "sous", "vers", "chez", "car", "donc", "puis",
+    "ya", "peu", "trop", "assez", "peut", "cela", "chaque"
+  ]
 }

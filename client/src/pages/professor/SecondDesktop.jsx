@@ -15,6 +15,7 @@ import { prepareRichTextInput, renderKatexInElement } from '../../components/que
 import { buildHistogramData } from '../../utils/histogram';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import HistogramBars from '../../components/common/HistogramBars';
+import WordCloudPanel from '../../components/questions/WordCloudPanel';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -339,6 +340,9 @@ export default function PresentationWindow() {
             case 'session:visibility-changed':
               setLiveData((prev) => applyVisibilityChanged(prev, d));
               break;
+            case 'session:word-cloud-updated':
+              setLiveData((prev) => prev ? { ...prev, wordCloudData: d.wordCloudData } : prev);
+              break;
             case 'session:status-changed':
               if (d.status === 'done') { setSessionEnded(true); }
               fetchLive();
@@ -398,6 +402,7 @@ export default function PresentationWindow() {
   );
   const currentQ = liveData?.currentQuestion;
   const responseStats = liveData?.responseStats;
+  const wordCloudData = liveData?.wordCloudData || currentQ?.wordCloudData || null;
   const allResponses = liveData?.allResponses || [];
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
@@ -733,7 +738,10 @@ export default function PresentationWindow() {
             {t('professor.secondDesktop.responses')}
           </Typography>
           {responseStats?.type === 'shortAnswer' ? (
-            <ShortAnswerList responses={responseStats.answers || allResponses} />
+            <>
+              <WordCloudPanel wordCloudData={wordCloudData} />
+              <ShortAnswerList responses={responseStats.answers || allResponses} />
+            </>
           ) : responseStats?.type === 'numerical' ? (
             <NumericalStats stats={responseStats} allResponses={allResponses} />
           ) : allResponses.length > 0 ? (

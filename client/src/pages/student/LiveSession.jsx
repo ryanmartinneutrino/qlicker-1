@@ -9,6 +9,7 @@ import StudentRichTextEditor, { MathPreview } from '../../components/questions/S
 import BackLinkButton from '../../components/common/BackLinkButton';
 import { buildHistogramData } from '../../utils/histogram';
 import HistogramBars from '../../components/common/HistogramBars';
+import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import {
   QUESTION_TYPES,
   TYPE_COLORS,
@@ -230,6 +231,9 @@ function LiveSessionContent() {
       case 'session:join-code-changed':
         setLiveData((prev) => applyJoinCodeChanged(prev, data));
         break;
+      case 'session:word-cloud-updated':
+        setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
+        break;
       default:
         break;
     }
@@ -340,6 +344,7 @@ function LiveSessionContent() {
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
   const responseStats = liveData?.responseStats;
+  const wordCloudData = liveData?.wordCloudData || null;
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
   const pageProgress = liveData?.pageProgress || (
@@ -1007,6 +1012,7 @@ function LiveSessionContent() {
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
             {t('student.liveSession.responses')}
           </Typography>
+          <WordCloudPanel wordCloudData={wordCloudData} />
           <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
             {(responseStats.answers || []).map((r, i) => (
               <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>

@@ -29,6 +29,23 @@ const AttemptSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const WordFrequencyEntrySchema = new mongoose.Schema(
+  {
+    text: { type: String, required: true },
+    count: { type: Number, required: true },
+  },
+  { _id: false }
+);
+
+const WordCloudDataSchema = new mongoose.Schema(
+  {
+    wordFrequencies: { type: [WordFrequencyEntrySchema], default: [] },
+    visible: { type: Boolean, default: false },
+    generatedAt: { type: Date },
+  },
+  { _id: false }
+);
+
 const SessionOptionsSchema = new mongoose.Schema(
   {
     hidden: { type: Boolean, default: false },
@@ -67,6 +84,7 @@ const QuestionSchema = new mongoose.Schema(
     approved: { type: Boolean, default: true },
     tags: { type: [TagSchema], default: [] },
     sessionOptions: { type: SessionOptionsSchema },
+    wordCloudData: { type: WordCloudDataSchema },
     imagePath: { type: String, default: '' },
     studentCopyOfPublic: { type: Boolean, default: false },
     studentCreated: { type: Boolean, default: false },

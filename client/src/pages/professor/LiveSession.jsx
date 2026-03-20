@@ -29,6 +29,7 @@ import HistogramBars from '../../components/common/HistogramBars';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import StudentIdentity from '../../components/common/StudentIdentity';
+import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
@@ -422,6 +423,9 @@ function LiveSessionContent() {
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
         break;
+      case 'session:word-cloud-updated':
+        setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
+        break;
       case 'session:status-changed':
         if (data.status === 'done') {
           navigate(`/manage/course/${courseId}`, { replace: true });
@@ -695,6 +699,29 @@ function LiveSessionContent() {
     if (win) presentationWindowRef.current = win;
   }, [courseId, sessionId]);
 
+  const handleGenerateWordCloud = useCallback(async () => {
+    if (!sessionId) return;
+    const stopWords = t('stopWords', { returnObjects: true });
+    const payload = Array.isArray(stopWords) ? { stopWords } : {};
+    try {
+      const res = await apiClient.post(`/sessions/${sessionId}/word-cloud`, payload);
+      // Live data will be refreshed by WebSocket event; but also update local state
+      setLiveData((prev) => prev ? { ...prev, wordCloudData: res.data?.wordCloudData } : prev);
+    } catch {
+      // silently fail — user can retry
+    }
+  }, [sessionId, t]);
+
+  const handleToggleWordCloudVisibility = useCallback(async (visible) => {
+    if (!sessionId) return;
+    try {
+      const res = await apiClient.patch(`/sessions/${sessionId}/word-cloud-visibility`, { visible });
+      setLiveData((prev) => prev ? { ...prev, wordCloudData: res.data?.wordCloudData } : prev);
+    } catch {
+      // silently fail
+    }
+  }, [sessionId]);
+
   // --------------------------------------------------
   // Derived values
   // --------------------------------------------------
@@ -710,6 +737,7 @@ function LiveSessionContent() {
   const currentQ = liveData?.currentQuestion;
   const currentAttempt = liveData?.currentAttempt;
   const responseStats = liveData?.responseStats;
+  const wordCloudData = liveData?.wordCloudData || currentQ?.wordCloudData || null;
   const allResponses = liveData?.allResponses || [];
   const responseCount = liveData?.responseCount ?? allResponses.length;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
@@ -1326,10 +1354,18 @@ function LiveSessionContent() {
                     {t('professor.liveSession.statsInline')}
                   </Typography>
                 ) : responseStats?.type === 'shortAnswer' ? (
-                  <ShortAnswerList
-                    responses={responseStats.answers || allResponses}
-                    showStudentNames
-                  />
+                  <>
+                    <WordCloudPanel
+                      wordCloudData={wordCloudData}
+                      onGenerate={handleGenerateWordCloud}
+                      onToggleVisible={handleToggleWordCloudVisibility}
+                      showControls
+                    />
+                    <ShortAnswerList
+                      responses={responseStats.answers || allResponses}
+                      showStudentNames
+                    />
+                  </>
                 ) : responseStats?.type === 'numerical' ? (
                   <NumericalStats stats={responseStats} allResponses={allResponses} />
                 ) : allResponses.length > 0 ? (

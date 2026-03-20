@@ -25,6 +25,7 @@ import {
   setSessionGradesVisibility,
 } from '../services/grading.js';
 import { userCanViewQuestion } from './questions.js';
+import { computeWordFrequencies } from '../utils/wordFrequency.js';
 
 const createSessionSchema = {
   body: {
@@ -3494,6 +3495,10 @@ export default async function sessionRoutes(app) {
 
         if (currentQuestion) {
           result.currentQuestion = currentQuestion;
+          // Include word cloud data for instructors (always)
+          if (currentQuestion.wordCloudData) {
+            result.wordCloudData = currentQuestion.wordCloudData;
+          }
         }
       } else {
         // Student view
@@ -3515,7 +3520,14 @@ export default async function sessionRoutes(app) {
             delete studentQ.solutionText;
             delete studentQ.solutionHtml;
           }
+          // Strip word cloud data from student question payload — sent separately.
+          delete studentQ.wordCloudData;
           result.currentQuestion = studentQ;
+
+          // Students/presentation only see word cloud when stats are visible AND cloud is visible
+          if (showStats && currentQuestion.wordCloudData?.visible) {
+            result.wordCloudData = currentQuestion.wordCloudData;
+          }
         }
         result.studentResponse = studentResponse;
         result.isJoined = isJoined;
@@ -3702,7 +3714,154 @@ export default async function sessionRoutes(app) {
     }
   );
 
-  // POST /sessions/:id/new-attempt - Start a new attempt for current question
+  // POST /sessions/:id/word-cloud - Generate / refresh word cloud data for current SA question
+  app.post(
+    '/sessions/:id/word-cloud',
+    {
+      preHandler: authenticate,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            stopWords: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionId = session.currentQuestion;
+      if (!questionId) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
+      }
+
+      const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
+      if (Number(question.type) !== 2) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Word cloud is only supported for short-answer questions' });
+      }
+
+      const attempts = question.sessionOptions?.attempts || [];
+      const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
+
+      const responses = await Response.find({
+        questionId,
+        attempt: currentAttempt.number,
+      }).lean();
+
+      // Collect text from responses — prefer WYSIWYG content, fall back to raw answer.
+      const texts = responses.map((r) => {
+        if (r.answerWysiwyg && typeof r.answerWysiwyg === 'string') return r.answerWysiwyg;
+        if (typeof r.answer === 'string') return r.answer;
+        return '';
+      }).filter(Boolean);
+
+      const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
+      const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        questionId,
+        {
+          $set: {
+            'wordCloudData.wordFrequencies': wordFrequencies,
+            'wordCloudData.visible': true,
+            'wordCloudData.generatedAt': new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
+        ? updatedQuestion.wordCloudData.toObject()
+        : updatedQuestion?.wordCloudData;
+
+      sendToCourseMembers(app, course, 'session:word-cloud-updated', {
+        courseId: String(course._id),
+        sessionId: String(session._id),
+        questionId: String(questionId),
+        wordCloudData,
+      });
+
+      return { wordCloudData };
+    }
+  );
+
+  // PATCH /sessions/:id/word-cloud-visibility - Toggle word cloud visibility
+  app.patch(
+    '/sessions/:id/word-cloud-visibility',
+    {
+      preHandler: authenticate,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['visible'],
+          properties: {
+            visible: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const questionId = session.currentQuestion;
+      if (!questionId) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'No current question' });
+      }
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        questionId,
+        { $set: { 'wordCloudData.visible': request.body.visible } },
+        { new: true }
+      );
+
+      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
+        ? updatedQuestion.wordCloudData.toObject()
+        : updatedQuestion?.wordCloudData;
+
+      sendToCourseMembers(app, course, 'session:word-cloud-updated', {
+        courseId: String(course._id),
+        sessionId: String(session._id),
+        questionId: String(questionId),
+        wordCloudData,
+      });
+
+      return { wordCloudData };
+    }
+  );
   app.post(
     '/sessions/:id/new-attempt',
     { preHandler: authenticate },

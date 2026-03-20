@@ -10,6 +10,7 @@ import {
   sanitizeImportedQuestion,
 } from '../services/questionImportExport.js';
 import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
+import { computeWordFrequencies } from '../utils/wordFrequency.js';
 
 const createQuestionSchema = {
   body: {
@@ -2089,6 +2090,82 @@ export default async function questionRoutes(app) {
       );
 
       return { question: updated.toObject() };
+    }
+  );
+
+  // POST /questions/:id/word-cloud - Generate word cloud data for a question (prof review)
+  app.post(
+    '/questions/:id/word-cloud',
+    {
+      preHandler: authenticate,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            stopWords: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const question = await Question.findById(request.params.id).lean();
+      if (!question) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
+      }
+
+      if (Number(question.type) !== 2) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Word cloud is only supported for short-answer questions' });
+      }
+
+      // Authorization: must be instructor/admin of the course containing this question
+      const courseId = question.courseId || '';
+      const sessionId = question.sessionId || '';
+      let course = null;
+      if (courseId) {
+        course = await Course.findById(courseId).lean();
+      } else if (sessionId) {
+        const session = await Session.findById(sessionId).lean();
+        if (session?.courseId) {
+          course = await Course.findById(session.courseId).lean();
+        }
+      }
+      if (!course || !isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      // Get all responses for this question (across all attempts, for review context)
+      const responses = await Response.find({ questionId: question._id }).lean();
+
+      const texts = responses.map((r) => {
+        if (r.answerWysiwyg && typeof r.answerWysiwyg === 'string') return r.answerWysiwyg;
+        if (typeof r.answer === 'string') return r.answer;
+        return '';
+      }).filter(Boolean);
+
+      const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
+      const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
+
+      const updatedQuestion = await Question.findByIdAndUpdate(
+        question._id,
+        {
+          $set: {
+            'wordCloudData.wordFrequencies': wordFrequencies,
+            'wordCloudData.visible': true,
+            'wordCloudData.generatedAt': new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
+        ? updatedQuestion.wordCloudData.toObject()
+        : updatedQuestion?.wordCloudData;
+
+      return { wordCloudData };
     }
   );
 }
