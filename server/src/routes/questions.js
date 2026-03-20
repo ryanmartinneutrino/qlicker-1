@@ -2153,17 +2153,17 @@ export default async function questionRoutes(app) {
         question._id,
         {
           $set: {
-            'wordCloudData.wordFrequencies': wordFrequencies,
-            'wordCloudData.visible': true,
-            'wordCloudData.generatedAt': new Date(),
+            'sessionOptions.wordCloudData.wordFrequencies': wordFrequencies,
+            'sessionOptions.wordCloudData.visible': true,
+            'sessionOptions.wordCloudData.generatedAt': new Date(),
           },
         },
         { new: true }
       );
 
-      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
-        ? updatedQuestion.wordCloudData.toObject()
-        : updatedQuestion?.wordCloudData;
+      const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
+        ? updatedQuestion.sessionOptions.wordCloudData.toObject()
+        : updatedQuestion?.sessionOptions?.wordCloudData;
 
       return { wordCloudData };
     }
