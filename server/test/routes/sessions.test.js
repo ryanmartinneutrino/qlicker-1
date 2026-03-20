@@ -3369,3 +3369,376 @@ describe('session question ordering', () => {
     expect(fetched.activities).toBeUndefined();
   });
 });
+
+// ---------- Histogram routes (NU type questions) ----------
+describe('POST /api/v1/sessions/:id/histogram', () => {
+  it('generates histogram data for a numerical question in a live session', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>What is x?</p>',
+      plainText: 'What is x?',
+      correctNumerical: 42,
+      toleranceNumerical: 1,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    // Create several numeric responses
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '40' },
+    ]);
+    const student2 = await createTestUser({ email: 'hist-s2@example.com', roles: ['student'] });
+    const student2Token = await getAuthToken(app, student2);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: student2Token,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    await Response.create([
+      { questionId: question._id, studentUserId: student2._id, attempt: 1, answer: '42' },
+    ]);
+    const student3 = await createTestUser({ email: 'hist-s3@example.com', roles: ['student'] });
+    await Response.create([
+      { questionId: question._id, studentUserId: student3._id, attempt: 1, answer: '44' },
+    ]);
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.histogramData).toBeDefined();
+    expect(body.histogramData.bins).toBeDefined();
+    expect(Array.isArray(body.histogramData.bins)).toBe(true);
+    expect(body.histogramData.bins.length).toBeGreaterThan(0);
+    expect(body.histogramData.visible).toBe(true);
+    expect(body.histogramData.overflowLow).toBeDefined();
+    expect(body.histogramData.overflowHigh).toBeDefined();
+    expect(body.histogramData.rangeMin).toBeDefined();
+    expect(body.histogramData.rangeMax).toBeDefined();
+    expect(body.histogramData.numBins).toBeDefined();
+    expect(body.histogramData.generatedAt).toBeDefined();
+
+    // Verify it was stored on the question
+    const updatedQ = await Question.findById(question._id).lean();
+    expect(updatedQ.sessionOptions.histogramData.visible).toBe(true);
+    expect(updatedQ.sessionOptions.histogramData.bins.length).toBeGreaterThan(0);
+  });
+
+  it('rejects histogram generation for non-numerical question', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 2,
+      content: '<p>SA question</p>',
+      plainText: 'SA question',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('accepts custom range parameters', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Number?</p>',
+      plainText: 'Number?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '10' },
+    ]);
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: { rangeMin: 0, rangeMax: 100, numBins: 10 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.histogramData.numBins).toBe(10);
+    expect(body.histogramData.rangeMin).toBe(0);
+    expect(body.histogramData.rangeMax).toBe(100);
+  });
+});
+
+describe('PATCH /api/v1/sessions/:id/histogram-visibility', () => {
+  it('toggles histogram visibility', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Number?</p>',
+      plainText: 'Number?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '42' },
+    ]);
+
+    // Generate the histogram first
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    // Hide the histogram
+    const hideRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/histogram-visibility`, {
+      token: profToken,
+      payload: { visible: false },
+    });
+
+    expect(hideRes.statusCode).toBe(200);
+    expect(hideRes.json().histogramData.visible).toBe(false);
+
+    // Show the histogram
+    const showRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/histogram-visibility`, {
+      token: profToken,
+      payload: { visible: true },
+    });
+
+    expect(showRes.statusCode).toBe(200);
+    expect(showRes.json().histogramData.visible).toBe(true);
+  });
+});
+
+describe('Histogram in /sessions/:id/live', () => {
+  it('instructor sees histogramData in live endpoint after generation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Value?</p>',
+      plainText: 'Value?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '50' },
+    ]);
+
+    // Generate histogram
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    // Check instructor live endpoint
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.histogramData).toBeDefined();
+    expect(body.histogramData.visible).toBe(true);
+    expect(body.histogramData.bins.length).toBeGreaterThan(0);
+  });
+
+  it('student sees histogramData only when stats are enabled and histogram is visible', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Value?</p>',
+      plainText: 'Value?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '50' },
+    ]);
+
+    // Generate histogram
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    // Stats disabled — student should NOT see histogramData
+    const liveRes1 = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes1.statusCode).toBe(200);
+    expect(liveRes1.json().histogramData).toBeUndefined();
+
+    // Enable stats
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    // Stats enabled + histogram visible → student sees it
+    const liveRes2 = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes2.statusCode).toBe(200);
+    expect(liveRes2.json().histogramData).toBeDefined();
+    expect(liveRes2.json().histogramData.bins.length).toBeGreaterThan(0);
+
+    // Hide histogram
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/histogram-visibility`, {
+      token: profToken,
+      payload: { visible: false },
+    });
+
+    // Stats enabled but histogram hidden → student should NOT see it
+    const liveRes3 = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes3.statusCode).toBe(200);
+    expect(liveRes3.json().histogramData).toBeUndefined();
+  });
+
+  it('numerical responseStats include stdev and answers list', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Value?</p>',
+      plainText: 'Value?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '10' },
+    ]);
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('numerical');
+    expect(body.responseStats.stdev).toBeDefined();
+    expect(Array.isArray(body.responseStats.answers)).toBe(true);
+    expect(body.responseStats.answers.length).toBe(1);
+    // Student identifiers should not be exposed
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+  });
+
+  it('histogramData is stripped from student question payload', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 4,
+      content: '<p>Value?</p>',
+      plainText: 'Value?',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create([
+      { questionId: question._id, studentUserId: student._id, attempt: 1, answer: '50' },
+    ]);
+
+    // Generate histogram
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+
+    // Student live — histogramData should NOT be embedded in currentQuestion.sessionOptions
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.currentQuestion?.sessionOptions?.histogramData).toBeUndefined();
+  });
+});

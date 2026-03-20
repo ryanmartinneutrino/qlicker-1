@@ -3378,6 +3378,17 @@ export default async function sessionRoutes(app) {
               })),
             };
           }
+          if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
+            responseStats = {
+              ...responseStats,
+              answers: responseStats.answers.map((entry) => ({
+                answer: entry.answer,
+                ...(includeNamesInPayload
+                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+                  : {}),
+              })),
+            };
+          }
         } else if (isJoined && !questionHidden) {
           if (showStats) {
             // Single query: get all responses (includes student's own)
@@ -3396,6 +3407,14 @@ export default async function sessionRoutes(app) {
                 answers: responseStats.answers.map((entry) => ({
                   answer: entry.answer,
                   answerWysiwyg: entry.answerWysiwyg,
+                })),
+              };
+            }
+            if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
+              responseStats = {
+                ...responseStats,
+                answers: responseStats.answers.map((entry) => ({
+                  answer: entry.answer,
                 })),
               };
             }
