@@ -94,7 +94,11 @@ async function createQuestionInSession(profToken, {
   });
   expect(addRes.statusCode).toBe(200);
 
-  return question;
+  // Return the copied question's _id (not the original) since
+  // copyQuestionToSession creates a new document in the session.
+  const sessionQuestions = addRes.json().session.questions;
+  const copiedQuestionId = sessionQuestions[sessionQuestions.length - 1];
+  return { ...question, _id: copiedQuestionId };
 }
 
 // ---------- POST /api/v1/courses/:courseId/sessions ----------
@@ -1161,10 +1165,11 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
     const question = qRes.json().question;
 
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const copiedQuestionId = addRes.json().session.questions[addRes.json().session.questions.length - 1];
 
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
       token: profToken,
@@ -1185,13 +1190,13 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
 
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQuestionId,
       studentUserId: student._id,
       attempt: 1,
       answer: 'First response',
     });
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQuestionId,
       studentUserId: studentTwo._id,
       attempt: 1,
       answer: 'Second response',
@@ -1299,10 +1304,11 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
     const question = qRes.json().question;
 
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addRes2 = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const copiedQId2 = addRes2.json().session.questions[addRes2.json().session.questions.length - 1];
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
     await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
       token: profToken,
@@ -1319,13 +1325,13 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
 
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQId2,
       studentUserId: student._id,
       attempt: 1,
       answer: 'First response',
     });
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQId2,
       studentUserId: studentTwo._id,
       attempt: 1,
       answer: 'Second response',
@@ -1374,10 +1380,11 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
     const question = qRes.json().question;
 
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addRes3 = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const copiedQId3 = addRes3.json().session.questions[addRes3.json().session.questions.length - 1];
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
     await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
       token: profToken,
@@ -1394,13 +1401,13 @@ describe('GET /api/v1/sessions/:id/live', () => {
     });
 
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQId3,
       studentUserId: student._id,
       attempt: 1,
       answer: 'First response',
     });
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQId3,
       studentUserId: studentTwo._id,
       attempt: 1,
       answer: 'Second response',
@@ -2264,12 +2271,15 @@ describe('GET /api/v1/sessions/:id/results', () => {
     });
     expect(zeroPointsPatchRes.statusCode).toBe(200);
 
+    const copiedIds = {};
     for (const qId of [qMc._id, qSa._id, qZero._id]) {
       const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
         token: profToken,
         payload: { questionId: qId },
       });
       expect(addRes.statusCode).toBe(200);
+      const qs = addRes.json().session.questions;
+      copiedIds[qId] = qs[qs.length - 1];
     }
 
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
@@ -2286,13 +2296,13 @@ describe('GET /api/v1/sessions/:id/results', () => {
     });
 
     await Response.create({
-      questionId: qMc._id,
+      questionId: copiedIds[qMc._id],
       studentUserId: student._id,
       attempt: 1,
       answer: '0',
     });
     await Response.create({
-      questionId: qSa._id,
+      questionId: copiedIds[qSa._id],
       studentUserId: student._id,
       attempt: 1,
       answer: 'free text',
@@ -2338,6 +2348,7 @@ describe('GET /api/v1/sessions/:id/results', () => {
       payload: { questionId: question._id },
     });
     expect(addRes.statusCode).toBe(200);
+    const copiedQIdResp = addRes.json().session.questions[addRes.json().session.questions.length - 1];
 
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
       token: profToken,
@@ -2345,7 +2356,7 @@ describe('GET /api/v1/sessions/:id/results', () => {
 
     // Write a response directly without joining to emulate legacy/misaligned data.
     await Response.create({
-      questionId: question._id,
+      questionId: copiedQIdResp,
       studentUserId: student._id,
       attempt: 1,
       answer: '0',
@@ -2406,19 +2417,20 @@ describe('PATCH /api/v1/sessions/:id/current', () => {
     });
     const question = qRes.json().question;
 
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const copiedQuestionId = addRes.json().session.questions[addRes.json().session.questions.length - 1];
 
     const res = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/current`, {
       token: profToken,
-      payload: { questionId: question._id },
+      payload: { questionId: copiedQuestionId },
     });
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.session.currentQuestion).toBe(question._id);
+    expect(body.session.currentQuestion).toBe(copiedQuestionId);
   });
 
   it('returns 400 if question not in session', async (ctx) => {
@@ -2506,7 +2518,9 @@ describe('POST /api/v1/courses/:courseId/sessions/copy', () => {
     expect(copiedQuestion.sessionId).toBe(copiedSession._id);
     expect(copiedQuestion.courseId).toBe(targetCourse._id);
     expect(copiedQuestion.owner).toBe(prof._id);
-    expect(copiedQuestion.originalQuestion).toBe(sourceQuestion._id);
+    // The cross-course copy traces originalQuestion back through the session copy.
+    const sourceSessionCopy = await Question.findById(sourceQuestion._id).lean();
+    expect(copiedQuestion.originalQuestion).toBe(sourceSessionCopy.originalQuestion || sourceQuestion._id);
   });
 });
 
@@ -2592,6 +2606,7 @@ describe('session import/export endpoints', () => {
     expect(body.session.questions).toHaveLength(2);
     expect(body.session.questions[0].plainText).toBe('Second question');
     expect(body.session.questions[0].sessionOptions).toEqual({
+      hidden: true,
       points: 5,
       maxAttempts: 2,
       attemptWeights: [1, 0.5],
@@ -2834,10 +2849,12 @@ describe('GET /api/v1/sessions/:id/review', () => {
     const question = qRes.json().question;
 
     // Add question to session
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const sessionQuestions = addRes.json().session.questions;
+    const copiedQuestionId = sessionQuestions[sessionQuestions.length - 1];
 
     // Mark session done and reviewable
     await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
@@ -2845,7 +2862,7 @@ describe('GET /api/v1/sessions/:id/review', () => {
       payload: { status: 'done', reviewable: true },
     });
 
-    return { session, question };
+    return { session, question: { ...question, _id: copiedQuestionId } };
   }
 
   it('student can review a done+reviewable session', async (ctx) => {
@@ -2919,13 +2936,14 @@ describe('GET /api/v1/sessions/:id/review', () => {
     });
     const question = qRes.json().question;
 
-    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+    const addResLegacy = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
       token: profToken,
       payload: { questionId: question._id },
     });
+    const copiedLegacyQId = addResLegacy.json().session.questions[addResLegacy.json().session.questions.length - 1];
 
     await Question.collection.updateOne(
-      { _id: question._id },
+      { _id: copiedLegacyQId },
       {
         $set: {
           correctAnswer: '4',
