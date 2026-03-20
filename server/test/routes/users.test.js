@@ -208,6 +208,11 @@ describe('PATCH /api/v1/users/me/password', () => {
   it('changes password with valid current password', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const user = await createTestUser({ email: 'pwchange@example.com', password: 'oldpassword123' });
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'services.resume.loginTokens': [{ sessionId: 'device-1', createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000) }],
+      },
+    });
     const token = await getAuthToken(app, user);
 
     const res = await authenticatedRequest(app, 'PATCH', '/api/v1/users/me/password', {
@@ -219,6 +224,7 @@ describe('PATCH /api/v1/users/me/password', () => {
 
     const storedAfterChange = await User.findById(user._id);
     expect(storedAfterChange.refreshTokenVersion).toBe(1);
+    expect(storedAfterChange.services?.resume?.loginTokens).toEqual([]);
 
     // Verify new password works
     const loginRes = await app.inject({

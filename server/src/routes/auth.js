@@ -8,6 +8,7 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 import { normalizeCertificatePem } from '../utils/certificate.js';
 
 const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+const REFRESH_SESSION_MAX_AGE_MS = REFRESH_TOKEN_MAX_AGE_SECONDS * 1000;
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const LEGACY_REFRESH_VERSION_QUERY = {
@@ -64,12 +65,84 @@ function getRefreshTokenVersion(user) {
   return Math.max(0, Number(user?.refreshTokenVersion) || 0);
 }
 
-function signRefreshToken(config, user, version = getRefreshTokenVersion(user)) {
+function signRefreshToken(config, user, sessionId) {
   return jwt.sign(
-    { userId: user._id, type: 'refresh', version },
+    { userId: user._id, type: 'refresh', sessionId },
     config.jwtRefreshSecret,
     { expiresIn: '7d' }
   );
+}
+
+function ensureResumeLoginTokens(user) {
+  if (!user.services) user.services = {};
+  if (!user.services.resume) user.services.resume = {};
+  if (!Array.isArray(user.services.resume.loginTokens)) {
+    user.services.resume.loginTokens = [];
+  }
+  return user.services.resume.loginTokens;
+}
+
+function isManagedRefreshSession(entry) {
+  return !!entry && typeof entry === 'object' && typeof entry.sessionId === 'string' && entry.sessionId.length > 0;
+}
+
+function pruneRefreshSessions(user, nowMs = Date.now()) {
+  const loginTokens = ensureResumeLoginTokens(user);
+  user.services.resume.loginTokens = loginTokens.filter((entry) => {
+    if (!isManagedRefreshSession(entry)) return true;
+    const expiresAtMs = entry.expiresAt ? new Date(entry.expiresAt).getTime() : NaN;
+    return !Number.isFinite(expiresAtMs) || expiresAtMs > nowMs;
+  });
+  return user.services.resume.loginTokens;
+}
+
+function buildRefreshSessionEntry(sessionId, now = new Date()) {
+  return {
+    sessionId,
+    createdAt: now,
+    lastUsedAt: now,
+    expiresAt: new Date(now.getTime() + REFRESH_SESSION_MAX_AGE_MS),
+  };
+}
+
+function issueRefreshSession(user) {
+  pruneRefreshSessions(user);
+  const sessionId = crypto.randomBytes(24).toString('hex');
+  ensureResumeLoginTokens(user).push(buildRefreshSessionEntry(sessionId));
+  return sessionId;
+}
+
+function rotateRefreshSession(user, currentSessionId) {
+  pruneRefreshSessions(user);
+  const loginTokens = ensureResumeLoginTokens(user);
+  const index = loginTokens.findIndex(
+    (entry) => isManagedRefreshSession(entry) && entry.sessionId === currentSessionId
+  );
+  if (index === -1) return null;
+
+  const now = new Date();
+  const nextSessionId = crypto.randomBytes(24).toString('hex');
+  loginTokens[index].sessionId = nextSessionId;
+  loginTokens[index].lastUsedAt = now;
+  loginTokens[index].expiresAt = new Date(now.getTime() + REFRESH_SESSION_MAX_AGE_MS);
+  if (!loginTokens[index].createdAt) loginTokens[index].createdAt = now;
+  return nextSessionId;
+}
+
+function revokeRefreshSession(user, sessionId) {
+  pruneRefreshSessions(user);
+  const loginTokens = ensureResumeLoginTokens(user);
+  const nextTokens = loginTokens.filter(
+    (entry) => !(isManagedRefreshSession(entry) && entry.sessionId === sessionId)
+  );
+  const changed = nextTokens.length !== loginTokens.length;
+  user.services.resume.loginTokens = nextTokens;
+  return changed;
+}
+
+function revokeAllRefreshSessions(user) {
+  ensureResumeLoginTokens(user);
+  user.services.resume.loginTokens = [];
 }
 
 function setRefreshTokenCookie(reply, app, refreshToken) {
@@ -109,7 +182,7 @@ async function recordFailedLoginAttempt(user) {
   return isLoginLocked(user);
 }
 
-async function consumeRefreshTokenVersion(userId, version) {
+async function consumeLegacyRefreshTokenVersion(userId, version) {
   if (Number.isInteger(version) && version >= 0) {
     return User.findOneAndUpdate(
       { _id: userId, refreshTokenVersion: version },
@@ -249,9 +322,8 @@ function registerSsoRoutes(app, routes) {
         allowEmailLogin: false,
         lastAuthProvider: 'sso',
         createdAt: new Date(),
+        lastLogin: new Date(),
       });
-      user.lastLogin = new Date();
-      await user.save();
     } else {
       if (firstname) user.profile.firstname = firstname;
       if (lastname) user.profile.lastname = lastname;
@@ -278,18 +350,18 @@ function registerSsoRoutes(app, routes) {
 
       user.lastLogin = new Date();
       user.lastAuthProvider = 'sso';
-      user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
-      await user.save();
     }
 
     if (sessionIndex) {
       if (!user.services.sso.sessions) user.services.sso.sessions = [];
       user.services.sso.sessions.push({ sessionIndex });
-      await user.save();
     }
 
+    const refreshSessionId = issueRefreshSession(user);
+    await user.save();
+
     const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user);
+    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
 
     setRefreshTokenCookie(reply, app, refreshToken);
 
@@ -471,8 +543,11 @@ export default async function authRoutes(app) {
       request.log.error('Failed to send verification email:', err);
     }
 
+    const refreshSessionId = issueRefreshSession(user);
+    await user.save();
+
     const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user);
+    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
 
     setRefreshTokenCookie(reply, app, refreshToken);
 
@@ -542,11 +617,11 @@ export default async function authRoutes(app) {
     prepareLoginLockoutReset(user);
     user.lastLogin = new Date();
     user.lastAuthProvider = 'password';
-    user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
+    const refreshSessionId = issueRefreshSession(user);
     await user.save();
 
     const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user);
+    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
 
     setRefreshTokenCookie(reply, app, refreshToken);
 
@@ -563,16 +638,23 @@ export default async function authRoutes(app) {
       try {
         const payload = jwt.verify(refreshToken, app.config.jwtRefreshSecret);
         if (payload?.type === 'refresh' && payload.userId) {
-          if (Number.isInteger(payload.version) && payload.version >= 0) {
-            await User.updateOne(
-              { _id: payload.userId, refreshTokenVersion: payload.version },
-              { $inc: { refreshTokenVersion: 1 } }
-            );
+          if (typeof payload.sessionId === 'string' && payload.sessionId) {
+            const user = await User.findById(payload.userId);
+            if (user && revokeRefreshSession(user, payload.sessionId)) {
+              await user.save();
+            }
           } else {
-            await User.updateOne(
-              { _id: payload.userId, ...LEGACY_REFRESH_VERSION_QUERY },
-              { $set: { refreshTokenVersion: 1 } }
-            );
+            if (Number.isInteger(payload.version) && payload.version >= 0) {
+              await User.updateOne(
+                { _id: payload.userId, refreshTokenVersion: payload.version },
+                { $inc: { refreshTokenVersion: 1 } }
+              );
+            } else {
+              await User.updateOne(
+                { _id: payload.userId, ...LEGACY_REFRESH_VERSION_QUERY },
+                { $set: { refreshTokenVersion: 1 } }
+              );
+            }
           }
         }
       } catch {
@@ -608,13 +690,33 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }
 
-    const user = await consumeRefreshTokenVersion(payload.userId, payload.version);
+    if (typeof payload.sessionId === 'string' && payload.sessionId) {
+      const user = await User.findById(payload.userId);
+      if (!user) {
+        return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
+      }
+
+      const nextSessionId = rotateRefreshSession(user, payload.sessionId);
+      if (!nextSessionId) {
+        return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
+      }
+
+      await user.save();
+      const token = await signAccessToken(app, user);
+      const nextRefreshToken = signRefreshToken(app.config, user, nextSessionId);
+      setRefreshTokenCookie(reply, app, nextRefreshToken);
+      return { token };
+    }
+
+    const user = await consumeLegacyRefreshTokenVersion(payload.userId, payload.version);
     if (!user) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }
 
+    const nextSessionId = issueRefreshSession(user);
+    await user.save();
     const token = await signAccessToken(app, user);
-    const nextRefreshToken = signRefreshToken(app.config, user);
+    const nextRefreshToken = signRefreshToken(app.config, user, nextSessionId);
     setRefreshTokenCookie(reply, app, nextRefreshToken);
     return { token };
   });
@@ -697,6 +799,7 @@ export default async function authRoutes(app) {
       user.services.password.bcrypt = undefined;
       user.services.resetPassword = undefined;
       user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
+      revokeAllRefreshSessions(user);
       await user.save();
 
       return { success: true };

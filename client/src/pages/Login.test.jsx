@@ -1,0 +1,126 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import Login from './Login';
+
+const {
+  apiClientMock,
+  loginMock,
+  registerMock,
+  navigateMock,
+} = vi.hoisted(() => ({
+  apiClientMock: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+  loginMock: vi.fn(),
+  registerMock: vi.fn(),
+  navigateMock: vi.fn(),
+}));
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key, params) => ({
+      'common.appName': 'Qlicker',
+      'common.or': 'or',
+      'common.cancel': 'Cancel',
+      'auth.email': 'Email',
+      'auth.password': 'Password',
+      'auth.login': 'Login',
+      'auth.register': 'Register',
+      'auth.loggingIn': 'Logging in',
+      'auth.creatingAccount': 'Creating account',
+      'auth.createAccount': 'Create Account',
+      'auth.firstName': 'First Name',
+      'auth.lastName': 'Last Name',
+      'auth.forgotPassword': 'Forgot Password?',
+      'auth.backToSSO': 'Back to SSO login',
+      'auth.haveEmailAccount': 'Have an email-based account',
+      'auth.forgotPasswordTitle': 'Forgot Password',
+      'auth.forgotPasswordMessage': 'Reset your password',
+      'auth.sendResetLink': 'Send Reset Link',
+      'auth.sending': 'Sending',
+      'auth.loginThrough': `Login through ${params?.institution ?? 'SSO'}`,
+      'auth.ssoDefault': 'SSO',
+    }[key] ?? key),
+  }),
+}));
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigateMock,
+  Navigate: ({ to }) => <div data-testid="redirect-target">{to}</div>,
+}));
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: null,
+    loading: false,
+    login: loginMock,
+    register: registerMock,
+  }),
+}));
+
+vi.mock('../api/client', () => ({
+  default: apiClientMock,
+}));
+
+describe('Login', () => {
+  beforeEach(() => {
+    apiClientMock.get.mockReset();
+    apiClientMock.post.mockReset();
+    loginMock.mockReset();
+    registerMock.mockReset();
+    navigateMock.mockReset();
+  });
+
+  it('uses standard login field names and autocomplete tokens for email login when SSO is enabled', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: true,
+        SSO_institutionName: 'Example University',
+      },
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Have an email-based account' }));
+
+    const emailField = screen.getByRole('textbox', { name: /^Email/i });
+    const passwordField = document.getElementById('login-password');
+
+    expect(emailField).toHaveAttribute('name', 'email');
+    expect(emailField).toHaveAttribute('autocomplete', 'username');
+    expect(passwordField).not.toBeNull();
+    expect(passwordField).toHaveAttribute('name', 'password');
+    expect(passwordField).toHaveAttribute('autocomplete', 'current-password');
+    expect(screen.getByRole('form', { name: 'Login' })).toBeInTheDocument();
+  });
+
+  it('uses registration-friendly autocomplete tokens on the register tab', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: false,
+      },
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Register' }));
+
+    expect(screen.getByRole('textbox', { name: /^First Name/i })).toHaveAttribute('autocomplete', 'given-name');
+    expect(screen.getByRole('textbox', { name: /^Last Name/i })).toHaveAttribute('autocomplete', 'family-name');
+    expect(screen.getByRole('textbox', { name: /^Email/i })).toHaveAttribute('autocomplete', 'email');
+    const passwordField = document.getElementById('register-password');
+    expect(passwordField).not.toBeNull();
+    expect(passwordField).toHaveAttribute('autocomplete', 'new-password');
+    expect(screen.getByRole('form', { name: 'Register' })).toBeInTheDocument();
+  });
+});

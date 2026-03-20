@@ -94,8 +94,8 @@
     "liveSessions": "Live Sessions"
   },
   "home": {
-    "tagline": "An open-source in-class response system, and so much more.",
-    "subtitle": "Learning by answering questions.",
+    "tagline": "Open source and designed for learning in the age of AI.",
+    "subtitle": "Answer. Learn.",
     "description": "In-class polling, at home quizzes, student practice sessions, grade management, statistics, and so much more. All at your fingertips and for free!",
     "getStarted": "Get started",
     "motionNote": "Motion respects `prefers-reduced-motion`.",

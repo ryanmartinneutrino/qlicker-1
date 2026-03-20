@@ -94,8 +94,8 @@
     "liveSessions": "Séances en direct"
   },
   "home": {
-    "tagline": "Un système de réponse en classe à code source ouvert, et bien plus encore.",
-    "subtitle": "Apprendre en répondant aux questions.",
+    "tagline": "Open source et conçu pour l'apprentissage à l'ère de l'IA.",
+    "subtitle": "Répondez. Apprenez.",
     "description": "Sondages en classe, questionnaires à domicile, séances de pratique pour les étudiants, gestion des notes, statistiques, et bien plus encore. Le tout à portée de main et gratuitement !",
     "getStarted": "Commencer",
     "motionNote": "Le mouvement respecte `prefers-reduced-motion`.",
