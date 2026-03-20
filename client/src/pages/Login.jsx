@@ -6,6 +6,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
+import QlickerWordmark from '../components/common/QlickerWordmark';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -159,16 +160,9 @@ export default function Login() {
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="background.default">
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
         <CardContent>
-          <Typography
-            variant="h4"
-            component="h1"
-            textAlign="center"
-            color="primary"
-            gutterBottom
-            sx={{ fontWeight: 500, fontFamily: (theme) => theme.typography.fontFamily }}
-          >
-            {t('common.appName')}
-          </Typography>
+          <Box component="h1" sx={{ display: 'flex', justifyContent: 'center', m: 0, mb: 2, color: 'primary.main' }}>
+            <QlickerWordmark height={42} title={t('common.appName')} />
+          </Box>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           {ssoEnabled ? (
             <>
