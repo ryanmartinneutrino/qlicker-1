@@ -7,6 +7,7 @@
  * @returns {{ text: string, count: number }[]} sorted descending by count
  */
 export function computeWordFrequencies(texts, stopWords = [], maxWords = 100) {
+  if (!texts || !Array.isArray(texts)) return [];
   const stopSet = new Set((stopWords || []).map((w) => w.toLowerCase().trim()).filter(Boolean));
   const freq = new Map();
 
