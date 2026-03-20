@@ -11,7 +11,7 @@ import {
   Stop as StopIcon, OpenInNew as OpenInNewIcon,
   Check as CheckIcon,
   Replay as AttemptIcon,
-  People as PeopleIcon, Refresh as RefreshIcon,
+  Refresh as RefreshIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import apiClient from '../../api/client';
@@ -41,6 +41,48 @@ import {
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
   '& .MuiChip-label': { px: 1.15 },
+};
+
+const SESSION_NAV_CHIP_SX = {
+  borderRadius: 1.4,
+  minWidth: { xs: 48, sm: 44 },
+  height: { xs: 38, sm: 32 },
+  '& .MuiChip-label': {
+    px: { xs: 1.25, sm: 1.1 },
+    fontWeight: 600,
+    fontSize: { xs: '0.9rem', sm: '0.8rem' },
+  },
+};
+
+const CONTROL_TOGGLE_LABEL_SX = {
+  m: 0,
+  width: '100%',
+  minHeight: { xs: 46, sm: 40 },
+  px: 1.15,
+  py: { xs: 0.25, sm: 0.1 },
+  borderRadius: 1,
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  '& .MuiFormControlLabel-label': {
+    fontSize: { xs: '0.9rem', sm: '0.875rem' },
+    lineHeight: 1.2,
+    marginRight: 8,
+    overflowWrap: 'anywhere',
+  },
+  '& .MuiSwitch-root': {
+    mr: 0,
+    ml: 0.5,
+  },
+};
+
+const TOP_PANEL_TAB_BUTTON_SX = {
+  minHeight: { xs: 44, sm: 40 },
+  borderRadius: 1.4,
+  width: '100%',
+  justifyContent: 'center',
+  textTransform: 'none',
+  fontWeight: 700,
+  px: { xs: 1, sm: 1.5 },
 };
 
 const SR_ONLY_SX = {
@@ -810,6 +852,17 @@ function LiveSessionContent() {
     !isSlide ? (responsesClosed ? t('professor.liveSession.responsesCurrentlyClosed') : t('professor.liveSession.responsesCurrentlyOpen')) : null,
     isHidden ? t('professor.liveSession.questionHidden') : t('professor.liveSession.questionVisible'),
   ].filter(Boolean).join(' ');
+  const mobileControlSize = isMobile ? 'medium' : 'small';
+  const navButtonSx = {
+    width: '100%',
+    minHeight: { xs: 46, sm: 38 },
+  };
+  const toggleColumnsSx = {
+    display: 'grid',
+    gridTemplateColumns: { xs: '1fr', sm: 'repeat(auto-fit, minmax(260px, 1fr))' },
+    gap: 1,
+    width: '100%',
+  };
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -921,28 +974,45 @@ function LiveSessionContent() {
         <Box
           role="tablist"
           aria-label={t('professor.liveSession.panelsLabel')}
-          sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, width: '100%' }}
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: 0.75,
+            width: '100%',
+            p: 0.5,
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'action.hover',
+          }}
         >
           <Button
-            size="medium"
-            variant={activePanel === 'question' ? 'contained' : 'outlined'}
+            size={isMobile ? 'medium' : 'small'}
+            variant={activePanel === 'question' ? 'contained' : 'text'}
             onClick={() => setActivePanel('question')}
-            aria-label={pageProgress ? t('professor.liveSession.pageProgressAria', { current: pageProgress.current, total: pageProgress.total }) : ''}
-            sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
-          >
-            {pageProgress
+            aria-label={pageProgress
               ? t('professor.liveSession.pageControlsLabel', pageProgress)
               : t('professor.liveSession.questionControls')}
+            sx={{
+              ...TOP_PANEL_TAB_BUTTON_SX,
+              boxShadow: activePanel === 'question' ? 1 : 'none',
+              color: activePanel === 'question' ? undefined : 'text.primary',
+            }}
+          >
+            {t('professor.liveSession.controlsTab')}
           </Button>
           <Button
-            size="medium"
-            variant={activePanel === 'students' ? 'contained' : 'outlined'}
-            startIcon={<PeopleIcon />}
+            size={isMobile ? 'medium' : 'small'}
+            variant={activePanel === 'students' ? 'contained' : 'text'}
             onClick={() => setActivePanel('students')}
             aria-label={t('professor.liveSession.showStudentsPanel', { count: joinedCount })}
-            sx={{ minWidth: { xs: 170, sm: 220 }, justifyContent: 'center' }}
+            sx={{
+              ...TOP_PANEL_TAB_BUTTON_SX,
+              boxShadow: activePanel === 'students' ? 1 : 'none',
+              color: activePanel === 'students' ? undefined : 'text.primary',
+            }}
           >
-            {t('professor.liveSession.studentsInSession', { count: joinedCount })}
+            {t('professor.liveSession.studentsTab')}
           </Button>
         </Box>
 
@@ -984,34 +1054,43 @@ function LiveSessionContent() {
               gap: 1.25,
             }}
           >
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={!!session.joinCodeEnabled}
-                    onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
-                    disabled={globalActionLoading || joinCodeEnabledBusy}
-                    size="small"
-                  />
-                }
-                label={<Typography variant="body2">{t('professor.liveSession.requirePasscode')}</Typography>}
-              />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
+              <Box sx={toggleColumnsSx}>
+                <FormControlLabel
+                  labelPlacement="start"
+                  sx={CONTROL_TOGGLE_LABEL_SX}
+                  control={
+                    <Switch
+                      checked={!!session.joinCodeEnabled}
+                      onChange={(e) => handleTogglePasscodeRequired(e.target.checked)}
+                      disabled={globalActionLoading || joinCodeEnabledBusy}
+                      size={mobileControlSize}
+                    />
+                  }
+                  label={t('professor.liveSession.requirePasscode')}
+                />
 
-              {session.joinCodeEnabled && (
-                <>
+                {session.joinCodeEnabled && (
                   <FormControlLabel
+                    labelPlacement="start"
+                    sx={CONTROL_TOGGLE_LABEL_SX}
                     control={
                       <Switch
                         checked={!!session.joinCodeActive}
                         onChange={(e) => handleToggleJoinCode(e.target.checked)}
                         disabled={globalActionLoading || joinCodeActiveBusy}
-                        size="small"
+                        size={mobileControlSize}
                       />
                     }
-                    label={<Typography variant="body2">{t('professor.liveSession.joinPeriod')}</Typography>}
+                    label={t('professor.liveSession.joinPeriod')}
                   />
+                )}
+              </Box>
+
+              {session.joinCodeEnabled && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
                   <TextField
-                    size="small"
+                    size={mobileControlSize}
                     label={t('professor.liveSession.refreshSec')}
                     type="number"
                     value={joinCodeIntervalInput}
@@ -1022,7 +1101,7 @@ function LiveSessionContent() {
                     }}
                     inputProps={{ min: 5, max: 120 }}
                     disabled={globalActionLoading || joinCodeIntervalBusy}
-                    sx={{ width: 130 }}
+                    sx={{ width: { xs: '100%', sm: 150 }, maxWidth: 200 }}
                   />
                   {session.joinCodeActive && session.currentJoinCode && (
                     <>
@@ -1034,7 +1113,7 @@ function LiveSessionContent() {
                       />
                       <Tooltip title={t('professor.liveSession.refreshJoinCodeNow')}>
                         <IconButton
-                          size="small"
+                          size={mobileControlSize}
                           onClick={handleRefreshJoinCode}
                           disabled={globalActionLoading || joinCodeRefreshBusy}
                           aria-label={t('professor.liveSession.refreshJoinCode')}
@@ -1044,60 +1123,79 @@ function LiveSessionContent() {
                       </Tooltip>
                     </>
                   )}
-                </>
+                </Box>
               )}
             </Box>
 
             <Divider />
 
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={!isHidden}
-                    onChange={() => handleToggleVisibility('hidden')}
-                    disabled={!currentQ || globalActionLoading || visibleToggleBusy}
-                    size="small"
-                  />
-                }
-                label={<Typography variant="body2">{t('professor.liveSession.visible')}</Typography>}
-              />
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(260px, 1fr))' },
+                gap: 1,
+                width: '100%',
+              }}
+            >
+              <Box sx={{ display: 'grid', gap: 1 }}>
+                <FormControlLabel
+                  labelPlacement="start"
+                  sx={CONTROL_TOGGLE_LABEL_SX}
+                  control={
+                    <Switch
+                      checked={!isHidden}
+                      onChange={() => handleToggleVisibility('hidden')}
+                      disabled={!currentQ || globalActionLoading || visibleToggleBusy}
+                      size={mobileControlSize}
+                    />
+                  }
+                  label={t('professor.liveSession.visible')}
+                />
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showStats}
-                    onChange={() => handleToggleVisibility('stats')}
-                    disabled={!currentQ || globalActionLoading || statsToggleBusy || isSlide}
-                    size="small"
-                  />
-                }
-                label={<Typography variant="body2">{t('professor.liveSession.showStats')}</Typography>}
-              />
+                <FormControlLabel
+                  labelPlacement="start"
+                  sx={CONTROL_TOGGLE_LABEL_SX}
+                  control={
+                    <Switch
+                      checked={!responsesClosed}
+                      onChange={handleToggleResponses}
+                      disabled={!currentQ || globalActionLoading || responsesToggleBusy || isSlide}
+                      size={mobileControlSize}
+                    />
+                  }
+                  label={t('professor.liveSession.responsesOpen')}
+                />
+              </Box>
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showCorrect}
-                    onChange={() => handleToggleVisibility('correct')}
-                    disabled={!currentQ || globalActionLoading || correctToggleBusy || isSlide}
-                    size="small"
-                  />
-                }
-                label={<Typography variant="body2">{t('professor.liveSession.showCorrect')}</Typography>}
-              />
+              <Box sx={{ display: 'grid', gap: 1 }}>
+                <FormControlLabel
+                  labelPlacement="start"
+                  sx={CONTROL_TOGGLE_LABEL_SX}
+                  control={
+                    <Switch
+                      checked={showStats}
+                      onChange={() => handleToggleVisibility('stats')}
+                      disabled={!currentQ || globalActionLoading || statsToggleBusy || isSlide}
+                      size={mobileControlSize}
+                    />
+                  }
+                  label={t('professor.liveSession.showStats')}
+                />
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={!responsesClosed}
-                    onChange={handleToggleResponses}
-                    disabled={!currentQ || globalActionLoading || responsesToggleBusy || isSlide}
-                    size="small"
-                  />
-                }
-                label={<Typography variant="body2">{t('professor.liveSession.responsesOpen')}</Typography>}
-              />
+                <FormControlLabel
+                  labelPlacement="start"
+                  sx={CONTROL_TOGGLE_LABEL_SX}
+                  control={
+                    <Switch
+                      checked={showCorrect}
+                      onChange={() => handleToggleVisibility('correct')}
+                      disabled={!currentQ || globalActionLoading || correctToggleBusy || isSlide}
+                      size={mobileControlSize}
+                    />
+                  }
+                  label={t('professor.liveSession.showCorrect')}
+                />
+              </Box>
             </Box>
 
             <Divider />
@@ -1106,7 +1204,7 @@ function LiveSessionContent() {
               <Box
                 sx={{
                   display: 'flex',
-                  gap: 0.75,
+                  gap: { xs: 1, sm: 0.75 },
                   flexWrap: 'wrap',
                   p: 1,
                   border: 1,
@@ -1125,7 +1223,7 @@ function LiveSessionContent() {
                       label={entry.label}
                       color={isActive ? 'primary' : 'default'}
                       variant={isActive ? 'filled' : 'outlined'}
-                      sx={COMPACT_CHIP_SX}
+                      sx={SESSION_NAV_CHIP_SX}
                     />
                   );
                 })}
@@ -1134,22 +1232,22 @@ function LiveSessionContent() {
 
             <Box
               sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
+                display: 'grid',
+                gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', sm: 'repeat(3, minmax(0, 1fr))' },
                 alignItems: 'stretch',
                 gap: 1,
               }}
             >
               <Tooltip title={t('professor.liveSession.previousQuestion')}>
-                <Box component="span" sx={{ display: 'flex', order: { xs: 2, sm: 1 }, flex: '1 1 0', minWidth: { xs: 'calc(50% - 4px)', sm: 0 } }}>
+                <Box component="span" sx={{ display: 'flex', order: { xs: 2, sm: 1 } }}>
                   <Button
-                    size="small"
+                    size={mobileControlSize}
                     variant="outlined"
                     startIcon={<PrevIcon />}
                     onClick={handlePrev}
                     disabled={!hasPrev || navigationBusy}
                     aria-label={t('professor.liveSession.previousQuestion')}
-                    sx={{ width: '100%' }}
+                    sx={navButtonSx}
                   >
                     {t('professor.liveSession.prev')}
                   </Button>
@@ -1157,15 +1255,15 @@ function LiveSessionContent() {
               </Tooltip>
 
               <Tooltip title={t('professor.liveSession.startNewAttempt')}>
-                <Box component="span" sx={{ display: 'flex', order: { xs: 1, sm: 2 }, flex: { xs: '1 0 100%', sm: '0 0 auto' }, width: { xs: '100%', sm: 'auto' } }}>
+                <Box component="span" sx={{ display: 'flex', order: { xs: 1, sm: 2 }, gridColumn: { xs: '1 / -1', sm: 'auto' } }}>
                   <Button
-                    size="small"
+                    size={mobileControlSize}
                     variant="outlined"
                     startIcon={<AttemptIcon />}
                     onClick={handleNewAttempt}
                     disabled={!currentQ || newAttemptBusy || isSlide}
                     aria-label={t('professor.liveSession.newAttempt')}
-                    sx={{ width: '100%' }}
+                    sx={navButtonSx}
                   >
                     {t('professor.liveSession.newAttempt')}
                   </Button>
@@ -1173,15 +1271,15 @@ function LiveSessionContent() {
               </Tooltip>
 
               <Tooltip title={t('professor.liveSession.nextQuestion')}>
-                <Box component="span" sx={{ display: 'flex', order: 3, flex: '1 1 0', minWidth: { xs: 'calc(50% - 4px)', sm: 0 } }}>
+                <Box component="span" sx={{ display: 'flex', order: 3 }}>
                   <Button
-                    size="small"
+                    size={mobileControlSize}
                     variant="outlined"
                     endIcon={<NextIcon />}
                     onClick={handleNext}
                     disabled={!hasNext || navigationBusy}
                     aria-label={t('professor.liveSession.nextQuestion')}
-                    sx={{ width: '100%' }}
+                    sx={navButtonSx}
                   >
                     {t('common.next')}
                   </Button>

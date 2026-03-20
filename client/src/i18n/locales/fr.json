@@ -651,6 +651,8 @@
       "respondedSummary": "{{responded}} / {{total}} ont répondu",
       "respondedSummaryAria": "{{responded}} étudiants sur {{total}} ont répondu",
       "questionControls": "Contrôles de question",
+      "controlsTab": "Contrôles",
+      "studentsTab": "Étudiants",
       "questionControlsProgress": "Contrôles de question ({{current}}/{{total}})",
       "questionControlsLabel": "Afficher les contrôles de la question {{current}} sur {{total}}",
       "pageControlsProgress": "Contrôles des pages ({{current}}/{{total}})",
