@@ -38,6 +38,11 @@
   line-height: 1.05;
   margin: 0 0 14px;
   font-weight: 800;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  text-shadow: none;
+  -webkit-text-stroke: 0;
 }
 
 .homeHeroSubtitle {

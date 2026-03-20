@@ -207,8 +207,10 @@ export default async function userRoutes(app) {
 
       const hashed = await User.hashPassword(newPassword);
       if (!user.services.password) user.services.password = {};
+      if (!user.services.resume) user.services.resume = {};
       user.services.password.hash = hashed;
       user.services.password.bcrypt = undefined;
+      user.services.resume.loginTokens = [];
       user.refreshTokenVersion = (Number(user.refreshTokenVersion) || 0) + 1;
       await user.save();
 

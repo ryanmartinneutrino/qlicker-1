@@ -438,6 +438,67 @@ describe('POST /api/v1/auth/logout', () => {
     });
     expect(refreshRes.statusCode).toBe(401);
   });
+
+  it('does not log out a second device when the first device logs out', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'logout-multi@example.com', password: 'password123' });
+
+    const firstLoginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'logout-multi@example.com',
+        password: 'password123',
+      },
+    });
+    const secondLoginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'logout-multi@example.com',
+        password: 'password123',
+      },
+    });
+
+    const firstRefreshCookie = extractCookieValue(firstLoginRes.headers['set-cookie'], 'refreshToken');
+    const secondRefreshCookie = extractCookieValue(secondLoginRes.headers['set-cookie'], 'refreshToken');
+    expect(firstRefreshCookie).toBeTruthy();
+    expect(secondRefreshCookie).toBeTruthy();
+    expect(secondRefreshCookie).not.toBe(firstRefreshCookie);
+
+    const logoutRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/logout',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${firstRefreshCookie}`,
+      },
+    });
+    expect(logoutRes.statusCode).toBe(200);
+
+    const firstRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${firstRefreshCookie}`,
+      },
+    });
+    expect(firstRefreshRes.statusCode).toBe(401);
+
+    const secondRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${secondRefreshCookie}`,
+      },
+    });
+    expect(secondRefreshRes.statusCode).toBe(200);
+    expect(secondRefreshRes.json().token).toBeTruthy();
+  });
 });
 
 // ---------- POST /api/v1/auth/refresh ----------
@@ -497,7 +558,7 @@ describe('POST /api/v1/auth/refresh', () => {
     expect(secondRefreshRes.json().token).toBeTruthy();
   });
 
-  it('accepts one legacy refresh token (no version claim) and rotates to a versioned token', async (ctx) => {
+  it('accepts one legacy refresh token (no version claim) and rotates to a session-based token', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const user = await createTestUser({ email: 'legacy-refresh@example.com', password: 'password123' });
     await User.updateOne({ _id: user._id }, { $unset: { refreshTokenVersion: 1 } });
@@ -522,8 +583,8 @@ describe('POST /api/v1/auth/refresh', () => {
     const rotatedRefreshToken = extractCookieValue(firstRefreshRes.headers['set-cookie'], 'refreshToken');
     expect(rotatedRefreshToken).toBeTruthy();
     const rotatedPayload = jwt.verify(rotatedRefreshToken, app.config.jwtRefreshSecret);
-    expect(Number.isInteger(rotatedPayload.version)).toBe(true);
-    expect(rotatedPayload.version).toBeGreaterThanOrEqual(1);
+    expect(typeof rotatedPayload.sessionId).toBe('string');
+    expect(rotatedPayload.sessionId.length).toBeGreaterThan(0);
 
     const rejectedLegacyReuseRes = await app.inject({
       method: 'POST',
@@ -534,6 +595,74 @@ describe('POST /api/v1/auth/refresh', () => {
       },
     });
     expect(rejectedLegacyReuseRes.statusCode).toBe(401);
+  });
+
+  it('lets two separately logged-in devices refresh independently', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'multi-device@example.com', password: 'password123' });
+
+    const firstLoginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'multi-device@example.com',
+        password: 'password123',
+      },
+    });
+    const secondLoginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'multi-device@example.com',
+        password: 'password123',
+      },
+    });
+
+    const firstRefreshCookie = extractCookieValue(firstLoginRes.headers['set-cookie'], 'refreshToken');
+    const secondRefreshCookie = extractCookieValue(secondLoginRes.headers['set-cookie'], 'refreshToken');
+    expect(firstRefreshCookie).toBeTruthy();
+    expect(secondRefreshCookie).toBeTruthy();
+    expect(secondRefreshCookie).not.toBe(firstRefreshCookie);
+
+    const firstRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${firstRefreshCookie}`,
+      },
+    });
+    const secondRefreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${secondRefreshCookie}`,
+      },
+    });
+
+    expect(firstRefreshRes.statusCode).toBe(200);
+    expect(secondRefreshRes.statusCode).toBe(200);
+    expect(firstRefreshRes.json().token).toBeTruthy();
+    expect(secondRefreshRes.json().token).toBeTruthy();
+
+    const rotatedFirstRefresh = extractCookieValue(firstRefreshRes.headers['set-cookie'], 'refreshToken');
+    const rotatedSecondRefresh = extractCookieValue(secondRefreshRes.headers['set-cookie'], 'refreshToken');
+    expect(rotatedFirstRefresh).toBeTruthy();
+    expect(rotatedSecondRefresh).toBeTruthy();
+    expect(rotatedFirstRefresh).not.toBe(rotatedSecondRefresh);
+
+    const rejectedReuseRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${firstRefreshCookie}`,
+      },
+    });
+    expect(rejectedReuseRes.statusCode).toBe(401);
   });
 });
 
@@ -632,7 +761,7 @@ describe('login hardening', () => {
     expect(updated.loginLockedUntil).toBeNull();
   });
 
-  it('issues refresh tokens with a version claim', async (ctx) => {
+  it('issues refresh tokens with a session identifier claim', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'version@example.com', password: 'password123' });
 
@@ -650,7 +779,8 @@ describe('login hardening', () => {
     const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
     const decoded = jwt.verify(refreshToken, app.config.jwtRefreshSecret);
     expect(decoded.type).toBe('refresh');
-    expect(decoded.version).toBeGreaterThanOrEqual(1);
+    expect(typeof decoded.sessionId).toBe('string');
+    expect(decoded.sessionId.length).toBeGreaterThan(0);
   });
 });
 

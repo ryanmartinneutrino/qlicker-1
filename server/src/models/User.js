@@ -23,9 +23,19 @@ const PasswordSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const ResumeLoginTokenSchema = new mongoose.Schema(
+  {
+    sessionId: { type: String },
+    createdAt: { type: Date },
+    lastUsedAt: { type: Date },
+    expiresAt: { type: Date },
+  },
+  { _id: false, strict: false }
+);
+
 const ResumeSchema = new mongoose.Schema(
   {
-    loginTokens: { type: Array, default: [] },
+    loginTokens: { type: [ResumeLoginTokenSchema], default: [] },
   },
   { _id: false }
 );

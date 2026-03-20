@@ -103,9 +103,32 @@ export default function Login() {
   };
 
   const renderEmailLoginForm = ({ showBackToSso = false } = {}) => (
-    <Box component="form" onSubmit={handleLogin}>
-      <TextField fullWidth label={t('auth.email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-      <TextField fullWidth label={t('auth.password')} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+    <Box component="form" onSubmit={handleLogin} autoComplete="on" aria-label={t('auth.login')}>
+      <TextField
+        fullWidth
+        id="login-email"
+        name="email"
+        label={t('auth.email')}
+        type="email"
+        autoComplete="username"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        margin="normal"
+        inputProps={{ inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: 'false' }}
+      />
+      <TextField
+        fullWidth
+        id="login-password"
+        name="password"
+        label={t('auth.password')}
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        margin="normal"
+      />
       <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
         {loading ? t('auth.loggingIn') : t('auth.login')}
       </Button>
@@ -136,7 +159,14 @@ export default function Login() {
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="background.default">
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
         <CardContent>
-          <Typography variant="h4" textAlign="center" color="primary" gutterBottom>
+          <Typography
+            variant="h4"
+            component="h1"
+            textAlign="center"
+            color="primary"
+            gutterBottom
+            sx={{ fontWeight: 500, fontFamily: (theme) => theme.typography.fontFamily }}
+          >
             {t('common.appName')}
           </Typography>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -172,18 +202,61 @@ export default function Login() {
             </>
           ) : (
             <>
-              <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }}>
+              <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }} aria-label={t('auth.login')}>
                 <Tab label={t('auth.login')} />
                 <Tab label={t('auth.register')} />
               </Tabs>
               {tab === 0 ? (
                 renderEmailLoginForm()
               ) : (
-                <Box component="form" onSubmit={handleRegister}>
-                  <TextField fullWidth label={t('auth.firstName')} value={firstname} onChange={(e) => setFirstname(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label={t('auth.lastName')} value={lastname} onChange={(e) => setLastname(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label={t('auth.email')} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required margin="normal" />
-                  <TextField fullWidth label={t('auth.password')} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required margin="normal" />
+                <Box component="form" onSubmit={handleRegister} autoComplete="on" aria-label={t('auth.register')}>
+                  <TextField
+                    fullWidth
+                    id="register-firstname"
+                    name="firstname"
+                    label={t('auth.firstName')}
+                    autoComplete="given-name"
+                    value={firstname}
+                    onChange={(e) => setFirstname(e.target.value)}
+                    required
+                    margin="normal"
+                  />
+                  <TextField
+                    fullWidth
+                    id="register-lastname"
+                    name="lastname"
+                    label={t('auth.lastName')}
+                    autoComplete="family-name"
+                    value={lastname}
+                    onChange={(e) => setLastname(e.target.value)}
+                    required
+                    margin="normal"
+                  />
+                  <TextField
+                    fullWidth
+                    id="register-email"
+                    name="email"
+                    label={t('auth.email')}
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    margin="normal"
+                    inputProps={{ inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: 'false' }}
+                  />
+                  <TextField
+                    fullWidth
+                    id="register-password"
+                    name="password"
+                    label={t('auth.password')}
+                    type="password"
+                    autoComplete="new-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    margin="normal"
+                  />
                   <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
                     {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
                   </Button>
@@ -199,7 +272,18 @@ export default function Login() {
           <Typography variant="body2" sx={{ mb: 2 }}>
             {t('auth.forgotPasswordMessage')}
           </Typography>
-          <TextField fullWidth label={t('auth.email')} type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} margin="normal" />
+          <TextField
+            fullWidth
+            id="forgot-password-email"
+            name="email"
+            label={t('auth.email')}
+            type="email"
+            autoComplete="email"
+            value={forgotEmail}
+            onChange={(e) => setForgotEmail(e.target.value)}
+            margin="normal"
+            inputProps={{ inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: 'false' }}
+          />
           {forgotMsg && <Alert severity={forgotMsg.severity} sx={{ mt: 1 }}>{forgotMsg.text}</Alert>}
         </DialogContent>
         <DialogActions>
