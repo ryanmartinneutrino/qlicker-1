@@ -14,15 +14,12 @@ export function computeWordFrequencies(texts, stopWords = [], maxWords = 100) {
   for (const raw of texts) {
     if (!raw || typeof raw !== 'string') continue;
 
-    // Strip HTML tags and decode common HTML entities.
+    // Strip HTML tags and decode common HTML entities in a single pass
+    // to avoid double-unescaping (e.g. &amp;lt; → &lt; → <).
+    const ENTITY_MAP = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'", '&nbsp;': ' ' };
     const plain = raw
       .replace(/<[^>]*>/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#039;/g, "'")
-      .replace(/&nbsp;/g, ' ');
+      .replace(/&(?:amp|lt|gt|quot|nbsp|#039);/g, (match) => ENTITY_MAP[match] || match);
 
     // Tokenize: split on non-letter/non-digit boundaries.
     // Supports accented characters and unicode letters via \p{L}.
