@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ConnectionStatus from '../components/common/ConnectionStatus';
+import QlickerWordmark from '../components/common/QlickerWordmark';
 import './HomeAnimated.css';
 
 const DOODLES = [
@@ -216,6 +217,7 @@ export default function Home() {
 
         <div className="homeHeroContent">
           <div className="homeHeroCopy">
+            <QlickerWordmark className="homeHeroWordmark" title={t('common.appName')} />
             <div className="homeHeroEyebrow">{t('home.tagline')}</div>
             <h1 className="homeHeroTitle">{t('home.subtitle')}</h1>
             <p className="homeHeroSubtitle">

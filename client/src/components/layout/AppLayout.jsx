@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, Typography, IconButton, Menu, MenuItem, Avatar, Box, Container, Button, Tooltip,
+  AppBar, Toolbar, IconButton, Menu, MenuItem, Avatar, Box, Container, Button, Tooltip,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../api/client';
 import ConnectionStatus from '../common/ConnectionStatus';
+import QlickerWordmark from '../common/QlickerWordmark';
 import { getManualPath, getPreferredManualRole } from '../../utils/userManuals';
 
 export default function AppLayout() {
@@ -112,9 +113,11 @@ export default function AppLayout() {
                 '&:hover': { backgroundColor: 'transparent' },
               }}
             >
-              <Typography variant="h4" sx={{ fontWeight: 500 }}>
-                {t('common.appName')}
-              </Typography>
+              <QlickerWordmark
+                ariaHidden
+                height={34}
+                style={{ color: 'currentColor' }}
+              />
             </Button>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
