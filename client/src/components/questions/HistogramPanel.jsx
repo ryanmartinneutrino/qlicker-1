@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Box, Button, Typography, CircularProgress, TextField } from '@mui/material';
 import {
   Refresh as RefreshIcon,
@@ -8,6 +8,12 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import HistogramBars from '../common/HistogramBars';
+
+function formatNumberText(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '';
+  return Number(numeric.toPrecision(10)).toString();
+}
 
 /**
  * HistogramPanel wraps the histogram display with action buttons and range controls.
@@ -35,6 +41,25 @@ export default function HistogramPanel({
 
   const hasHistogram = histogramData?.bins?.length > 0;
   const isVisible = histogramData?.visible !== false;
+
+  useEffect(() => {
+    if (!hasHistogram) {
+      setCustomMin('');
+      setCustomMax('');
+      setCustomBins('');
+      setRangeChanged(false);
+      return;
+    }
+
+    setCustomMin(formatNumberText(histogramData?.rangeMin));
+    setCustomMax(formatNumberText(histogramData?.rangeMax));
+    setCustomBins(
+      histogramData?.numBins != null
+        ? String(Math.max(1, Math.round(Number(histogramData.numBins) || 0)))
+        : '',
+    );
+    setRangeChanged(false);
+  }, [hasHistogram, histogramData?.rangeMin, histogramData?.rangeMax, histogramData?.numBins]);
 
   const handleGenerate = useCallback(async (opts = {}) => {
     if (!onGenerate) return;
@@ -76,21 +101,17 @@ export default function HistogramPanel({
   // Build display data: prepend overflow low, append overflow high
   const displayData = [];
   if (hasHistogram) {
-    if (histogramData.overflowLow > 0) {
-      displayData.push({
-        bin: t('histogram.overflowLow', { value: histogramData.rangeMin }),
-        count: histogramData.overflowLow,
-      });
-    }
+    displayData.push({
+      bin: t('histogram.overflowLow', { value: formatNumberText(histogramData.rangeMin) }),
+      count: Number(histogramData.overflowLow) || 0,
+    });
     for (const b of histogramData.bins) {
       displayData.push({ bin: b.label, count: b.count });
     }
-    if (histogramData.overflowHigh > 0) {
-      displayData.push({
-        bin: t('histogram.overflowHigh', { value: histogramData.rangeMax }),
-        count: histogramData.overflowHigh,
-      });
-    }
+    displayData.push({
+      bin: t('histogram.overflowHigh', { value: formatNumberText(histogramData.rangeMax) }),
+      count: Number(histogramData.overflowHigh) || 0,
+    });
   }
 
   // Prof controls: Generate / Refresh / Hide / Show + range controls
@@ -151,7 +172,6 @@ export default function HistogramPanel({
                   type="number"
                   value={customMin}
                   onChange={handleRangeFieldChange(setCustomMin)}
-                  placeholder={histogramData.rangeMin != null ? String(histogramData.rangeMin) : ''}
                   sx={{ width: 100 }}
                   inputProps={{ 'aria-label': t('histogram.min') }}
                 />
@@ -161,7 +181,6 @@ export default function HistogramPanel({
                   type="number"
                   value={customMax}
                   onChange={handleRangeFieldChange(setCustomMax)}
-                  placeholder={histogramData.rangeMax != null ? String(histogramData.rangeMax) : ''}
                   sx={{ width: 100 }}
                   inputProps={{ 'aria-label': t('histogram.max') }}
                 />
@@ -171,7 +190,6 @@ export default function HistogramPanel({
                   type="number"
                   value={customBins}
                   onChange={handleRangeFieldChange(setCustomBins)}
-                  placeholder={histogramData.numBins != null ? String(histogramData.numBins) : '20'}
                   sx={{ width: 80 }}
                   inputProps={{ min: 1, 'aria-label': t('histogram.bins') }}
                 />

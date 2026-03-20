@@ -170,6 +170,16 @@ function buildStudentInitials(student) {
   return email ? email.charAt(0).toUpperCase() : '?';
 }
 
+function buildStudentDisplayName(student, fallbackName) {
+  const first = normalizeAnswerValue(student?.firstname);
+  const last = normalizeAnswerValue(student?.lastname);
+  const fullName = `${first} ${last}`.trim();
+  if (fullName) return fullName;
+  const email = normalizeAnswerValue(student?.email);
+  if (email) return email;
+  return fallbackName;
+}
+
 function optionDisplayHtml(option) {
   return option?.content
     || option?.plainText
@@ -704,6 +714,7 @@ export default function SessionReview() {
         (result) => String(result.questionId) === String(q._id),
       );
       if (!qr?.responses?.length) return;
+      const studentName = buildStudentDisplayName(student, t('professor.sessionReview.unknownStudent'));
 
       qr.responses.forEach((response) => {
         const attemptNumber = Number(response?.attempt);
@@ -712,7 +723,10 @@ export default function SessionReview() {
         if (!responsesByAttempt.has(normalizedAttempt)) {
           responsesByAttempt.set(normalizedAttempt, []);
         }
-        responsesByAttempt.get(normalizedAttempt).push(response);
+        responsesByAttempt.get(normalizedAttempt).push({
+          ...response,
+          studentName,
+        });
       });
     });
 
@@ -753,7 +767,7 @@ export default function SessionReview() {
         ? attemptResponses.map((r) => ({
           answer: r?.answer,
           answerWysiwyg: r?.answerWysiwyg,
-          studentName: r?.studentName || '',
+          studentName: r?.studentName || t('professor.sessionReview.unknownStudent'),
         }))
         : null;
 
@@ -761,7 +775,7 @@ export default function SessionReview() {
       const nuResponses = qType === QUESTION_TYPES.NUMERICAL
         ? attemptResponses.map((r) => ({
           answer: r?.answer,
-          studentName: r?.studentName || '',
+          studentName: r?.studentName || t('professor.sessionReview.unknownStudent'),
         }))
         : null;
 
@@ -782,7 +796,7 @@ export default function SessionReview() {
         nuResponses,
       };
     });
-  }), [progressList, questions, studentResults]);
+  }), [progressList, questions, studentResults, t]);
 
   const csvQuestionAttempts = useMemo(() => questions.map((question, questionIndex) => ({
     question,
@@ -1217,6 +1231,9 @@ export default function SessionReview() {
                           <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
                             {row.saResponses.map((r, idx) => (
                               <Paper key={idx} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  {normalizeAnswerValue(r.studentName) || t('professor.sessionReview.unknownStudent')}
+                                </Typography>
                                 {r.answerWysiwyg ? (
                                   <RichContent html={r.answerWysiwyg} />
                                 ) : (
@@ -1255,6 +1272,9 @@ export default function SessionReview() {
                           <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
                             {row.nuResponses.map((r, idx) => (
                               <Paper key={idx} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                  {normalizeAnswerValue(r.studentName) || t('professor.sessionReview.unknownStudent')}
+                                </Typography>
                                 <Typography variant="body2">
                                   {normalizeAnswerValue(r.answer) || t('common.noAnswer')}
                                 </Typography>

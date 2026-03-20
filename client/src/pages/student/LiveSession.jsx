@@ -1006,6 +1006,9 @@ function LiveSessionContent() {
             <Box sx={{ maxHeight: 300, overflow: 'auto', mt: 1.5 }}>
               {responseStats.answers.map((r, i) => (
                 <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    {t('common.unknown')}
+                  </Typography>
                   <Typography variant="body2">{r.answer ?? t('common.noAnswer')}</Typography>
                 </Paper>
               ))}
@@ -1023,6 +1026,9 @@ function LiveSessionContent() {
           <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
             {(responseStats.answers || []).map((r, i) => (
               <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  {t('common.unknown')}
+                </Typography>
                 {r.answerWysiwyg ? (
                   <RichContent html={r.answerWysiwyg} />
                 ) : (

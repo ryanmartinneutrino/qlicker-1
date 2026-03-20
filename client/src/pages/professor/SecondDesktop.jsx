@@ -196,6 +196,9 @@ function ShortAnswerList({ responses }) {
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
       {responses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1.5, mb: 0.75 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            {t('common.unknown')}
+          </Typography>
           {r.answerWysiwyg ? (
             <RichContent html={r.answerWysiwyg} />
           ) : (

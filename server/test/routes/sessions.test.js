@@ -1432,6 +1432,141 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(body.allResponses[0]).not.toHaveProperty('studentUserId');
     expect(body.allResponses[0]).toHaveProperty('studentName');
   });
+
+  it('instructor can opt in to student names for numerical control view', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({
+      email: 'student-live-prof-numeric-names@example.com',
+      roles: ['student'],
+      firstname: 'Second',
+      lastname: 'Learner',
+    });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 4,
+        content: '<p>Value?</p>',
+        plainText: 'Value?',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    const addResQuestions = addRes.json().session.questions;
+    const copiedQuestionId = addResQuestions[addResQuestions.length - 1];
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentTwoToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: copiedQuestionId,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '10',
+    });
+    await Response.create({
+      questionId: copiedQuestionId,
+      studentUserId: studentTwo._id,
+      attempt: 1,
+      answer: '12',
+    });
+
+    const liveRes = await authenticatedRequest(
+      app,
+      'GET',
+      `/api/v1/sessions/${session._id}/live?includeStudentNames=true`,
+      { token: profToken }
+    );
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('numerical');
+    expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+    expect(body.responseStats.answers[0]).toHaveProperty('studentName');
+    expect(body.allResponses[0]).not.toHaveProperty('studentUserId');
+    expect(body.allResponses[0]).toHaveProperty('studentName');
+  });
+
+  it('presentation view never includes student names in response payloads', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    const addResQuestions = addRes.json().session.questions;
+    const copiedQuestionId = addResQuestions[addResQuestions.length - 1];
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: copiedQuestionId,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'First response',
+    });
+
+    const liveRes = await authenticatedRequest(
+      app,
+      'GET',
+      `/api/v1/sessions/${session._id}/live?view=presentation&includeStudentNames=true`,
+      { token: profToken }
+    );
+
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    expect(body.responseStats?.type).toBe('shortAnswer');
+    expect(body.responseStats.answers[0]).not.toHaveProperty('studentName');
+    expect(body.allResponses[0]).not.toHaveProperty('studentName');
+  });
 });
 
 // ---------- POST /api/v1/sessions/:id/end ----------

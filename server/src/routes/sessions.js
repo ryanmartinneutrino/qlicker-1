@@ -3327,7 +3327,8 @@ export default async function sessionRoutes(app) {
           }).lean();
           responseStats = buildResponseStats(currentQuestion, responses);
 
-          const includeNamesInPayload = includeStudentNames && responseStats?.type === 'shortAnswer';
+          const includeNamesInPayload = includeStudentNames
+            && ['shortAnswer', 'numerical'].includes(responseStats?.type);
           let studentNameById = {};
           if (includeNamesInPayload) {
             const responderIds = [...new Set(
