@@ -1733,9 +1733,7 @@
     "show": "Show Word Cloud",
     "hidden": "Word cloud is hidden.",
     "noData": "Not enough word data to display.",
-    "ariaLabel": "Word cloud visualization",
-    "showResponses": "Show Responses",
-    "hideResponses": "Hide Responses"
+    "ariaLabel": "Word cloud visualization"
   },
   "stopWords": [
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",

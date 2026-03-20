@@ -1733,9 +1733,7 @@
     "show": "Afficher le nuage de mots",
     "hidden": "Le nuage de mots est masqué.",
     "noData": "Pas assez de données pour afficher un nuage de mots.",
-    "ariaLabel": "Visualisation en nuage de mots",
-    "showResponses": "Afficher les réponses",
-    "hideResponses": "Masquer les réponses"
+    "ariaLabel": "Visualisation en nuage de mots"
   },
   "stopWords": [
     "le", "la", "les", "un", "une", "des", "de", "du", "et", "ou", "mais",

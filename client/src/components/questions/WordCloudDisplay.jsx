@@ -57,7 +57,7 @@ export default function WordCloudDisplay({ wordFrequencies = [], width = 600, he
         .size([width, height])
         .words(sized.map((d) => ({ ...d })))
         .padding(3)
-        .rotate(() => (~~(Math.random() * 2)) * 90 * 0) // 0° only for readability
+        .rotate(() => 0) // all horizontal for readability
         .font('Arial, Helvetica, sans-serif')
         .fontSize((d) => d.size)
         .on('end', (placed) => {
