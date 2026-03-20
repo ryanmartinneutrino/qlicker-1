@@ -402,7 +402,7 @@ export default function PresentationWindow() {
   );
   const currentQ = liveData?.currentQuestion;
   const responseStats = liveData?.responseStats;
-  const wordCloudData = liveData?.wordCloudData || currentQ?.wordCloudData || null;
+  const wordCloudData = liveData?.wordCloudData || currentQ?.sessionOptions?.wordCloudData || null;
   const allResponses = liveData?.allResponses || [];
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);

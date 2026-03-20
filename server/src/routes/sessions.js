@@ -826,6 +826,12 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
     delete sanitized.solutionHtml;
   }
 
+  // Strip word cloud data — students should not see it during quizzes.
+  if (sanitized.sessionOptions) {
+    sanitized.sessionOptions = { ...sanitized.sessionOptions };
+    delete sanitized.sessionOptions.wordCloudData;
+  }
+
   return sanitized;
 }
 
@@ -3496,8 +3502,8 @@ export default async function sessionRoutes(app) {
         if (currentQuestion) {
           result.currentQuestion = currentQuestion;
           // Include word cloud data for instructors (always)
-          if (currentQuestion.wordCloudData) {
-            result.wordCloudData = currentQuestion.wordCloudData;
+          if (currentQuestion.sessionOptions?.wordCloudData) {
+            result.wordCloudData = currentQuestion.sessionOptions.wordCloudData;
           }
         }
       } else {
@@ -3521,12 +3527,15 @@ export default async function sessionRoutes(app) {
             delete studentQ.solutionHtml;
           }
           // Strip word cloud data from student question payload — sent separately.
-          delete studentQ.wordCloudData;
+          if (studentQ.sessionOptions) {
+            studentQ.sessionOptions = { ...studentQ.sessionOptions };
+            delete studentQ.sessionOptions.wordCloudData;
+          }
           result.currentQuestion = studentQ;
 
           // Students/presentation only see word cloud when stats are visible AND cloud is visible
-          if (showStats && currentQuestion.wordCloudData?.visible) {
-            result.wordCloudData = currentQuestion.wordCloudData;
+          if (showStats && currentQuestion.sessionOptions?.wordCloudData?.visible) {
+            result.wordCloudData = currentQuestion.sessionOptions.wordCloudData;
           }
         }
         result.studentResponse = studentResponse;
@@ -3783,17 +3792,17 @@ export default async function sessionRoutes(app) {
         questionId,
         {
           $set: {
-            'wordCloudData.wordFrequencies': wordFrequencies,
-            'wordCloudData.visible': true,
-            'wordCloudData.generatedAt': new Date(),
+            'sessionOptions.wordCloudData.wordFrequencies': wordFrequencies,
+            'sessionOptions.wordCloudData.visible': true,
+            'sessionOptions.wordCloudData.generatedAt': new Date(),
           },
         },
         { new: true }
       );
 
-      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
-        ? updatedQuestion.wordCloudData.toObject()
-        : updatedQuestion?.wordCloudData;
+      const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
+        ? updatedQuestion.sessionOptions.wordCloudData.toObject()
+        : updatedQuestion?.sessionOptions?.wordCloudData;
 
       sendToCourseMembers(app, course, 'session:word-cloud-updated', {
         courseId: String(course._id),
@@ -3844,13 +3853,13 @@ export default async function sessionRoutes(app) {
 
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
-        { $set: { 'wordCloudData.visible': request.body.visible } },
+        { $set: { 'sessionOptions.wordCloudData.visible': request.body.visible } },
         { new: true }
       );
 
-      const wordCloudData = updatedQuestion?.wordCloudData?.toObject
-        ? updatedQuestion.wordCloudData.toObject()
-        : updatedQuestion?.wordCloudData;
+      const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
+        ? updatedQuestion.sessionOptions.wordCloudData.toObject()
+        : updatedQuestion?.sessionOptions?.wordCloudData;
 
       sendToCourseMembers(app, course, 'session:word-cloud-updated', {
         courseId: String(course._id),

@@ -1183,7 +1183,7 @@ export default function SessionReview() {
                       <Collapse in={!!expandedSARows[row.key]}>
                         <Box sx={{ mt: 1 }}>
                           <WordCloudPanel
-                            wordCloudData={wordCloudByRow[row.key] || q.wordCloudData}
+                            wordCloudData={wordCloudByRow[row.key] || q.sessionOptions?.wordCloudData}
                             onGenerate={() => handleGenerateWordCloudForQuestion(q._id, row.key)}
                             showControls
                           />

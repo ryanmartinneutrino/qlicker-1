@@ -55,6 +55,7 @@ const SessionOptionsSchema = new mongoose.Schema(
     maxAttempts: { type: Number, default: 1 },
     attemptWeights: { type: [Number], default: [] },
     attempts: { type: [AttemptSchema], default: [] },
+    wordCloudData: { type: WordCloudDataSchema },
   },
   { _id: false }
 );
@@ -84,7 +85,6 @@ const QuestionSchema = new mongoose.Schema(
     approved: { type: Boolean, default: true },
     tags: { type: [TagSchema], default: [] },
     sessionOptions: { type: SessionOptionsSchema },
-    wordCloudData: { type: WordCloudDataSchema },
     imagePath: { type: String, default: '' },
     studentCopyOfPublic: { type: Boolean, default: false },
     studentCreated: { type: Boolean, default: false },

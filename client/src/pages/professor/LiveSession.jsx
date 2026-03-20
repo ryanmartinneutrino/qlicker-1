@@ -737,7 +737,7 @@ function LiveSessionContent() {
   const currentQ = liveData?.currentQuestion;
   const currentAttempt = liveData?.currentAttempt;
   const responseStats = liveData?.responseStats;
-  const wordCloudData = liveData?.wordCloudData || currentQ?.wordCloudData || null;
+  const wordCloudData = liveData?.wordCloudData || currentQ?.sessionOptions?.wordCloudData || null;
   const allResponses = liveData?.allResponses || [];
   const responseCount = liveData?.responseCount ?? allResponses.length;
   const joinedCount = session?.joinedCount ?? (session?.joined?.length || 0);
