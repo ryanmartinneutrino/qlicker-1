@@ -651,6 +651,8 @@
       "respondedSummary": "{{responded}} / {{total}} responded",
       "respondedSummaryAria": "{{responded}} of {{total}} students have responded",
       "questionControls": "Question Controls",
+      "controlsTab": "Controls",
+      "studentsTab": "Students",
       "questionControlsProgress": "Question Controls ({{current}}/{{total}})",
       "questionControlsLabel": "Show question controls for question {{current}} of {{total}}",
       "pageControlsProgress": "Page Controls ({{current}}/{{total}})",
