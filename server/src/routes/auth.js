@@ -187,7 +187,7 @@ async function consumeLegacyRefreshTokenVersion(userId, version) {
     return User.findOneAndUpdate(
       { _id: userId, refreshTokenVersion: version },
       { $inc: { refreshTokenVersion: 1 } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 
@@ -195,7 +195,7 @@ async function consumeLegacyRefreshTokenVersion(userId, version) {
   return User.findOneAndUpdate(
     { _id: userId, ...LEGACY_REFRESH_VERSION_QUERY },
     { $set: { refreshTokenVersion: 1 } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 }
 

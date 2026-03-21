@@ -56,8 +56,8 @@ qlicker-1/
 |----------|-----------|
 | **Fastify** (not Express) | Native async/await, JSON schema validation, plugin system, excellent performance |
 | **Mongoose** (not raw MongoDB driver) | Schema validation, virtuals, middleware hooks, legacy Meteor DB compatibility |
-| **React 18 + Vite** | Fast HMR, ES module-native, future-ready for React Server Components |
-| **MUI 6** (Material UI) | Comprehensive component library, consistent design system, accessible by default |
+| **React 19 + Vite 8** | Fast HMR, Rolldown bundler (10× faster builds), ES module-native |
+| **MUI 7** (Material UI) | Comprehensive component library, consistent design system, accessible by default |
 | **Axios** (not fetch) | Interceptors for JWT refresh, request/response transformation, better error handling |
 | **ES modules** throughout | `"type": "module"` in both package.json files — use `import`/`export`, not `require` |
 
@@ -80,22 +80,22 @@ qlicker-1/
 | `@fastify/formbody` | Form body parsing | URL-encoded form support |
 | `@fastify/multipart` | File uploads | Image upload handling |
 | `@fastify/swagger` | API documentation | Swagger/OpenAPI spec generation |
-| `mongoose` | MongoDB ODM | v8.x — schemas must match legacy Meteor DB |
+| `mongoose` | MongoDB ODM | v9.x — schemas must match legacy Meteor DB; use `returnDocument: 'after'` instead of `new: true` |
 | `@node-rs/argon2` | Password hashing | Argon2id with OWASP-tuned parameters |
 | `@node-saml/node-saml` | SAML SSO | Institutional single sign-on |
 | `jsonwebtoken` | JWT signing | For refresh tokens (separate from Fastify JWT) |
-| `nodemailer` | Email | Verification and password reset emails |
+| `nodemailer` | Email | v8 — verification and password reset emails |
 | `@aws-sdk/client-s3` | S3 storage | Image uploads to AWS S3 |
 | `@azure/storage-blob` | Azure storage | Image uploads to Azure Blob Storage |
-| `dotenv` | Environment config | Loads `.env` from project root |
+| `dotenv` | Environment config | v17 — loads `.env` from project root; use `quiet: true` to suppress log |
 
 ### Client (`client/package.json`)
 
 | Package | Purpose | Notes |
 |---------|---------|-------|
-| `react` / `react-dom` | UI framework | v18 — use hooks, no class components |
-| `react-router-dom` | Routing | v6 — `<Routes>`, `<Outlet>`, `useNavigate` |
-| `@mui/material` | Component library | v6 — **all UI components must use MUI** |
+| `react` / `react-dom` | UI framework | v19 — use hooks, no class components; `ref` is a regular prop (no `forwardRef`) |
+| `react-router-dom` | Routing | v7 — `<Routes>`, `<Outlet>`, `useNavigate` |
+| `@mui/material` | Component library | v7 — **all UI components must use MUI** |
 | `@mui/icons-material` | Icons | Material Design icons |
 | `@emotion/react` / `@emotion/styled` | CSS-in-JS | Required by MUI — use `sx` prop, not custom CSS |
 | `axios` | HTTP client | Wrapped in `src/api/client.js` with interceptors |

@@ -1309,7 +1309,7 @@ export default async function questionRoutes(app) {
             ...(updates.tags !== undefined ? { tags: normalizeTags(updates.tags) } : {}),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       await notifyLinkedSessionQuestionUpdated(app, updated || question);
@@ -1414,7 +1414,7 @@ export default async function questionRoutes(app) {
             lastEditedAt: new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -1456,7 +1456,7 @@ export default async function questionRoutes(app) {
             lastEditedAt: new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -1850,7 +1850,7 @@ export default async function questionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         session._id,
         { $pull: { questions: request.params.questionId } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { session: updated.toObject() };
@@ -1884,7 +1884,7 @@ export default async function questionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         session._id,
         { $set: { questions: newOrder } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { session: updated.toObject() };
@@ -1925,7 +1925,7 @@ export default async function questionRoutes(app) {
       const updated = await Question.findByIdAndUpdate(
         request.params.id,
         { $push: { 'sessionOptions.attempts': { number: nextNumber, closed: false } } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -1966,7 +1966,7 @@ export default async function questionRoutes(app) {
       const updated = await Question.findOneAndUpdate(
         { _id: request.params.id, 'sessionOptions.attempts.number': attemptNumber },
         { $set: { 'sessionOptions.attempts.$.closed': closed } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!updated) {
@@ -2009,7 +2009,7 @@ export default async function questionRoutes(app) {
       const updated = await Question.findByIdAndUpdate(
         request.params.id,
         { $set: { 'sessionOptions.hidden': request.body.hidden } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -2048,7 +2048,7 @@ export default async function questionRoutes(app) {
       const updated = await Question.findByIdAndUpdate(
         request.params.id,
         { $set: { 'sessionOptions.stats': request.body.stats } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -2087,7 +2087,7 @@ export default async function questionRoutes(app) {
       const updated = await Question.findByIdAndUpdate(
         request.params.id,
         { $set: { 'sessionOptions.correct': request.body.correct } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { question: updated.toObject() };
@@ -2159,7 +2159,7 @@ export default async function questionRoutes(app) {
             'sessionOptions.wordCloudData.generatedAt': new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
@@ -2240,7 +2240,7 @@ export default async function questionRoutes(app) {
             'sessionOptions.histogramData.generatedAt': new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject

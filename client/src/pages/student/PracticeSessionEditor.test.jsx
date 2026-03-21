@@ -41,17 +41,17 @@ vi.mock('../../components/questions/QuestionDisplay', () => ({
 }));
 
 vi.mock('../../components/questions/QuestionEditor', () => ({
-  default: React.forwardRef(function MockQuestionEditor(props, ref) {
+  default: function MockQuestionEditor({ ref, ...props }) {
     React.useImperativeHandle(ref, () => ({
       requestClose: vi.fn(),
     }));
     questionEditorPropsMock(props);
     return <div>Mock Question Editor</div>;
-  }),
+  },
 }));
 
 vi.mock('../../components/questions/QuestionLibraryPanel', () => ({
-  default: React.forwardRef(function MockQuestionLibraryPanel(props, ref) {
+  default: function MockQuestionLibraryPanel({ ref, ...props }) {
     React.useImperativeHandle(ref, () => ({
       submitSelectedQuestions: submitSelectedQuestionsMock,
       submitRandomFilteredQuestions: submitRandomFilteredQuestionsMock,
@@ -63,7 +63,7 @@ vi.mock('../../components/questions/QuestionLibraryPanel', () => ({
 
     questionLibraryPanelPropsMock(props);
     return <div>Mock Question Library Panel</div>;
-  }),
+  },
 }));
 
 function renderEditor(initialEntry = '/student/course/course-1/practice-sessions/new') {

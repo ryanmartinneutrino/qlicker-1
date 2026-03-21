@@ -147,7 +147,7 @@ export default async function userRoutes(app) {
     const updated = await User.findByIdAndUpdate(
       request.user.userId,
       { $set: updates },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!updated) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
@@ -244,7 +244,7 @@ export default async function userRoutes(app) {
           'profile.profileThumbnail': resolvedThumbnail,
         },
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
@@ -355,7 +355,7 @@ export default async function userRoutes(app) {
       const user = await User.findByIdAndUpdate(
         request.params.id,
         updateDoc,
-        { new: true }
+        { returnDocument: 'after' }
       );
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
@@ -398,7 +398,7 @@ export default async function userRoutes(app) {
       const user = await User.findByIdAndUpdate(
         request.params.id,
         { $set: roleUpdates },
-        { new: true }
+        { returnDocument: 'after' }
       );
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });

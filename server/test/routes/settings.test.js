@@ -145,7 +145,7 @@ describe('GET /api/v1/settings/public', () => {
     await Settings.findOneAndUpdate(
       { _id: 'settings' },
       { $set: { timeFormat: '12h' } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const res = await app.inject({
