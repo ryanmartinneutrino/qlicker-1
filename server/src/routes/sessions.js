@@ -670,7 +670,7 @@ async function maybeAutoCloseScheduledQuiz(session) {
   const updated = await Session.findByIdAndUpdate(
     session._id,
     { $set: { status: 'done' } },
-    { new: true }
+    { returnDocument: 'after' }
   ).lean();
 
   if (updated) {
@@ -1835,7 +1835,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       let grading = null;
@@ -1951,7 +1951,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { questions: copiedQuestionIds, currentQuestion: copiedQuestionIds[0] || '' } },
-        { new: true }
+        { returnDocument: 'after' }
       ).lean();
 
       return { session: updated };
@@ -1999,7 +1999,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyStatusChanged(app, course, updated?._id || request.params.id, { status: 'running' });
@@ -2069,7 +2069,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       let grading = null;
@@ -2133,7 +2133,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { currentQuestion: questionId } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const qIndex = (session.questions || []).findIndex((id) => String(id) === String(questionId));
@@ -2206,7 +2206,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { reviewable: request.body.reviewable } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       let grading = null;
@@ -2305,7 +2305,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: { quizExtensions: normalizedExtensions } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifySessionMetadataChanged(app, course, updated?._id || request.params.id);
@@ -2511,7 +2511,7 @@ export default async function sessionRoutes(app) {
       const updatedSession = await Session.findByIdAndUpdate(
         session._id,
         { $set: { questions: createdQuestionIds } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       await Course.findByIdAndUpdate(course._id, {
@@ -2917,7 +2917,7 @@ export default async function sessionRoutes(app) {
 
       let response;
       if (existing) {
-        response = await Response.findByIdAndUpdate(existing._id, { $set: payload }, { new: true });
+        response = await Response.findByIdAndUpdate(existing._id, { $set: payload }, { returnDocument: 'after' });
       } else {
         response = await Response.create({
           questionId,
@@ -3016,7 +3016,7 @@ export default async function sessionRoutes(app) {
       const locked = await Response.findByIdAndUpdate(
         response._id,
         { $set: { editable: false, updatedAt: new Date() } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { response: locked.toObject(), alreadySubmitted: false };
@@ -3125,10 +3125,10 @@ export default async function sessionRoutes(app) {
         updateOps,
         hasJoinRecord
           ? {
-            new: true,
+            returnDocument: 'after',
             arrayFilters: [{ 'student.userId': userId }],
           }
-          : { new: true }
+          : { returnDocument: 'after' }
       );
 
       notifyQuizSubmitted(app, course, updated?._id || request.params.id, request.user.userId);
@@ -3747,7 +3747,7 @@ export default async function sessionRoutes(app) {
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyVisibilityChanged(app, course, session._id, {
@@ -3835,7 +3835,7 @@ export default async function sessionRoutes(app) {
             'sessionOptions.wordCloudData.generatedAt': new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
@@ -3892,7 +3892,7 @@ export default async function sessionRoutes(app) {
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
         { $set: { 'sessionOptions.wordCloudData.visible': request.body.visible } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const wordCloudData = updatedQuestion?.sessionOptions?.wordCloudData?.toObject
@@ -3988,7 +3988,7 @@ export default async function sessionRoutes(app) {
             'sessionOptions.histogramData.generatedAt': new Date(),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject
@@ -4046,7 +4046,7 @@ export default async function sessionRoutes(app) {
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
         { $set: { 'sessionOptions.histogramData.visible': request.body.visible } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       const histogramData = updatedQuestion?.sessionOptions?.histogramData?.toObject
@@ -4108,7 +4108,7 @@ export default async function sessionRoutes(app) {
           'sessionOptions.stats': false,
           'sessionOptions.correct': false,
         } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyAttemptChanged(app, course, session._id, updatedQuestion, { resetResponses: true });
@@ -4167,7 +4167,7 @@ export default async function sessionRoutes(app) {
         const updatedQuestion = await Question.findByIdAndUpdate(
           questionId,
           { $set: { 'sessionOptions.attempts': [{ number: 1, closed: request.body.closed }] } },
-          { new: true }
+          { returnDocument: 'after' }
         );
         notifyAttemptChanged(app, course, session._id, updatedQuestion, { resetResponses: true });
         return { question: updatedQuestion?.toObject() };
@@ -4183,7 +4183,7 @@ export default async function sessionRoutes(app) {
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
         { $set: { 'sessionOptions.attempts': updated } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyAttemptChanged(app, course, session._id, updatedQuestion);
@@ -4231,7 +4231,7 @@ export default async function sessionRoutes(app) {
             joinCodeExpiresAt: new Date(now.getTime() + (session.joinCodeInterval || 10) * 1000),
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyJoinCodeChanged(app, course, updated);
@@ -4308,7 +4308,7 @@ export default async function sessionRoutes(app) {
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       notifyJoinCodeChanged(app, course, updated);

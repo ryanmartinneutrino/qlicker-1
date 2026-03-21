@@ -29,7 +29,7 @@ function loadEnvironment() {
 
   for (const envPath of envPaths) {
     if (existsSync(envPath)) {
-      loadEnv({ path: envPath });
+      loadEnv({ path: envPath, quiet: true });
       return envPath;
     }
   }

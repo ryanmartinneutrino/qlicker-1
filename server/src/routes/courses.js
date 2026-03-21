@@ -284,7 +284,7 @@ export default async function courseRoutes(app) {
       const updated = await Course.findByIdAndUpdate(
         request.params.id,
         { $set: updates },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { course: updated.toObject() };
@@ -578,7 +578,7 @@ export default async function courseRoutes(app) {
       const updated = await Course.findByIdAndUpdate(
         course._id,
         { $set: { enrollmentCode } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { enrollmentCode: updated.enrollmentCode };
@@ -617,7 +617,7 @@ export default async function courseRoutes(app) {
       const updated = await Course.findByIdAndUpdate(
         course._id,
         { $set: { inactive: request.body.inactive } },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       return { course: updated.toObject() };

@@ -121,7 +121,7 @@ export default async function settingsRoutes(app) {
         settings._id,
         { $set: updates },
         {
-          new: true,
+          returnDocument: 'after',
           runValidators: true,
         }
       );
