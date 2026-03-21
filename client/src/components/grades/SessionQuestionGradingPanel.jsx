@@ -456,7 +456,7 @@ const GradingTableRow = memo(function GradingTableRow({
           <StudentRichTextEditor
             value={draft.feedback}
             disabled={rowDisabled || saving}
-            onChangeDebounceMs={180}
+            onChangeDebounceMs={0}
             onChange={({ html }) => {
               const value = html || '';
               onUpdateDraft((current) => ({ ...current, feedback: value }));

@@ -12,6 +12,37 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
+vi.mock('../questions/StudentRichTextEditor', () => ({
+  default: ({
+    value,
+    onChange,
+    onChangeDebounceMs = 0,
+    ariaLabel,
+    disabled,
+  }) => {
+    const handleChange = (event) => {
+      const nextValue = event.target.value;
+      if (onChangeDebounceMs > 0) {
+        window.setTimeout(() => {
+          onChange?.({ html: nextValue, plainText: nextValue });
+        }, onChangeDebounceMs);
+        return;
+      }
+      onChange?.({ html: nextValue, plainText: nextValue });
+    };
+
+    return (
+      <textarea
+        aria-label={ariaLabel}
+        defaultValue={value}
+        disabled={disabled}
+        onChange={handleChange}
+      />
+    );
+  },
+  MathPreview: () => null,
+}));
+
 function buildGradesPayload() {
   return {
     grades: [
@@ -167,6 +198,58 @@ describe('SessionQuestionGradingPanel', () => {
         { points: 0, feedback: '' }
       );
     });
+  });
+
+  it('updates feedback drafts immediately while typing in the grading table', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    const feedbackInput = screen.getByLabelText(/feedback — ada lovelace/i);
+    const saveButtons = screen.getAllByRole('button', { name: /^save$/i });
+    const rowSaveButton = saveButtons[1];
+
+    expect(rowSaveButton).toBeDisabled();
+
+    fireEvent.change(feedbackInput, { target: { value: 'Immediate feedback' } });
+
+    expect(rowSaveButton).not.toBeDisabled();
   });
 
   it('filters the grading table down to students with responses only', async () => {

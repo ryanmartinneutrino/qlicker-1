@@ -50,6 +50,17 @@ describe('computeWordFrequencies', () => {
     expect(words).not.toContain('amp');
   });
 
+  it('decodes numeric HTML entities without stripping numbers students actually typed', () => {
+    const texts = ['It&#39;s answer 39, not room 101 or h2o.'];
+    const result = computeWordFrequencies(texts, []);
+    const words = result.map((r) => r.text);
+    expect(words).toContain('answer');
+    expect(words).toContain('39');
+    expect(words).toContain('101');
+    expect(words).toContain('room');
+    expect(words).toContain('h2o');
+  });
+
   it('ignores single-character tokens', () => {
     const texts = ['I am a fox'];
     const result = computeWordFrequencies(texts, []);
