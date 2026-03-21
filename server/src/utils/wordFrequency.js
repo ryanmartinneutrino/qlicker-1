@@ -16,10 +16,27 @@ export function computeWordFrequencies(texts, stopWords = [], maxWords = 100) {
 
     // Strip HTML tags and decode common HTML entities in a single pass
     // to avoid double-unescaping (e.g. &amp;lt; → &lt; → <).
-    const ENTITY_MAP = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'", '&nbsp;': ' ' };
+    const ENTITY_MAP = {
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&nbsp;': ' ',
+    };
     const plain = raw
       .replace(/<[^>]*>/g, ' ')
-      .replace(/&(?:amp|lt|gt|quot|nbsp|#039);/g, (match) => ENTITY_MAP[match] || match);
+      .replace(/&(?:amp|lt|gt|quot|nbsp);/g, (match) => ENTITY_MAP[match] || match)
+      .replace(/&#(?:x([0-9a-fA-F]+)|(\d+));/g, (_, hex, decimal) => {
+        const charCode = Number.parseInt(hex || decimal, hex ? 16 : 10);
+        if (!Number.isFinite(charCode)) return ' ';
+        if (charCode < 0 || charCode > 0x10FFFF) return ' ';
+        if (charCode >= 0xD800 && charCode <= 0xDFFF) return ' ';
+        try {
+          return String.fromCodePoint(charCode);
+        } catch {
+          return ' ';
+        }
+      });
 
     // Tokenize: split on non-letter/non-digit boundaries.
     // Supports accented characters and unicode letters via \p{L}.
