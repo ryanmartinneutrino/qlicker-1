@@ -123,8 +123,22 @@ It will prompt for:
 | Server replicas | Number of API server instances | `2` |
 | JWT secrets | Auto-generated cryptographic secrets | (generated) |
 | MAIL_URL | SMTP connection string | (none) |
+| MONGO_URI | MongoDB connection URI | `mongodb://mongo:27017/qlicker` |
+| REDIS_URL | Redis connection URL | `redis://redis:6379` |
 | Storage type | `local`, `s3`, or `azure` | `local` |
 | Backup retention | Days to keep backups | `30` |
+
+### Configuration Inheritance
+
+The setup script loads defaults from existing configuration files in priority order:
+
+| Priority | Source | When used |
+|----------|--------|-----------|
+| 1 (highest) | `production_setup/.env` | Re-running setup — all current production values are proposed as defaults |
+| 2 | Root-level `.env` (dev config in `../`) | First-time production setup — inherits JWT secrets, MAIL_URL, storage, and other settings from dev |
+| 3 (lowest) | `.env.example` | Fresh install — uses documented static defaults |
+
+When an existing config is found, the script prints a summary of imported values. At each prompt the loaded default is shown in square brackets — press **Enter** to keep it, or type a new value to override.
 
 ### Re-running Setup
 

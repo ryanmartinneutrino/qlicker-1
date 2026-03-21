@@ -12,6 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$SCRIPT_DIR/.env"
 ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
 
@@ -128,10 +129,40 @@ else
   exit 1
 fi
 
-# Load existing .env if present
+# ---------------------------------------------------------------------------
+# Load defaults from existing config files (most-specific wins)
+# ---------------------------------------------------------------------------
+# Priority: production .env  >  root-level .env  >  production .env.example
+# This ensures re-runs propose the current production values, and first-time
+# users coming from the dev setup inherit their existing configuration.
+# ---------------------------------------------------------------------------
+LOADED_FROM=""
+
 if [ -f "$ENV_FILE" ]; then
-  info "Existing .env found — using current values as defaults."
+  info "Existing production .env found — using current values as defaults."
   set -a; . "$ENV_FILE"; set +a
+  LOADED_FROM="$ENV_FILE"
+elif [ -f "$PROJECT_ROOT/.env" ]; then
+  info "Root-level .env found (development config) — importing as defaults."
+  set -a; . "$PROJECT_ROOT/.env"; set +a
+  LOADED_FROM="$PROJECT_ROOT/.env"
+elif [ -f "$ENV_EXAMPLE" ]; then
+  # .env.example is not sourced directly (it has comments and ${} refs), but
+  # we note it so the user knows where static defaults originate.
+  info "No existing .env found. Using .env.example defaults."
+fi
+
+# Show summary of imported defaults
+if [ -n "$LOADED_FROM" ]; then
+  echo ""
+  echo "  Imported defaults from: $LOADED_FROM"
+  [ -n "${DOMAIN:-}" ]       && echo "    DOMAIN=$DOMAIN"
+  [ -n "${MAIL_URL:-}" ]     && echo "    MAIL_URL=$MAIL_URL"
+  [ -n "${STORAGE_TYPE:-}" ] && echo "    STORAGE_TYPE=$STORAGE_TYPE"
+  [ -n "${JWT_SECRET:-}" ]   && echo "    JWT_SECRET=(set)"
+  [ -n "${SERVER_REPLICAS:-}" ] && echo "    SERVER_REPLICAS=$SERVER_REPLICAS"
+  echo ""
+  echo "  Press Enter at each prompt to keep the shown default, or type a new value."
 fi
 
 # ---- Domain -----------------------------------------------------------------
@@ -205,6 +236,24 @@ if [ -z "$MAIL_URL" ]; then
   warn "MAIL_URL not set — email features will not work until configured."
 fi
 
+# ---- Database ---------------------------------------------------------------
+echo ""
+echo "--- Database ---"
+echo "  Default uses the built-in Docker MongoDB service."
+echo "  Change this only if using an external/managed MongoDB instance."
+DEFAULT_MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/qlicker}"
+read -r -p "MONGO_URI [$DEFAULT_MONGO_URI]: " MONGO_URI_INPUT
+MONGO_URI="${MONGO_URI_INPUT:-$DEFAULT_MONGO_URI}"
+
+# ---- Redis ------------------------------------------------------------------
+echo ""
+echo "--- Redis ---"
+echo "  Required for multi-instance WebSocket synchronization."
+echo "  Default uses the built-in Docker Redis service."
+DEFAULT_REDIS_URL="${REDIS_URL:-redis://redis:6379}"
+read -r -p "REDIS_URL [$DEFAULT_REDIS_URL]: " REDIS_URL_INPUT
+REDIS_URL="${REDIS_URL_INPUT:-$DEFAULT_REDIS_URL}"
+
 # ---- Storage ----------------------------------------------------------------
 echo ""
 echo "--- File Storage ---"
@@ -266,10 +315,13 @@ JWT_SECRET=$JWT_SECRET
 JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 
 # Database
-MONGO_URI=mongodb://mongo:27017/qlicker
+MONGO_URI=$MONGO_URI
 
 # Email
 MAIL_URL=$MAIL_URL
+
+# Redis
+REDIS_URL=$REDIS_URL
 
 # Storage
 STORAGE_TYPE=$STORAGE_TYPE
@@ -282,9 +334,6 @@ AWS_FORCE_PATH_STYLE=$AWS_FORCE_PATH_STYLE
 AZURE_ACCOUNT_NAME=$AZURE_ACCOUNT_NAME
 AZURE_ACCOUNT_KEY=$AZURE_ACCOUNT_KEY
 AZURE_CONTAINER_NAME=$AZURE_CONTAINER_NAME
-
-# Redis
-REDIS_URL=redis://redis:6379
 
 # Internal
 API_PORT=3001
