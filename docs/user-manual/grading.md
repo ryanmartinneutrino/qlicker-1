@@ -1,6 +1,9 @@
 # Grading (User Manual)
 
-This guide covers grading workflows for instructors and students.
+This guide covers grading workflows for instructors and students and supplements the full role manuals:
+
+- [Professor user manual](professor.md)
+- [Student user manual](student.md)
 
 ## Instructor Workflow
 
