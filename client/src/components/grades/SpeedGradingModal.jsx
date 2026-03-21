@@ -100,7 +100,7 @@ export default memo(function SpeedGradingModal({
     const row = rows[idx];
     if (!row) return;
     const mark = row.mark;
-    setPoints(mark ? String(mark.points ?? 0) : '');
+    setPoints(mark && mark.points !== null && mark.points !== undefined ? String(mark.points) : '');
     setFeedback(mark?.feedback || '');
   }
 
@@ -114,6 +114,11 @@ export default memo(function SpeedGradingModal({
     }, 50);
   }
 
+  function validatePoints() {
+    const parsedPoints = Number(points);
+    return Number.isFinite(parsedPoints) && parsedPoints >= 0 ? parsedPoints : null;
+  }
+
   const handlePrev = useCallback(() => {
     navigateTo(currentIndex - 1);
   }, [currentIndex, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,8 +129,8 @@ export default memo(function SpeedGradingModal({
 
   const handleSave = useCallback(async () => {
     if (!currentRow || saving) return;
-    const parsedPoints = Number(points);
-    if (!Number.isFinite(parsedPoints) || parsedPoints < 0) return;
+    const parsedPoints = validatePoints();
+    if (parsedPoints === null) return;
 
     setSaving(true);
     try {
@@ -133,12 +138,12 @@ export default memo(function SpeedGradingModal({
     } finally {
       setSaving(false);
     }
-  }, [currentRow, feedback, onSaveGrade, points, saving]);
+  }, [currentRow, feedback, onSaveGrade, points, saving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveAndNext = useCallback(async () => {
     if (!currentRow || saving) return;
-    const parsedPoints = Number(points);
-    if (!Number.isFinite(parsedPoints) || parsedPoints < 0) return;
+    const parsedPoints = validatePoints();
+    if (parsedPoints === null) return;
 
     setSaving(true);
     try {
@@ -236,6 +241,8 @@ export default memo(function SpeedGradingModal({
 
   if (!open || rows.length === 0) return null;
 
+  const desktopWidth = '50vw';
+
   return (
     <Dialog
       open={open}
@@ -246,8 +253,8 @@ export default memo(function SpeedGradingModal({
       aria-labelledby="speed-grading-title"
       PaperProps={{
         sx: {
-          width: isMobile ? '100%' : '50vw',
-          maxWidth: isMobile ? '100%' : '50vw',
+          width: isMobile ? '100%' : desktopWidth,
+          maxWidth: isMobile ? '100%' : desktopWidth,
           minWidth: isMobile ? '100%' : 420,
         },
       }}
