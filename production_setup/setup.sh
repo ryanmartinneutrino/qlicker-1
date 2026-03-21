@@ -1,0 +1,336 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Qlicker Production — Interactive Setup Script
+# =============================================================================
+# Generates the .env file, optionally obtains Let's Encrypt certificates,
+# and builds/pulls Docker images.
+#
+# Usage:
+#   ./setup.sh                  # Interactive .env setup
+#   ./setup.sh --init-certs     # Obtain initial Let's Encrypt certificate
+# =============================================================================
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+ENV_EXAMPLE="$SCRIPT_DIR/.env.example"
+
+# ---- Colors ----------------------------------------------------------------
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+info()  { printf "${GREEN}[INFO]${NC}  %s\n" "$*"; }
+warn()  { printf "${YELLOW}[WARN]${NC}  %s\n" "$*"; }
+error() { printf "${RED}[ERROR]${NC} %s\n" "$*"; }
+
+# ---- Helpers ---------------------------------------------------------------
+require_command() {
+  if ! command -v "$1" &>/dev/null; then
+    error "$1 is required but not installed."
+    echo "  Install: $2"
+    exit 1
+  fi
+}
+
+choose_token_value() {
+  local token_name="$1" existing_value="$2" output_var="$3" selected response
+  if [ -n "$existing_value" ]; then
+    while true; do
+      read -r -p "$token_name already exists. Keep? [Y/n]: " response
+      case "${response:-Y}" in
+        [Yy]*) selected="$existing_value"; break ;;
+        [Nn]*) selected="$(openssl rand -hex 32)"; info "Generated new $token_name"; break ;;
+        *) echo "Please answer y or n." ;;
+      esac
+    done
+  else
+    selected="$(openssl rand -hex 32)"
+    info "Generated $token_name"
+  fi
+  printf -v "$output_var" '%s' "$selected"
+}
+
+# ---- Let's Encrypt initial certificate -------------------------------------
+init_certs() {
+  require_command docker "https://docs.docker.com/get-docker/"
+
+  if [ ! -f "$ENV_FILE" ]; then
+    error ".env file not found. Run ./setup.sh first to create it."
+    exit 1
+  fi
+
+  set -a; . "$ENV_FILE"; set +a
+
+  if [ -z "${DOMAIN:-}" ]; then
+    error "DOMAIN is not set in .env"
+    exit 1
+  fi
+
+  read -r -p "Email for Let's Encrypt notifications: " CERTBOT_EMAIL
+  if [ -z "$CERTBOT_EMAIL" ]; then
+    error "Email is required for Let's Encrypt."
+    exit 1
+  fi
+
+  info "Obtaining certificate for $DOMAIN ..."
+
+  # Start nginx temporarily for the ACME challenge
+  mkdir -p "$SCRIPT_DIR/certs"
+  # Create a temporary self-signed cert so nginx can start
+  if [ ! -f "$SCRIPT_DIR/certs/fullchain.pem" ]; then
+    openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+      -keyout "$SCRIPT_DIR/certs/privkey.pem" \
+      -out "$SCRIPT_DIR/certs/fullchain.pem" \
+      -subj "/CN=$DOMAIN" 2>/dev/null
+    info "Created temporary self-signed certificate for initial ACME challenge."
+  fi
+
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d nginx
+
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
+    certbot certonly --webroot -w /var/www/certbot \
+    --email "$CERTBOT_EMAIL" \
+    --agree-tos --no-eff-email \
+    -d "$DOMAIN"
+
+  # Update .env to point at certbot-managed certs
+  sed -i "s|^TLS_CERT_PATH=.*|TLS_CERT_PATH=/etc/letsencrypt/live/$DOMAIN/fullchain.pem|" "$ENV_FILE"
+  sed -i "s|^TLS_KEY_PATH=.*|TLS_KEY_PATH=/etc/letsencrypt/live/$DOMAIN/privkey.pem|" "$ENV_FILE"
+
+  # Restart nginx with real certs
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" restart nginx
+
+  info "Certificate obtained! The certbot service will auto-renew."
+  return 0
+}
+
+# ---- Handle --init-certs flag -----------------------------------------------
+if [ "${1:-}" = "--init-certs" ]; then
+  init_certs
+  exit 0
+fi
+
+# =============================================================================
+# Interactive .env setup
+# =============================================================================
+echo "======================================"
+echo "  Qlicker — Production Setup"
+echo "======================================"
+echo ""
+
+require_command docker "https://docs.docker.com/get-docker/"
+require_command openssl "sudo apt-get install openssl  OR  brew install openssl"
+
+# Check Docker Compose
+if docker compose version &>/dev/null 2>&1; then
+  info "Docker Compose $(docker compose version --short 2>/dev/null)"
+else
+  error "Docker Compose plugin not found."
+  echo "  Install: https://docs.docker.com/compose/install/"
+  exit 1
+fi
+
+# Load existing .env if present
+if [ -f "$ENV_FILE" ]; then
+  info "Existing .env found — using current values as defaults."
+  set -a; . "$ENV_FILE"; set +a
+fi
+
+# ---- Domain -----------------------------------------------------------------
+echo ""
+echo "--- Domain Configuration ---"
+DEFAULT_DOMAIN="${DOMAIN:-qlicker.example.com}"
+read -r -p "Domain name [$DEFAULT_DOMAIN]: " DOMAIN_INPUT
+DOMAIN="${DOMAIN_INPUT:-$DEFAULT_DOMAIN}"
+
+# ---- TLS -------------------------------------------------------------------
+echo ""
+echo "--- TLS Certificate ---"
+echo "  Options:"
+echo "    1) I already have certificate files (Let's Encrypt or other)"
+echo "    2) Use this setup to obtain a Let's Encrypt certificate later (--init-certs)"
+echo "    3) Generate a self-signed certificate (testing only)"
+echo ""
+DEFAULT_TLS_CERT="${TLS_CERT_PATH:-./certs/fullchain.pem}"
+DEFAULT_TLS_KEY="${TLS_KEY_PATH:-./certs/privkey.pem}"
+
+read -r -p "TLS certificate path [$DEFAULT_TLS_CERT]: " TLS_CERT_INPUT
+TLS_CERT_PATH="${TLS_CERT_INPUT:-$DEFAULT_TLS_CERT}"
+
+read -r -p "TLS private key path [$DEFAULT_TLS_KEY]: " TLS_KEY_INPUT
+TLS_KEY_PATH="${TLS_KEY_INPUT:-$DEFAULT_TLS_KEY}"
+
+# Generate self-signed cert if paths point to local ./certs/ and files don't exist
+if [[ "$TLS_CERT_PATH" == ./certs/* ]] && [ ! -f "$SCRIPT_DIR/${TLS_CERT_PATH#./}" ]; then
+  read -r -p "Certificate not found. Generate self-signed cert for testing? [y/N]: " GEN_CERT
+  if [[ "$GEN_CERT" =~ ^[Yy]$ ]]; then
+    mkdir -p "$SCRIPT_DIR/certs"
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout "$SCRIPT_DIR/certs/privkey.pem" \
+      -out "$SCRIPT_DIR/certs/fullchain.pem" \
+      -subj "/CN=$DOMAIN" 2>/dev/null
+    info "Self-signed certificate generated in ./certs/"
+    warn "For production, replace with a real certificate or run: ./setup.sh --init-certs"
+  fi
+fi
+
+# ---- Scaling ----------------------------------------------------------------
+echo ""
+echo "--- Server Scaling ---"
+echo "  Each API server replica handles ~500 concurrent WebSocket connections."
+echo "  Recommended: 2 for small deployments, 3-4 for 1000+ concurrent users."
+DEFAULT_REPLICAS="${SERVER_REPLICAS:-2}"
+read -r -p "Number of API server replicas [$DEFAULT_REPLICAS]: " REPLICAS_INPUT
+SERVER_REPLICAS="${REPLICAS_INPUT:-$DEFAULT_REPLICAS}"
+
+# Validate numeric
+if ! [[ "$SERVER_REPLICAS" =~ ^[0-9]+$ ]] || [ "$SERVER_REPLICAS" -lt 1 ]; then
+  warn "Invalid replica count. Using default: 2"
+  SERVER_REPLICAS=2
+fi
+
+# ---- JWT Secrets ------------------------------------------------------------
+echo ""
+echo "--- JWT Secrets ---"
+choose_token_value "JWT_SECRET" "${JWT_SECRET:-}" JWT_SECRET
+choose_token_value "JWT_REFRESH_SECRET" "${JWT_REFRESH_SECRET:-}" JWT_REFRESH_SECRET
+
+# ---- Email ------------------------------------------------------------------
+echo ""
+echo "--- Email Configuration ---"
+echo "  Required for password reset and email verification."
+echo "  Format: smtp://user:password@smtp.example.com:587"
+DEFAULT_MAIL_URL="${MAIL_URL:-}"
+read -r -p "MAIL_URL [$DEFAULT_MAIL_URL]: " MAIL_URL_INPUT
+MAIL_URL="${MAIL_URL_INPUT:-$DEFAULT_MAIL_URL}"
+if [ -z "$MAIL_URL" ]; then
+  warn "MAIL_URL not set — email features will not work until configured."
+fi
+
+# ---- Storage ----------------------------------------------------------------
+echo ""
+echo "--- File Storage ---"
+echo "  Options: local (default), s3, azure"
+DEFAULT_STORAGE="${STORAGE_TYPE:-local}"
+read -r -p "Storage type [$DEFAULT_STORAGE]: " STORAGE_INPUT
+STORAGE_TYPE="${STORAGE_INPUT:-$DEFAULT_STORAGE}"
+
+AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
+AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
+AWS_BUCKET="${AWS_BUCKET:-}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+AWS_ENDPOINT="${AWS_ENDPOINT:-}"
+AWS_FORCE_PATH_STYLE="${AWS_FORCE_PATH_STYLE:-false}"
+AZURE_ACCOUNT_NAME="${AZURE_ACCOUNT_NAME:-}"
+AZURE_ACCOUNT_KEY="${AZURE_ACCOUNT_KEY:-}"
+AZURE_CONTAINER_NAME="${AZURE_CONTAINER_NAME:-}"
+
+if [ "$STORAGE_TYPE" = "s3" ]; then
+  echo "  Configure S3 settings:"
+  read -r -p "  AWS_BUCKET [$AWS_BUCKET]: " input; AWS_BUCKET="${input:-$AWS_BUCKET}"
+  read -r -p "  AWS_REGION [$AWS_REGION]: " input; AWS_REGION="${input:-$AWS_REGION}"
+  read -r -p "  AWS_ACCESS_KEY_ID [$AWS_ACCESS_KEY_ID]: " input; AWS_ACCESS_KEY_ID="${input:-$AWS_ACCESS_KEY_ID}"
+  read -r -p "  AWS_SECRET_ACCESS_KEY: " input; AWS_SECRET_ACCESS_KEY="${input:-$AWS_SECRET_ACCESS_KEY}"
+  read -r -p "  AWS_ENDPOINT (blank for AWS) [$AWS_ENDPOINT]: " input; AWS_ENDPOINT="${input:-$AWS_ENDPOINT}"
+  read -r -p "  AWS_FORCE_PATH_STYLE [$AWS_FORCE_PATH_STYLE]: " input; AWS_FORCE_PATH_STYLE="${input:-$AWS_FORCE_PATH_STYLE}"
+elif [ "$STORAGE_TYPE" = "azure" ]; then
+  echo "  Configure Azure Blob settings:"
+  read -r -p "  AZURE_ACCOUNT_NAME [$AZURE_ACCOUNT_NAME]: " input; AZURE_ACCOUNT_NAME="${input:-$AZURE_ACCOUNT_NAME}"
+  read -r -p "  AZURE_ACCOUNT_KEY: " input; AZURE_ACCOUNT_KEY="${input:-$AZURE_ACCOUNT_KEY}"
+  read -r -p "  AZURE_CONTAINER_NAME [$AZURE_CONTAINER_NAME]: " input; AZURE_CONTAINER_NAME="${input:-$AZURE_CONTAINER_NAME}"
+fi
+
+# ---- Backup retention -------------------------------------------------------
+echo ""
+DEFAULT_RETENTION="${BACKUP_RETENTION_DAYS:-30}"
+read -r -p "Backup retention (days) [$DEFAULT_RETENTION]: " RETENTION_INPUT
+BACKUP_RETENTION_DAYS="${RETENTION_INPUT:-$DEFAULT_RETENTION}"
+
+# ---- Write .env file --------------------------------------------------------
+echo ""
+info "Writing .env file..."
+
+cat > "$ENV_FILE" <<EOF
+# =============================================================================
+# Qlicker Production Environment — generated by setup.sh
+# =============================================================================
+
+# Domain & TLS
+DOMAIN=$DOMAIN
+TLS_CERT_PATH=$TLS_CERT_PATH
+TLS_KEY_PATH=$TLS_KEY_PATH
+
+# Scaling
+SERVER_REPLICAS=$SERVER_REPLICAS
+
+# Secrets
+JWT_SECRET=$JWT_SECRET
+JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
+
+# Database
+MONGO_URI=mongodb://mongo:27017/qlicker
+
+# Email
+MAIL_URL=$MAIL_URL
+
+# Storage
+STORAGE_TYPE=$STORAGE_TYPE
+AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+AWS_BUCKET=$AWS_BUCKET
+AWS_REGION=$AWS_REGION
+AWS_ENDPOINT=$AWS_ENDPOINT
+AWS_FORCE_PATH_STYLE=$AWS_FORCE_PATH_STYLE
+AZURE_ACCOUNT_NAME=$AZURE_ACCOUNT_NAME
+AZURE_ACCOUNT_KEY=$AZURE_ACCOUNT_KEY
+AZURE_CONTAINER_NAME=$AZURE_CONTAINER_NAME
+
+# Redis
+REDIS_URL=redis://redis:6379
+
+# Internal
+API_PORT=3001
+NODE_ENV=production
+ROOT_URL=https://$DOMAIN
+BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
+EOF
+
+info ".env written to $ENV_FILE"
+
+# ---- Optionally build images ------------------------------------------------
+echo ""
+read -r -p "Build Docker images now? [y/N]: " BUILD_NOW
+if [[ "${BUILD_NOW:-N}" =~ ^[Yy]$ ]]; then
+  info "Building images..."
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" build
+  info "Images built successfully."
+fi
+
+# ---- Done -------------------------------------------------------------------
+echo ""
+echo "======================================"
+echo "  Setup Complete!"
+echo "======================================"
+echo ""
+echo "  .env file:   $ENV_FILE"
+echo "  Replicas:    $SERVER_REPLICAS API servers"
+echo "  Domain:      $DOMAIN"
+echo "  TLS cert:    $TLS_CERT_PATH"
+echo ""
+echo "  Next steps:"
+echo "    1. Review and edit .env if needed"
+if [[ "$TLS_CERT_PATH" == ./certs/* ]]; then
+echo "    2. For real TLS: ./setup.sh --init-certs  (Let's Encrypt)"
+echo "       Or replace ./certs/ files with your own certificate"
+fi
+echo "    3. Start:   docker compose up -d"
+echo "    4. Check:   docker compose ps"
+echo "    5. Logs:    docker compose logs -f"
+echo ""
+echo "  Initialize from legacy database:"
+echo "    ./init-from-legacy.sh"
+echo ""
+echo "  Create backup:"
+echo "    ./backup.sh"
+echo ""
+echo "  Manage users:"
+echo "    ./manage-user.sh --help"
+echo ""

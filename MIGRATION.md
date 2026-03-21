@@ -173,9 +173,9 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] Full E2E test suite with Playwright (currently 6 flows; grading, groups, question copy/export missing)
 - [ ] Load testing with realistic concurrent user counts
 - [ ] Security scanning and penetration testing
-- [ ] Production Docker Compose validation with Nginx load balancer
-- [ ] Backup and restore scripts
-- [ ] Private-bucket cutover for S3 images (see [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
+- [x] Production Docker Compose validation with Nginx load balancer (see [`production_setup/`](production_setup/))
+- [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))
+- [x] Private-bucket cutover for S3 images — sanitization script ready (see [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) and [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [ ] Complete developer guide
 - [x] Complete user manual
 - [x] Refresh token rotation
