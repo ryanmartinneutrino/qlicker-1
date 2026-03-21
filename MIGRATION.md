@@ -13,9 +13,10 @@
 3. [Current Status](#current-status)
 4. [Phase 7 — Remaining Work](#phase-7--remaining-work)
 5. [Phase 8 — Production Readiness](#phase-8--production-readiness)
-6. [Agent Assignments](#agent-assignments)
-7. [Code Review Findings (2026-03-12)](#code-review-findings-2026-03-12)
-8. [How to Resume Work](#how-to-resume-work)
+6. [Production Deployment](#production-deployment)
+7. [Agent Assignments](#agent-assignments)
+8. [Code Review Findings (2026-03-12)](#code-review-findings-2026-03-12)
+9. [How to Resume Work](#how-to-resume-work)
 
 
 ---
@@ -173,9 +174,9 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [ ] Full E2E test suite with Playwright (currently 6 flows; grading, groups, question copy/export missing)
 - [ ] Load testing with realistic concurrent user counts
 - [ ] Security scanning and penetration testing
-- [ ] Production Docker Compose validation with Nginx load balancer
-- [ ] Backup and restore scripts
-- [ ] Private-bucket cutover for S3 images (see [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
+- [x] Production Docker Compose validation with Nginx load balancer (see [`production_setup/`](production_setup/))
+- [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))
+- [x] Private-bucket cutover for S3 images — sanitization script ready (see [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) and [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [ ] Complete developer guide
 - [x] Complete user manual
 - [x] Refresh token rotation
@@ -200,6 +201,93 @@ Target state: private S3 bucket for all image assets. Stages:
 3. **Staged DB migration:** backfill image references in batches with dry-run and rollback
 4. **Validation window:** verify rendering through new read path in staging
 5. **Bucket cutover:** enable private-bucket policy after confirmation
+
+A sanitization script ([`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js)) is available to perform step 2–3 in a dry-run + apply workflow. See the [Production Deployment](#production-deployment) section for details.
+
+---
+
+## Production Deployment
+
+> **Full guide:** [`production_setup/README.md`](production_setup/README.md)
+
+The [`production_setup/`](production_setup/) directory is a self-contained deployment package. Copy it to the production server — no source checkout or build tools required (only Docker).
+
+### Architecture
+
+```
+Internet → Nginx :443/:80 → [ Server ×N ] → MongoDB + Redis
+                ↓
+            Client SPA
+```
+
+- **Nginx** terminates TLS on ports 443/80 (the only host-exposed ports) and load-balances across server replicas.
+- **Server** replicas (configurable via `SERVER_REPLICAS`) run the Fastify API + WebSocket, synchronized through **Redis** pub/sub.
+- **MongoDB** (single instance with WiredTiger) stores all data. A single instance is sufficient for thousands of concurrent users; replica sets are only needed for HA failover.
+- **Certbot** (optional) auto-renews Let's Encrypt certificates every 12 hours.
+
+### Quick Start
+
+```bash
+# Copy to server
+scp -r production_setup/ user@server:/opt/qlicker/
+ssh user@server
+cd /opt/qlicker
+
+# Interactive setup — generates .env from prompts
+chmod +x *.sh
+./setup.sh
+
+# (Optional) Obtain Let's Encrypt certificate
+./setup.sh --init-certs
+
+# Start
+docker compose up -d
+```
+
+### Setup Script Behaviour
+
+`setup.sh` loads defaults from existing configuration files in priority order:
+
+| Priority | Source | When used |
+|----------|--------|-----------|
+| 1 | `production_setup/.env` | Re-running setup — proposes all current production values |
+| 2 | Root `.env` (dev config) | First-time setup when migrating from dev — inherits JWT secrets, MAIL_URL, storage settings |
+| 3 | `.env.example` | Fresh install — uses documented static defaults |
+
+At each prompt the loaded default is shown in brackets. Press Enter to keep it, or type a new value.
+
+### Scripts Reference
+
+| Script | Description |
+|--------|-------------|
+| `setup.sh` | Interactive setup wizard — generates `.env`, configures replicas, TLS, JWT secrets |
+| `setup.sh --init-certs` | Obtain initial Let's Encrypt certificate via Certbot ACME challenge |
+| `init-from-legacy.sh` | Restore a legacy MeteorJS mongodump, run question-type migration, optionally sanitize S3 |
+| `sanitize-s3.js` | Switch S3 objects from `public-read` to `private` ACL (dry-run + apply modes) |
+| `backup.sh` | Create compressed, timestamped MongoDB backup; prune old backups per retention policy |
+| `backup.sh --cron` | Silent mode for cron jobs (only prints errors) |
+| `restore.sh` | Restore database from a backup archive (interactive or specific file) |
+| `update.sh` | Pull/rebuild images, create pre-update backup, rolling restart, health check |
+| `manage-user.sh` | CLI user management: `change-password`, `create`, `promote`, `list` |
+| `scripts/build-images.sh` *(repo root)* | Build + tag Docker images; optional `--push` to registry |
+
+### Scaling Recommendations
+
+| Concurrent Users | Server Replicas | Notes |
+|-----------------|-----------------|-------|
+| < 500 | 2 | Minimum for availability |
+| 500–1,000 | 3 | Good balance |
+| 1,000–2,000 | 4 | ~500 WS connections per replica |
+| 2,000+ | 4+ | Consider dedicated hardware |
+
+MongoDB: a single instance is typically sufficient. Increase `--wiredTigerCacheSizeGB` for more RAM. Redis: default 256 MB max memory is sufficient for pub/sub.
+
+### Backup Strategy
+
+- **Manual:** `./backup.sh`
+- **Automated:** cron entry — `0 2 * * * /opt/qlicker/backup.sh --cron`
+- **Retention:** configurable via `BACKUP_RETENTION_DAYS` (default 30)
+- **Restore:** `./restore.sh` (interactive) or `./restore.sh backups/<file>.tar.gz`
 
 ---
 
@@ -387,6 +475,7 @@ cd client && npx vitest run
 | [LEGACY_DB.md](LEGACY_DB.md) | Legacy MongoDB database schema and compatibility |
 | [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) | Archive of completed work, bug fixes, PR history |
 | [REQUIREMENTS_FOR_MIGRATION_FASTIFY.md](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) | Master requirements document |
+| [production_setup/README.md](production_setup/README.md) | Production deployment guide (Docker Compose, TLS, scaling, backups) |
 
 ### i18n Guardrail for Ongoing UI Work
 

@@ -305,6 +305,32 @@ For the full setup, helper scripts, troubleshooting, and metadata details, see [
 | `scripts/seed-db.js` | Node.js seeding logic used by the shell wrappers |
 | `scripts/changeuserpwd.sh` | Change a user's password from the CLI (dev/testing) |
 | `scripts/changeuserpwd.js` | Node.js logic for password change |
+| `scripts/build-images.sh` | Build and tag Docker images for production deployment |
+
+## Production Deployment
+
+For production deployment, see the self-contained **[`production_setup/`](production_setup/)** directory. It includes:
+
+- **Docker Compose** with Nginx TLS termination (ports 443/80), configurable server replicas, MongoDB, and Redis
+- **Interactive setup script** (`setup.sh`) to generate `.env` with domain, TLS, scaling, and JWT configuration
+- **Let's Encrypt integration** with automatic certificate renewal via Certbot
+- **Legacy database initialization** (`init-from-legacy.sh`) with question-type migration
+- **S3 privatization script** (`sanitize-s3.js`) to migrate public-read uploads to private ACL
+- **Automated backups** (`backup.sh`) with retention and cron support
+- **Restore script** (`restore.sh`) for disaster recovery
+- **User management** (`manage-user.sh`) — create users, change passwords, promote roles
+- **Update script** (`update.sh`) for rolling updates with pre-update backups
+- **Detailed README** with architecture overview, scaling guidance, and troubleshooting
+
+```bash
+# Copy to production server and run setup
+cp -r production_setup/ /opt/qlicker/
+cd /opt/qlicker
+./setup.sh
+docker compose up -d
+```
+
+See [`production_setup/README.md`](production_setup/README.md) for the complete deployment guide.
 
 ## Image / File Storage Configuration
 
@@ -458,6 +484,7 @@ The per-user preference is stored in `User.locale` and also cached in `localStor
 
 ## Documentation
 
+- [Production Deployment Guide](production_setup/README.md) — **Complete guide for deploying Qlicker in production**
 - [Coding Standards](CODING_STANDARDS.md) — **Read before making any changes.** APIs, DB patterns, i18n, performance, security, and shared utilities
 - [Requirements](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) — Master requirements for the migration
 - [Migration Plan](MIGRATION.md) — Detailed migration plan, progress, and agent assignments

@@ -49,3 +49,9 @@ tmp/
 
 # Uploaded files
 server/uploads/
+
+# Production setup runtime data (sensitive/generated — NEVER commit)
+production_setup/.env
+production_setup/certs/
+production_setup/backups/
+production_setup/legacydb/
