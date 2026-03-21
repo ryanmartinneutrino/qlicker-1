@@ -1,3 +1,4 @@
+import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SessionQuestionGradingPanel, { buildResponseSummary } from './SessionQuestionGradingPanel';
@@ -20,10 +21,29 @@ vi.mock('../questions/StudentRichTextEditor', () => ({
     ariaLabel,
     disabled,
   }) => {
+    const [draftValue, setDraftValue] = React.useState(value);
+    const timeoutRef = React.useRef(null);
+
+    React.useEffect(() => {
+      setDraftValue(value);
+    }, [value]);
+
+    React.useEffect(() => () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    }, []);
+
     const handleChange = (event) => {
       const nextValue = event.target.value;
+      setDraftValue(nextValue);
       if (onChangeDebounceMs > 0) {
-        window.setTimeout(() => {
+        if (timeoutRef.current) {
+          window.clearTimeout(timeoutRef.current);
+        }
+        timeoutRef.current = window.setTimeout(() => {
+          timeoutRef.current = null;
           onChange?.({ html: nextValue, plainText: nextValue });
         }, onChangeDebounceMs);
         return;
@@ -34,7 +54,7 @@ vi.mock('../questions/StudentRichTextEditor', () => ({
     return (
       <textarea
         aria-label={ariaLabel}
-        defaultValue={value}
+        value={draftValue}
         disabled={disabled}
         onChange={handleChange}
       />

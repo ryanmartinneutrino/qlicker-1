@@ -26,11 +26,13 @@ export function computeWordFrequencies(texts, stopWords = [], maxWords = 100) {
     const plain = raw
       .replace(/<[^>]*>/g, ' ')
       .replace(/&(?:amp|lt|gt|quot|nbsp);/g, (match) => ENTITY_MAP[match] || match)
-      .replace(/&#(?:x([0-9a-f]+)|(\d+));/gi, (_, hex, decimal) => {
-        const codePoint = Number.parseInt(hex || decimal, hex ? 16 : 10);
-        if (!Number.isFinite(codePoint)) return ' ';
+      .replace(/&#(?:x([0-9a-fA-F]+)|(\d+));/g, (_, hex, decimal) => {
+        const charCode = Number.parseInt(hex || decimal, hex ? 16 : 10);
+        if (!Number.isFinite(charCode)) return ' ';
+        if (charCode < 0 || charCode > 0x10FFFF) return ' ';
+        if (charCode >= 0xD800 && charCode <= 0xDFFF) return ' ';
         try {
-          return String.fromCodePoint(codePoint);
+          return String.fromCodePoint(charCode);
         } catch {
           return ' ';
         }
