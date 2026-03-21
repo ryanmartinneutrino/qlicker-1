@@ -1,5 +1,5 @@
 import {
-  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import {
   Alert,
@@ -414,7 +414,7 @@ function FormSelectionActions({ total, selectedCount, onSelectAll, onClear }) {
   );
 }
 
-const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
+function QuestionLibraryPanel({
   courseId,
   availableSessions = [],
   onSessionsChanged,
@@ -422,7 +422,8 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
   allowQuestionCreate = true,
   selectionAction = null,
   permissionMode = null,
-}, ref) {
+  ref,
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const roles = user?.roles || [];
@@ -1697,6 +1698,6 @@ const QuestionLibraryPanel = forwardRef(function QuestionLibraryPanel({
       />
     </Box>
   );
-});
+}
 
 export default QuestionLibraryPanel;

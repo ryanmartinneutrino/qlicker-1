@@ -41,13 +41,13 @@ vi.mock('./QuestionDisplay', () => ({
 }));
 
 vi.mock('./QuestionEditor', () => ({
-  default: React.forwardRef(function MockQuestionEditor(props, ref) {
+  default: function MockQuestionEditor({ ref, ...props }) {
     React.useImperativeHandle(ref, () => ({
       requestClose: requestCloseMock,
     }));
     questionEditorPropsMock(props);
     return <div>Mock Question Editor</div>;
-  }),
+  },
 }));
 
 describe('QuestionLibraryPanel', () => {

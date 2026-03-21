@@ -10,6 +10,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    oxc: {
+      jsx: {
+        runtime: 'automatic',
+        importSource: 'react',
+      },
+    },
     build: {
       rollupOptions: {
         output: {

@@ -1,5 +1,5 @@
 import {
-  forwardRef, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -198,7 +198,7 @@ function MathLivePreview({
   );
 }
 
-const QuestionEditor = forwardRef(function QuestionEditor({
+function QuestionEditor({
   open,
   onClose,
   onAutoSave,
@@ -213,7 +213,8 @@ const QuestionEditor = forwardRef(function QuestionEditor({
   showVisibilityControls = true,
   allowCustomTags = true,
   showCourseTagSettingsHint = false,
-}, ref) {
+  ref,
+}) {
   const { t } = useTranslation();
   const [form, setForm] = useState(emptyForm());
   const [persistedQuestionId, setPersistedQuestionId] = useState(null);
@@ -951,6 +952,6 @@ const QuestionEditor = forwardRef(function QuestionEditor({
       <DialogActions>{footer}</DialogActions>
     </Dialog>
   );
-});
+}
 
 export default QuestionEditor;
