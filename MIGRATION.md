@@ -276,9 +276,9 @@ At each prompt the loaded default is shown in brackets. Press Enter to keep it, 
 | Concurrent Users | Server Replicas | Notes |
 |-----------------|-----------------|-------|
 | < 500 | 2 | Minimum for availability |
-| 500–1 000 | 3 | Good balance |
-| 1 000–2 000 | 4 | ~500 WS connections per replica |
-| 2 000+ | 4+ | Consider dedicated hardware |
+| 500–1,000 | 3 | Good balance |
+| 1,000–2,000 | 4 | ~500 WS connections per replica |
+| 2,000+ | 4+ | Consider dedicated hardware |
 
 MongoDB: a single instance is typically sufficient. Increase `--wiredTigerCacheSizeGB` for more RAM. Redis: default 256 MB max memory is sufficient for pub/sub.
 
