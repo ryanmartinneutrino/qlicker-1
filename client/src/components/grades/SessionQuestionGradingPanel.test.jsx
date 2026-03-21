@@ -308,4 +308,82 @@ describe('SessionQuestionGradingPanel', () => {
       );
     });
   });
+
+  it('shows fast grading interface button for short-answer questions needing manual grading', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: null, outOf: 5, needsGrading: true, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+    expect(screen.getByText(/fast grading interface/i)).toBeInTheDocument();
+  });
+
+  it('does not show fast grading button for auto-gradeable question types', async () => {
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-mc',
+            type: 0,
+            content: '<p>Pick one</p>',
+            plainText: 'Pick one',
+            sessionOptions: { points: 1 },
+            options: [
+              { answer: 'Correct', plainText: 'Correct', correct: true },
+              { answer: 'Wrong', plainText: 'Wrong', correct: false },
+            ],
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-mc', responses: [{ attempt: 1, answer: '0' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+    expect(screen.queryByText(/fast grading interface/i)).not.toBeInTheDocument();
+  });
 });
