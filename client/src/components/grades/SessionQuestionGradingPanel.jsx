@@ -21,10 +21,12 @@ import {
   TableRow,
   TableSortLabel,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { Refresh as RefreshIcon } from '@mui/icons-material';
+import { Refresh as RefreshIcon, Speed as SpeedIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
+import SpeedGradingModal from './SpeedGradingModal';
 import {
   QUESTION_TYPES,
   TYPE_COLORS,
@@ -524,6 +526,8 @@ export default function SessionQuestionGradingPanel({
   const [tableSort, setTableSort] = useState({ field: 'student', direction: 'asc' });
   const [imageViewUrl, setImageViewUrl] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState({});
+  const [speedGradingOpen, setSpeedGradingOpen] = useState(false);
+  const [speedGradingStartIndex, setSpeedGradingStartIndex] = useState(0);
 
   const fetchSessionGrades = useCallback(async () => {
     setLoading(true);
@@ -1012,6 +1016,39 @@ export default function SessionQuestionGradingPanel({
     }
   }, [fetchSessionGrades, sessionId]);
 
+  // --- Speed-grading helpers ---
+
+  const speedGradingRows = useMemo(() => {
+    const hasSelected = sortedRows.some((row) => !!selectedStudentIds[row.studentId]);
+    if (hasSelected) {
+      return sortedRows.filter((row) => !!selectedStudentIds[row.studentId]);
+    }
+    return sortedRows;
+  }, [sortedRows, selectedStudentIds]);
+
+  const handleOpenSpeedGrading = useCallback(() => {
+    setSpeedGradingStartIndex(0);
+    setSpeedGradingOpen(true);
+  }, []);
+
+  const handleSpeedGradingSave = useCallback(async (row, { points, feedback }) => {
+    if (!row?.gradeId || !row?.mark || !activeQuestionId) return;
+    const { data } = await apiClient.patch(
+      `/grades/${row.gradeId}/marks/${activeQuestionId}`,
+      { points, feedback }
+    );
+    applyUpdatedGrade(data?.grade);
+    // Also update the local draft to keep the table in sync
+    if (row.studentId) {
+      setDraftByStudentId((prev) => ({
+        ...prev,
+        [row.studentId]: { points: String(points), feedback },
+      }));
+    }
+    setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
+    setGlobalMessageType('success');
+  }, [activeQuestionId, applyUpdatedGrade]);
+
   if (loading) {
     return (
       <Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
@@ -1061,6 +1098,7 @@ export default function SessionQuestionGradingPanel({
     : t('grades.questionPanel.showingStudentsSession', { showing: sortedRows.length, total: allRows.length });
   const allFilteredSelected = filteredStudentIds.length > 0 && selectedFilteredCount === filteredStudentIds.length;
   const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
+  const questionNeedsManualGrading = !isAutoGradeableQuestionType(activeQuestionType) && activeQuestionPoints > 0;
 
   const renderQuestionRibbon = () => (
     <Box
@@ -1274,6 +1312,21 @@ export default function SessionQuestionGradingPanel({
         {t('grades.questionPanel.feedbackMathTip')}
       </Typography>
 
+      {questionNeedsManualGrading && sortedRows.length > 0 && (
+        <Box sx={{ mb: 1.25 }}>
+          <Tooltip title={t('grades.questionPanel.speedGrading.buttonTooltip')} arrow>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<SpeedIcon />}
+              onClick={handleOpenSpeedGrading}
+            >
+              {t('grades.questionPanel.speedGrading.buttonLabel')}
+            </Button>
+          </Tooltip>
+        </Box>
+      )}
+
       <TableContainer component={Paper} variant="outlined">
         <Table
           size="small"
@@ -1390,6 +1443,16 @@ export default function SessionQuestionGradingPanel({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <SpeedGradingModal
+        open={speedGradingOpen}
+        onClose={() => setSpeedGradingOpen(false)}
+        rows={speedGradingRows}
+        initialIndex={speedGradingStartIndex}
+        activeQuestionId={activeQuestionId}
+        onSaveGrade={handleSpeedGradingSave}
+        formatOutOf={(mark) => t('grades.questionPanel.outOf', { value: formatPercent(mark?.outOf || 0) })}
+      />
     </Box>
   );
 }
