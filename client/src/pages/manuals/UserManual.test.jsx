@@ -65,6 +65,8 @@ describe('UserManual', () => {
     expect(screen.getByText(/you usually only need the join code once per course/i)).toBeInTheDocument();
     expect(screen.getByText(/student course page preview/i)).toBeInTheDocument();
     expect(screen.getByText(/review and practice preview/i)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /student course page preview/i })).toHaveAttribute('src', '/manuals/student-course.png');
+    expect(screen.getByRole('img', { name: /review and practice preview/i })).toHaveAttribute('src', '/manuals/student-review.png');
   });
 
   it('renders the professor manual for professor users and keeps the student manual available', async () => {
@@ -89,5 +91,7 @@ describe('UserManual', () => {
     expect(screen.getByText(/students enter from their dashboard to join that specific course/i)).toBeInTheDocument();
     expect(screen.getByText(/each student can belong to only one group inside a category/i)).toBeInTheDocument();
     expect(screen.getByText(/session editor preview/i)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /professor course workspace preview/i })).toHaveAttribute('src', '/manuals/professor-course.png');
+    expect(screen.getByRole('img', { name: /session editor preview/i })).toHaveAttribute('src', '/manuals/session-editor.png');
   });
 });

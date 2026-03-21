@@ -1,29 +1,74 @@
 # API Reference
 
-Qlicker exposes interactive API documentation from the Fastify server.
+Qlicker exposes interactive API documentation directly from the Fastify server.
 
-## Local access
+## Live docs
 
-- Swagger UI: `/docs`
-- OpenAPI JSON: `/docs/json`
+When the backend is running locally:
 
-When running the application locally:
+- Swagger UI: `http://localhost:3001/docs`
+- OpenAPI JSON: `http://localhost:3001/docs/json`
 
-1. Start the backend server.
-2. Start the Vite frontend.
-3. Open `http://localhost:3001/docs` for the backend-hosted API explorer.
+## Route groups
 
-## How the docs are generated
+The current app exposes route groups for:
 
-- `@fastify/swagger` generates the OpenAPI document.
-- `@fastify/swagger-ui` serves the interactive explorer.
-- Route JSON Schema definitions provide request/query/body documentation.
-- Shared API-doc transforms infer common tags, auth metadata, and path parameters for existing routes.
+- **Auth**: registration, login, logout, refresh, forgot/reset password, email verification, SSO
+- **Users**: profile, password changes, admin user management
+- **Courses**: CRUD, enrollment, instructors, students, course settings, session listing
+- **Sessions**: CRUD, live sessions, quiz payloads, review payloads, join-code settings, question ordering, import/export
+- **Questions**: library CRUD, visibility, copying, import/export helpers
+- **Grades**: course grades, session grades, recalculation, feedback and manual overrides, CSV export
+- **Groups**: group categories, membership, CSV import/export
+- **Video**: Jitsi availability and course/group connection data
+- **Images**: image upload and deletion
+- **Settings**: public settings and admin-only configuration
+- **Health / docs**: service health and generated API docs
 
-## Updating docs with new routes
+## WebSocket events
 
-When adding or changing routes:
+The app also exposes live updates over WebSocket at `/ws`.
 
-1. Add or update Fastify JSON Schema for request bodies and query strings.
-2. Keep path parameters named in the route path (for example `/:id`).
-3. Verify the result in `/docs` or `/docs/json`.
+Important event families include:
+
+- `session:question-changed`
+- `session:question-updated`
+- `session:response-added`
+- `session:attempt-changed`
+- `session:participant-joined`
+- `session:join-code-changed`
+- `session:status-changed`
+- `session:visibility-changed`
+- `session:updated`
+- `session:quiz-submitted`
+- `video:updated`
+
+These power live-session dashboards, session review refreshes, and course-page freshness.
+
+## How the OpenAPI docs are generated
+
+Qlicker uses:
+
+- `@fastify/swagger`
+- `@fastify/swagger-ui`
+- route-level JSON schema definitions
+- shared transform helpers that infer tags, auth metadata, and path parameters
+
+## Updating the docs when you add or change routes
+
+1. Define or update the route schema in the Fastify route module.
+2. Keep request bodies, query strings, and path parameters documented in schema.
+3. Verify the route appears correctly in `/docs`.
+4. If the route changes how developers integrate with the app, update this file and any related developer docs.
+
+## Local verification workflow
+
+A good verification sequence is:
+
+```bash
+cd server && npm test
+cd client && npm test
+cd client && npm run build
+```
+
+Then open `/docs` and confirm the changed route shape matches the real handler behavior.

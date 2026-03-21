@@ -23,6 +23,31 @@ import {
 } from '../../utils/userManuals';
 
 function ManualScreenshot({ screenshot, figureId }) {
+  if (screenshot?.imageSrc) {
+    return (
+      <Box component="figure" sx={{ m: 0 }} aria-labelledby={`${figureId}-title`}>
+        <Paper variant="outlined" sx={{ overflow: 'hidden', bgcolor: 'background.paper' }}>
+          <Box
+            component="img"
+            src={screenshot.imageSrc}
+            alt={screenshot.alt || screenshot.title}
+            sx={{
+              display: 'block',
+              width: '100%',
+              height: 'auto',
+            }}
+          />
+        </Paper>
+        <Typography id={`${figureId}-title`} component="figcaption" variant="subtitle2" sx={{ mt: 1.5, fontWeight: 700 }}>
+          {screenshot.title}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {screenshot.description}
+        </Typography>
+      </Box>
+    );
+  }
+
   const tabs = Array.isArray(screenshot?.tabs) ? screenshot.tabs : [];
   const sidebarItems = Array.isArray(screenshot?.sidebarItems) ? screenshot.sidebarItems : [];
   const cards = Array.isArray(screenshot?.cards) ? screenshot.cards : [];
@@ -139,301 +164,34 @@ function getScreenshotPreset(t, screenshot) {
     case 'adminOverview':
       return {
         ...base,
-        windowBadge: t('manuals.shared.roles.admin'),
-        windowTitle: t('admin.title'),
-        windowNote: t('manuals.shared.screenshotAutosave'),
-        sidebarTitle: t('manuals.shared.screenshotAreas'),
-        sidebarItems: [
-          t('admin.tabs.settings'),
-          t('admin.tabs.users'),
-          t('admin.tabs.courses'),
-          t('admin.tabs.storage'),
-          t('admin.tabs.sso'),
-          t('admin.tabs.video'),
-        ],
-        tabs: [
-          t('admin.tabs.settings'),
-          t('admin.tabs.users'),
-          t('admin.tabs.courses'),
-        ],
-        chips: [
-          t('admin.settings.locale'),
-          t('admin.settings.dateFormat'),
-          t('admin.settings.timeFormat'),
-        ],
-        cards: [
-          {
-            title: t('manuals.shared.screenshotPolicies'),
-            lines: [
-              t('admin.settings.restrictDomain'),
-              t('admin.settings.requireVerified'),
-            ],
-            metrics: [t('admin.users.role'), t('common.status'), t('common.actions')],
-          },
-          {
-            title: t('manuals.shared.screenshotSupport'),
-            lines: [
-              t('admin.users.userPropertiesHelp'),
-              t('manuals.shared.screenshotManualSwitcher'),
-            ],
-            metrics: [
-              t('manuals.shared.roles.admin'),
-              t('manuals.shared.roles.professor'),
-              t('manuals.shared.roles.student'),
-            ],
-          },
-        ],
+        imageSrc: '/manuals/admin-dashboard.png',
+        alt: screenshot.title,
       };
     case 'adminStorage':
-      return {
-        ...base,
-        windowBadge: t('admin.tabs.storage'),
-        windowTitle: t('admin.tabs.storage'),
-        windowNote: t('manuals.shared.screenshotProviderFields'),
-        sidebarTitle: t('manuals.shared.screenshotStorageModes'),
-        sidebarItems: [
-          t('admin.storage.local'),
-          t('admin.storage.s3'),
-          t('admin.storage.azure'),
-        ],
-        tabs: [
-          t('admin.storage.bucket'),
-          t('admin.storage.region'),
-          t('admin.storage.storageContainer'),
-        ],
-        chips: [
-          t('manuals.shared.screenshotSecretFields'),
-          t('manuals.shared.screenshotEndpoint'),
-          t('manuals.shared.screenshotVerification'),
-        ],
-        cards: [
-          {
-            title: t('admin.storage.s3'),
-            lines: [
-              t('admin.storage.bucket'),
-              t('admin.storage.accessKeyId'),
-            ],
-            metrics: [
-              t('admin.storage.region'),
-              t('admin.storage.endpoint'),
-              t('admin.storage.forcePathStyle'),
-            ],
-          },
-          {
-            title: t('admin.storage.azure'),
-            lines: [
-              t('admin.storage.storageAccount'),
-              t('admin.storage.storageAccessKey'),
-            ],
-            metrics: [
-              t('admin.storage.storageContainer'),
-              t('manuals.shared.screenshotVerification'),
-            ],
-          },
-        ],
-      };
+      return null;
     case 'professorCourse':
       return {
         ...base,
-        windowBadge: t('manuals.shared.roles.professor'),
-        windowTitle: t('professor.dashboard.myCourses'),
-        windowNote: t('manuals.shared.screenshotCourseSetup'),
-        sidebarTitle: t('manuals.shared.screenshotCourseActions'),
-        sidebarItems: [
-          t('professor.dashboard.createCourse'),
-          t('professor.course.settings'),
-          t('professor.course.copySession'),
-          t('professor.course.grades'),
-          t('questionLibrary.title'),
-        ],
-        tabs: [
-          t('professor.course.interactiveSessions'),
-          t('professor.course.students'),
-          t('professor.course.grades'),
-        ],
-        chips: [
-          t('professor.course.topics'),
-          t('professor.course.enrollmentCode'),
-          t('professor.course.quizTimeFormat'),
-        ],
-        cards: [
-          {
-            title: t('manuals.shared.screenshotOrganization'),
-            lines: [
-              t('professor.course.topicsHelp', { count: 3 }),
-              t('professor.course.semesterLegacyHelp'),
-            ],
-            metrics: [
-              t('professor.dashboard.semester'),
-              t('professor.dashboard.year'),
-              t('professor.dashboard.sectionLabel'),
-            ],
-          },
-          {
-            title: t('manuals.shared.screenshotReuse'),
-            lines: [
-              t('professor.course.copySession'),
-              t('questionLibrary.title'),
-            ],
-            metrics: [
-              t('common.copy'),
-              t('common.search'),
-              t('common.view'),
-            ],
-          },
-        ],
+        imageSrc: '/manuals/professor-course.png',
+        alt: screenshot.title,
       };
     case 'professorSession':
       return {
         ...base,
-        windowBadge: t('pageTitles.sessionEditor'),
-        windowTitle: t('pageTitles.sessionEditor'),
-        windowNote: t('manuals.shared.screenshotSessionFlow'),
-        sidebarTitle: t('manuals.shared.screenshotEditorActions'),
-        sidebarItems: [
-          t('professor.sessionEditor.addQuestion'),
-          t('questions.types.slide'),
-          t('questionLibrary.title'),
-          t('questionLibrary.import.title'),
-          t('professor.sessionEditor.exportSession'),
-        ],
-        tabs: [
-          t('professor.sessionEditor.sessionSettings'),
-          t('manuals.shared.questionsLabel'),
-          t('manuals.shared.screenshotQuizScheduling'),
-        ],
-        chips: [
-          t('professor.sessionEditor.quiz'),
-          t('professor.sessionEditor.reviewable'),
-          t('professor.sessionEditor.requirePasscode'),
-        ],
-        cards: [
-          {
-            title: t('manuals.shared.screenshotOrdering'),
-            lines: [
-              t('professor.sessionEditor.addQuestion'),
-              t('student.course.copyFromQuestionLibrary'),
-            ],
-            metrics: [
-              t('questions.types.multipleChoice'),
-              t('questions.types.shortAnswer'),
-              t('questions.types.slide'),
-            ],
-          },
-          {
-            title: t('manuals.shared.screenshotQuizControls'),
-            lines: [
-              t('professor.sessionEditor.quizHelp'),
-              t('professor.sessionEditor.reviewableHelp'),
-            ],
-            metrics: [
-              t('professor.sessionEditor.quizStart'),
-              t('professor.sessionEditor.quizEnd'),
-              t('professor.sessionEditor.quizExtensions'),
-            ],
-          },
-        ],
+        imageSrc: '/manuals/session-editor.png',
+        alt: screenshot.title,
       };
     case 'studentCourse':
       return {
         ...base,
-        windowBadge: t('manuals.shared.roles.student'),
-        windowTitle: t('manuals.shared.screenshotStudentCourseDashboard'),
-        windowNote: t('manuals.shared.screenshotChooseActivity'),
-        sidebarTitle: t('manuals.shared.screenshotStudentActions'),
-        sidebarItems: [
-          t('student.course.lectures'),
-          t('student.course.quizzes'),
-          t('student.course.practiceSessions'),
-          t('questionLibrary.title'),
-          t('student.course.grades'),
-        ],
-        tabs: [
-          t('student.course.lectures'),
-          t('student.course.quizzes'),
-          t('student.course.practiceSessions'),
-        ],
-        chips: [
-          t('student.dashboard.enrollmentCode'),
-          t('questionLibrary.title'),
-          t('student.course.grades'),
-        ],
-        cards: [
-          {
-            title: t('manuals.shared.screenshotActivityTypes'),
-            lines: [
-              t('student.course.practice'),
-              t('student.course.review'),
-            ],
-            metrics: [
-              t('pageTitles.liveSession'),
-              t('pageTitles.quiz'),
-              t('pageTitles.sessionReview'),
-            ],
-          },
-          {
-            title: t('manuals.shared.screenshotStayOriented'),
-            lines: [
-              t('student.liveSession.loadingLiveSession'),
-              t('student.liveSession.backToCourse'),
-            ],
-            metrics: [
-              t('common.back'),
-              t('common.next'),
-              t('dashboard.liveSessions'),
-            ],
-          },
-        ],
+        imageSrc: '/manuals/student-course.png',
+        alt: screenshot.title,
       };
     case 'studentReview':
       return {
         ...base,
-        windowBadge: t('pageTitles.sessionReview'),
-        windowTitle: t('pageTitles.sessionReview'),
-        windowNote: t('manuals.shared.screenshotQuestionAtATime'),
-        sidebarTitle: t('manuals.shared.screenshotReviewTools'),
-        sidebarItems: [
-          t('student.sessionReview.oneAtATime'),
-          t('student.sessionReview.allQuestions'),
-          t('student.sessionReview.showMyResponse'),
-          t('student.sessionReview.hideMyResponse'),
-          t('student.sessionReview.backToCourse'),
-        ],
-        tabs: [
-          t('student.sessionReview.oneAtATime'),
-          t('student.sessionReview.allQuestions'),
-        ],
-        chips: [
-          t('student.sessionReview.instructorFeedback'),
-          t('student.sessionReview.sessionGrade'),
-          t('student.sessionReview.participation'),
-        ],
-        cards: [
-          {
-            title: t('manuals.shared.screenshotFeedback'),
-            lines: [
-              t('student.sessionReview.newFeedbackReceived'),
-              t('student.sessionReview.dismiss'),
-            ],
-            metrics: [
-              t('manuals.shared.screenshotCorrectAnswer'),
-              t('common.points'),
-              t('manuals.shared.screenshotAttempts'),
-            ],
-          },
-          {
-            title: t('manuals.shared.screenshotPracticeNext'),
-            lines: [
-              t('questionLibrary.title'),
-              t('student.course.newPracticeSession'),
-            ],
-            metrics: [
-              t('common.create'),
-              t('student.course.review'),
-              t('common.next'),
-            ],
-          },
-        ],
+        imageSrc: '/manuals/student-review.png',
+        alt: screenshot.title,
       };
     default:
       return null;
