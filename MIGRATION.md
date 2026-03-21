@@ -40,16 +40,16 @@ We are migrating Qlicker from MeteorJS to a modern Fastify (backend) + React (fr
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
 | **Backend** | Fastify v5 | HTTP API server (REST + WebSocket) |
-| **Frontend** | React 18+ (Vite) | Single-page application |
+| **Frontend** | React 19 (Vite 8) | Single-page application |
 | **Database** | MongoDB | Data persistence (existing legacy DB) |
-| **ODM** | Mongoose v8 | MongoDB object modeling |
+| **ODM** | Mongoose v9 | MongoDB object modeling |
 | **Real-time** | @fastify/websocket | WebSocket for live session updates |
 | **Auth** | @fastify/jwt + @fastify/cookie | JWT-based authentication |
 | **SSO** | @node-saml/node-saml | SAML-based SSO |
-| **UI Framework** | Material UI v6 | Material Design components |
+| **UI Framework** | Material UI v7 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor |
 | **Math** | KaTeX | Equation rendering |
-| **Testing** | Vitest + Playwright | Unit tests (284 server + 39 client) plus E2E flows |
+| **Testing** | Vitest 4 + Playwright | Unit tests (344 server + 63 client) plus E2E flows |
 | **Containerization** | Docker + Docker Compose | Production deployment |
 
 For the full directory structure, API routes, standard packages, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -136,8 +136,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 305 tests across 14 test files
-- **Client:** 54 tests across 18 files
+- **Server:** 344 tests across 16 test files
+- **Client:** 63 tests across 20 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** 6 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -182,7 +182,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [x] Account lockout after repeated failures
 - [x] npm audit 0 vulnerabilities (server + client)
 - [x] Patch-level dependency updates applied
-- [ ] Major dependency upgrades (React 19, MUI 7, Vite 8, Mongoose 9, react-router-dom 7)
+- [x] Major dependency upgrades (React 19, MUI 7, Vite 8, Mongoose 9, react-router-dom 7, nodemailer 8, dotenv 17, Vitest 4)
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Component tests for critical UI components
 - [ ] Service unit tests for email, questionCopy, sessionCopy, questionImportExport
@@ -317,15 +317,15 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 |----------|--------|-------|
 | **npm audit** | ✅ 0 vulnerabilities | Server: fast-xml-parser override; Client: jspdf fix |
 | **Patch-level updates** | ✅ Applied | @tiptap/* 3.20.4, dompurify 3.3.3, katex 0.16.38, fastify 5.8.2, file-type 21.3.3, jsonwebtoken 9.0.3 |
-| **Major updates available** | 📋 Noted | React 19, MUI 7, Vite 8, Mongoose 9, react-router-dom 7, nodemailer 8, dotenv 17 — all major versions with breaking changes; defer to Phase 8 |
+| **Major updates** | ✅ Applied | React 19.2.4, MUI 7.3.9, Vite 8.0.1, Mongoose 9.3.1, react-router-dom 7.13.1, nodemailer 8.0.3, dotenv 17.3.1, Vitest 4.1.0, @vitejs/plugin-react 6.0.1 |
 | **Dependency minimization** | ✅ Good | No lodash/moment/styled-components; only essential packages; native JS used where possible |
 
 ### Testing Suite — Review (This Review)
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| **Server coverage** | ✅ Good (292 tests/13 files) | All 11 route modules have tests |
-| **Client coverage** | ⚠️ Moderate (41 tests/15 files) | Critical auth, grading, question-editor, and session-editor flows now have targeted unit coverage, but most UI components still rely on E2E coverage |
+| **Server coverage** | ✅ Good (344 tests/16 files) | All 11 route modules have tests |
+| **Client coverage** | ⚠️ Moderate (63 tests/20 files) | Critical auth, grading, question-editor, and session-editor flows now have targeted unit coverage, but most UI components still rely on E2E coverage |
 | **E2E coverage** | ⚠️ Moderate (8 Playwright flows) | 6 baseline flows plus 2 dedicated SSO smoke flows; group-management and some content-copy/export edges still rely on manual coverage |
 | **Test granularity** | ✅ Appropriate | Auth/permission tests are individually useful for catching regressions; no excessive duplication |
 | **Consolidation opportunity** | LOW | Authorization 403 tests could share a parametrized matrix, but individual tests are clearer for debugging |
@@ -343,7 +343,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()` on 29+ additional queries, N+1 fixes, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 333 automated checks (292 server + 41 client) plus 8 Playwright browser flows (6 baseline + 2 SSO smoke) |
+| Unit tests | ✅ 407 automated checks (344 server + 63 client) plus 8 Playwright browser flows (6 baseline + 2 SSO smoke) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 | Internationalization | ✅ Complete — 1085+ keys in en/fr, all components wired, no hardcoded English in aria-labels |
@@ -365,13 +365,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (292 tests, 13 files)
+# Server tests (344 tests, 16 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (41 tests, 15 files)
+# Client tests (63 tests, 20 files)
 cd client && npx vitest run
 
 # Client E2E tests (6 Playwright flows)
