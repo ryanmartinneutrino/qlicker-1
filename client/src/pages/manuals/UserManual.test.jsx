@@ -60,13 +60,15 @@ describe('UserManual', () => {
 
     expect(await screen.findByRole('heading', { name: /student user manual/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/student');
-    expect(screen.getByText(/usual app bar stays available while you read/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/usual app bar stays available while you read/i)).toHaveLength(2);
     expect(screen.getByRole('heading', { name: /enroll in a course and learn the course tabs/i })).toBeInTheDocument();
     expect(screen.getByText(/you usually only need the join code once per course/i)).toBeInTheDocument();
     expect(screen.getByText(/student course page preview/i)).toBeInTheDocument();
     expect(screen.getByText(/review and practice preview/i)).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /student course page preview/i })).toHaveAttribute('src', '/manuals/student-course.png');
     expect(screen.getByRole('img', { name: /review and practice preview/i })).toHaveAttribute('src', '/manuals/student-review.png');
+    expect(screen.getAllByRole('link').find((link) => link.getAttribute('href') === '#manual-section-1')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /↑ navigation/i })).toHaveAttribute('href', '#manual-top');
   });
 
   it('renders the professor manual for professor users and keeps the student manual available', async () => {
@@ -93,5 +95,23 @@ describe('UserManual', () => {
     expect(screen.getByText(/session editor preview/i)).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /professor course workspace preview/i })).toHaveAttribute('src', '/manuals/professor-course.png');
     expect(screen.getByRole('img', { name: /session editor preview/i })).toHaveAttribute('src', '/manuals/session-editor.png');
+  });
+
+  it('renders the admin manual with a real storage screenshot', async () => {
+    authState.user = {
+      profile: {
+        firstname: 'Admin',
+        lastname: 'User',
+        roles: ['admin'],
+      },
+    };
+
+    renderManual('/manual/admin');
+
+    expect(await screen.findByRole('heading', { name: /admin user manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/admin');
+    expect(screen.getByRole('img', { name: /admin dashboard overview/i })).toHaveAttribute('src', '/manuals/admin-dashboard.png');
+    expect(screen.getByRole('img', { name: /storage configuration preview/i })).toHaveAttribute('src', '/manuals/admin-storage.png');
+    expect(screen.getAllByRole('link').find((link) => link.getAttribute('href') === '#manual-section-2')).toBeTruthy();
   });
 });

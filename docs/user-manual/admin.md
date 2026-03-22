@@ -2,11 +2,29 @@
 
 Use this guide when configuring institution-wide settings, storage, SSO, user roles, and course-level support in the current Qlicker app.
 
-## Quick start
+## At a glance
 
-1. Confirm the deployment environment is correct before changing app settings.
-2. Review general settings, storage, SSO, and video before broad onboarding.
+- **Best starting page:** admin dashboard
+- **Highest-risk workflows:** storage credentials, SSO certificates, and global login settings
+- **Best support habit:** compare the problem against the professor or student manual before answering a user
+- **Related guides:** [Professor manual](professor.md), [Student manual](student.md), [Production deployment guide](../../production_setup/README.md)
+
+## Table of contents
+
+1. [Admin dashboard](#admin-dashboard)
+2. [General settings](#general-settings)
+3. [User and course support](#user-and-course-support)
+4. [Storage configuration](#storage-configuration)
+5. [SSO configuration](#sso-configuration)
+6. [Video configuration](#video-configuration)
+7. [Troubleshooting checklist](#troubleshooting-checklist)
+
+## Quick start checklist
+
+1. Confirm the deployment environment and public URLs before changing app settings.
+2. Review general settings, storage, SSO, and video before large onboarding periods.
 3. Use the Users and Courses tabs for day-to-day support and verification.
+4. Retest any global auth or storage change before announcing it to users.
 
 ## Admin dashboard
 
@@ -14,7 +32,7 @@ The admin dashboard centralizes institution-wide configuration.
 
 ![Admin dashboard](../assets/manuals/admin-dashboard.png)
 
-The current app exposes these major admin tabs:
+The current app exposes these major tabs:
 
 - **Settings** for general platform defaults
 - **Users** for role and account management
@@ -22,6 +40,8 @@ The current app exposes these major admin tabs:
 - **Storage** for image backends
 - **SSO Configuration** for SAML settings
 - **Video** for Jitsi configuration and availability
+
+Because the dashboard autosaves after short pauses, review each field carefully before leaving a tab.
 
 ## General settings
 
@@ -37,9 +57,18 @@ Common settings include:
 - default date format
 - default time format
 
-Because the dashboard autosaves after short pauses, review each field carefully before leaving the page.
+### Best practices
 
-## User management
+| Setting | Recommendation |
+| --- | --- |
+| Allowed domains | Keep the list explicit and comma-separated |
+| Verified email | Decide this before onboarding large numbers of users |
+| Support/admin email | Use a monitored mailbox so error messages reach a real team |
+| Locale/date/time defaults | Pick institution-wide defaults, then let users override them when appropriate |
+
+## User and course support
+
+### Users tab
 
 The Users tab is your main support surface for accounts.
 
@@ -54,7 +83,7 @@ From there you can:
 
 Use extra care when changing roles because the effect is immediate.
 
-## Course support
+### Courses tab
 
 The Courses tab helps admins support instructors without signing in as them.
 
@@ -67,9 +96,9 @@ Use it to:
 
 ## Storage configuration
 
-Qlicker supports multiple image-storage backends.
+Qlicker supports multiple image-storage backends, managed from the Storage tab.
 
-In the current app, storage configuration is managed from the Storage tab.
+![Storage configuration](../assets/manuals/admin-storage.png)
 
 Supported modes include:
 
@@ -77,12 +106,20 @@ Supported modes include:
 - Amazon S3 or S3-compatible storage
 - Azure Blob storage
 
-When configuring storage:
+### Storage workflow
 
 1. Choose the provider.
 2. Fill only the fields required by that provider.
 3. Save the settings.
 4. Upload a test image from the app to confirm read and write behavior.
+
+### Provider-specific notes
+
+| Provider | Required fields to verify |
+| --- | --- |
+| Local | uploaded files survive restarts and deployments |
+| Amazon S3 / compatible | bucket, region, access key, secret key, optional endpoint/path-style support |
+| Azure Blob | storage account, access key, container name |
 
 Treat access keys, secret keys, and similar credentials as secrets.
 
@@ -99,7 +136,7 @@ Prepare the following before enabling SSO:
 - the IdP certificate
 - the SP certificate and private key if your deployment requires them
 
-After making SSO changes, always retest:
+### After any SSO change, always retest
 
 - sign-in
 - callback handling
@@ -121,16 +158,7 @@ The Video tab is where you:
 
 After configuration, test with a real course before announcing the feature.
 
-## Support workflow recommendations
-
-When resolving user issues:
-
-1. Confirm whether the problem is global, course-specific, or account-specific.
-2. Check Settings, then the relevant Users or Courses tab.
-3. Compare the workflow against the matching [Professor manual](professor.md) or [Student manual](student.md) so your answer matches what the user actually sees.
-4. If the issue involves SSO or storage, retest the live configuration instead of relying on remembered values.
-
-## Troubleshooting
+## Troubleshooting checklist
 
 ### Users cannot sign in
 
@@ -139,7 +167,7 @@ Check:
 - whether SSO is enabled unexpectedly
 - whether SSO metadata and certificates are current
 - whether local email login is allowed for the affected account
-- whether the deployment URLs used by the server match the public environment
+- whether the public deployment URLs match the running environment
 
 ### Uploaded images fail
 
@@ -148,7 +176,8 @@ Check:
 - the selected storage provider
 - the provider credentials
 - bucket or container existence and permissions
-- whether a recent config change was saved incompletely
+- whether a recent configuration change was saved incompletely
+- whether a fresh test upload reproduces the problem
 
 ### Professors cannot access expected course features
 
@@ -156,7 +185,7 @@ Check:
 
 - their role
 - course instructor membership
-- course settings such as video availability or question-submission permissions
+- course settings such as video availability or student-submission permissions
 - whether the feature depends on a global admin setting
 
 ## Related manuals
