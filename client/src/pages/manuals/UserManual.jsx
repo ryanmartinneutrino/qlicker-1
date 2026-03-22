@@ -1,4 +1,3 @@
-import { Fragment } from 'react';
 import { Link as RouterLink, Navigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -168,7 +167,11 @@ function getScreenshotPreset(t, screenshot) {
         alt: screenshot.title,
       };
     case 'adminStorage':
-      return null;
+      return {
+        ...base,
+        imageSrc: '/manuals/admin-storage.png',
+        alt: screenshot.title,
+      };
     case 'professorCourse':
       return {
         ...base,
@@ -198,13 +201,21 @@ function getScreenshotPreset(t, screenshot) {
   }
 }
 
-function Section({ section, index, t }) {
+function Section({ section, index, sectionId, t }) {
   const bullets = Array.isArray(section?.bullets) ? section.bullets : [];
   const paragraphs = Array.isArray(section?.paragraphs) ? section.paragraphs : [];
   const screenshot = getScreenshotPreset(t, section?.screenshot);
 
   return (
-    <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
+    <Paper
+      component="section"
+      id={sectionId}
+      variant="outlined"
+      sx={{
+        p: { xs: 2, md: 3 },
+        scrollMarginTop: 96,
+      }}
+    >
       <Stack spacing={2}>
         <Box>
           <Typography variant="h5" component="h2" sx={{ fontWeight: 700 }}>
@@ -235,7 +246,7 @@ function Section({ section, index, t }) {
         {section.warning ? <Alert severity="warning">{section.warning}</Alert> : null}
         {section.success ? <Alert severity="success">{section.success}</Alert> : null}
 
-        {screenshot ? <ManualScreenshot screenshot={screenshot} figureId={`manual-section-${index}`} /> : null}
+        {screenshot ? <ManualScreenshot screenshot={screenshot} figureId={`${sectionId}-figure`} /> : null}
       </Stack>
     </Paper>
   );
@@ -259,6 +270,104 @@ function ManualNavigation({ dashboardPath, t }) {
         {t('manuals.shared.navigationHint')}
       </Typography>
     </Box>
+  );
+}
+
+function ManualSidebar({
+  dashboardPath,
+  manual,
+  manualRole,
+  relatedManualRoles,
+  sections,
+  t,
+}) {
+  return (
+    <Stack
+      spacing={2}
+      sx={{
+        minWidth: 0,
+        position: { md: 'sticky' },
+        top: { md: 24 },
+      }}
+    >
+      <Paper id="manual-top" variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Stack spacing={2}>
+          <Box>
+            <Chip color="primary" variant="outlined" size="small" label={t(`manuals.shared.roles.${manualRole}`)} />
+            <Typography variant="h6" sx={{ mt: 1.5, fontWeight: 700 }}>
+              {t('manuals.shared.navigationTitle')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+              {manual.summary}
+            </Typography>
+          </Box>
+          <ManualNavigation dashboardPath={dashboardPath} t={t} />
+        </Stack>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
+          {t('manuals.shared.quickStartTitle')}
+        </Typography>
+        <Box component="ol" sx={{ m: 0, pl: 3, display: 'grid', gap: 1 }}>
+          {(Array.isArray(manual.quickStart) ? manual.quickStart : []).map((step) => (
+            <Typography component="li" key={step} variant="body2" color="text.secondary">
+              {step}
+            </Typography>
+          ))}
+        </Box>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
+          {t('manuals.shared.relatedManualsTitle')}
+        </Typography>
+        <Stack spacing={1}>
+          {relatedManualRoles.map((role) => (
+            <Tooltip
+              key={role}
+              title={t('manuals.shared.relatedManualTooltip', { role: t(`manuals.shared.roles.${role}`) })}
+              arrow
+            >
+              <Button
+                component={RouterLink}
+                to={getManualPath(role)}
+                variant={role === manualRole ? 'contained' : 'outlined'}
+                fullWidth
+                sx={{ justifyContent: 'flex-start' }}
+              >
+                {t(`manuals.shared.roles.${role}`)}
+              </Button>
+            </Tooltip>
+          ))}
+        </Stack>
+      </Paper>
+
+      <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.25 }}>
+          {t('manuals.shared.contentsTitle')}
+        </Typography>
+        <Stack spacing={0.75}>
+          {sections.map((section, index) => (
+            <Button
+              key={section.id}
+              component="a"
+              href={`#${section.id}`}
+              variant="text"
+              color="inherit"
+              sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
+            >
+              {index + 1}. {section.title}
+            </Button>
+          ))}
+          {!!sections.length && (
+            <Button component="a" href="#manual-top" variant="text" color="inherit" sx={{ justifyContent: 'flex-start' }}>
+              ↑ {t('manuals.shared.navigationTitle')}
+            </Button>
+          )}
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }
 
@@ -310,82 +419,64 @@ export default function UserManual() {
   };
   const roleColor = roleColors[manualRole] || 'primary';
   const sections = Array.isArray(manual.sections) ? manual.sections : [];
+  const sectionEntries = sections.map((section, index) => ({ ...section, id: `manual-section-${index + 1}` }));
   const relatedManualRoles = availableRoles;
 
   return (
-    <Box sx={{ p: 3, maxWidth: 960, mx: 'auto' }}>
-      <Stack spacing={3}>
-        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Stack spacing={2.5}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
-              <Box>
-                <Typography variant="h4" component="h1" gutterBottom>{manual.title}</Typography>
-                <Typography variant="body1" color="text.secondary">
-                  {manual.intro}
-                </Typography>
-              </Box>
-              <Chip color={roleColor} label={t(`manuals.shared.roles.${manualRole}`)} />
-            </Stack>
-
-            <Alert severity="info">{manual.summary}</Alert>
-
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  {t('manuals.shared.quickStartTitle')}
-                </Typography>
-                <Box component="ol" sx={{ m: 0, pl: 3, display: 'grid', gap: 0.75 }}>
-                  {(Array.isArray(manual.quickStart) ? manual.quickStart : []).map((step) => (
-                    <Typography component="li" key={step} variant="body2" color="text.secondary">{step}</Typography>
-                  ))}
-                </Box>
-              </Box>
-              <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                  {t('manuals.shared.relatedManualsTitle')}
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  {relatedManualRoles.map((role) => (
-                    <Tooltip
-                      key={role}
-                      title={t('manuals.shared.relatedManualTooltip', { role: t(`manuals.shared.roles.${role}`) })}
-                      arrow
-                    >
-                      <Button component={RouterLink} to={getManualPath(role)} variant={role === manualRole ? 'contained' : 'outlined'}>
-                        {t(`manuals.shared.roles.${role}`)}
-                      </Button>
-                    </Tooltip>
-                  ))}
-                </Stack>
-              </Box>
-            </Stack>
-
-            <Divider />
-
-            <ManualNavigation dashboardPath={dashboardPath} t={t} />
-          </Stack>
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>{t('manuals.shared.contentsTitle')}</Typography>
-          <Stack spacing={1.25}>
-            {sections.map((section, index) => (
-              <Fragment key={section.title}>
-                <Typography variant="body2" color="text.secondary">
-                  {index + 1}. {section.title}
-                </Typography>
-              </Fragment>
-            ))}
-          </Stack>
-        </Paper>
+    <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 3,
+          alignItems: 'start',
+          gridTemplateColumns: { xs: '1fr', md: '280px minmax(0, 1fr)' },
+        }}
+      >
+        <ManualSidebar
+          dashboardPath={dashboardPath}
+          manual={manual}
+          manualRole={manualRole}
+          relatedManualRoles={relatedManualRoles}
+          sections={sectionEntries}
+          t={t}
+        />
 
         <Stack spacing={2.5}>
-          {sections.map((section, index) => (
-            <Section key={section.title} section={section} index={index} t={t} />
-          ))}
+          <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 3 } }}>
+            <Stack spacing={2.5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between">
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h4" component="h1" gutterBottom>{manual.title}</Typography>
+                  <Typography variant="body1" color="text.secondary">
+                    {manual.intro}
+                  </Typography>
+                </Box>
+                <Chip color={roleColor} label={t(`manuals.shared.roles.${manualRole}`)} />
+              </Stack>
+
+              <Alert severity="info">{manual.summary}</Alert>
+
+              <Divider />
+
+              <Typography variant="body2" color="text.secondary">
+                {t('manuals.shared.navigationHint')}
+              </Typography>
+            </Stack>
+          </Paper>
+
+          <Stack spacing={2.5}>
+            {sectionEntries.map((section, index) => (
+              <Section
+                key={section.title}
+                section={section}
+                index={index}
+                sectionId={section.id}
+                t={t}
+              />
+            ))}
+          </Stack>
         </Stack>
-      </Stack>
+      </Box>
     </Box>
   );
 }

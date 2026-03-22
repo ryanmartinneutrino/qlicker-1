@@ -178,7 +178,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 - [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))
 - [x] Private-bucket cutover for S3 images — sanitization script ready (see [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) and [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [x] Complete developer guide
-- [x] Complete user manual
+- [x] Complete user manual refresh (role-specific markdown guides, in-app left-nav manual layout, and current screenshot coverage including admin storage)
 - [x] Refresh token rotation
 - [x] Account lockout after repeated failures
 - [x] npm audit 0 vulnerabilities (server + client)

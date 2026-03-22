@@ -2,23 +2,48 @@
 
 Use this guide to enroll in courses, join live sessions, complete quizzes, review feedback, and build practice sessions in the current Qlicker app.
 
-## Quick start
+## At a glance
 
-1. Log in with your Qlicker account or your institution's SSO if your deployment has SSO enabled.
-2. Enter the course enrollment code supplied by your instructor.
-3. Open the course page and choose the correct tab: live sessions, quizzes, practice sessions, grades, or question library.
-4. After class, return to reviewable sessions and your practice sessions to study with feedback.
+- **Best starting page:** your course page
+- **Best study habit:** return to reviewable sessions after class and compare your answer with the released explanation
+- **Best self-study tool:** practice sessions built from visible library questions
+- **Related guides:** [Professor manual](professor.md), [Admin manual](admin.md), [Grading guide](grading.md)
+
+## Table of contents
+
+1. [Dashboard and enrollment](#dashboard-and-enrollment)
+2. [Understand the course page](#understand-the-course-page)
+3. [Join live sessions](#join-live-sessions)
+4. [Take quizzes](#take-quizzes)
+5. [Review finished work](#review-finished-work)
+6. [Build practice sessions](#build-practice-sessions)
+7. [Grades, feedback, and profile settings](#grades-feedback-and-profile-settings)
+8. [Troubleshooting checklist](#troubleshooting-checklist)
+
+## Quick start checklist
+
+1. Log in with your Qlicker account or institution SSO.
+2. Enter the course code supplied by your instructor.
+3. Open the course page and choose the correct tab for the task you need right now.
+4. Return to reviewable sessions and practice sessions after class to study from feedback.
 
 ## Dashboard and enrollment
 
-The student dashboard is your starting point for every course.
+The student dashboard is the starting point for every course.
 
-- Each enrolled course appears as a card on the dashboard.
-- Enrollment is done from the dashboard using the course code supplied by your instructor.
-- Once a course is added, it stays on your dashboard until you are removed from it or it is archived for your account.
-- If your institution requires verified email or SSO, finish that requirement before assuming the course code is incorrect.
+From the dashboard you can:
 
-## Course page layout
+- see every course in which you are enrolled
+- enter a new course code to join another course
+- return to course work without searching through older pages
+
+### Enrollment tips
+
+- Enter the course code exactly as your instructor provided it.
+- If your institution requires verified email or SSO, finish that setup before assuming the code is wrong.
+- After you join successfully, the course stays on your dashboard until you are removed or the course is archived for your account.
+
+## Understand the course page
 
 The course page separates each type of work into tabs so that live class work, quizzes, review, practice, and grades do not get mixed together.
 
@@ -30,38 +55,59 @@ On the course page you will typically see:
 - **Quizzes** for timed assessments
 - **Practice sessions** for self-study and rehearsal
 - **Question library** for visible study questions and question-based practice workflows
-- **Grades** for your course-level grade table and session grades
+- **Grades** for your own course and session results
 - **Video chat** when your course has Jitsi enabled
 
-## Joining live sessions
+### How to choose the right tab
+
+| If you want to… | Start here |
+| --- | --- |
+| join a class activity controlled by the instructor | live sessions / lectures |
+| complete a scheduled assessment | quizzes |
+| review answers and explanations later | reviewable session or quiz link |
+| study on your own time | practice sessions or question library |
+| check marks and feedback | grades |
+
+## Join live sessions
 
 Live sessions are used when an instructor is controlling the pace of the class.
 
+### Typical workflow
+
 1. Open the course page.
 2. Select the live session card when it becomes available.
-3. Enter the join code or passcode if the instructor requires one.
+3. Enter the join code or passcode if required.
 4. Wait for the current question or slide to appear.
 5. Submit your answer once the instructor allows responses.
 
-Important live-session behavior:
+### Important live-session behavior
 
 - Instructors can hide the question temporarily.
 - Instructors can stop responses and reopen them for another attempt.
-- Some sessions include slides between questions. Slides are content-only pages, so read them before moving on.
-- If statistics or correct answers are visible, that happens only when the instructor turns them on.
+- Slides can appear between questions. Slides are content-only pages, so read them before moving on.
+- Statistics and correct answers only become visible when the instructor turns them on.
 
-## Taking quizzes
+## Take quizzes
 
-Quizzes are different from live sessions because they are scheduled windows rather than instructor-paced question changes.
+Quizzes differ from live sessions because they open during scheduled windows rather than following the instructor question by question.
+
+### What to expect
 
 - A quiz is available only during its configured time window unless you have an extension.
-- Your responses save while you move through the quiz.
-- Some deployments display one question at a time while others let you move around more freely depending on the workflow and question type.
+- Your responses save as you move through the quiz.
+- Some deployments display one question at a time while others allow more navigation.
 - Once submitted, a normal quiz cannot be edited again.
 
-If you use an accommodation or extension, confirm the start and end time displayed in the quiz page before you begin.
+### Before you start a quiz
 
-## Reviewing finished work
+Check:
+
+- the quiz start time
+- the quiz end time
+- any extension or accommodation that applies to you
+- whether you are in a quiet environment with enough time to finish
+
+## Review finished work
 
 When an instructor marks a session or quiz as reviewable, you can return to study your answers and feedback.
 
@@ -75,48 +121,59 @@ Review pages are useful because they can show:
 - feedback on manually graded questions
 - points and participation information
 
-## Practice sessions
+### Best review habit
+
+Move one question at a time. Compare:
+
+1. what the question asked
+2. what you submitted
+3. what the released answer or solution says
+4. what feedback tells you to improve next time
+
+## Build practice sessions
 
 Practice sessions are student-paced study sessions.
 
-Use practice sessions when you want to:
+Use them when you want to:
 
 - rehearse visible library questions on your own schedule
 - create a short study set before a quiz or exam
 - immediately review your results and try again
 
-A good workflow is:
+### Good practice workflow
 
-1. Search the question library for questions on the topic you want to revisit.
+1. Search the question library for the topic you want to revisit.
 2. Add selected questions to a new practice session.
 3. Complete the practice session.
 4. Review the results immediately and repeat with another set if needed.
 
-## Question library for students
+### Question library expectations
 
-Student access to the library depends on what instructors make visible.
+Student access to the library depends on what instructors have made visible.
 
-In the current app, the student library may include:
+The student library may include:
 
 - questions shared with students in the course
 - course-visible questions approved by instructors
 - student-created material in practice workflows when allowed
 
-Use the library to find practice material, not as a substitute for the course tabs. Live sessions and quizzes still start from the course page.
+Use the library to find practice material, not as a replacement for the course tabs. Live sessions and quizzes still begin from the course page.
 
-## Grades and feedback
+## Grades, feedback, and profile settings
+
+### Grades and feedback
 
 The Grades tab shows only your own grades.
 
 Keep in mind:
 
-- A session must usually be reviewable before detailed results appear.
-- Non-reviewable sessions may stay hidden from your student grade view.
-- Feedback can arrive after the original activity if the instructor manually grades short-answer work later.
+- a session usually must be reviewable before detailed results appear
+- non-reviewable sessions may stay hidden from your student grade view
+- feedback can arrive later if the instructor manually grades short-answer work after the activity
 
 See also the shared [grading guide](grading.md).
 
-## Profile and account settings
+### Profile and account settings
 
 From the account menu you can:
 
@@ -127,7 +184,7 @@ From the account menu you can:
 
 If your account is SSO-managed, some profile fields may be locked intentionally.
 
-## Troubleshooting
+## Troubleshooting checklist
 
 ### I cannot join a course
 
@@ -145,7 +202,7 @@ Possible reasons:
 - the instructor has not opened responses yet
 - responses have been disabled for the current attempt
 - the instructor has moved to a slide or a different question
-- the question has already been submitted and the workflow does not allow another attempt
+- the workflow does not allow another attempt after your first submission
 
 ### I cannot see my results
 
