@@ -115,7 +115,7 @@ Supported modes include:
 
 ### Provider-specific notes
 
-| Provider | Required ideas to verify |
+| Provider | Required fields to verify |
 | --- | --- |
 | Local | uploaded files survive restarts and deployments |
 | Amazon S3 / compatible | bucket, region, access key, secret key, optional endpoint/path-style support |

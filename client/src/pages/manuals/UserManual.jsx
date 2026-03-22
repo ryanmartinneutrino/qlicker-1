@@ -21,6 +21,9 @@ import {
   USER_MANUAL_ROLES,
 } from '../../utils/userManuals';
 
+const MANUAL_SCROLL_MARGIN_TOP = 96;
+const MANUAL_SIDEBAR_STICKY_TOP = 24;
+
 function ManualScreenshot({ screenshot, figureId }) {
   if (screenshot?.imageSrc) {
     return (
@@ -213,7 +216,7 @@ function Section({ section, index, sectionId, t }) {
       variant="outlined"
       sx={{
         p: { xs: 2, md: 3 },
-        scrollMarginTop: 96,
+        scrollMarginTop: MANUAL_SCROLL_MARGIN_TOP,
       }}
     >
       <Stack spacing={2}>
@@ -287,7 +290,7 @@ function ManualSidebar({
       sx={{
         minWidth: 0,
         position: { md: 'sticky' },
-        top: { md: 24 },
+        top: { md: MANUAL_SIDEBAR_STICKY_TOP },
       }}
     >
       <Paper id="manual-top" variant="outlined" sx={{ p: { xs: 2, md: 2.5 } }}>
