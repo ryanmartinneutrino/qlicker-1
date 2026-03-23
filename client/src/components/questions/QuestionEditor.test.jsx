@@ -38,6 +38,51 @@ describe('QuestionEditor', () => {
     expect(screen.getByText('Only course-related topics can be added as question tags. Add course topics in Course Settings to enable tagging.')).toBeInTheDocument();
   });
 
+  it('allows removing existing legacy tags when no course topics exist', async () => {
+    vi.useFakeTimers();
+    const onAutoSave = vi.fn().mockResolvedValue({ _id: 'question-legacy' });
+
+    render(
+      <QuestionEditor
+        open
+        inline
+        initial={{
+          _id: 'question-legacy',
+          type: 2,
+          content: '<p>Legacy tag question</p>',
+          plainText: 'Legacy tag question',
+          tags: [{ value: 'legacy-topic', label: 'legacy-topic' }],
+          sessionOptions: { points: 1 },
+        }}
+        onAutoSave={onAutoSave}
+        allowCustomTags={false}
+        showVisibilityControls={false}
+        showCourseTagSettingsHint
+        tagSuggestions={[]}
+      />
+    );
+
+    expect(screen.getByLabelText('Tags')).not.toBeDisabled();
+    expect(screen.getByText('legacy-topic')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    fireEvent.keyDown(screen.getByLabelText('Tags'), { key: 'Backspace', code: 'Backspace' });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750);
+    });
+
+    expect(onAutoSave).toHaveBeenCalledWith(expect.objectContaining({
+      tags: [],
+    }), 'question-legacy');
+    expect(screen.getByLabelText('Tags')).toBeDisabled();
+
+    vi.useRealTimers();
+  });
+
   it('keeps visibility settings locked when the visibility controls are hidden', async () => {
     vi.useFakeTimers();
     const onAutoSave = vi.fn().mockResolvedValue({ _id: 'question-1' });
