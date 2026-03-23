@@ -49,6 +49,33 @@ choose_token_value() {
   printf -v "$output_var" '%s' "$selected"
 }
 
+resolve_host_path() {
+  local path="$1"
+  if [[ "$path" == /* ]]; then
+    printf '%s' "$path"
+  else
+    printf '%s/%s' "$SCRIPT_DIR" "${path#./}"
+  fi
+}
+
+local_certs_exist() {
+  [ -f "$SCRIPT_DIR/certs/fullchain.pem" ] && [ -f "$SCRIPT_DIR/certs/privkey.pem" ]
+}
+
+generate_self_signed_cert() {
+  local cert_path="$1" key_path="$2" domain="$3"
+  local cert_host_path key_host_path
+
+  cert_host_path="$(resolve_host_path "$cert_path")"
+  key_host_path="$(resolve_host_path "$key_path")"
+
+  mkdir -p "$(dirname "$cert_host_path")" "$(dirname "$key_host_path")"
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout "$key_host_path" \
+    -out "$cert_host_path" \
+    -subj "/CN=$domain" 2>/dev/null
+}
+
 # ---- Let's Encrypt initial certificate -------------------------------------
 init_certs() {
   require_command docker "https://docs.docker.com/get-docker/"
@@ -177,31 +204,86 @@ echo ""
 echo "--- TLS Certificate ---"
 echo "  Options:"
 echo "    1) I already have certificate files (Let's Encrypt or other)"
-echo "    2) Use this setup to obtain a Let's Encrypt certificate later (--init-certs)"
+echo "    2) Generate a Let's Encrypt certificate now"
 echo "    3) Generate a self-signed certificate (testing only)"
 echo ""
 DEFAULT_TLS_CERT="${TLS_CERT_PATH:-./certs/fullchain.pem}"
 DEFAULT_TLS_KEY="${TLS_KEY_PATH:-./certs/privkey.pem}"
+LOCAL_TLS_CERT="./certs/fullchain.pem"
+LOCAL_TLS_KEY="./certs/privkey.pem"
+REQUEST_LE_CERTS=false
 
-read -r -p "TLS certificate path [$DEFAULT_TLS_CERT]: " TLS_CERT_INPUT
-TLS_CERT_PATH="${TLS_CERT_INPUT:-$DEFAULT_TLS_CERT}"
+while true; do
+  read -r -p "Choose TLS option [1-3]: " TLS_OPTION
+  case "${TLS_OPTION:-}" in
+    1)
+      if local_certs_exist; then
+        read -r -p "Found certificates in ./certs/. Use these files? [Y/n]: " USE_LOCAL_CERTS
+        case "${USE_LOCAL_CERTS:-Y}" in
+          [Yy]*)
+            TLS_CERT_PATH="$LOCAL_TLS_CERT"
+            TLS_KEY_PATH="$LOCAL_TLS_KEY"
+            info "Using existing certificates from ./certs/"
+            break
+            ;;
+        esac
+      fi
 
-read -r -p "TLS private key path [$DEFAULT_TLS_KEY]: " TLS_KEY_INPUT
-TLS_KEY_PATH="${TLS_KEY_INPUT:-$DEFAULT_TLS_KEY}"
+      read -r -p "TLS certificate path [$DEFAULT_TLS_CERT]: " TLS_CERT_INPUT
+      TLS_CERT_PATH="${TLS_CERT_INPUT:-$DEFAULT_TLS_CERT}"
 
-# Generate self-signed cert if paths point to local ./certs/ and files don't exist
-if [[ "$TLS_CERT_PATH" == ./certs/* ]] && [ ! -f "$SCRIPT_DIR/${TLS_CERT_PATH#./}" ]; then
-  read -r -p "Certificate not found. Generate self-signed cert for testing? [y/N]: " GEN_CERT
-  if [[ "$GEN_CERT" =~ ^[Yy]$ ]]; then
-    mkdir -p "$SCRIPT_DIR/certs"
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-      -keyout "$SCRIPT_DIR/certs/privkey.pem" \
-      -out "$SCRIPT_DIR/certs/fullchain.pem" \
-      -subj "/CN=$DOMAIN" 2>/dev/null
-    info "Self-signed certificate generated in ./certs/"
-    warn "For production, replace with a real certificate or run: ./setup.sh --init-certs"
-  fi
-fi
+      read -r -p "TLS private key path [$DEFAULT_TLS_KEY]: " TLS_KEY_INPUT
+      TLS_KEY_PATH="${TLS_KEY_INPUT:-$DEFAULT_TLS_KEY}"
+
+      CERT_HOST_PATH="$(resolve_host_path "$TLS_CERT_PATH")"
+      KEY_HOST_PATH="$(resolve_host_path "$TLS_KEY_PATH")"
+      MISSING_TLS_FILES=false
+
+      if [ ! -f "$CERT_HOST_PATH" ]; then
+        warn "Certificate file not found: $TLS_CERT_PATH"
+        MISSING_TLS_FILES=true
+      fi
+      if [ ! -f "$KEY_HOST_PATH" ]; then
+        warn "Private key file not found: $TLS_KEY_PATH"
+        MISSING_TLS_FILES=true
+      fi
+
+      if [ "$MISSING_TLS_FILES" = true ]; then
+        read -r -p "Continue with missing certificate files? [y/N]: " CONTINUE_WITH_MISSING_CERTS
+        if [[ ! "${CONTINUE_WITH_MISSING_CERTS:-N}" =~ ^[Yy]$ ]]; then
+          continue
+        fi
+      fi
+      break
+      ;;
+    2)
+      TLS_CERT_PATH="$LOCAL_TLS_CERT"
+      TLS_KEY_PATH="$LOCAL_TLS_KEY"
+      REQUEST_LE_CERTS=true
+      info "Let's Encrypt selected. setup.sh will run certificate initialization after writing .env."
+      break
+      ;;
+    3)
+      TLS_CERT_PATH="$LOCAL_TLS_CERT"
+      TLS_KEY_PATH="$LOCAL_TLS_KEY"
+      if local_certs_exist; then
+        read -r -p "Existing certificates found in ./certs/. Regenerate self-signed files? [y/N]: " REPLACE_SELF_SIGNED
+        if [[ ! "${REPLACE_SELF_SIGNED:-N}" =~ ^[Yy]$ ]]; then
+          info "Keeping existing certificates in ./certs/"
+          break
+        fi
+      fi
+
+      generate_self_signed_cert "$TLS_CERT_PATH" "$TLS_KEY_PATH" "$DOMAIN"
+      info "Self-signed certificate generated in ./certs/"
+      warn "For production, replace with a real certificate or run: ./setup.sh --init-certs"
+      break
+      ;;
+    *)
+      echo "Please choose 1, 2, or 3."
+      ;;
+  esac
+done
 
 # ---- Scaling ----------------------------------------------------------------
 echo ""
@@ -343,6 +425,21 @@ BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
 EOF
 
 info ".env written to $ENV_FILE"
+
+# ---- Optionally initialize Let's Encrypt -------------------------------------
+if [ "$REQUEST_LE_CERTS" = true ]; then
+  echo ""
+  info "Starting Let's Encrypt certificate initialization..."
+  if init_certs; then
+    set -a; . "$ENV_FILE"; set +a
+    TLS_CERT_PATH="${TLS_CERT_PATH:-$LOCAL_TLS_CERT}"
+    TLS_KEY_PATH="${TLS_KEY_PATH:-$LOCAL_TLS_KEY}"
+    info "Let's Encrypt certificates configured successfully."
+  else
+    warn "Let's Encrypt initialization did not complete."
+    warn "You can retry later with: ./setup.sh --init-certs"
+  fi
+fi
 
 # ---- Optionally build images ------------------------------------------------
 echo ""

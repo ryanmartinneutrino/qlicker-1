@@ -151,10 +151,11 @@ Running `./setup.sh` again will detect the existing `.env` and offer to keep cur
 ### Option 1: Let's Encrypt (Recommended)
 
 ```bash
-# First run: generate .env with your domain
+# Run interactive setup and choose:
+#   2) Generate a Let's Encrypt certificate now
 ./setup.sh
 
-# Obtain initial certificate
+# If you skip this during setup, you can run it later:
 ./setup.sh --init-certs
 ```
 
@@ -167,7 +168,15 @@ This will:
 
 ### Option 2: Bring Your Own Certificate
 
-Place your certificate files and update `.env`:
+During setup, choose:
+
+```bash
+1) I already have certificate files (Let's Encrypt or other)
+```
+
+If `./certs/fullchain.pem` and `./certs/privkey.pem` already exist, setup offers to use them automatically. Otherwise it prompts for certificate/key paths.
+
+You can also place files in `./certs/` manually:
 
 ```bash
 # Copy certificates
@@ -182,7 +191,13 @@ TLS_KEY_PATH=/etc/letsencrypt/live/yourdomain.com/privkey.pem
 
 ### Option 3: Self-Signed (Testing Only)
 
-During setup, if no certificate is found, the script offers to generate a self-signed certificate. **Do not use in production.**
+During setup, choose:
+
+```bash
+3) Generate a self-signed certificate (testing only)
+```
+
+The script writes `./certs/fullchain.pem` and `./certs/privkey.pem`. **Do not use self-signed certificates in production.**
 
 ---
 
@@ -343,7 +358,22 @@ The `manage-user.sh` script provides CLI access to common user operations:
 
 ## Backups
 
-### Manual Backup
+`backup.sh` and `restore.sh` work against the MongoDB data in this deployment.
+They use the Docker volume mapping in `docker-compose.yml`:
+- host: `./backups/`
+- mongo container: `/backups/`
+
+### How `backup.sh` Works
+
+When you run `./backup.sh`, the script:
+1. Loads `production_setup/.env` and reads `BACKUP_RETENTION_DAYS` (default `30`)
+2. Verifies the `mongo` container is running
+3. Runs `mongodump` inside MongoDB to `/backups/qlicker_backup_<timestamp>`
+4. Compresses that dump to `backups/qlicker_backup_<timestamp>.tar.gz`
+5. Deletes the uncompressed dump directory
+6. Prunes `.tar.gz` backups older than `BACKUP_RETENTION_DAYS`
+
+### Create a Backup
 
 ```bash
 ./backup.sh
@@ -360,12 +390,25 @@ Add to your server's crontab:
 
 ```bash
 # Daily at 2 AM
-0 2 * * * /opt/qlicker/backup.sh --cron >> /var/log/qlicker-backup.log 2>&1
+0 2 * * * /opt/qlicker/production_setup/backup.sh --cron >> /var/log/qlicker-backup.log 2>&1
 ```
+
+`--cron` keeps output quiet and only prints errors, which is better for cron logs.
 
 ### Backup Retention
 
 Old backups are automatically pruned based on `BACKUP_RETENTION_DAYS` in `.env` (default: 30 days).
+
+### How `restore.sh` Works
+
+When you run `./restore.sh`, the script:
+1. Loads `.env` and verifies the `mongo` container is running
+2. Lets you choose a backup archive interactively (or accepts a file path argument)
+3. Requires an explicit `yes` confirmation
+4. Extracts the backup archive into a temporary host directory
+5. Copies the dump into the MongoDB container
+6. Runs `mongorestore --drop --db=qlicker` to replace current data
+7. Cleans up temporary files
 
 ### Restore from Backup
 
