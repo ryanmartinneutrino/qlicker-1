@@ -68,13 +68,20 @@ else
   exit 1
 fi
 
-# Compress the backup on the host
-if [ -d "$BACKUP_DIR/$BACKUP_NAME" ]; then
-  (cd "$BACKUP_DIR" && tar czf "${BACKUP_NAME}.tar.gz" "$BACKUP_NAME" && rm -rf "$BACKUP_NAME")
+# Compress and remove the raw dump inside the mongo container.
+# This avoids host-side permission issues when deleting root-owned dump files.
+if docker exec "$MONGO_CONTAINER" sh -lc "cd /backups && tar czf '${BACKUP_NAME}.tar.gz' '${BACKUP_NAME}' && rm -rf '${BACKUP_NAME}'"; then
+  :
+else
+  error "Failed to compress backup inside mongo container."
+  exit 1
+fi
+
+if [ -f "$BACKUP_DIR/${BACKUP_NAME}.tar.gz" ]; then
   BACKUP_SIZE="$(du -sh "$BACKUP_DIR/${BACKUP_NAME}.tar.gz" | cut -f1)"
   log "Compressed: ${BACKUP_NAME}.tar.gz ($BACKUP_SIZE)"
 else
-  error "Backup directory not found after mongodump."
+  error "Backup archive not found after compression."
   exit 1
 fi
 
