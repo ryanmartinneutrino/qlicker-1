@@ -144,20 +144,21 @@ init_certs() {
 
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d nginx
 
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
-    certbot certonly --webroot -w /var/www/certbot \
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint certbot certbot \
+    certonly --webroot -w /var/www/certbot \
     --email "$CERTBOT_EMAIL" \
     --agree-tos --no-eff-email \
+    --non-interactive --keep-until-expiring \
     -d "$DOMAIN"
 
   local cert_tmp key_tmp
   cert_tmp="$(mktemp)"
   key_tmp="$(mktemp)"
 
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
-    sh -c "cat /etc/letsencrypt/live/$DOMAIN/fullchain.pem" > "$cert_tmp"
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
-    sh -c "cat /etc/letsencrypt/live/$DOMAIN/privkey.pem" > "$key_tmp"
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint /bin/sh certbot \
+    -c "cat /etc/letsencrypt/live/$DOMAIN/fullchain.pem" > "$cert_tmp"
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint /bin/sh certbot \
+    -c "cat /etc/letsencrypt/live/$DOMAIN/privkey.pem" > "$key_tmp"
 
   if [ ! -s "$cert_tmp" ] || [ ! -s "$key_tmp" ]; then
     rm -f "$cert_tmp" "$key_tmp"
