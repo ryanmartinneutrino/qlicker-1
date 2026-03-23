@@ -62,6 +62,28 @@ local_certs_exist() {
   [ -f "$SCRIPT_DIR/certs/fullchain.pem" ] && [ -f "$SCRIPT_DIR/certs/privkey.pem" ]
 }
 
+any_local_cert_exists() {
+  [ -f "$SCRIPT_DIR/certs/fullchain.pem" ] || [ -f "$SCRIPT_DIR/certs/privkey.pem" ]
+}
+
+write_tls_paths_to_env() {
+  local cert_path="$1" key_path="$2" tmp_env
+  tmp_env="$(mktemp)"
+
+  awk -v cert="$cert_path" -v key="$key_path" '
+    BEGIN { cert_set=0; key_set=0 }
+    /^TLS_CERT_PATH=/ { print "TLS_CERT_PATH=" cert; cert_set=1; next }
+    /^TLS_KEY_PATH=/  { print "TLS_KEY_PATH=" key; key_set=1; next }
+    { print }
+    END {
+      if (!cert_set) print "TLS_CERT_PATH=" cert
+      if (!key_set) print "TLS_KEY_PATH=" key
+    }
+  ' "$ENV_FILE" > "$tmp_env"
+
+  mv "$tmp_env" "$ENV_FILE"
+}
+
 generate_self_signed_cert() {
   local cert_path="$1" key_path="$2" domain="$3"
   local cert_host_path key_host_path
@@ -100,10 +122,19 @@ init_certs() {
 
   info "Obtaining certificate for $DOMAIN ..."
 
+  if any_local_cert_exists; then
+    warn "Existing files in ./certs/ will be overwritten with new Let's Encrypt certificates."
+    read -r -p "Continue and overwrite ./certs/fullchain.pem and ./certs/privkey.pem? [y/N]: " OVERWRITE_CERTS
+    if [[ ! "${OVERWRITE_CERTS:-N}" =~ ^[Yy]$ ]]; then
+      warn "Keeping existing files in ./certs/. Let's Encrypt initialization cancelled."
+      return 1
+    fi
+  fi
+
   # Start nginx temporarily for the ACME challenge
   mkdir -p "$SCRIPT_DIR/certs"
   # Create a temporary self-signed cert so nginx can start
-  if [ ! -f "$SCRIPT_DIR/certs/fullchain.pem" ]; then
+  if [ ! -f "$SCRIPT_DIR/certs/fullchain.pem" ] || [ ! -f "$SCRIPT_DIR/certs/privkey.pem" ]; then
     openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
       -keyout "$SCRIPT_DIR/certs/privkey.pem" \
       -out "$SCRIPT_DIR/certs/fullchain.pem" \
@@ -119,9 +150,31 @@ init_certs() {
     --agree-tos --no-eff-email \
     -d "$DOMAIN"
 
-  # Update .env to point at certbot-managed certs
-  sed -i "s|^TLS_CERT_PATH=.*|TLS_CERT_PATH=/etc/letsencrypt/live/$DOMAIN/fullchain.pem|" "$ENV_FILE"
-  sed -i "s|^TLS_KEY_PATH=.*|TLS_KEY_PATH=/etc/letsencrypt/live/$DOMAIN/privkey.pem|" "$ENV_FILE"
+  local cert_tmp key_tmp
+  cert_tmp="$(mktemp)"
+  key_tmp="$(mktemp)"
+
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
+    sh -c "cat /etc/letsencrypt/live/$DOMAIN/fullchain.pem" > "$cert_tmp"
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm certbot \
+    sh -c "cat /etc/letsencrypt/live/$DOMAIN/privkey.pem" > "$key_tmp"
+
+  if [ ! -s "$cert_tmp" ] || [ ! -s "$key_tmp" ]; then
+    rm -f "$cert_tmp" "$key_tmp"
+    error "Failed to export Let's Encrypt certificates from certbot."
+    return 1
+  fi
+
+  cp "$cert_tmp" "$SCRIPT_DIR/certs/fullchain.pem"
+  cp "$key_tmp" "$SCRIPT_DIR/certs/privkey.pem"
+  chmod 644 "$SCRIPT_DIR/certs/fullchain.pem"
+  chmod 600 "$SCRIPT_DIR/certs/privkey.pem"
+  rm -f "$cert_tmp" "$key_tmp"
+
+  info "Updated ./certs/fullchain.pem and ./certs/privkey.pem with Let's Encrypt certificates."
+
+  # Update .env to point at local cert paths used by nginx volume mounts
+  write_tls_paths_to_env "./certs/fullchain.pem" "./certs/privkey.pem"
 
   # Restart nginx with real certs
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" restart nginx

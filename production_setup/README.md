@@ -163,8 +163,9 @@ This will:
 1. Create a temporary self-signed certificate
 2. Start Nginx to handle the ACME challenge
 3. Run Certbot to obtain the real certificate
-4. Update `.env` with the certificate paths
-5. The `certbot` service in Docker Compose auto-renews every 12 hours
+4. Overwrite `./certs/fullchain.pem` and `./certs/privkey.pem` with the Let's Encrypt certificate files (setup warns before overwrite)
+5. Keep `.env` paths set to `./certs/fullchain.pem` and `./certs/privkey.pem`
+6. The `certbot` service in Docker Compose auto-renews every 12 hours
 
 ### Option 2: Bring Your Own Certificate
 
@@ -184,7 +185,7 @@ mkdir -p certs
 cp /path/to/fullchain.pem certs/fullchain.pem
 cp /path/to/privkey.pem certs/privkey.pem
 
-# Or point to existing Let's Encrypt certs in .env:
+# Optional: point directly to host-level Let's Encrypt files in .env:
 TLS_CERT_PATH=/etc/letsencrypt/live/yourdomain.com/fullchain.pem
 TLS_KEY_PATH=/etc/letsencrypt/live/yourdomain.com/privkey.pem
 ```
@@ -462,16 +463,11 @@ From the repository root (where you have the source code):
 ./scripts/build-images.sh --tag v2.0.0 --registry ghcr.io/yourorg --push
 ```
 
-To use pre-built images in production, edit `docker-compose.yml` and replace `build:` with `image:`:
+`production_setup/docker-compose.yml` already uses pre-built images. You can override the default tags in `.env`:
 
-```yaml
-server:
-  image: ghcr.io/yourorg/qlicker-server:v2.0.0
-  # build:           # comment out or remove
-  #   context: ../server
-
-client:
-  image: ghcr.io/yourorg/qlicker-client:v2.0.0
+```env
+SERVER_IMAGE=ghcr.io/yourorg/qlicker-server:v2.0.0
+CLIENT_IMAGE=ghcr.io/yourorg/qlicker-client:v2.0.0
 ```
 
 ---
@@ -511,6 +507,8 @@ production_setup/
 | `DOMAIN` | Yes | `qlicker.example.com` | Server domain name |
 | `TLS_CERT_PATH` | Yes | `./certs/fullchain.pem` | TLS certificate path |
 | `TLS_KEY_PATH` | Yes | `./certs/privkey.pem` | TLS private key path |
+| `SERVER_IMAGE` | No | `qlicker/qlicker-server:latest` | API server image reference |
+| `CLIENT_IMAGE` | No | `qlicker/qlicker-client:latest` | Client image reference |
 | `SERVER_REPLICAS` | No | `2` | Number of API server replicas |
 | `JWT_SECRET` | Yes | — | JWT signing secret (32-byte hex) |
 | `JWT_REFRESH_SECRET` | Yes | — | JWT refresh token secret (32-byte hex) |

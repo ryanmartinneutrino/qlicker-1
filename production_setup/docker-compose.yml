@@ -5,9 +5,8 @@
 #   cp .env.example .env   # then edit .env
 #   docker compose up -d
 #
-# This file is SELF-CONTAINED. It pulls pre-built images from a registry
-# (or you can build locally — see comments). No source checkout is needed
-# beyond this production_setup/ directory.
+# This file is SELF-CONTAINED. It pulls pre-built images from a registry.
+# No source checkout is needed beyond this production_setup/ directory.
 # =============================================================================
 
 services:
@@ -53,12 +52,8 @@ services:
   # ---------------------------------------------------------------------------
   # Qlicker API server (Fastify)
   # ---------------------------------------------------------------------------
-  # To use pre-built images, change "build" to "image: your-registry/qlicker-server:latest"
   server:
-    build:
-      context: ../server
-      dockerfile: Dockerfile
-    # image: your-registry/qlicker-server:latest
+    image: ${SERVER_IMAGE:-qlicker/qlicker-server:latest}
     restart: unless-stopped
     deploy:
       replicas: ${SERVER_REPLICAS:-2}
@@ -92,12 +87,8 @@ services:
   # ---------------------------------------------------------------------------
   # Qlicker Client (React SPA served by internal Nginx)
   # ---------------------------------------------------------------------------
-  # To use pre-built images, change "build" to "image: your-registry/qlicker-client:latest"
   client:
-    build:
-      context: ../client
-      dockerfile: Dockerfile
-    # image: your-registry/qlicker-client:latest
+    image: ${CLIENT_IMAGE:-qlicker/qlicker-client:latest}
     restart: unless-stopped
     environment:
       - API_PORT=${API_PORT:-3001}
