@@ -410,7 +410,9 @@ function QuestionEditor({
   );
   const tagsLockedToCourseTopics = !allowCustomTags;
   const hasCourseTagSuggestions = normalizedTagSuggestions.length > 0;
-  const disableTagEditing = tagsLockedToCourseTopics && !hasCourseTagSuggestions;
+  const hasSelectedTags = (form.tags || []).length > 0;
+  const noCourseTagSuggestionsAvailable = tagsLockedToCourseTopics && !hasCourseTagSuggestions;
+  const disableTagEditing = noCourseTagSuggestionsAvailable && !hasSelectedTags;
   const linkedSessionCount = useMemo(() => {
     if (Array.isArray(initial?.linkedSessions) && initial.linkedSessions.length > 0) {
       return initial.linkedSessions.length;
@@ -646,7 +648,7 @@ function QuestionEditor({
             <TextField
               {...params}
               label={t('questions.editor.tags', { defaultValue: 'Tags' })}
-              placeholder={disableTagEditing
+              placeholder={noCourseTagSuggestionsAvailable
                 ? t('questions.editor.tagsUnavailablePlaceholder', { defaultValue: 'No course topics available' })
                 : t('questions.editor.tagsPlaceholder', { defaultValue: 'Add a tag' })}
               size="small"
