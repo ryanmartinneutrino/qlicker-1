@@ -775,6 +775,7 @@
       "enroll": "S'inscrire",
       "enrollSuccess": "Inscription au cours réussie",
       "failedEnroll": "Échec de l'inscription",
+      "inactiveCourseCannotEnroll": "Ce cours est inactif et ne peut pas être rejoint pour le moment.",
       "failedLoadCourses": "Échec du chargement des cours"
     },
     "course": {

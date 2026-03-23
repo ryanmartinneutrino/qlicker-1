@@ -775,6 +775,7 @@
       "enroll": "Enroll",
       "enrollSuccess": "Successfully enrolled in course",
       "failedEnroll": "Failed to enroll",
+      "inactiveCourseCannotEnroll": "This course is inactive and cannot be joined right now.",
       "failedLoadCourses": "Failed to load courses"
     },
     "course": {

@@ -349,7 +349,11 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Invalid enrollment code' });
       }
       if (course.inactive) {
-        return reply.code(403).send({ error: 'Forbidden', message: 'Course is inactive for students' });
+        return reply.code(403).send({
+          error: 'Forbidden',
+          code: 'COURSE_INACTIVE',
+          message: 'Course is inactive for students',
+        });
       }
 
       if (course.requireVerified) {

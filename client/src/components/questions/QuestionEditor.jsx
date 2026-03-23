@@ -100,6 +100,10 @@ function cloneFormState(form) {
   };
 }
 
+function normalizeTagLabel(tag) {
+  return String(tag?.label || tag?.value || tag || '').trim();
+}
+
 function extractVisibilityState(source = {}) {
   return {
     public: !!source.public,
@@ -396,10 +400,14 @@ function QuestionEditor({
   const normalizedTagSuggestions = useMemo(() => (
     [...new Set(
       (tagSuggestions || [])
-        .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
+        .map((tag) => normalizeTagLabel(tag))
         .filter(Boolean)
     )]
   ), [tagSuggestions]);
+  const normalizedAllowedTagValues = useMemo(
+    () => new Set(normalizedTagSuggestions.map((tag) => String(tag).trim().toLowerCase())),
+    [normalizedTagSuggestions]
+  );
   const tagsLockedToCourseTopics = !allowCustomTags;
   const hasCourseTagSuggestions = normalizedTagSuggestions.length > 0;
   const disableTagEditing = tagsLockedToCourseTopics && !hasCourseTagSuggestions;
@@ -600,11 +608,30 @@ function QuestionEditor({
           onChange={(_event, nextValue) => {
             updateForm((prev) => ({
               ...prev,
-              tags: [...new Set(
-                (nextValue || [])
-                  .map((tag) => String(tag?.label || tag?.value || tag || '').trim())
-                  .filter(Boolean)
-              )],
+              tags: (() => {
+                const previousTagValues = new Set(
+                  (prev.tags || [])
+                    .map((tag) => String(tag || '').trim().toLowerCase())
+                    .filter(Boolean)
+                );
+                const nextTags = [];
+                const seenNextTags = new Set();
+                (nextValue || []).forEach((tag) => {
+                  const normalizedTag = normalizeTagLabel(tag);
+                  const normalizedTagValue = normalizedTag.toLowerCase();
+                  if (!normalizedTag || seenNextTags.has(normalizedTagValue)) return;
+                  if (
+                    !allowCustomTags
+                    && !normalizedAllowedTagValues.has(normalizedTagValue)
+                    && !previousTagValues.has(normalizedTagValue)
+                  ) {
+                    return;
+                  }
+                  seenNextTags.add(normalizedTagValue);
+                  nextTags.push(normalizedTag);
+                });
+                return nextTags;
+              })(),
             }));
           }}
           renderTags={(value, getTagProps) => value.map((tag, index) => (

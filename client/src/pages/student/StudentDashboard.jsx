@@ -16,10 +16,20 @@ import {
 } from '../../utils/studentSessions';
 import SessionListCard from '../../components/common/SessionListCard';
 
+const INACTIVE_COURSE_ERROR_CODE = 'COURSE_INACTIVE';
+
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
+}
+
+function isInactiveCourseEnrollError(error) {
+  const response = error?.response;
+  const payload = response?.data || {};
+  if (payload.code === INACTIVE_COURSE_ERROR_CODE) return true;
+  if (response?.status !== 403) return false;
+  return String(payload.message || '').toLowerCase().includes('inactive');
 }
 
 export default function StudentDashboard() {
@@ -172,7 +182,16 @@ export default function StudentDashboard() {
       await Promise.all([fetchCourses(), fetchLiveSessions()]);
       setMsg({ severity: 'success', text: t('student.dashboard.enrollSuccess') });
     } catch (err) {
-      setMsg({ severity: 'error', text: err.response?.data?.message || t('student.dashboard.failedEnroll') });
+      if (isInactiveCourseEnrollError(err)) {
+        setEnrollOpen(false);
+        setEnrollCode('');
+        setMsg({
+          severity: 'warning',
+          text: t('student.dashboard.inactiveCourseCannotEnroll'),
+        });
+      } else {
+        setMsg({ severity: 'error', text: err.response?.data?.message || t('student.dashboard.failedEnroll') });
+      }
     } finally {
       setEnrolling(false);
     }

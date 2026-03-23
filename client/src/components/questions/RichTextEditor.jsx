@@ -250,6 +250,7 @@ export default function RichTextEditor({
         },
         handleDOMEvents: {
           blur: () => {
+            emitEditorChange(editor);
             onBlur?.();
             return false;
           },
@@ -345,6 +346,7 @@ export default function RichTextEditor({
     editor.commands.setContent(normalizeStoredHtml(sourceDraft || ''), false, { preserveWhitespace: 'full' });
     const html = normalizeStoredHtml(editor.getHTML());
     lastEditorHtmlRef.current = html;
+    onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
     setSourceDialogOpen(false);
   };
 

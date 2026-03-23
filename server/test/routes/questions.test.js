@@ -558,6 +558,80 @@ describe('PATCH /api/v1/questions/:id', () => {
     expect(res.json().question.content).toBe('Admin edit');
   });
 
+  it('allows non-tag updates when a question still has legacy non-course tags', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+    await Course.findByIdAndUpdate(course._id, {
+      $set: { tags: [{ value: 'algebra', label: 'algebra' }] },
+    });
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      courseId: course._id,
+      content: 'Original content',
+      tags: [{ value: 'algebra', label: 'algebra' }],
+    });
+    expect(qRes.statusCode).toBe(201);
+    const questionId = qRes.json().question._id;
+
+    await Question.findByIdAndUpdate(questionId, {
+      $set: { tags: [{ value: 'legacy-topic', label: 'legacy-topic' }] },
+    });
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${questionId}`, {
+      token: profToken,
+      payload: { content: 'Updated content' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().question.content).toBe('Updated content');
+    expect(res.json().question.tags).toEqual([{ value: 'legacy-topic', label: 'legacy-topic' }]);
+  });
+
+  it('allows removing legacy non-course tags but still rejects adding new ones', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseAndSession();
+    await Course.findByIdAndUpdate(course._id, {
+      $set: { tags: [{ value: 'algebra', label: 'algebra' }] },
+    });
+
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 2,
+      courseId: course._id,
+      content: 'Tagged content',
+      tags: [{ value: 'algebra', label: 'algebra' }],
+    });
+    expect(qRes.statusCode).toBe(201);
+    const questionId = qRes.json().question._id;
+
+    await Question.findByIdAndUpdate(questionId, {
+      $set: { tags: [{ value: 'legacy-topic', label: 'legacy-topic' }] },
+    });
+
+    const removeLegacyRes = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${questionId}`, {
+      token: profToken,
+      payload: { tags: [] },
+    });
+    expect(removeLegacyRes.statusCode).toBe(200);
+    expect(removeLegacyRes.json().question.tags).toEqual([]);
+
+    await Question.findByIdAndUpdate(questionId, {
+      $set: { tags: [{ value: 'legacy-topic', label: 'legacy-topic' }] },
+    });
+
+    const addInvalidRes = await authenticatedRequest(app, 'PATCH', `/api/v1/questions/${questionId}`, {
+      token: profToken,
+      payload: {
+        tags: [
+          { value: 'legacy-topic', label: 'legacy-topic' },
+          { value: 'calculus', label: 'calculus' },
+        ],
+      },
+    });
+    expect(addInvalidRes.statusCode).toBe(400);
+    expect(addInvalidRes.json().message).toBe('Questions can only use the course topics');
+  });
+
   it('course instructors can update a session question when legacy question.courseId is missing', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { course, session } = await setupCourseAndSession();

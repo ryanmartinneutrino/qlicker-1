@@ -750,6 +750,27 @@ function getAllowedCourseTagValues(course) {
   return values;
 }
 
+function hasDisallowedCourseTags(tags = [], allowedTagValues = new Set()) {
+  return normalizeTags(tags).some((tag) => !allowedTagValues.has(getNormalizedTagValue(tag)));
+}
+
+function hasNewDisallowedCourseTagsForUpdate(nextTags = [], currentTags = [], allowedTagValues = new Set()) {
+  const currentLegacyValues = new Set(
+    [...new Set(
+      normalizeTags(currentTags)
+        .map((tag) => getNormalizedTagValue(tag))
+        .filter(Boolean)
+    )].filter((value) => !allowedTagValues.has(value))
+  );
+
+  return normalizeTags(nextTags).some((tag) => {
+    const normalizedValue = getNormalizedTagValue(tag);
+    if (!normalizedValue) return false;
+    if (allowedTagValues.has(normalizedValue)) return false;
+    return !currentLegacyValues.has(normalizedValue);
+  });
+}
+
 function courseTopicValidationMessage(label = 'Questions') {
   return `${label} can only use the course topics`;
 }
@@ -1128,19 +1149,15 @@ export default async function questionRoutes(app) {
           return reply.code(400).send({ error: 'Bad Request', message: 'Student library questions cannot be attached to a session' });
         }
 
-        const normalizedTags = normalizeTags(tags || []);
         const allowedTagValues = getAllowedCourseTagValues(course);
-        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
-        if (hasInvalidTag) {
+        if (hasDisallowedCourseTags(tags || [], allowedTagValues)) {
           return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
         }
       } else if (course && !isInstructorOrAdmin(course, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       } else if (course) {
-        const normalizedTags = normalizeTags(tags || []);
         const allowedTagValues = getAllowedCourseTagValues(course);
-        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
-        if (hasInvalidTag) {
+        if (hasDisallowedCourseTags(tags || [], allowedTagValues)) {
           return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
         }
       }
@@ -1226,17 +1243,15 @@ export default async function questionRoutes(app) {
       const isStudent = isStudentAccount(request.user);
       const course = question.courseId ? await Course.findById(question.courseId).lean() : null;
       if (isStudent) {
-        const normalizedTags = request.body.tags !== undefined ? normalizeTags(request.body.tags) : question.tags;
-        const allowedTagValues = getAllowedCourseTagValues(course);
-        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
-        if (hasInvalidTag) {
-          return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
+        if (request.body.tags !== undefined) {
+          const allowedTagValues = getAllowedCourseTagValues(course);
+          if (hasNewDisallowedCourseTagsForUpdate(request.body.tags, question.tags, allowedTagValues)) {
+            return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
+          }
         }
       } else if (course && request.body.tags !== undefined) {
-        const normalizedTags = normalizeTags(request.body.tags);
         const allowedTagValues = getAllowedCourseTagValues(course);
-        const hasInvalidTag = normalizedTags.some((tag) => !allowedTagValues.has(String(tag?.value || tag?.label || '').trim().toLowerCase()));
-        if (hasInvalidTag) {
+        if (hasNewDisallowedCourseTagsForUpdate(request.body.tags, question.tags, allowedTagValues)) {
           return reply.code(400).send({ error: 'Bad Request', message: courseTopicValidationMessage('Questions') });
         }
       }

@@ -399,6 +399,33 @@ describe('POST /api/v1/courses/enroll', () => {
     expect(res.statusCode).toBe(409);
   });
 
+  it('inactive course blocks student enrollment', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-inactive@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+    await Course.findByIdAndUpdate(course._id, { $set: { inactive: true } });
+
+    const student = await createTestUser({ email: 'student-inactive@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body.code).toBe('COURSE_INACTIVE');
+    expect(body.message).toBe('Course is inactive for students');
+
+    const persistedCourse = await Course.findById(course._id).lean();
+    const persistedStudent = await User.findById(student._id).lean();
+    expect((persistedCourse?.students || []).map((id) => String(id))).not.toContain(String(student._id));
+    expect((persistedStudent?.profile?.courses || []).map((id) => String(id))).not.toContain(String(course._id));
+  });
+
   it('skips the verified-email enrollment requirement when SSO is enabled', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await Settings.create({ _id: 'settings', SSO_enabled: true });
