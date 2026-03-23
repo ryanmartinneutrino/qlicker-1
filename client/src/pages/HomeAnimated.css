@@ -116,17 +116,17 @@
 
 .homeHeroScreenMask {
   position: absolute;
-  left: 10.1%;
-  top: 15%;
-  width: 79.6%;
-  height: 63.6%;
-  border-radius: 10px;
+  left: 9.84%;
+  top: 13.51%;
+  width: 80.44%;
+  height: 72.54%;
   overflow: hidden;
   background: #fff;
   pointer-events: none;
 }
 
 .homeHeroScreenVideo {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;

@@ -232,11 +232,10 @@ export default function Home() {
           </div>
 
           <div className="homeHeroDevice">
-            <img className="homeHeroPhone" src="/animated-hero/assets/phone/phone-body.png" alt={t('home.phoneAlt')} />
+            <img className="homeHeroPhone" src="/animated-hero/assets/phone/phone-body-new.png" alt={t('home.phoneAlt')} />
             <div className="homeHeroScreenMask" aria-hidden="true">
               <video className="homeHeroScreenVideo" autoPlay muted loop playsInline preload="auto">
-                <source src="/animated-hero/assets/video/screen.webm" type="video/webm" />
-                <source src="/animated-hero/assets/video/screen.mp4" type="video/mp4" />
+                <source src="/animated-hero/assets/video/phonescreen.mp4" type="video/mp4" />
               </video>
             </div>
           </div>
