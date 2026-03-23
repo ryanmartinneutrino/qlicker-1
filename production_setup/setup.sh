@@ -84,6 +84,49 @@ write_tls_paths_to_env() {
   mv "$tmp_env" "$ENV_FILE"
 }
 
+http_get() {
+  local url="$1"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL --max-time 10 "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -qO- "$url"
+  else
+    return 127
+  fi
+}
+
+verify_http01_preflight() {
+  local domain="$1"
+  local probe_token probe_value probe_url fetched
+
+  probe_token="qlicker-acme-probe-$(openssl rand -hex 6)"
+  probe_value="qlicker-acme-ok-$(date +%s)"
+  probe_url="http://$domain/.well-known/acme-challenge/$probe_token"
+
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint /bin/sh certbot \
+    -c "mkdir -p /var/www/certbot/.well-known/acme-challenge && printf '%s' '$probe_value' > /var/www/certbot/.well-known/acme-challenge/$probe_token"
+
+  if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    warn "Neither curl nor wget is installed on the host. Skipping HTTP-01 preflight check."
+    return 0
+  fi
+
+  if ! fetched="$(http_get "$probe_url" 2>/dev/null)"; then
+    error "HTTP-01 preflight failed: could not fetch $probe_url"
+    warn "Check DNS for $domain, ensure port 80 is open, and ensure no external proxy blocks ACME."
+    return 1
+  fi
+
+  if [ "$fetched" != "$probe_value" ]; then
+    error "HTTP-01 preflight failed: challenge content mismatch from $probe_url"
+    warn "The request is not reaching this nginx/certbot webroot pair."
+    warn "Check DNS, reverse proxies/CDN settings, and any host-level web server on port 80."
+    return 1
+  fi
+
+  return 0
+}
+
 generate_self_signed_cert() {
   local cert_path="$1" key_path="$2" domain="$3"
   local cert_host_path key_host_path
@@ -144,12 +187,39 @@ init_certs() {
 
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d nginx
 
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint certbot certbot \
-    certonly --webroot -w /var/www/certbot \
-    --email "$CERTBOT_EMAIL" \
-    --agree-tos --no-eff-email \
-    --non-interactive --keep-until-expiring \
-    -d "$DOMAIN"
+  info "Running HTTP-01 preflight for $DOMAIN ..."
+  if ! verify_http01_preflight "$DOMAIN"; then
+    return 1
+  fi
+
+  local certbot_ok attempt
+  certbot_ok=false
+  for attempt in 1 2; do
+    info "Requesting Let's Encrypt certificate (attempt $attempt/2) ..."
+    if docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm --entrypoint certbot certbot \
+      certonly --webroot -w /var/www/certbot \
+      --email "$CERTBOT_EMAIL" \
+      --agree-tos --no-eff-email \
+      --non-interactive --keep-until-expiring \
+      --preferred-challenges http \
+      -d "$DOMAIN"; then
+      certbot_ok=true
+      break
+    fi
+
+    warn "Certbot attempt $attempt failed."
+    if [ "$attempt" -lt 2 ]; then
+      warn "Retrying in 5 seconds ..."
+      sleep 5
+    fi
+  done
+
+  if [ "$certbot_ok" != true ]; then
+    error "Let's Encrypt certificate request failed after 2 attempts."
+    warn "Common causes: DNS not pointing to this host, port 80 blocked, or CDN/proxy interception."
+    warn "If using Cloudflare, set the DNS record to 'DNS only' while issuing the certificate."
+    return 1
+  fi
 
   local cert_tmp key_tmp
   cert_tmp="$(mktemp)"
