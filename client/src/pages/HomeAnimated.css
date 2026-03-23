@@ -27,7 +27,7 @@
 }
 
 .homeHeroEyebrow {
-  color: rgb(46, 157, 214);
+  color: #30b0e7;
   font-weight: 700;
   letter-spacing: 0.02em;
   margin-bottom: 10px;
@@ -37,7 +37,7 @@
   width: min(280px, 74vw);
   height: auto;
   margin-bottom: 12px;
-  color: #111827;
+  color: #30b0e7;
 }
 
 .homeHeroTitle {
@@ -86,12 +86,12 @@
 }
 
 .homeHeroBtnPrimary {
-  background: rgb(46, 157, 214);
+  background: #30b0e7;
   color: #ffffff;
 }
 
 .homeHeroBtnPrimary:hover {
-  box-shadow: 0 10px 24px rgba(46, 157, 214, 0.28);
+  box-shadow: 0 10px 24px rgba(48, 176, 231, 0.28);
 }
 
 .homeHeroNote {
