@@ -41,7 +41,7 @@ const ssoserverPort = merged.SSOSERVER_PORT || '4100';
 const ssoserverBaseUrl = merged.SSOSERVER_BASE_URL || `http://127.0.0.1:${ssoserverPort}`;
 const qlickerAppUrl = merged.QCLICKER_APP_URL || 'http://127.0.0.1:3300';
 const qlickerApiUrl = merged.QCLICKER_API_URL || 'http://127.0.0.1:3301/api/v1';
-const qlickerSpEntityId = merged.QCLICKER_SP_ENTITY_ID || `${qlickerAppUrl}/api/v1/auth/sso/metadata`;
+const qlickerSpEntityId = merged.QCLICKER_SP_ENTITY_ID || `${qlickerAppUrl}/SSO/SAML2/metadata`;
 
 console.log(ssoserverBaseUrl);
 console.log(qlickerAppUrl);
