@@ -40,8 +40,8 @@ function meteorId() {
 /** Hash a password using the same argon2 settings the server uses */
 async function hashPassword(pw) {
   return hash(pw, {
-    memoryCost: 65536,
-    timeCost: 3,
+    memoryCost: 19456,
+    timeCost: 2,
     outputLen: 32,
     parallelism: 1,
   });
@@ -59,7 +59,10 @@ const userSchema = new mongoose.Schema(
       },
     ],
     services: {
-      password: { bcrypt: String },
+      password: {
+        hash: String,
+        bcrypt: String,
+      },
     },
     profile: {
       firstname: String,
@@ -137,7 +140,14 @@ const questionSchema = new mongoose.Schema(
     toleranceNumerical: { type: Number, default: null },
     solution: { type: String, default: '' },
     solution_plainText: { type: String, default: '' },
-    tags: { type: [String], default: [] },
+    tags: [
+      {
+        _id: false,
+        value: { type: String, default: '' },
+        label: { type: String, default: '' },
+        className: { type: String, default: '' },
+      },
+    ],
     public: { type: Boolean, default: false },
     sessionOptions: {
       hidden: { type: Boolean, default: true },
@@ -259,14 +269,14 @@ async function seed(numStudents) {
   // --- Admin ---
   const admin = await User.create({
     emails: [{ address: 'loadtest-admin@example.com', verified: true }],
-    services: { password: { bcrypt: passwordHash } },
+    services: { password: { hash: passwordHash } },
     profile: { firstname: 'LT', lastname: 'Admin', roles: ['admin'] },
   });
 
   // --- Professor ---
   const professor = await User.create({
     emails: [{ address: 'loadtest-prof@example.com', verified: true }],
-    services: { password: { bcrypt: passwordHash } },
+    services: { password: { hash: passwordHash } },
     profile: { firstname: 'LT', lastname: 'Professor', roles: ['professor'] },
   });
 
@@ -276,7 +286,7 @@ async function seed(numStudents) {
     studentDocs.push({
       _id: meteorId(),
       emails: [{ address: `loadtest-student${i}@example.com`, verified: true }],
-      services: { password: { bcrypt: passwordHash } },
+      services: { password: { hash: passwordHash } },
       profile: {
         firstname: 'Student',
         lastname: `LT${String(i).padStart(4, '0')}`,
@@ -308,7 +318,11 @@ async function seed(numStudents) {
       ...qDef,
       creator: professor._id,
       courseId: course._id,
-      tags: [LOAD_TEST_TAG],
+      tags: [{
+        value: LOAD_TEST_TAG,
+        label: 'Load Test',
+        className: 'load-test-tag',
+      }],
       sessionOptions: {
         hidden: true,
         stats: false,
@@ -324,6 +338,7 @@ async function seed(numStudents) {
   // --- Session ---
   const session = await Session.create({
     name: 'Load Test Session',
+    description: `${LOAD_TEST_TAG} generated fixture`,
     courseId: course._id,
     creator: professor._id,
     status: 'hidden',
@@ -368,9 +383,14 @@ async function cleanup() {
   // Remove courses tagged as load test
   await Course.deleteMany({ deptCode: 'LT', courseNumber: '999' });
   // Remove questions tagged for load test
-  await Question.deleteMany({ tags: LOAD_TEST_TAG });
+  await Question.deleteMany({ 'tags.value': LOAD_TEST_TAG });
   // Remove sessions created by the load test professor
-  await Session.deleteMany({ name: 'Load Test Session' });
+  await Session.deleteMany({
+    $or: [
+      { description: new RegExp(LOAD_TEST_TAG) },
+      { name: 'Load Test Session' },
+    ],
+  });
 
   // Clean responses from load test students
   if (userIds.length > 0) {

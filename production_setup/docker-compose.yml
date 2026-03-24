@@ -65,6 +65,7 @@ services:
       - ROOT_URL=${ROOT_URL:-https://localhost}
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=production
+      - DISABLE_RATE_LIMITS=${DISABLE_RATE_LIMITS:-false}
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
