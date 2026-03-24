@@ -32,6 +32,8 @@ async function samlPlugin(fastify) {
       logoutCallbackUrl,
       logoutUrl: settings.SSO_logoutUrl || undefined,
       wantAssertionsSigned: true,
+      wantAuthnResponseSigned: false,
+      acceptedClockSkewMs: 60 * 1000,
       disableRequestedAuthnContext: true, // Required for Active Directory (MS) SSO
     };
 

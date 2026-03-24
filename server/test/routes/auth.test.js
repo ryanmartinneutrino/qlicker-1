@@ -821,6 +821,26 @@ describe('POST /api/v1/auth/reset-password', () => {
 
 // ---------- GET /api/v1/auth/sso/login ----------
 describe('GET /api/v1/auth/sso/login', () => {
+  it('uses Microsoft-compatible SAML validation defaults', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_emailIdentifier: 'mail',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+      SSO_cert: 'ZmFrZS1pZHAtY2VydA==',
+    });
+
+    const saml = await app.getSamlProvider();
+
+    expect(saml).toBeTruthy();
+    expect(saml.options.wantAssertionsSigned).toBe(true);
+    expect(saml.options.wantAuthnResponseSigned).toBe(false);
+    expect(saml.options.acceptedClockSkewMs).toBe(60 * 1000);
+  });
+
   it('accepts SSO private keys stored with escaped newlines', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
