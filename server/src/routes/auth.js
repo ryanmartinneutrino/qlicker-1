@@ -269,7 +269,10 @@ function registerSsoRoutes(app, routes) {
       const result = await saml.validatePostResponseAsync(request.body);
       profile = result.profile;
     } catch (err) {
-      request.log.error('SAML validation error:', err);
+      request.log.error(
+        { err, samlResponsePresent: !!request.body?.SAMLResponse },
+        'SAML validation failed – check IdP certificate, clock skew, and audience (issuer) settings',
+      );
       return reply.code(401).send({ error: 'Unauthorized', message: 'SAML validation failed' });
     }
 

@@ -31,7 +31,12 @@ async function samlPlugin(fastify) {
       callbackUrl,
       logoutCallbackUrl,
       logoutUrl: settings.SSO_logoutUrl || undefined,
-      wantAssertionsSigned: true,
+      // Match legacy passport-saml behaviour: accept the response so long as
+      // at least ONE signature (Response-level or Assertion-level) is valid.
+      // Microsoft Entra typically signs only the Assertion; other IdPs may sign
+      // only the Response.  Requiring both would break drop-in replacement of
+      // the old Meteor app.
+      wantAssertionsSigned: false,
       wantAuthnResponseSigned: false,
       acceptedClockSkewMs: 60 * 1000,
       disableRequestedAuthnContext: true, // Required for Active Directory (MS) SSO
