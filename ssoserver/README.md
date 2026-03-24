@@ -131,5 +131,5 @@ The smoke wrapper:
 
 - If the IdP fails to start, re-run `node ./scripts/render-config.mjs` and confirm `generated/config/` and `generated/metadata/` contain rendered PHP files.
 - If Qlicker rejects assertion decryption, regenerate certs with `./scripts/generate-certs.sh --force`, re-apply the printed payload, and restart the smoke test.
-- If login redirects fail, compare the IdP metadata URL with Qlicker’s `/api/v1/auth/sso/metadata` output to confirm the entity ID, ACS URL, and SLO URL still match.
+- If login redirects fail, compare the IdP metadata URL with Qlicker’s `/SSO/SAML2/metadata` output to confirm the entity ID, ACS URL, and SLO URL still match. The newer `/api/v1/auth/sso/metadata` alias should return the same legacy ACS/SLO endpoints.
 - If you need new test users, update `.env`, re-run `node ./scripts/render-config.mjs`, and restart the IdP container.

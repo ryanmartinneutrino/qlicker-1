@@ -79,7 +79,7 @@ function deriveQlickerEnv(rootEnv) {
   return {
     QCLICKER_APP_URL: appUrl,
     QCLICKER_API_URL: apiUrl,
-    QCLICKER_SP_ENTITY_ID: appUrl ? `${appUrl}/api/v1/auth/sso/metadata` : '',
+    QCLICKER_SP_ENTITY_ID: appUrl ? `${appUrl}/SSO/SAML2/metadata` : '',
   };
 }
 
@@ -131,7 +131,7 @@ export function getSsoConfig(rawEnv = loadSsoEnv()) {
   const idpEntityId = rawEnv.SSOSERVER_ENTITY_ID || `${ssoserverBaseUrl}/${basePath}saml2/idp/metadata.php`;
   const idpEntrypointUrl = rawEnv.SSOSERVER_ENTRYPOINT_URL || `${ssoserverBaseUrl}/${basePath}module.php/saml/idp/singleSignOnService`;
   const idpLogoutUrl = rawEnv.SSOSERVER_LOGOUT_URL || `${ssoserverBaseUrl}/${basePath}module.php/saml/idp/singleLogout`;
-  const qlickerSpEntityId = rawEnv.QCLICKER_SP_ENTITY_ID || `${qlickerAppUrl}/api/v1/auth/sso/metadata`;
+  const qlickerSpEntityId = rawEnv.QCLICKER_SP_ENTITY_ID || `${qlickerAppUrl}/SSO/SAML2/metadata`;
 
   return {
     basePath,

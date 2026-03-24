@@ -229,8 +229,8 @@ const CURRENT_SSO_ROUTES = {
   logoutPath: '/sso/logout',
   logoutUrlPath: '/sso/logout-url',
   metadataPaths: ['/sso/metadata'],
-  providerCallbackPath: '/api/v1/auth/sso/callback',
-  providerLogoutCallbackPath: '/api/v1/auth/sso/logout',
+  providerCallbackPath: '/SSO/SAML2',
+  providerLogoutCallbackPath: '/SSO/SAML2/logout',
 };
 
 const LEGACY_SSO_ROUTES = {

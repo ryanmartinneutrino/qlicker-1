@@ -847,6 +847,28 @@ describe('GET /api/v1/auth/sso/login', () => {
     expect(res.headers.location).toContain('SAMLRequest=');
     expect(res.headers.location).toContain('Signature=');
   });
+
+  it('uses legacy ACS and logout callback paths even on the current login alias', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const getAuthorizeUrlAsync = vi.fn(async () => 'https://idp.example.com/login?SAMLRequest=current-alias');
+    app.getSamlProvider = vi.fn(async (options) => {
+      expect(options).toEqual({
+        callbackPath: '/SSO/SAML2',
+        logoutCallbackPath: '/SSO/SAML2/logout',
+      });
+      return { getAuthorizeUrlAsync };
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/sso/login',
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('https://idp.example.com/login?SAMLRequest=current-alias');
+    expect(getAuthorizeUrlAsync).toHaveBeenCalledOnce();
+  });
 });
 
 // ---------- GET /SSO/SAML2 ----------
@@ -1009,6 +1031,33 @@ describe('GET /SSO/SAML2/metadata', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain(`${app.config.rootUrl}/SSO/SAML2`);
+  });
+});
+
+// ---------- GET /api/v1/auth/sso/metadata ----------
+describe('GET /api/v1/auth/sso/metadata', () => {
+  it('publishes legacy ACS and SLO endpoints on the current metadata alias', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_emailIdentifier: 'mail',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+      SSO_cert: 'ZmFrZS1pZHAtY2VydA==',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/sso/metadata',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/application\/xml/);
+    expect(res.body).toContain(`${app.config.rootUrl}/SSO/SAML2`);
+    expect(res.body).toContain(`${app.config.rootUrl}/SSO/SAML2/logout`);
+    expect(res.body).not.toContain(`${app.config.rootUrl}/api/v1/auth/sso/callback`);
+    expect(res.body).not.toContain(`${app.config.rootUrl}/api/v1/auth/sso/logout`);
   });
 });
 

@@ -248,7 +248,7 @@ The generated payload configures Qlicker with:
 - `SSO_enabled=true`
 - `SSO_entrypoint=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleSignOnService`
 - `SSO_logoutUrl=http://127.0.0.1:4100/simplesaml/module.php/saml/idp/singleLogout`
-- `SSO_EntityId` derived from the repository root `.env` app URL (for example `http://localhost:3200/api/v1/auth/sso/metadata`)
+- `SSO_EntityId` derived from the repository root `.env` app URL (for example `http://localhost:3200/SSO/SAML2/metadata`)
 - `SSO_identifierFormat=urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress`
 - `SSO_institutionName=Local SimpleSAMLphp`
 - `SSO_emailIdentifier=mail`

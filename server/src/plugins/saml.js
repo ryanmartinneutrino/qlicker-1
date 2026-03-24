@@ -15,8 +15,8 @@ async function samlPlugin(fastify) {
       return null;
     }
 
-    const callbackPath = options.callbackPath || '/api/v1/auth/sso/callback';
-    const logoutCallbackPath = options.logoutCallbackPath || '/api/v1/auth/sso/logout';
+    const callbackPath = options.callbackPath || '/SSO/SAML2';
+    const logoutCallbackPath = options.logoutCallbackPath || '/SSO/SAML2/logout';
     const callbackUrl = callbackPath.startsWith('http')
       ? callbackPath
       : `${fastify.config.rootUrl}${callbackPath}`;
