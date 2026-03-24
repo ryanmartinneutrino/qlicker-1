@@ -172,7 +172,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 ### Phase 8 Checklist
 
 - [x] Full E2E test suite with Playwright (9 baseline flows plus 2 SSO smoke flows; grading, groups, and question copy/export are covered)
-- [ ] Load testing with realistic concurrent user counts
+- [x] Load testing with realistic concurrent user counts (see [`load-testing/`](load-testing/))
 - [ ] Security scanning and penetration testing
 - [x] Production Docker Compose validation with Nginx load balancer (see [`production_setup/`](production_setup/))
 - [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))
