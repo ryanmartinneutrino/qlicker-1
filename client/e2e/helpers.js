@@ -251,6 +251,7 @@ export async function addQuestionToSessionViaApi(request, token, sessionId, ques
     payload: { questionId },
   });
   expect(response.status(), JSON.stringify(body)).toBe(200);
+  return body.session || body;
 }
 
 export async function enrollStudentViaApi(request, token, enrollmentCode) {

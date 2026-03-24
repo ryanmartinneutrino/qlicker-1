@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import {
   addInstructorToCourseViaApi,
@@ -140,7 +142,8 @@ test('quiz and grading flows cover student submission and instructor grade recal
     courseId: course._id,
     content: 'Select the correct answer',
   });
-  await addQuestionToSessionViaApi(request, admin.token, quizSession._id, question._id);
+  const updatedQuizSession = await addQuestionToSessionViaApi(request, admin.token, quizSession._id, question._id);
+  const quizQuestionId = String(updatedQuizSession.questions.at(-1));
 
   const studentContext = await browser.newContext();
   const studentPage = await studentContext.newPage();
@@ -154,7 +157,7 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const saveResponse = await apiJson(request, 'PATCH', `/sessions/${quizSession._id}/quiz-response`, {
     token: student.token,
     payload: {
-      questionId: question._id,
+      questionId: quizQuestionId,
       answer: String(question.options?.[1]?._id ?? 1),
     },
   });
@@ -184,6 +187,242 @@ test('quiz and grading flows cover student submission and instructor grade recal
 
   await studentContext.close();
   await professorContext.close();
+});
+
+test('manual grading flow lets a professor save a mark and export grades as CSV', async ({ page, request }) => {
+  const { admin, professor, student } = await seedUsers(request);
+  const course = await createCourseViaApi(request, admin.token, {
+    name: `Grading ${Date.now()}`,
+  });
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
+  await enrollStudentViaApi(request, student.token, course.enrollmentCode);
+
+  const quizSession = await createSessionViaApi(request, admin.token, course._id, {
+    name: `Manual Grade ${Date.now()}`,
+    quiz: true,
+    quizStart: new Date(Date.now() - 60_000).toISOString(),
+    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+  });
+  await patchSessionViaApi(request, professor.token, quizSession._id, {
+    quiz: true,
+    status: 'visible',
+    quizStart: new Date(Date.now() - 60_000).toISOString(),
+    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+  });
+  const question = await createQuestionViaApi(request, admin.token, {
+    type: 2,
+    sessionId: quizSession._id,
+    courseId: course._id,
+    content: 'Explain why the answer is correct.',
+    sessionOptions: { points: 5 },
+  });
+  const updatedQuizSession = await addQuestionToSessionViaApi(request, admin.token, quizSession._id, question._id);
+  const quizQuestionId = String(updatedQuizSession.questions.at(-1));
+
+  const saveResponse = await apiJson(request, 'PATCH', `/sessions/${quizSession._id}/quiz-response`, {
+    token: student.token,
+    payload: {
+      questionId: quizQuestionId,
+      answer: 'Because the balancing step preserves the equality.',
+    },
+  });
+  expect(saveResponse.response.status(), JSON.stringify(saveResponse.body)).toBe(200);
+
+  const submitQuiz = await apiJson(request, 'POST', `/sessions/${quizSession._id}/submit`, {
+    token: student.token,
+  });
+  expect(submitQuiz.response.status(), JSON.stringify(submitQuiz.body)).toBe(200);
+
+  await patchSessionViaApi(request, professor.token, quizSession._id, {
+    status: 'done',
+    reviewable: true,
+  });
+  const recalcGrades = await apiJson(request, 'POST', `/sessions/${quizSession._id}/grades/recalculate`, {
+    token: professor.token,
+    payload: { missingOnly: false },
+  });
+  expect(recalcGrades.response.status(), JSON.stringify(recalcGrades.body)).toBe(200);
+
+  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await page.goto(`/manage/course/${course._id}`);
+  await expect(page).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+
+  await page.getByRole('tab', { name: /^Grades$/i }).click();
+  await page.getByRole('button', { name: /^Show Grade Table$/i }).click();
+  const gradeTableDialog = page.getByRole('dialog', { name: /select sessions for grade table/i });
+  await gradeTableDialog.getByText(quizSession.name).click();
+  await gradeTableDialog.getByRole('button', { name: /^Show Table$/i }).click();
+
+  const studentRow = page.locator('tr', { hasText: student.email }).first();
+  await expect(studentRow).toBeVisible();
+  await studentRow.getByRole('button', { name: /^0%$/i }).click();
+  await page.getByRole('button', { name: /^Q1$/i }).click();
+  await expect(page.getByText(/because the balancing step preserves the equality\./i)).toBeVisible();
+  await page.getByLabel(/^Manual points$/i).fill('4');
+  await page.getByRole('button', { name: /^Save Mark$/i }).click();
+
+  const gradeResponse = await apiJson(request, 'GET', `/courses/${course._id}/grades`, {
+    token: professor.token,
+  });
+  expect(gradeResponse.response.status(), JSON.stringify(gradeResponse.body)).toBe(200);
+  const savedGrade = (gradeResponse.body.rows || [])
+    .find((row) => String(row.student?.studentId) === String(student.user._id))
+    ?.grades?.find((grade) => String(grade.sessionId) === String(quizSession._id));
+  const savedMark = (savedGrade?.marks || []).find((mark) => String(mark.questionId) === quizQuestionId);
+  expect(savedMark?.points).toBe(4);
+  expect(savedGrade?.value).toBe(80);
+
+  await page.goto(`/manage/course/${course._id}`);
+  await page.getByRole('tab', { name: /^Grades$/i }).click();
+
+  const csvDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^Export CSV$/i }).click();
+  const csvDialog = page.getByRole('dialog', { name: /select sessions for csv export/i });
+  await csvDialog.getByText(quizSession.name).click();
+  await csvDialog.getByRole('button', { name: /^Export CSV$/i }).click();
+  const csvDownload = await csvDownloadPromise;
+  const csvPath = path.join('/tmp', `${quizSession._id}-grades.csv`);
+  await csvDownload.saveAs(csvPath);
+  const csv = await fs.readFile(csvPath, 'utf8');
+  expect(csv).toContain(student.email);
+  expect(csv).toContain(quizSession.name);
+  expect(csv).toContain('80');
+  await expectNoCriticalAccessibilityViolations(page);
+});
+
+test('group management flow lets a professor create, populate, download, and import groups', async ({ page, request }) => {
+  const { admin, professor, student } = await seedUsers(request);
+  const course = await createCourseViaApi(request, admin.token, {
+    name: `Groups ${Date.now()}`,
+  });
+  await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
+  await enrollStudentViaApi(request, student.token, course.enrollmentCode);
+
+  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await page.getByText(course.name).click();
+  await expect(page).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+
+  await page.getByRole('tab', { name: /^Groups$/i }).click();
+  await page.getByRole('button', { name: /^Create Category$/i }).click();
+  await page.getByLabel(/^Category Name$/i).fill('Lab Groups');
+  await page.getByLabel(/^Number of Groups$/i).fill('2');
+  await page.getByRole('button', { name: /^Create$/i }).click();
+  await expect(page.getByText(/^Group 1$/i)).toBeVisible();
+
+  await page.getByText(student.email).click();
+  const createdGroups = await apiJson(request, 'GET', `/courses/${course._id}/groups`, {
+    token: professor.token,
+  });
+  expect(createdGroups.response.status(), JSON.stringify(createdGroups.body)).toBe(200);
+  const labGroups = (createdGroups.body.groupCategories || []).find((category) => category.categoryName === 'Lab Groups');
+  expect(labGroups?.groups?.[0]?.members?.map(String)).toContain(String(student.user._id));
+
+  const csvDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^Download CSV$/i }).click();
+  const csvDownload = await csvDownloadPromise;
+  const csvPath = path.join('/tmp', `${course._id}-groups.csv`);
+  await csvDownload.saveAs(csvPath);
+  const csv = await fs.readFile(csvPath, 'utf8');
+  expect(csv).toContain(student.email);
+  expect(csv).toContain('Lab Groups');
+  expect(csv).toContain('Group 1');
+
+  await page.getByRole('button', { name: /^Upload CSV$/i }).click();
+  const uploadDialog = page.getByRole('dialog', { name: /^Upload CSV$/i });
+  await uploadDialog.getByLabel(/^Category Name$/i).fill('Project Groups');
+  await uploadDialog.getByLabel(/^CSV Content$/i).fill(`GroupName,Email\nTeam Red,${student.email}\n`);
+  await uploadDialog.getByRole('button', { name: /^Import$/i }).click();
+  await expect(uploadDialog.getByText(/Imported 1 group\(s\) with 1 student\(s\)\./i)).toBeVisible();
+
+  const importedGroups = await apiJson(request, 'GET', `/courses/${course._id}/groups`, {
+    token: professor.token,
+  });
+  expect(importedGroups.response.status(), JSON.stringify(importedGroups.body)).toBe(200);
+  const projectGroups = (importedGroups.body.groupCategories || []).find((category) => category.categoryName === 'Project Groups');
+  expect(projectGroups?.groups).toHaveLength(1);
+  expect(projectGroups?.groups?.[0]?.name).toBe('Team Red');
+  expect(projectGroups?.groups?.[0]?.members?.map(String)).toContain(String(student.user._id));
+  await expectNoCriticalAccessibilityViolations(page);
+});
+
+test('question library flow lets a professor export, copy, and import questions', async ({ page, request }) => {
+  const { admin, professor } = await seedUsers(request, { student: false });
+  const sourceCourse = await createCourseViaApi(request, admin.token, {
+    name: `Source Library ${Date.now()}`,
+    deptCode: 'PH',
+    courseNumber: '301',
+    section: '010',
+  });
+  const targetCourse = await createCourseViaApi(request, admin.token, {
+    name: `Target Library ${Date.now()}`,
+    deptCode: 'MA',
+    courseNumber: '202',
+    section: '020',
+  });
+  await addInstructorToCourseViaApi(request, admin.token, sourceCourse._id, professor.user._id);
+  await addInstructorToCourseViaApi(request, admin.token, targetCourse._id, professor.user._id);
+
+  const questionContent = `Playwright library export ${Date.now()}`;
+  await createQuestionViaApi(request, admin.token, {
+    type: 2,
+    courseId: sourceCourse._id,
+    content: questionContent,
+  });
+
+  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await page.goto(`/manage/course/${sourceCourse._id}`);
+  await expect(page).toHaveURL(new RegExp(`/manage/course/${sourceCourse._id}$`));
+
+  await page.getByRole('tab', { name: /^Question Library$/i }).click();
+  await expect(page.getByText(questionContent)).toBeVisible();
+  await page.getByRole('button', { name: /^Select all filtered$/i }).click();
+
+  const exportDownloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /^Export JSON$/i }).click();
+  const exportDownload = await exportDownloadPromise;
+  const exportPath = path.join('/tmp', `${sourceCourse._id}-question-library.json`);
+  await exportDownload.saveAs(exportPath);
+  const exportedQuestionLibrary = JSON.parse(await fs.readFile(exportPath, 'utf8'));
+  expect(exportedQuestionLibrary.questions).toHaveLength(1);
+  expect(exportedQuestionLibrary.questions[0]?.plainText || exportedQuestionLibrary.questions[0]?.content).toContain(questionContent);
+
+  await page.getByRole('button', { name: /^Copy to course\/session$/i }).click();
+  const copyDialog = page.getByRole('dialog', { name: /^Copy question$/i });
+  const courseCombobox = copyDialog.getByRole('combobox', { name: /^Course$/i });
+  await courseCombobox.click();
+  await courseCombobox.press('Control+A');
+  await courseCombobox.fill('MA 202');
+  await courseCombobox.press('ArrowDown');
+  await courseCombobox.press('Enter');
+  await copyDialog.getByRole('button', { name: /^Copy$/i }).click();
+
+  const copiedQuestions = await apiJson(request, 'GET', `/courses/${targetCourse._id}/questions?page=1&limit=100`, {
+    token: professor.token,
+  });
+  expect(copiedQuestions.response.status(), JSON.stringify(copiedQuestions.body)).toBe(200);
+  const copiedMatches = (copiedQuestions.body.questions || []).filter((question) => (
+    String(question.plainText || question.content || '').includes(questionContent)
+  ));
+  expect(copiedMatches).toHaveLength(1);
+
+  await page.goto('/manage');
+  await page.goto(`/manage/course/${targetCourse._id}`);
+  await expect(page).toHaveURL(new RegExp(`/manage/course/${targetCourse._id}$`));
+  await page.getByRole('tab', { name: /^Question Library$/i }).click();
+  await page.getByRole('button', { name: /^Import JSON$/i }).click();
+  const importDialog = page.getByRole('dialog', { name: /^Import questions$/i });
+  await importDialog.locator('input[type="file"]').setInputFiles(exportPath);
+  await expect(importDialog.getByText(/^1 question ready to import$/i)).toBeVisible();
+  await importDialog.getByRole('button', { name: /^Import 1 question$/i }).click();
+
+  const importedQuestions = await apiJson(request, 'GET', `/courses/${targetCourse._id}/questions?page=1&limit=100`, {
+    token: professor.token,
+  });
+  expect(importedQuestions.response.status(), JSON.stringify(importedQuestions.body)).toBe(200);
+  const importedMatches = (importedQuestions.body.questions || []).filter((question) => (
+    String(question.plainText || question.content || '').includes(questionContent)
+  ));
+  expect(importedMatches).toHaveLength(2);
 });
 
 test('legacy DB compatibility keeps case-insensitive email login working for student records', async ({ page, request }) => {
