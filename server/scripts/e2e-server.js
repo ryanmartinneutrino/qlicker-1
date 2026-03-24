@@ -42,6 +42,7 @@ async function start() {
       host,
       rootUrl,
       nodeEnv: 'test',
+      disableRateLimits: true,
       jwtSecret: process.env.JWT_SECRET || 'e2e-secret',
       jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'e2e-refresh-secret',
     },

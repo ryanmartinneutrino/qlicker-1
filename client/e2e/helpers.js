@@ -1,13 +1,17 @@
 import fs from 'fs/promises';
+import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect } from '@playwright/test';
 
 const STATE_FILE = process.env.QCLICKER_E2E_STATE_FILE || '/tmp/qlicker-e2e-state.json';
 const ADMIN_STATE_FILE = process.env.QCLICKER_E2E_ADMIN_STATE_FILE || '/tmp/qlicker-e2e-admin.json';
+const AUTH_STATE_DIR = process.env.QCLICKER_E2E_AUTH_STATE_DIR || '/tmp/qlicker-e2e-auth';
 const CSRF_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
 
 let cachedState = null;
 let cachedAdmin = null;
+let cachedProfessor = null;
+let cachedStudent = null;
 
 export const PASSWORD = 'Password123!';
 
@@ -15,6 +19,25 @@ function buildHeaders(token) {
   return token
     ? { ...CSRF_HEADERS, Authorization: `Bearer ${token}` }
     : { ...CSRF_HEADERS };
+}
+
+function authStateFileForEmail(email) {
+  const slug = String(email || 'user')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return path.join(AUTH_STATE_DIR, `${slug || 'user'}.json`);
+}
+
+export async function clearCachedAuthState(email) {
+  await fs.rm(authStateFileForEmail(email), { force: true }).catch(() => {});
+}
+
+function routeFromExpectedPath(expectedPathPattern) {
+  const source = typeof expectedPathPattern?.source === 'string' ? expectedPathPattern.source : String(expectedPathPattern || '');
+  if (source.includes('/admin')) return '/admin';
+  if (source.includes('/student')) return '/student';
+  return '/manage';
 }
 
 export async function readE2eState() {
@@ -93,33 +116,45 @@ export async function seedUsers(request, options = {}) {
   const result = { admin };
 
   if (options.professor !== false) {
-    const professorUser = buildUser('professor', 'Professor');
-    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
-      payload: professorUser,
-    });
-    expect(response.status(), JSON.stringify(body)).toBe(201);
-    const promoteProfessor = await apiJson(request, 'PATCH', `/users/${body.user._id}/role`, {
-      token: admin.token,
-      payload: { role: 'professor' },
-    });
-    expect(promoteProfessor.response.status(), JSON.stringify(promoteProfessor.body)).toBe(200);
+    if (!cachedProfessor) {
+      const professorUser = buildUser('professor', 'Professor');
+      const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+        payload: professorUser,
+      });
+      expect(response.status(), JSON.stringify(body)).toBe(201);
+      const promoteProfessor = await apiJson(request, 'PATCH', `/users/${body.user._id}/role`, {
+        token: admin.token,
+        payload: { role: 'professor' },
+      });
+      expect(promoteProfessor.response.status(), JSON.stringify(promoteProfessor.body)).toBe(200);
+      cachedProfessor = {
+        ...professorUser,
+        token: body.token,
+        user: promoteProfessor.body,
+      };
+    }
+
     result.professor = {
-      ...professorUser,
-      token: body.token,
-      user: promoteProfessor.body,
+      ...cachedProfessor,
     };
   }
 
   if (options.student !== false) {
-    const studentUser = buildUser('student', 'Student');
-    const { response, body } = await apiJson(request, 'POST', '/auth/register', {
-      payload: studentUser,
-    });
-    expect(response.status(), JSON.stringify(body)).toBe(201);
+    if (!cachedStudent) {
+      const studentUser = buildUser('student', 'Student');
+      const { response, body } = await apiJson(request, 'POST', '/auth/register', {
+        payload: studentUser,
+      });
+      expect(response.status(), JSON.stringify(body)).toBe(201);
+      cachedStudent = {
+        ...studentUser,
+        token: body.token,
+        user: body.user,
+      };
+    }
+
     result.student = {
-      ...studentUser,
-      token: body.token,
-      user: body.user,
+      ...cachedStudent,
     };
   }
 
@@ -127,11 +162,30 @@ export async function seedUsers(request, options = {}) {
 }
 
 export async function loginViaUi(page, email, password, expectedPathPattern) {
+  const authStateFile = authStateFileForEmail(email);
+  try {
+    const rawState = await fs.readFile(authStateFile, 'utf8');
+    const state = JSON.parse(rawState);
+    if (Array.isArray(state.cookies) && state.cookies.length > 0) {
+      await page.context().addCookies(state.cookies);
+    }
+    const route = routeFromExpectedPath(expectedPathPattern);
+    await page.goto(route);
+    await expect(page).toHaveURL(expectedPathPattern);
+    return;
+  } catch {
+    // Fall back to a real UI login when there is no cached browser state yet or
+    // when the cached state is stale because the in-memory E2E server restarted.
+  }
+
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: /^Login$/ }).click();
   await expect(page).toHaveURL(expectedPathPattern);
+  await fs.mkdir(AUTH_STATE_DIR, { recursive: true });
+  const state = await page.context().storageState();
+  await fs.writeFile(authStateFile, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }
 
 export async function logoutViaUi(page, expectedPathPattern = /\/login$/) {
@@ -251,6 +305,7 @@ export async function addQuestionToSessionViaApi(request, token, sessionId, ques
     payload: { questionId },
   });
   expect(response.status(), JSON.stringify(body)).toBe(200);
+  return body.session || body;
 }
 
 export async function enrollStudentViaApi(request, token, enrollmentCode) {

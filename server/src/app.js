@@ -92,6 +92,17 @@ export async function buildApp(opts = {}) {
   app.decorate('authenticate', authenticate);
   app.decorate('requireRole', requireRole);
 
+  if (app.config.disableRateLimits) {
+    app.addHook('onRoute', (routeOptions) => {
+      if (routeOptions.rateLimit) {
+        delete routeOptions.rateLimit;
+      }
+      if (routeOptions.config?.rateLimit) {
+        delete routeOptions.config.rateLimit;
+      }
+    });
+  }
+
   // CSRF protection: Require X-Requested-With header on state-changing requests.
   // CORS blocks cross-origin requests from setting custom headers, so this prevents
   // cross-site request forgery. Exempt paths that receive external form posts

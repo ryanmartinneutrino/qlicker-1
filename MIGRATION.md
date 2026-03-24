@@ -137,11 +137,11 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 344 tests across 16 test files
-- **Client:** 63 tests across 20 files
+- **Server:** 351 tests across 16 test files
+- **Client:** 76 tests across 21 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
-- **E2E:** 6 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
+- **E2E:** 9 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
 - **SSO Smoke:** `./ssoserver/scripts/run-smoke.sh` provisions the isolated SimpleSAMLphp IdP and runs 2 dedicated Playwright SSO login/logout flows via `client/playwright.sso.config.js` on ports `3300/3301/4100`
 
 ---
@@ -171,7 +171,7 @@ All former Phase 7 Priorities 2–6 are complete. The only remaining Phase 7 wor
 
 ### Phase 8 Checklist
 
-- [ ] Full E2E test suite with Playwright (currently 6 flows; grading, groups, question copy/export missing)
+- [x] Full E2E test suite with Playwright (9 baseline flows plus 2 SSO smoke flows; grading, groups, and question copy/export are covered)
 - [ ] Load testing with realistic concurrent user counts
 - [ ] Security scanning and penetration testing
 - [x] Production Docker Compose validation with Nginx load balancer (see [`production_setup/`](production_setup/))
@@ -412,9 +412,9 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| **Server coverage** | ✅ Good (344 tests/16 files) | All 11 route modules have tests |
-| **Client coverage** | ⚠️ Moderate (63 tests/20 files) | Critical auth, grading, question-editor, and session-editor flows now have targeted unit coverage, but most UI components still rely on E2E coverage |
-| **E2E coverage** | ⚠️ Moderate (8 Playwright flows) | 6 baseline flows plus 2 dedicated SSO smoke flows; group-management and some content-copy/export edges still rely on manual coverage |
+| **Server coverage** | ✅ Good (351 tests/16 files) | All 11 route modules have tests |
+| **Client coverage** | ⚠️ Moderate (76 tests/21 files) | Critical auth, grading, question-editor, session-editor, and question-library flows have targeted unit coverage, but most UI components still rely on E2E coverage |
+| **E2E coverage** | ✅ Good (11 Playwright flows) | 9 baseline flows plus 2 dedicated SSO smoke flows; grading, group management, and question copy/export paths now have browser coverage |
 | **Test granularity** | ✅ Appropriate | Auth/permission tests are individually useful for catching regressions; no excessive duplication |
 | **Consolidation opportunity** | LOW | Authorization 403 tests could share a parametrized matrix, but individual tests are clearer for debugging |
 | **Missing service tests** | MEDIUM | `email.js`, `questionCopy.js`, `sessionCopy.js`, `questionImportExport.js` lack unit tests | Phase 8 |
@@ -431,7 +431,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()` on 29+ additional queries, N+1 fixes, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Implemented — needs production confirmation |
-| Unit tests | ✅ 407 automated checks (344 server + 63 client) plus 8 Playwright browser flows (6 baseline + 2 SSO smoke) |
+| Unit tests | ✅ 427 automated checks (351 server + 76 client) plus 11 Playwright browser flows (9 baseline + 2 SSO smoke) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 | Internationalization | ✅ Complete — 1085+ keys in en/fr, all components wired, no hardcoded English in aria-labels |
@@ -453,16 +453,16 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (344 tests, 16 files)
+# Server tests (351 tests, 16 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (63 tests, 20 files)
+# Client tests (76 tests, 21 files)
 cd client && npx vitest run
 
-# Client E2E tests (6 Playwright flows)
+# Client E2E tests (9 Playwright flows)
 ./scripts/qlicker.sh e2e
 ```
 
