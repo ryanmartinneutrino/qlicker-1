@@ -252,10 +252,12 @@ export function professorFlow() {
 /* ── Student flow ───────────────────────────────────────────────── */
 
 export function studentFlow() {
-  // Each VU is assigned a unique student from the shared array
-  const vuIndex = (__VU - 2) % students.length; // VU 1 = professor, students start at VU 2
+  // Each VU is assigned a unique student from the shared array.
+  // The professor scenario uses 1 VU, so student VUs are numbered starting at 2.
+  // Clamp to valid range to prevent duplicate credentials if VU count is misconfigured.
+  const vuIndex = (__VU - 2) % students.length;
+  if (vuIndex < 0 || vuIndex >= students.length) return;
   const student = students[vuIndex];
-  if (!student) return;
 
   const sessionId = state.session.id;
   const questions = state.questions;

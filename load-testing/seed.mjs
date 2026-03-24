@@ -31,9 +31,8 @@ const STATE_PATH = path.join(__dirname, 'state.json');
 function meteorId() {
   const chars = '23456789ABCDEFGHJKLMNPQRSTWXYZabcdefghijkmnopqrstuvwxyz';
   let id = '';
-  const bytes = crypto.randomBytes(17);
   for (let i = 0; i < 17; i++) {
-    id += chars[bytes[i] % chars.length];
+    id += chars[crypto.randomInt(chars.length)];
   }
   return id;
 }
@@ -357,6 +356,13 @@ async function seed(numStudents) {
 }
 
 async function cleanup() {
+  // Collect load-test user IDs before deleting them (needed to clean responses)
+  const loadTestUsers = await User.find(
+    { 'emails.address': /^loadtest-/ },
+    { _id: 1 },
+  ).lean();
+  const userIds = loadTestUsers.map((u) => u._id);
+
   // Remove users with loadtest emails
   await User.deleteMany({ 'emails.address': /^loadtest-/ });
   // Remove courses tagged as load test
@@ -364,13 +370,17 @@ async function cleanup() {
   // Remove questions tagged for load test
   await Question.deleteMany({ tags: LOAD_TEST_TAG });
   // Remove sessions created by the load test professor
-  // (rely on the professor being deleted, but also clean by name)
   await Session.deleteMany({ name: 'Load Test Session' });
 
-  // Clean responses from load test – use native collection to avoid needing the Response model
-  const db = mongoose.connection.db;
-  if (db) {
-    await db.collection('responses').deleteMany({ studentUserId: /^loadtest-/ }).catch(() => {});
+  // Clean responses from load test students
+  if (userIds.length > 0) {
+    const db = mongoose.connection.db;
+    if (db) {
+      await db
+        .collection('responses')
+        .deleteMany({ studentUserId: { $in: userIds } })
+        .catch(() => {});
+    }
   }
 }
 
