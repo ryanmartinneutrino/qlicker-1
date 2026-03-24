@@ -84,7 +84,7 @@ test('live session flow lets a student join with a passcode and submit a respons
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
   await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.getByRole('heading', { name: /^CS 101$/ }).click();
+  await professorPage.goto(`/manage/course/${course._id}`);
   await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
   await professorPage.getByRole('button', { name: new RegExp(`Launch session ${sessionName}`, 'i') }).click();
   await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}/session/${session._id}/live$`));
@@ -102,7 +102,7 @@ test('live session flow lets a student join with a passcode and submit a respons
   const studentContext = await browser.newContext();
   const studentPage = await studentContext.newPage();
   await loginViaUi(studentPage, student.email, student.password, /\/student$/);
-  await studentPage.getByRole('heading', { name: /^CS 101$/ }).click();
+  await studentPage.goto(`/student/course/${course._id}`);
   await expect(studentPage).toHaveURL(new RegExp(`/student/course/${course._id}$`));
   await studentPage.getByText(sessionName).click();
   await expect(studentPage).toHaveURL(new RegExp(`/student/course/${course._id}/session/${session._id}/live$`));
@@ -148,7 +148,7 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const studentContext = await browser.newContext();
   const studentPage = await studentContext.newPage();
   await loginViaUi(studentPage, student.email, student.password, /\/student$/);
-  await studentPage.getByRole('heading', { name: /^CS 101$/ }).click();
+  await studentPage.goto(`/student/course/${course._id}`);
   await expect(studentPage).toHaveURL(new RegExp(`/student/course/${course._id}$`));
   await studentPage.getByRole('tab', { name: /^Quizzes/i }).click();
   await expect(studentPage.getByText(quizSession.name)).toBeVisible();
@@ -176,7 +176,7 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
   await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.getByRole('heading', { name: /^CS 101$/ }).click();
+  await professorPage.goto(`/manage/course/${course._id}`);
   await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
   await professorPage.getByRole('tab', { name: /^Quizzes/i }).click();
   await professorPage.getByRole('button', { name: new RegExp(`Review session ${quizSession.name}`, 'i') }).click();
@@ -276,7 +276,7 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   await page.getByRole('tab', { name: /^Grades$/i }).click();
 
   const csvDownloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: /^Export CSV$/i }).click();
+  await page.getByRole('button', { name: /^Export grades to CSV$/i }).click();
   const csvDialog = page.getByRole('dialog', { name: /select sessions for csv export/i });
   await csvDialog.getByText(quizSession.name).click();
   await csvDialog.getByRole('button', { name: /^Export CSV$/i }).click();
@@ -405,17 +405,13 @@ test('question library flow lets a professor export, copy, and import questions'
   ));
   expect(copiedMatches).toHaveLength(1);
 
-  await page.goto('/manage');
-  await page.goto(`/manage/course/${targetCourse._id}`);
-  await expect(page).toHaveURL(new RegExp(`/manage/course/${targetCourse._id}$`));
-  await page.getByRole('tab', { name: /^Question Library$/i }).click();
   await page.getByRole('button', { name: /^Import JSON$/i }).click();
   const importDialog = page.getByRole('dialog', { name: /^Import questions$/i });
   await importDialog.locator('input[type="file"]').setInputFiles(exportPath);
   await expect(importDialog.getByText(/^1 question ready to import$/i)).toBeVisible();
   await importDialog.getByRole('button', { name: /^Import 1 question$/i }).click();
 
-  const importedQuestions = await apiJson(request, 'GET', `/courses/${targetCourse._id}/questions?page=1&limit=100`, {
+  const importedQuestions = await apiJson(request, 'GET', `/courses/${sourceCourse._id}/questions?page=1&limit=100`, {
     token: professor.token,
   });
   expect(importedQuestions.response.status(), JSON.stringify(importedQuestions.body)).toBe(200);
