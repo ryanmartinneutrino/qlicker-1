@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import {
   addInstructorToCourseViaApi,
   addQuestionToSessionViaApi,
   apiJson,
+  clearCachedAuthState,
   createCourseViaApi,
   createQuestionViaApi,
   createSessionViaApi,
@@ -14,6 +16,9 @@ import {
   patchSessionViaApi,
   seedUsers,
 } from './helpers.js';
+
+const ONE_MINUTE_MS = 60_000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
 test('login flow redirects an admin user to the admin dashboard', async ({ page, request }) => {
   const { admin } = await seedUsers(request, { professor: false, student: false });
@@ -128,14 +133,14 @@ test('quiz and grading flows cover student submission and instructor grade recal
   const quizSession = await createSessionViaApi(request, admin.token, course._id, {
     name: `Quiz ${Date.now()}`,
     quiz: true,
-    quizStart: new Date(Date.now() - 60_000).toISOString(),
-    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+    quizStart: new Date(Date.now() - ONE_MINUTE_MS).toISOString(),
+    quizEnd: new Date(Date.now() + ONE_HOUR_MS).toISOString(),
   });
   await patchSessionViaApi(request, admin.token, quizSession._id, {
     quiz: true,
     status: 'visible',
-    quizStart: new Date(Date.now() - 60_000).toISOString(),
-    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+    quizStart: new Date(Date.now() - ONE_MINUTE_MS).toISOString(),
+    quizEnd: new Date(Date.now() + ONE_HOUR_MS).toISOString(),
   });
   const question = await createQuestionViaApi(request, admin.token, {
     sessionId: quizSession._id,
@@ -200,14 +205,14 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   const quizSession = await createSessionViaApi(request, admin.token, course._id, {
     name: `Manual Grade ${Date.now()}`,
     quiz: true,
-    quizStart: new Date(Date.now() - 60_000).toISOString(),
-    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+    quizStart: new Date(Date.now() - ONE_MINUTE_MS).toISOString(),
+    quizEnd: new Date(Date.now() + ONE_HOUR_MS).toISOString(),
   });
   await patchSessionViaApi(request, professor.token, quizSession._id, {
     quiz: true,
     status: 'visible',
-    quizStart: new Date(Date.now() - 60_000).toISOString(),
-    quizEnd: new Date(Date.now() + (60 * 60 * 1000)).toISOString(),
+    quizStart: new Date(Date.now() - ONE_MINUTE_MS).toISOString(),
+    quizEnd: new Date(Date.now() + ONE_HOUR_MS).toISOString(),
   });
   const question = await createQuestionViaApi(request, admin.token, {
     type: 2,
@@ -281,7 +286,7 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   await csvDialog.getByText(quizSession.name).click();
   await csvDialog.getByRole('button', { name: /^Export CSV$/i }).click();
   const csvDownload = await csvDownloadPromise;
-  const csvPath = path.join('/tmp', `${quizSession._id}-grades.csv`);
+  const csvPath = path.join(os.tmpdir(), `${quizSession._id}-grades.csv`);
   await csvDownload.saveAs(csvPath);
   const csv = await fs.readFile(csvPath, 'utf8');
   expect(csv).toContain(student.email);
@@ -320,7 +325,7 @@ test('group management flow lets a professor create, populate, download, and imp
   const csvDownloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: /^Download CSV$/i }).click();
   const csvDownload = await csvDownloadPromise;
-  const csvPath = path.join('/tmp', `${course._id}-groups.csv`);
+  const csvPath = path.join(os.tmpdir(), `${course._id}-groups.csv`);
   await csvDownload.saveAs(csvPath);
   const csv = await fs.readFile(csvPath, 'utf8');
   expect(csv).toContain(student.email);
@@ -380,7 +385,7 @@ test('question library flow lets a professor export, copy, and import questions'
   const exportDownloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: /^Export JSON$/i }).click();
   const exportDownload = await exportDownloadPromise;
-  const exportPath = path.join('/tmp', `${sourceCourse._id}-question-library.json`);
+  const exportPath = path.join(os.tmpdir(), `${sourceCourse._id}-question-library.json`);
   await exportDownload.saveAs(exportPath);
   const exportedQuestionLibrary = JSON.parse(await fs.readFile(exportPath, 'utf8'));
   expect(exportedQuestionLibrary.questions).toHaveLength(1);
@@ -427,6 +432,7 @@ test('legacy DB compatibility keeps case-insensitive email login working for stu
   await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   await enrollStudentViaApi(request, student.token, course.enrollmentCode);
 
+  await clearCachedAuthState(student.email);
   await loginViaUi(page, student.email.toUpperCase(), student.password, /\/student$/);
   await expect(page.getByText('Legacy Login Course')).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);

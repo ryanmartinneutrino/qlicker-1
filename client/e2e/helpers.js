@@ -29,6 +29,10 @@ function authStateFileForEmail(email) {
   return path.join(AUTH_STATE_DIR, `${slug || 'user'}.json`);
 }
 
+export async function clearCachedAuthState(email) {
+  await fs.rm(authStateFileForEmail(email), { force: true }).catch(() => {});
+}
+
 function routeFromExpectedPath(expectedPathPattern) {
   const source = typeof expectedPathPattern?.source === 'string' ? expectedPathPattern.source : String(expectedPathPattern || '');
   if (source.includes('/admin')) return '/admin';
