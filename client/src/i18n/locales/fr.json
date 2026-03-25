@@ -876,6 +876,8 @@
       "resumeQuiz": "Reprendre le questionnaire",
       "submitQuiz": "Soumettre le questionnaire",
       "review": "Réviser",
+      "loadingSessionsList": "Chargement des séances…",
+      "loadingRemainingSessions": "Chargement des autres séances en arrière-plan…",
       "failedLoadCourse": "Échec du chargement du cours",
       "failedLoadPracticeEditor": "Échec du chargement de l’éditeur de séance de pratique.",
       "appliedSessionTagsToQuestions_one": "Les étiquettes de la séance ont été appliquées à 1 question.",

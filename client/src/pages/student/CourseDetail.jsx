@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect, useCallback } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
@@ -48,6 +48,7 @@ const COMPACT_CHIP_SX = {
 };
 
 const SESSION_PAGE_SIZE = 15;
+const SESSION_BACKGROUND_BATCH_SIZE = 4;
 const SESSION_PAGE_SIZE_OPTIONS = [15, 30, 50];
 const SESSION_STATUS_FILTER_ALL = 'all';
 const SESSION_STATUS_FILTER_OPTIONS = [
@@ -97,11 +98,14 @@ export default function StudentCourseDetail() {
   const [unenrolling, setUnenrolling] = useState(false);
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsBackgroundLoading, setSessionsBackgroundLoading] = useState(false);
+  const [sessionTotalCount, setSessionTotalCount] = useState(0);
   const [sessionPages, setSessionPages] = useState({});
   const [sessionPageSizes, setSessionPageSizes] = useState({});
   const [sessionSearchTerms, setSessionSearchTerms] = useState({});
   const [sessionStatusFilters, setSessionStatusFilters] = useState({});
   const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
+  const sessionFetchVersionRef = useRef(0);
 
   // Video chat availability
   const [videoEnabled, setVideoEnabled] = useState(false);
@@ -129,16 +133,61 @@ export default function StudentCourseDetail() {
 
   useEffect(() => { fetchCourse(); }, [fetchCourse]);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      const { data } = await apiClient.get(`/courses/${id}/sessions`);
-      setSessions(data.sessions || []);
-    } catch {
-      /* silently fail */
-    } finally {
-      setSessionsLoading(false);
-    }
+  const fetchSessionsPage = useCallback(async (page, limit = SESSION_PAGE_SIZE) => {
+    const { data } = await apiClient.get(`/courses/${id}/sessions`, {
+      params: { page, limit },
+    });
+    return data;
   }, [id]);
+
+  const fetchSessions = useCallback(async () => {
+    const fetchVersion = sessionFetchVersionRef.current + 1;
+    sessionFetchVersionRef.current = fetchVersion;
+    setSessionsLoading(true);
+    setSessionsBackgroundLoading(false);
+
+    try {
+      const firstPageData = await fetchSessionsPage(1);
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+      const initialSessions = firstPageData.sessions || [];
+      const totalSessions = Number(firstPageData.total) || initialSessions.length;
+      const totalPages = Math.max(Number(firstPageData.pages) || 1, 1);
+
+      setSessions(initialSessions);
+      setSessionTotalCount(totalSessions);
+      setSessionsLoading(false);
+
+      if (totalPages <= 1) {
+        setSessionsBackgroundLoading(false);
+        return;
+      }
+
+      setSessionsBackgroundLoading(true);
+      const allLoadedSessions = [...initialSessions];
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
+
+      for (let index = 0; index < remainingPages.length; index += SESSION_BACKGROUND_BATCH_SIZE) {
+        const pageBatch = remainingPages.slice(index, index + SESSION_BACKGROUND_BATCH_SIZE);
+        const batchResults = await Promise.all(pageBatch.map((page) => fetchSessionsPage(page)));
+        if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+        const batchSessions = batchResults.flatMap((result) => result.sessions || []);
+        if (batchSessions.length === 0) continue;
+
+        allLoadedSessions.push(...batchSessions);
+        setSessions([...allLoadedSessions]);
+      }
+
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+      setSessionsBackgroundLoading(false);
+    } catch {
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+      setSessionTotalCount(0);
+      setSessionsLoading(false);
+      setSessionsBackgroundLoading(false);
+    }
+  }, [fetchSessionsPage]);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
@@ -261,6 +310,8 @@ export default function StudentCourseDetail() {
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
   const interactiveSessions = sortedSessions.filter((session) => !isQuizSession(session) && !session.studentCreated);
   const quizSessions = sortedSessions.filter((session) => isQuizSession(session) && !session.studentCreated);
+  const sessionCountsArePartial = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
+  const sessionCountSuffix = sessionCountsArePartial ? '+' : '';
   const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
   const practiceTabIndex = 2;
@@ -268,12 +319,23 @@ export default function StudentCourseDetail() {
   const gradesTabIndex = 4;
 
   const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
-    if (sessionsLoading) return <CircularProgress size={24} />;
+    const listStillHydrating = sessionCountsArePartial;
+    if (sessionsLoading && sessions.length === 0) return <CircularProgress size={24} />;
     if (sessionItems.length === 0) {
+      if (listStillHydrating) {
+        return (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2" color="text.secondary">
+              {t('student.course.loadingSessionsList', { defaultValue: 'Loading sessions…' })}
+            </Typography>
+          </Stack>
+        );
+      }
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
     }
 
-    const controlsEnabled = sessionItems.length > SESSION_PAGE_SIZE;
+    const controlsEnabled = !listStillHydrating && sessionItems.length > SESSION_PAGE_SIZE;
     const searchTerm = controlsEnabled ? String(sessionSearchTerms[listTabIndex] || '') : '';
     const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
     const statusFilter = controlsEnabled
@@ -302,6 +364,18 @@ export default function StudentCourseDetail() {
 
     return (
       <>
+        {listStillHydrating && (
+          <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">
+                {t('student.course.loadingRemainingSessions', {
+                  defaultValue: 'Loading remaining sessions in the background…',
+                })}
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
         {controlsEnabled && (
           <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
             <Stack spacing={1.25}>
@@ -533,9 +607,9 @@ export default function StudentCourseDetail() {
         dropdownLabel={t('common.view')}
         dropdownSx={{ mb: 1.5 }}
         tabs={[
-          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessions.length})` },
-          { value: 1, label: `${t('student.course.quizzes')} (${quizSessions.length})` },
-          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length})` },
+          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessions.length}${sessionCountSuffix})` },
+          { value: 1, label: `${t('student.course.quizzes')} (${quizSessions.length}${sessionCountSuffix})` },
+          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length}${sessionCountSuffix})` },
           { value: 3, label: t('questionLibrary.title', { defaultValue: 'Question Library' }) },
           { value: 4, label: t('student.course.grades') },
           ...(courseHasVideo ? [{ value: videoTabIndex, label: t('student.course.video') }] : []),
@@ -564,12 +638,21 @@ export default function StudentCourseDetail() {
             {t('student.course.newPracticeSession', { defaultValue: 'New practice session' })}
           </Button>
         </Box>
-        {sessionsLoading ? <CircularProgress size={24} /> : practiceSessions.length === 0 ? (
+        {sessionsLoading && sessions.length === 0 ? <CircularProgress size={24} /> : practiceSessions.length === 0 ? (
+          sessionCountsArePartial ? (
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <CircularProgress size={18} />
+              <Typography variant="body2" color="text.secondary">
+                {t('student.course.loadingSessionsList', { defaultValue: 'Loading sessions…' })}
+              </Typography>
+            </Stack>
+          ) : (
           <Typography variant="body2" color="text.secondary">
             {t('student.course.noPracticeSessions', { defaultValue: 'No practice sessions yet.' })}
           </Typography>
+          )
         ) : (() => {
-          const controlsEnabled = practiceSessions.length > SESSION_PAGE_SIZE;
+          const controlsEnabled = !sessionCountsArePartial && practiceSessions.length > SESSION_PAGE_SIZE;
           const searchTerm = controlsEnabled ? String(sessionSearchTerms[practiceTabIndex] || '') : '';
           const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
           const statusFilter = controlsEnabled
@@ -597,6 +680,18 @@ export default function StudentCourseDetail() {
           const pageItems = filteredPracticeSessions.slice(startIdx, startIdx + pageSize);
           return (
             <>
+              {sessionCountsArePartial && (
+                <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                    <CircularProgress size={16} />
+                    <Typography variant="body2" color="text.secondary">
+                      {t('student.course.loadingRemainingSessions', {
+                        defaultValue: 'Loading remaining sessions in the background…',
+                      })}
+                    </Typography>
+                  </Stack>
+                </Paper>
+              )}
               {controlsEnabled && (
                 <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
                   <Stack spacing={1.25}>

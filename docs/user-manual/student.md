@@ -58,6 +58,8 @@ On the course page you will typically see:
 - **Grades** for your own course and session results
 - **Video chat** when your course has Jitsi enabled
 
+If a course has many sessions, the page shows the first batch of session cards quickly and continues loading the remaining session lists in the background.
+
 ### How to choose the right tab
 
 | If you want to… | Start here |

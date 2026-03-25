@@ -876,6 +876,8 @@
       "resumeQuiz": "Resume quiz",
       "submitQuiz": "Submit quiz",
       "review": "Review",
+      "loadingSessionsList": "Loading sessions…",
+      "loadingRemainingSessions": "Loading remaining sessions in the background…",
       "failedLoadCourse": "Failed to load course",
       "failedLoadPracticeEditor": "Failed to load the practice session editor.",
       "appliedSessionTagsToQuestions_one": "Applied the session tags to 1 question.",
