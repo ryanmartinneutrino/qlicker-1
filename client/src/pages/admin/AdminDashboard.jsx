@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Tabs, Tab, Typography, TextField, Button, Checkbox,
+  Box, Typography, TextField, Button, Checkbox,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -20,7 +20,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatDisplayDate } from '../../utils/date';
+import { formatDisplayDateTime } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
   approximate16x9JpegSizeBytes,
@@ -28,6 +28,7 @@ import {
   formatApproximateFileSize,
 } from '../../utils/imageUpload';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionListCard from '../../components/common/SessionListCard';
 import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
@@ -571,6 +572,8 @@ function UsersTab({ currentUserId }) {
 
   const selectedUserIsStudentOnly = isStudentOnlyRole(selectedUser);
   const selectedUserIsAdmin = selectedUser?.profile?.roles?.includes('admin');
+  const activeSessions = Array.isArray(selectedUser?.activeSessions) ? selectedUser.activeSessions : [];
+  const hasActiveSessions = activeSessions.length > 0;
 
   return (
     <Box>
@@ -688,7 +691,7 @@ function UsersTab({ currentUserId }) {
                   </TableCell>
                   <TableCell>
                     {u.lastLogin
-                      ? formatDisplayDate(u.lastLogin)
+                      ? formatDisplayDateTime(u.lastLogin)
                       : t('admin.users.never')}
                   </TableCell>
                   <TableCell>
@@ -813,7 +816,55 @@ function UsersTab({ currentUserId }) {
                 {ssoEnabled && selectedUser?.allowEmailLogin === false && (
                   <Chip size="small" label={t('admin.users.emailLoginDisabled')} color="warning" variant="outlined" />
                 )}
+                <Chip
+                  size="small"
+                  label={hasActiveSessions ? t('admin.users.loggedInNow') : t('admin.users.notLoggedInNow')}
+                  color={hasActiveSessions ? 'success' : 'default'}
+                  variant={hasActiveSessions ? 'filled' : 'outlined'}
+                />
               </Box>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  {t('admin.users.sessionActivity')}
+                </Typography>
+                {hasActiveSessions ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('admin.users.currentSessionsCount', { count: activeSessions.length })}
+                    </Typography>
+                    {activeSessions.map((session, index) => (
+                      <Paper key={`${session.sessionId}-${index}`} variant="outlined" sx={{ p: 1.25 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {t('admin.users.sessionNumber', { number: index + 1 })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionLoggedInAt', { value: formatDisplayDateTime(session.createdAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionLastSeenAt', { value: formatDisplayDateTime(session.lastUsedAt || session.createdAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionExpiresAt', { value: formatDisplayDateTime(session.expiresAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.ipAddressValue', { value: session.ipAddress || t('admin.users.ipUnavailable') })}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    <Typography variant="body2">
+                      {t('admin.users.lastLoginValue', {
+                        value: selectedUser?.lastLogin ? formatDisplayDateTime(selectedUser.lastLogin) : t('admin.users.never'),
+                      })}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('admin.users.ipAddressValue', { value: selectedUser?.lastLoginIp || t('admin.users.ipUnavailable') })}
+                    </Typography>
+                  </Box>
+                )}
+              </Paper>
               <FormControlLabel
                 control={(
                   <Checkbox
@@ -1500,14 +1551,21 @@ export default function AdminDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>{t('admin.title')}</Typography>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-        <Tab label={t('admin.tabs.settings')} />
-        <Tab label={t('admin.tabs.users')} />
-        <Tab label={t('admin.tabs.courses')} />
-        <Tab label={t('admin.tabs.storage')} />
-        <Tab label={t('admin.tabs.sso')} />
-        <Tab label={t('admin.tabs.video')} />
-      </Tabs>
+      <ResponsiveTabsNavigation
+        value={tab}
+        onChange={setTab}
+        ariaLabel={t('common.view')}
+        dropdownLabel={t('common.view')}
+        dropdownSx={{ mb: 1.5 }}
+        tabs={[
+          { value: 0, label: t('admin.tabs.settings') },
+          { value: 1, label: t('admin.tabs.users') },
+          { value: 2, label: t('admin.tabs.courses') },
+          { value: 3, label: t('admin.tabs.storage') },
+          { value: 4, label: t('admin.tabs.sso') },
+          { value: 5, label: t('admin.tabs.video') },
+        ]}
+      />
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
       <TabPanel value={tab} index={2}><CoursesTab /></TabPanel>

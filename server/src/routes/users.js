@@ -13,6 +13,7 @@ import {
   shouldLockLocalProfileEdits,
 } from '../utils/authPolicy.js';
 import { isSafeProfileImageUrl } from '../utils/url.js';
+import { getLastLoginAudit } from '../utils/sessionAudit.js';
 
 async function getAuthSettings() {
   return Settings.findOne().select('SSO_enabled avatarThumbnailSize').lean();
@@ -22,25 +23,44 @@ function hasOnlyStudentRole(roles = []) {
   return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
 }
 
-function sanitizeUser(user, settings = {}) {
-  const obj = user.toObject();
+function toSanitizedUserObject(user, settings = {}) {
+  const obj = user?.toObject ? user.toObject() : { ...user };
+  const { lastLogin } = getLastLoginAudit(user);
+  obj.lastLogin = lastLogin;
   obj.isSSOUser = !!user.services?.sso?.id;
   obj.isSSOCreatedUser = !!user.ssoCreated;
   obj.allowEmailLogin = canUseEmailLogin(user, settings);
   obj.lastAuthProvider = user.lastAuthProvider || '';
+  return obj;
+}
+
+function sanitizeUser(user, settings = {}) {
+  const obj = toSanitizedUserObject(user, settings);
   delete obj.services;
   return obj;
 }
 
 function sanitizeRawUser(user = {}, settings = {}) {
-  return {
-    ...user,
-    isSSOUser: !!user.services?.sso?.id,
-    isSSOCreatedUser: !!user.ssoCreated,
-    allowEmailLogin: canUseEmailLogin(user, settings),
-    lastAuthProvider: user.lastAuthProvider || '',
-    services: undefined,
-  };
+  const obj = toSanitizedUserObject(user, settings);
+  delete obj.services;
+  return obj;
+}
+
+function buildAdminUserPayload(user, settings = {}) {
+  const obj = toSanitizedUserObject(user, settings);
+  const { lastLogin, lastLoginIp, activeSessions } = getLastLoginAudit(user);
+  obj.lastLogin = lastLogin;
+  obj.lastLoginIp = lastLoginIp;
+  obj.currentlyLoggedIn = activeSessions.length > 0;
+  obj.activeSessions = activeSessions.map((session) => ({
+    sessionId: session.sessionId,
+    createdAt: session.createdAt,
+    lastUsedAt: session.lastUsedAt,
+    expiresAt: session.expiresAt,
+    ipAddress: session.ipAddress,
+  }));
+  delete obj.services;
+  return obj;
 }
 
 async function setLocalPassword(user, newPassword) {
@@ -530,13 +550,13 @@ export default async function userRoutes(app) {
       { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
       const [user, settings] = await Promise.all([
-        User.findById(request.params.id),
+        User.findById(request.params.id).lean(),
         getAuthSettings(),
       ]);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
-      return sanitizeUser(user, settings);
+      return buildAdminUserPayload(user, settings);
     }
   );
 
@@ -592,7 +612,7 @@ export default async function userRoutes(app) {
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
-      return sanitizeUser(user, settings);
+      return buildAdminUserPayload(user, settings);
     }
   );
 
@@ -618,7 +638,7 @@ export default async function userRoutes(app) {
       await setLocalPassword(user, request.body.newPassword);
       await user.save();
 
-      return sanitizeUser(user, settings);
+      return buildAdminUserPayload(user, settings);
     }
   );
 

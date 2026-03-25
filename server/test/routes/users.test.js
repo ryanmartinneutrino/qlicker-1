@@ -490,6 +490,82 @@ describe('Admin user management', () => {
     body.users.forEach((u) => expect(u.services).toBeUndefined());
   });
 
+  it('derives last login in the users list from active refresh sessions when needed', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-derived-list@example.com', roles: ['admin'] });
+    const derivedLastLogin = new Date('2026-03-25T14:30:00.000Z');
+    await User.create({
+      emails: [{ address: 'derived-list@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [{
+            sessionId: 'session-derived',
+            createdAt: derivedLastLogin,
+            lastUsedAt: derivedLastLogin,
+            expiresAt: new Date(Date.now() + 60_000),
+            ipAddress: '203.0.113.41',
+          }],
+        },
+      },
+      profile: { firstname: 'Derived', lastname: 'List', roles: ['student'] },
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/users', { token, headers: { 'x-forwarded-for': '198.51.100.1' } });
+    expect(res.statusCode).toBe(200);
+    const listed = res.json().users.find((user) => user.emails?.[0]?.address === 'derived-list@example.com');
+    expect(listed).toBeTruthy();
+    expect(new Date(listed.lastLogin).toISOString()).toBe(derivedLastLogin.toISOString());
+  });
+
+  it('admin can inspect current sessions and last-login IP metadata for a user', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-session-detail@example.com', roles: ['admin'] });
+    const activeCreatedAt = new Date('2026-03-25T14:30:00.000Z');
+    const activeLastUsedAt = new Date('2026-03-25T15:15:00.000Z');
+    const target = await User.create({
+      emails: [{ address: 'session-detail@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [
+            {
+              sessionId: 'active-session',
+              createdAt: activeCreatedAt,
+              lastUsedAt: activeLastUsedAt,
+              expiresAt: new Date(Date.now() + 120_000),
+              ipAddress: '203.0.113.42',
+            },
+            {
+              sessionId: 'expired-session',
+              createdAt: new Date('2026-03-20T10:00:00.000Z'),
+              lastUsedAt: new Date('2026-03-20T10:30:00.000Z'),
+              expiresAt: new Date(Date.now() - 120_000),
+              ipAddress: '203.0.113.77',
+            },
+          ],
+        },
+      },
+      profile: { firstname: 'Session', lastname: 'Detail', roles: ['student'] },
+      lastLogin: new Date('2026-03-20T10:00:00.000Z'),
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/users/${target._id}`, { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.services).toBeUndefined();
+    expect(body.currentlyLoggedIn).toBe(true);
+    expect(body.activeSessions).toHaveLength(1);
+    expect(body.activeSessions[0].ipAddress).toBe('203.0.113.42');
+    expect(new Date(body.activeSessions[0].createdAt).toISOString()).toBe(activeCreatedAt.toISOString());
+    expect(new Date(body.lastLogin).toISOString()).toBe(activeCreatedAt.toISOString());
+    expect(body.lastLoginIp).toBe('203.0.113.42');
+  });
+
   it('non-admin cannot list users', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const student = await createTestUser({ email: 'student-list@example.com', roles: ['student'] });

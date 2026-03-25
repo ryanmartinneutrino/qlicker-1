@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Tab, Tabs, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
+  Box, Card, CardContent, TextField, Button, Typography, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
+import ResponsiveTabsNavigation from '../components/common/ResponsiveTabsNavigation';
 import QlickerWordmark from '../components/common/QlickerWordmark';
 
 export default function Login() {
@@ -196,10 +197,18 @@ export default function Login() {
             </>
           ) : (
             <>
-              <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(''); }} centered sx={{ mb: 2 }} aria-label={t('auth.login')}>
-                <Tab label={t('auth.login')} />
-                <Tab label={t('auth.register')} />
-              </Tabs>
+              <ResponsiveTabsNavigation
+                value={tab}
+                onChange={(nextTab) => { setTab(nextTab); setError(''); }}
+                ariaLabel={t('auth.login')}
+                dropdownLabel={t('common.view')}
+                dropdownSx={{ mb: 2, width: '100%' }}
+                tabs={[
+                  { value: 0, label: t('auth.login') },
+                  { value: 1, label: t('auth.register') },
+                ]}
+                tabsProps={{ centered: true, sx: { mb: 2 } }}
+              />
               {tab === 0 ? (
                 renderEmailLoginForm()
               ) : (

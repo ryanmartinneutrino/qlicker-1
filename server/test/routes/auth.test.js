@@ -120,6 +120,32 @@ describe('POST /api/v1/auth/register', () => {
     expect(body.user.services).toBeUndefined();
   });
 
+  it('records last-login audit metadata for newly registered users', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '203.0.113.10',
+      },
+      payload: {
+        email: 'audit-register@example.com',
+        password: 'password123',
+        firstname: 'Audit',
+        lastname: 'Register',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+
+    const stored = await User.findOne({ 'emails.address': 'audit-register@example.com' });
+    expect(stored.lastLogin).toBeInstanceOf(Date);
+    expect(stored.lastLoginIp).toBe('203.0.113.10');
+    expect(stored.services?.resume?.loginTokens).toHaveLength(1);
+    expect(stored.services.resume.loginTokens[0].ipAddress).toBe('203.0.113.10');
+  });
+
   it('rejects duplicate email', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'dup@example.com' });
@@ -233,6 +259,49 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.user).toBeDefined();
     expect(body.user.services).toBeUndefined();
     expect(body.user.profile).toBeDefined();
+  });
+
+  it('records client IP metadata on login and refresh rotation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'audit-login@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '198.51.100.20',
+      },
+      payload: {
+        email: 'audit-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(loginRes.statusCode).toBe(200);
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(refreshToken).toBeTruthy();
+
+    const storedAfterLogin = await User.findOne({ 'emails.address': 'audit-login@example.com' });
+    expect(storedAfterLogin.lastLoginIp).toBe('198.51.100.20');
+    expect(storedAfterLogin.services.resume.loginTokens[0].ipAddress).toBe('198.51.100.20');
+    const firstSessionId = storedAfterLogin.services.resume.loginTokens[0].sessionId;
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '198.51.100.99',
+        cookie: `refreshToken=${refreshToken}`,
+      },
+    });
+
+    expect(refreshRes.statusCode).toBe(200);
+
+    const storedAfterRefresh = await User.findOne({ 'emails.address': 'audit-login@example.com' });
+    expect(storedAfterRefresh.services.resume.loginTokens[0].sessionId).not.toBe(firstSessionId);
+    expect(storedAfterRefresh.services.resume.loginTokens[0].ipAddress).toBe('198.51.100.99');
   });
 
   it('finds mixed-case email user (case-insensitive lookup)', async (ctx) => {

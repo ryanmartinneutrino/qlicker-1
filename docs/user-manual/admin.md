@@ -80,10 +80,14 @@ From there you can:
 - change roles
 - verify email status
 - inspect or update per-user properties
+- confirm whether a user is currently logged in and see the IP address for each active session
+- inspect the last recorded login time and IP address when the user is not currently signed in
 - reset a user's local password
 - control whether local email login is allowed for a specific account when institution-wide SSO is enabled
 
 Use extra care when changing roles because the effect is immediate.
+
+The Last Login column now shows date and time, not just the day, so support staff can compare account activity against reports from a user more accurately.
 
 ### Courses tab
 

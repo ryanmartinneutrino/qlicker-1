@@ -1,7 +1,7 @@
 import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Autocomplete, Box, Typography, Button, TextField, Tabs, Tab, Paper, Chip, Stack,
+  Autocomplete, Box, Typography, Button, TextField, Paper, Chip, Stack,
   List, ListItem, ListItemAvatar, ListItemText, ListItemButton, ListItemSecondaryAction, IconButton,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar, MenuItem,
@@ -13,11 +13,12 @@ import {
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseSelectionLabel, buildCourseTitle, sortCoursesByRecent } from '../../utils/courseTitle';
+import { getProfessorSessionPrimaryPath } from '../../utils/professorSessions';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import SessionListCard from '../../components/common/SessionListCard';
 import SessionSelectorDialog from '../../components/common/SessionSelectorDialog';
@@ -226,7 +227,6 @@ export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const theme = useTheme();
-  const compactTabNav = useMediaQuery('(max-width:799px)');
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [course, setCourse] = useState(null);
@@ -1043,7 +1043,7 @@ export default function CourseDetail() {
             key={s._id}
             highlighted={s.status === 'running'}
             onClick={() => navigate(
-              `/manage/course/${id}/session/${s._id}?returnTab=${tab}`,
+              getProfessorSessionPrimaryPath(s, id, tab),
               { state: { returnTab: tab } }
             )}
             title={s.name}
@@ -1221,27 +1221,18 @@ export default function CourseDetail() {
       </Box>
 
       {/* Tabs */}
-      {compactTabNav ? (
-        <TextField
-          select
-          size="small"
-          label={t('common.view')}
-          value={String(tab)}
-          onChange={(event) => handleTabChange(Number(event.target.value))}
-          sx={{ mb: 1.5, minWidth: 260, maxWidth: 420 }}
-        >
-          {tabLabels.map((label, index) => (
-            <MenuItem key={label} value={String(index)}>{label}</MenuItem>
-          ))}
-        </TextField>
-      ) : (
-        <Tabs
-          value={tab}
-          onChange={(_, nextTab) => handleTabChange(nextTab)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{
+      <ResponsiveTabsNavigation
+        value={tab}
+        onChange={handleTabChange}
+        ariaLabel={t('common.view')}
+        dropdownLabel={t('common.view')}
+        tabs={tabLabels.map((label, index) => ({ value: index, label }))}
+        dropdownSx={{ mb: 1.5, minWidth: 260, maxWidth: 420 }}
+        tabsProps={{
+          variant: 'scrollable',
+          scrollButtons: 'auto',
+          allowScrollButtonsMobile: true,
+          sx: {
             '& .MuiTabs-flexContainer': { flexWrap: 'wrap' },
             '& .MuiTabs-indicator': { display: 'none' },
             '& .MuiTab-root': {
@@ -1252,11 +1243,9 @@ export default function CourseDetail() {
             '& .MuiTab-root.Mui-selected': {
               borderColor: 'primary.main',
             },
-          }}
-        >
-          {tabLabels.map((label) => <Tab key={label} label={label} />)}
-        </Tabs>
-      )}
+          },
+        }}
+      />
 
       {/* Interactive Sessions Tab */}
       <TabPanel value={tab} index={0}>

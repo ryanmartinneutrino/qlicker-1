@@ -11,6 +11,7 @@ import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 import { normalizeCertificatePem } from '../utils/certificate.js';
+import { buildRefreshSessionEntry, getRequestIp, normalizeIpAddress } from '../utils/sessionAudit.js';
 
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -101,24 +102,15 @@ function pruneRefreshSessions(user, nowMs = Date.now()) {
   return user.services.resume.loginTokens;
 }
 
-function buildRefreshSessionEntry(sessionId, maxAgeMs, now = new Date()) {
-  return {
-    sessionId,
-    createdAt: now,
-    lastUsedAt: now,
-    expiresAt: new Date(now.getTime() + maxAgeMs),
-  };
-}
-
-function issueRefreshSession(user, maxAgeMs) {
+function issueRefreshSession(user, maxAgeMs, ipAddress = '') {
   pruneRefreshSessions(user);
   const sessionId = crypto.randomBytes(24).toString('hex');
-  const sessionEntry = buildRefreshSessionEntry(sessionId, maxAgeMs);
+  const sessionEntry = buildRefreshSessionEntry(sessionId, maxAgeMs, new Date(), ipAddress);
   ensureResumeLoginTokens(user).push(sessionEntry);
   return sessionEntry;
 }
 
-function rotateRefreshSession(user, currentSessionId) {
+function rotateRefreshSession(user, currentSessionId, ipAddress = '') {
   pruneRefreshSessions(user);
   const loginTokens = ensureResumeLoginTokens(user);
   const index = loginTokens.findIndex(
@@ -131,6 +123,10 @@ function rotateRefreshSession(user, currentSessionId) {
   loginTokens[index].sessionId = nextSessionId;
   loginTokens[index].lastUsedAt = now;
   if (!loginTokens[index].createdAt) loginTokens[index].createdAt = now;
+  const normalizedIp = normalizeIpAddress(ipAddress);
+  if (normalizedIp) {
+    loginTokens[index].ipAddress = normalizedIp;
+  }
   return loginTokens[index];
 }
 
@@ -298,6 +294,8 @@ function registerSsoRoutes(app, routes) {
 
     let user = await User.findOne({ 'emails.address': emailRegex(email) });
 
+    const requestIp = getRequestIp(request);
+
     if (!user) {
       const isProfessor = settings.SSO_roleProfName && roleValue === settings.SSO_roleProfName;
       const roles = isProfessor ? ['professor'] : ['student'];
@@ -328,6 +326,7 @@ function registerSsoRoutes(app, routes) {
         lastAuthProvider: 'sso',
         createdAt: new Date(),
         lastLogin: new Date(),
+        lastLoginIp: requestIp,
       });
     } else {
       if (firstname) user.profile.firstname = firstname;
@@ -354,6 +353,7 @@ function registerSsoRoutes(app, routes) {
       }
 
       user.lastLogin = new Date();
+      user.lastLoginIp = requestIp;
       user.lastAuthProvider = 'sso';
     }
 
@@ -362,7 +362,7 @@ function registerSsoRoutes(app, routes) {
       user.services.sso.sessions.push({ sessionIndex });
     }
 
-    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings), requestIp);
     await user.save();
 
     const token = await signAccessToken(app, user, settings);
@@ -513,6 +513,7 @@ export default async function authRoutes(app) {
       return reply.code(409).send({ error: 'Conflict', message: 'Email already registered' });
     }
 
+    const requestIp = getRequestIp(request);
     // First user becomes admin
     const userCount = await User.countDocuments();
     const roles = userCount === 0 ? ['admin'] : ['student'];
@@ -533,6 +534,9 @@ export default async function authRoutes(app) {
       },
       allowEmailLogin: roles.includes('admin'),
       createdAt: new Date(),
+      lastLogin: new Date(),
+      lastLoginIp: requestIp,
+      lastAuthProvider: 'password',
     });
 
     // Send verification email
@@ -550,7 +554,7 @@ export default async function authRoutes(app) {
       request.log.error('Failed to send verification email:', err);
     }
 
-    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings), requestIp);
     await user.save();
 
     const token = await signAccessToken(app, user, settings);
@@ -571,6 +575,7 @@ export default async function authRoutes(app) {
     const normalizedEmail = email.toLowerCase().trim();
     const settings = await getAuthSettings();
 
+    const requestIp = getRequestIp(request);
     // Case-insensitive lookup for legacy DB compatibility
     const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
     if (!user) {
@@ -625,8 +630,9 @@ export default async function authRoutes(app) {
 
     prepareLoginLockoutReset(user);
     user.lastLogin = new Date();
+    user.lastLoginIp = requestIp;
     user.lastAuthProvider = 'password';
-    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings), requestIp);
     await user.save();
 
     const token = await signAccessToken(app, user, settings);
@@ -706,7 +712,7 @@ export default async function authRoutes(app) {
         return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
       }
 
-      const nextSessionId = rotateRefreshSession(user, payload.sessionId);
+      const nextSessionId = rotateRefreshSession(user, payload.sessionId, getRequestIp(request));
       if (!nextSessionId) {
         return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
       }
@@ -735,7 +741,7 @@ export default async function authRoutes(app) {
     }
 
     const settings = await getAuthSettings();
-    const nextSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
+    const nextSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings), getRequestIp(request));
     await user.save();
     const token = await signAccessToken(app, user, settings);
     const nextRefreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(nextSession);

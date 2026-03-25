@@ -1929,6 +1929,41 @@ describe('Student quiz routes', () => {
     expect(submitWholeRes.json().message).toContain('Practice quizzes');
   });
 
+  it('records submittedAt and submittedIpAddress when quiz responses are autosaved', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const session = await createOpenQuiz({ profToken, courseId: course._id, practiceQuiz: false });
+    const question = await addMcQuestion({ profToken, sessionId: session._id, courseId: course._id, content: 'Audit me' });
+
+    const firstSaveRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      headers: { 'x-forwarded-for': '203.0.113.60' },
+      payload: { questionId: question._id, answer: '0' },
+    });
+    expect(firstSaveRes.statusCode).toBe(200);
+    expect(firstSaveRes.json().response.submittedIpAddress).toBe('203.0.113.60');
+    expect(firstSaveRes.json().response.submittedAt).toBeTruthy();
+
+    const firstSavedAt = new Date(firstSaveRes.json().response.submittedAt).getTime();
+
+    const secondSaveRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/quiz-response`, {
+      token: studentToken,
+      headers: { 'x-forwarded-for': '203.0.113.61' },
+      payload: { questionId: question._id, answer: '1' },
+    });
+    expect(secondSaveRes.statusCode).toBe(200);
+    expect(secondSaveRes.json().response.submittedIpAddress).toBe('203.0.113.61');
+    expect(new Date(secondSaveRes.json().response.submittedAt).getTime()).toBeGreaterThanOrEqual(firstSavedAt);
+
+    const stored = await Response.findOne({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+    }).lean();
+    expect(stored.submittedIpAddress).toBe('203.0.113.61');
+    expect(stored.submittedAt).toBeTruthy();
+  });
+
   it('student practice sessions can quiz over library questions without attaching them to the session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'student-practice-prof@example.com', roles: ['professor'] });

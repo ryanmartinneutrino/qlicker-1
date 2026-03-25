@@ -29,6 +29,7 @@ const ResumeLoginTokenSchema = new mongoose.Schema(
     createdAt: { type: Date },
     lastUsedAt: { type: Date },
     expiresAt: { type: Date },
+    ipAddress: { type: String, default: '' },
   },
   { _id: false, strict: false }
 );
@@ -128,6 +129,7 @@ const UserSchema = new mongoose.Schema(
     loginLockedUntil: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date },
+    lastLoginIp: { type: String, default: '' },
     // Per-user locale preference (overrides app default from Settings).
     // Empty string or missing means "use app default".
     locale: { type: String, default: '' },

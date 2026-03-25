@@ -50,12 +50,13 @@ export async function getAuthToken(app, user) {
 export const csrfHeaders = { 'x-requested-with': 'XMLHttpRequest' };
 
 export async function authenticatedRequest(app, method, url, opts = {}) {
-  const { token, payload } = opts;
+  const { token, payload, headers = {} } = opts;
   const reqOpts = {
     method,
     url,
     headers: {
       ...csrfHeaders,
+      ...headers,
     },
   };
   if (token) {

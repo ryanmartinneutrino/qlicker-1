@@ -27,6 +27,7 @@ import {
 import { userCanViewQuestion } from './questions.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
 import { computeHistogramData } from '../utils/histogram.js';
+import { getRequestIp } from '../utils/sessionAudit.js';
 
 const createSessionSchema = {
   body: {
@@ -2908,10 +2909,13 @@ export default async function sessionRoutes(app) {
 
       const now = new Date();
       const editable = true;
+      const submittedIpAddress = getRequestIp(request);
       const payload = {
         answer: request.body.answer,
         answerWysiwyg: request.body.answerWysiwyg || '',
         updatedAt: now,
+        submittedAt: now,
+        submittedIpAddress,
         editable,
       };
 
@@ -2927,6 +2931,8 @@ export default async function sessionRoutes(app) {
           answerWysiwyg: request.body.answerWysiwyg || '',
           createdAt: now,
           updatedAt: now,
+          submittedAt: now,
+          submittedIpAddress,
           editable,
         });
       }
@@ -3664,12 +3670,16 @@ export default async function sessionRoutes(app) {
         return reply.code(409).send({ error: 'Conflict', message: 'You have already responded to this attempt' });
       }
 
+      const now = new Date();
       const response = await Response.create({
         questionId,
         studentUserId: userId,
         attempt: currentAttempt.number,
         answer: request.body.answer,
         answerWysiwyg: request.body.answerWysiwyg || '',
+        submittedAt: now,
+        submittedIpAddress: getRequestIp(request),
+        createdAt: now,
       });
 
       // Count responses for current question/attempt (fast indexed query)

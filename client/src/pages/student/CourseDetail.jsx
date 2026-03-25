@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
   List, ListItem, ListItemButton, ListItemText, Divider, IconButton, Tooltip,
-  Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, Stack, TextField, MenuItem,
+  Dialog, DialogTitle, DialogContent, DialogActions, Stack, TextField, MenuItem,
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient, { getAccessToken } from '../../api/client';
@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import SessionListCard from '../../components/common/SessionListCard';
+import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { useTranslation } from 'react-i18next';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
@@ -516,9 +517,9 @@ export default function StudentCourseDetail() {
         </Box>
       </Box>
 
-      <Tabs
+      <ResponsiveTabsNavigation
         value={tab}
-        onChange={(_, nextTab) => {
+        onChange={(nextTab) => {
           setTab(nextTab);
           const nextParams = new URLSearchParams(searchParams);
           if (nextTab === 0) {
@@ -528,17 +529,23 @@ export default function StudentCourseDetail() {
           }
           setSearchParams(nextParams, { replace: true });
         }}
-        variant="scrollable"
-        allowScrollButtonsMobile
-      >
-        <Tab label={`${t('student.course.lectures')} (${interactiveSessions.length})`} />
-        <Tab label={`${t('student.course.quizzes')} (${quizSessions.length})`} />
-        <Tab label={`${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length})`} />
-        <Tab label={t('questionLibrary.title', { defaultValue: 'Question Library' })} />
-        <Tab label={t('student.course.grades')} />
-        {courseHasVideo && <Tab label={t('student.course.video')} />}
-        <Tab label={t('student.course.settings')} />
-      </Tabs>
+        ariaLabel={t('common.view')}
+        dropdownLabel={t('common.view')}
+        dropdownSx={{ mb: 1.5 }}
+        tabs={[
+          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessions.length})` },
+          { value: 1, label: `${t('student.course.quizzes')} (${quizSessions.length})` },
+          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length})` },
+          { value: 3, label: t('questionLibrary.title', { defaultValue: 'Question Library' }) },
+          { value: 4, label: t('student.course.grades') },
+          ...(courseHasVideo ? [{ value: videoTabIndex, label: t('student.course.video') }] : []),
+          { value: settingsTabIndex, label: t('student.course.settings') },
+        ]}
+        tabsProps={{
+          variant: 'scrollable',
+          allowScrollButtonsMobile: true,
+        }}
+      />
 
       <TabPanel value={tab} index={0}>
         <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.lectures')}</Typography>

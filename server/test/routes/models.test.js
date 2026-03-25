@@ -165,6 +165,8 @@ describe('Response model', () => {
     });
 
     expect(response.answerWysiwyg).toBe('');
+    expect(response.submittedAt).toBeUndefined();
+    expect(response.submittedIpAddress).toBe('');
     expect(response.editable).toBe(false);
     expect(response.createdAt).toBeInstanceOf(Date);
   });
