@@ -202,7 +202,7 @@ The current Fastify/React app now treats the following defaults as part of the m
 - [ ] Security scanning and penetration testing
 - [x] Production Docker Compose validation with Nginx load balancer (see [`production_setup/`](production_setup/))
 - [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))
-- [x] Private-bucket cutover for S3 images — sanitization script ready (see [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) and [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
+- [x] Private-bucket cutover for S3 images — `/uploads/<key>` proxy path and sanitization scripts are ready (see [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js), [`production_setup/sanitize-s3.sh`](production_setup/sanitize-s3.sh), and [Planned Private-Bucket Cutover](#planned-private-bucket-cutover))
 - [x] Complete developer guide
 - [x] Complete user manual refresh (role-specific markdown guides, in-app left-nav manual layout, and current screenshot coverage including admin storage)
 - [x] Refresh token rotation
@@ -229,13 +229,13 @@ The current Fastify/React app now treats the following defaults as part of the m
 
 Target state: private S3 bucket for all image assets. Stages:
 
-1. **Compatibility mode (current):** keep uploads with `ACL: public-read` matching Meteor behavior
-2. **Introduce private read path:** add signed URL and/or backend proxy delivery
-3. **Staged DB migration:** backfill image references in batches with dry-run and rollback
-4. **Validation window:** verify rendering through new read path in staging
-5. **Bucket cutover:** enable private-bucket policy after confirmation
+1. **Fastify read path:** uploaded images are served through the app-relative `/uploads/<key>` route for all storage backends
+2. **Staged DB migration:** [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) / [`production_setup/sanitize-s3.sh`](production_setup/sanitize-s3.sh) dry-run and apply modes rewrite legacy public S3 URLs to `/uploads/<key>`
+3. **Validation window:** verify rendering of old profile images, old rich-text question images, and new uploads through the Fastify path
+4. **Bucket cutover:** remove public bucket-policy access, enable S3 Block Public Access, and optionally move to Object Ownership `Bucket owner enforced`
+5. **Post-cutover steady state:** keep Fastify as the reader for sanitized image URLs and treat Meteor as retired for that database copy
 
-A sanitization script ([`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js)) is available to perform step 2–3 in a dry-run + apply workflow. See the [Production Deployment](#production-deployment) section for details.
+The sanitization step now rewrites database references as well as optionally attempting an ACL pass. Once those URLs are rewritten, the database copy is considered cut over to Fastify because Meteor does not serve the `/uploads/<key>` path.
 
 ---
 
@@ -296,7 +296,8 @@ At each prompt the loaded default is shown in brackets. Press Enter to keep it, 
 | `setup.sh` | Interactive setup wizard — generates `.env`, configures replicas, TLS, JWT secrets |
 | `setup.sh --init-certs` | Obtain initial Let's Encrypt certificate via Certbot ACME challenge |
 | `init-from-legacy.sh` | Restore a legacy MeteorJS mongodump, run question-type migration, optionally sanitize S3 |
-| `sanitize-s3.js` | Switch S3 objects from `public-read` to `private` ACL (dry-run + apply modes) |
+| `sanitize-s3.js` | Rewrite legacy S3 image references to `/uploads/<key>` and optionally switch objects to private ACL (dry-run + apply modes) |
+| `sanitize-s3.sh` | Host-side wrapper that runs `sanitize-s3.js` inside the production server container |
 | `backup.sh` | Create compressed, timestamped MongoDB backup; prune old backups per retention policy |
 | `backup.sh --cron` | Silent mode for cron jobs (only prints errors) |
 | `restore.sh` | Restore database from a backup archive (interactive or specific file) |

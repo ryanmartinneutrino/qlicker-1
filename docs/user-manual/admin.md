@@ -113,6 +113,7 @@ Supported modes include:
 - Azure Blob storage
 
 The storage choice is saved in the database. New deployments start on local storage, and runtime `.env` values are not used for storage selection.
+Regardless of backend, Fastify serves stored images through its `/uploads/<key>` path. When cutting over legacy public S3 data, run the sanitize workflow from [production_setup/README.md](../../production_setup/README.md) after saving the S3 settings here.
 
 ### Storage workflow
 

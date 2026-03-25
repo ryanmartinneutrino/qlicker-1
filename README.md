@@ -98,6 +98,29 @@ Populate the database with sample users for testing:
 ./scripts/seed-db-docker.sh --reset
 ```
 
+### Loading a Legacy Dump in Development
+
+Use the explicit legacy-init wrappers when you want a dev database populated from the Meteor dump instead of sample users:
+
+```bash
+# Native MongoDB dev setup
+./scripts/init-from-legacy.sh
+
+# Docker Compose dev setup
+./scripts/init-from-legacy-docker.sh
+```
+
+Both scripts restore the selected dump from `legacydb/` and then apply the question-type migration automatically.
+
+If the legacy image data still points at public S3 URLs and you want to exercise the private-bucket cutover path too:
+
+```bash
+./scripts/init-from-legacy.sh --sanitize-s3
+./scripts/init-from-legacy-docker.sh --sanitize-s3
+```
+
+`--sanitize-s3` rewrites image references in MongoDB to Fastify's `/uploads/...` proxy path. Run that only on a database copy you intend Fastify to use; the legacy Meteor app should be treated as cut over once those URLs are rewritten.
+
 ### Changing a User Password (Dev/Testing)
 
 For development and testing, you can change any user's password directly in the database:
@@ -303,6 +326,8 @@ For the full setup, helper scripts, troubleshooting, and metadata details, see [
 | `scripts/qlicker.sh` | Service manager — `start`, `stop`, `restart`, `status`, `e2e [--install-browser]` |
 | `scripts/seed-db.sh` | Seed the database with test data (native) |
 | `scripts/seed-db-docker.sh` | Seed the database with test data (Docker) |
+| `scripts/init-from-legacy.sh` | Restore the legacy dump into the native dev DB, then apply question-type migration |
+| `scripts/init-from-legacy-docker.sh` | Restore the legacy dump into the Docker dev DB, then apply question-type migration |
 | `scripts/seed-db.js` | Node.js seeding logic used by the shell wrappers |
 | `scripts/changeuserpwd.sh` | Change a user's password from the CLI (dev/testing) |
 | `scripts/changeuserpwd.js` | Node.js logic for password change |
@@ -335,7 +360,7 @@ For production deployment, see the self-contained **[`production_setup/`](produc
 - **Interactive setup script** (`setup.sh`) to generate `.env` with domain, TLS, scaling, and JWT configuration
 - **Let's Encrypt integration** with automatic certificate renewal via Certbot
 - **Legacy database initialization** (`init-from-legacy.sh`) with question-type migration
-- **S3 privatization script** (`sanitize-s3.js`) to migrate public-read uploads to private ACL
+- **S3 privatization scripts** (`sanitize-s3.js`, `sanitize-s3.sh`) to rewrite legacy image URLs and migrate objects toward private-bucket mode
 - **Automated backups** (`backup.sh`) with retention and cron support
 - **Restore script** (`restore.sh`) for disaster recovery
 - **User management** (`manage-user.sh`) — create users, change passwords, promote roles
@@ -358,6 +383,8 @@ Qlicker supports three storage backends for uploaded images (profile photos, que
 
 The runtime storage backend is now selected from **Admin -> Storage** and saved in the database `Settings` document. New deployments always start on **local storage** by default. The application no longer requires storage environment variables at runtime, and once an admin saves storage settings in the UI those database values are authoritative.
 
+For all backends, Fastify now serves uploaded images through stable app-relative URLs under `/uploads/<key>`. New S3/Azure uploads use that path automatically. Legacy Meteor data may still contain direct public S3 URLs; use the sanitization flow in [`production_setup/README.md`](production_setup/README.md) before you lock the bucket down.
+
 ### Local Storage (default)
 
 No additional configuration is needed. Files are stored in the `server/uploads/` directory and served directly by Fastify.
@@ -367,8 +394,9 @@ No additional configuration is needed. Files are stored in the `server/uploads/`
 To use Amazon S3 (or any S3-compatible service such as MinIO), open **Admin -> Storage**, choose **Amazon S3**, and enter:
 
 1. **Create an S3 bucket** in your AWS account (or MinIO instance).
-2. **Create an IAM user** (or use an existing one) with programmatic access.
-3. **Attach a policy** granting `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on the bucket. Example policy:
+2. **If the legacy Meteor app still serves production traffic, leave current public reads in place until Fastify has been validated.** Do not remove public access from the live bucket before the DB/image cutover is complete.
+3. **Create an IAM user** (or use an existing one) with programmatic access.
+4. **Attach a policy** granting `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on the bucket. Example policy:
    ```json
    {
      "Version": "2012-10-17",
@@ -379,8 +407,10 @@ To use Amazon S3 (or any S3-compatible service such as MinIO), open **Admin -> S
      }]
    }
    ```
-4. **Copy the Access Key ID and Secret Access Key** from the IAM user credentials.
-5. **Enter the provider settings in the admin panel:** bucket, region, access key ID, secret access key, and optionally a custom endpoint plus path-style support for S3-compatible services.
+5. **Copy the Access Key ID and Secret Access Key** from the IAM user credentials.
+6. **Enter the provider settings in the admin panel:** bucket, region, access key ID, secret access key, and optionally a custom endpoint plus path-style support for S3-compatible services.
+7. **If you are cutting over legacy public S3 data to Fastify, run the S3 sanitization step against the Fastify database copy before removing public access.** That rewrites MongoDB image URLs to `/uploads/...` so the app can proxy reads from a private bucket.
+8. **After validation, lock the bucket down:** remove public bucket-policy access, enable S3 Block Public Access, and optionally set Object Ownership to `Bucket owner enforced`. If ACLs are disabled before the sanitizer runs, the script will still rewrite MongoDB URLs but the ACL pass will be skipped.
 
 ### Azure Blob Storage
 
@@ -398,6 +428,7 @@ The container will be created automatically if it does not exist (provided the a
 - Rich-text-editor images and profile uploads are resized on the client before upload to the admin-configured maximum width (`1920px` by default).
 - Profile photo uploads open a crop/rotate dialog and store a separate square thumbnail for avatar circles.
 - After any storage change, upload a test image from both the profile page and a rich-text editor to confirm the full image and thumbnail paths work as expected.
+- When migrating from legacy public S3 URLs, verify both old images and new uploads after the sanitize step. The old Meteor app should be considered retired once those DB URLs are rewritten to `/uploads/...`.
 
 ### Testing Storage Backends
 
@@ -440,7 +471,7 @@ Then configure Qlicker in **Admin -> Storage** with Azurite's well-known credent
 
 > **Note:** Azurite uses a different blob endpoint format (`http://127.0.0.1:10000/devstoreaccount1`). The upload plugin currently constructs Azure URLs using the standard `https://<account>.blob.core.windows.net` pattern. For production usage this is correct; for local Azurite testing, uploaded files can be accessed directly via the Azurite endpoint.
 
-> **Maintenance script exception:** [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) still reads `AWS_*` environment variables when you run that one-off migration tool. Those variables are no longer part of normal Qlicker runtime configuration.
+> **Maintenance script note:** [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) resolves S3 settings from the database `Settings` document first and accepts `AWS_*` variables as overrides when needed. Normal Fastify runtime storage selection still comes from the admin panel, not the process environment.
 
 ## Internationalization (i18n)
 
