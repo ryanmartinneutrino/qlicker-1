@@ -196,6 +196,47 @@ describe('SpeedGradingModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('focuses the points input when the modal opens', async () => {
+    const rows = buildRows();
+    render(
+      <SpeedGradingModal
+        open
+        onClose={vi.fn()}
+        rows={rows}
+        initialIndex={0}
+        activeQuestionId="q-sa"
+        onSaveGrade={vi.fn()}
+      />
+    );
+
+    const pointsInput = screen.getByRole('spinbutton', { name: /points/i });
+    await waitFor(() => {
+      expect(pointsInput).toHaveFocus();
+    });
+  });
+
+  it('returns focus to the points input after moving to the next student', async () => {
+    const rows = buildRows();
+    render(
+      <SpeedGradingModal
+        open
+        onClose={vi.fn()}
+        rows={rows}
+        initialIndex={0}
+        activeQuestionId="q-sa"
+        onSaveGrade={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    const pointsInput = await screen.findByRole('spinbutton', { name: /points/i });
+    await waitFor(() => {
+      expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+      expect(pointsInput).toHaveFocus();
+    });
+  });
+
   it('does not render when rows are empty', () => {
     const { container } = render(
       <SpeedGradingModal

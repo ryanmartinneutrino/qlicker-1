@@ -83,7 +83,7 @@ export default memo(function SpeedGradingModal({
   const [feedback, setFeedback] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const pointsRef = useRef(null);
+  const pointsInputRef = useRef(null);
   const touchStartRef = useRef(null);
 
   // Reset state when modal opens or rows/initialIndex change
@@ -104,14 +104,19 @@ export default memo(function SpeedGradingModal({
     setFeedback(mark?.feedback || '');
   }
 
+  const focusPointsInput = useCallback(() => {
+    if (!open) return;
+    window.requestAnimationFrame(() => {
+      if (!pointsInputRef.current) return;
+      pointsInputRef.current.focus();
+      pointsInputRef.current.select?.();
+    });
+  }, [open]);
+
   function navigateTo(nextIdx) {
     if (nextIdx < 0 || nextIdx >= rows.length) return;
     setCurrentIndex(nextIdx);
     loadRowDraft(nextIdx);
-    // Focus points input after navigation
-    setTimeout(() => {
-      pointsRef.current?.querySelector('input')?.focus();
-    }, 50);
   }
 
   function validatePoints() {
@@ -149,17 +154,12 @@ export default memo(function SpeedGradingModal({
     try {
       await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedback || '' });
       if (currentIndex < rows.length - 1) {
-        const nextIdx = currentIndex + 1;
-        setCurrentIndex(nextIdx);
-        loadRowDraft(nextIdx);
-        setTimeout(() => {
-          pointsRef.current?.querySelector('input')?.focus();
-        }, 50);
+        navigateTo(currentIndex + 1);
       }
     } finally {
       setSaving(false);
     }
-  }, [currentIndex, currentRow, feedback, onSaveGrade, points, rows.length, saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, currentRow, feedback, navigateTo, onSaveGrade, points, rows.length, saving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -224,13 +224,10 @@ export default memo(function SpeedGradingModal({
     };
   }, [open, isMobile, currentIndex, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Focus points input on open
   useEffect(() => {
-    if (!open) return;
-    setTimeout(() => {
-      pointsRef.current?.querySelector('input')?.focus();
-    }, 100);
-  }, [open]);
+    if (!open || !currentRow) return;
+    focusPointsInput();
+  }, [currentRow, focusPointsInput, open]);
 
   const outOfDisplay = useMemo(() => {
     if (!currentRow?.mark) return '';
@@ -310,7 +307,7 @@ export default memo(function SpeedGradingModal({
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <TextField
-              ref={pointsRef}
+              inputRef={pointsInputRef}
               size="small"
               type="number"
               value={points}

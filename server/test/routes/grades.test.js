@@ -540,6 +540,104 @@ describe('Grading routes', () => {
     expect(restoreAutomaticGradeValue.json().grade.value).toBe(75);
   });
 
+  it('zeros manual-grading marks when question points drop to zero and reopens grading when points return', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'zero-points-toggle',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Zero points toggle session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: true,
+        joined: students.map((student) => student._id),
+        questions: [question._id],
+      },
+    });
+
+    await Response.create([
+      {
+        questionId: question._id,
+        studentUserId: students[0]._id,
+        attempt: 1,
+        answer: 'First response',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        questionId: question._id,
+        studentUserId: students[1]._id,
+        attempt: 1,
+        answer: 'Second response',
+        createdAt: new Date('2026-01-01T00:01:00.000Z'),
+      },
+    ]);
+
+    const initialRecalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(initialRecalc.statusCode).toBe(200);
+
+    const initialGrades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(initialGrades).toHaveLength(2);
+    expect(initialGrades.every((grade) => grade.marks[0]?.outOf === 1)).toBe(true);
+    expect(initialGrades.every((grade) => grade.marks[0]?.needsGrading === true)).toBe(true);
+
+    const manuallyGraded = initialGrades.find((grade) => String(grade.userId) === String(students[0]._id));
+    const setManualMark = await authenticatedRequest(
+      app,
+      'PATCH',
+      `/api/v1/grades/${manuallyGraded._id}/marks/${question._id}`,
+      {
+        token: profToken,
+        payload: { points: 1, feedback: 'Looks good.' },
+      }
+    );
+    expect(setManualMark.statusCode).toBe(200);
+
+    await Question.findByIdAndUpdate(question._id, {
+      $set: { 'sessionOptions.points': 0 },
+    });
+
+    const zeroPointRecalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(zeroPointRecalc.statusCode).toBe(200);
+
+    const zeroPointGrades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(zeroPointGrades.every((grade) => grade.needsGrading === false)).toBe(true);
+    expect(zeroPointGrades.every((grade) => grade.marks[0]?.points === 0)).toBe(true);
+    expect(zeroPointGrades.every((grade) => grade.marks[0]?.outOf === 0)).toBe(true);
+    expect(zeroPointGrades.every((grade) => grade.marks[0]?.needsGrading === false)).toBe(true);
+
+    await Question.findByIdAndUpdate(question._id, {
+      $set: { 'sessionOptions.points': 2 },
+    });
+
+    const restoredPointRecalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(restoredPointRecalc.statusCode).toBe(200);
+
+    const restoredGrades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(restoredGrades.every((grade) => grade.needsGrading === true)).toBe(true);
+    expect(restoredGrades.every((grade) => grade.marks[0]?.points === 0)).toBe(true);
+    expect(restoredGrades.every((grade) => grade.marks[0]?.outOf === 2)).toBe(true);
+    expect(restoredGrades.every((grade) => grade.marks[0]?.needsGrading === true)).toBe(true);
+  });
+
   it('enforces student visibility restrictions for course/session grades and blocks student recalculation', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 

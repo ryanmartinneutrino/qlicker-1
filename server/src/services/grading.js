@@ -830,7 +830,11 @@ export async function recalculateSessionGrades({
 
       const existingMarkIsManual = existingMark?.automatic === false;
 
-      if (existingMarkIsManual) {
+      if (outOf <= 0) {
+        markPoints = 0;
+        automaticMark = true;
+        markNeedsGrading = false;
+      } else if (existingMarkIsManual) {
         automaticMark = false;
         markPoints = toFiniteNumber(existingMark?.points, 0);
         markNeedsGrading = !!existingMark?.needsGrading;

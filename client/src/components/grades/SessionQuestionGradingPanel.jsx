@@ -198,6 +198,12 @@ function getQuestionPoints(question) {
   return numeric;
 }
 
+function getEffectiveQuestionOutOf(question, mark = null) {
+  const markOutOf = Number(mark?.outOf);
+  if (Number.isFinite(markOutOf) && markOutOf >= 0) return markOutOf;
+  return getQuestionPoints(question);
+}
+
 function buildSessionOptionsPayload(sessionOptions = {}, nextPoints) {
   const payload = { points: nextPoints };
 
@@ -561,23 +567,55 @@ export default function SessionQuestionGradingPanel({
   const [selectedStudentIds, setSelectedStudentIds] = useState({});
   const [speedGradingOpen, setSpeedGradingOpen] = useState(false);
   const [speedGradingStartIndex, setSpeedGradingStartIndex] = useState(0);
+  const latestGradesSessionRef = useRef(sessionId);
+  const latestGradesRequestRef = useRef(0);
+
+  useEffect(() => {
+    latestGradesSessionRef.current = sessionId;
+    latestGradesRequestRef.current += 1;
+    setGradesByStudentId({});
+    setDraftByStudentId({});
+    setSavingByStudentId({});
+    setSelectedStudentIds({});
+  }, [sessionId]);
 
   const fetchSessionGrades = useCallback(async () => {
+    const requestId = latestGradesRequestRef.current + 1;
+    latestGradesRequestRef.current = requestId;
+    const requestSessionId = sessionId;
     setLoading(true);
     setError('');
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/grades`);
+      if (
+        latestGradesSessionRef.current !== requestSessionId
+        || latestGradesRequestRef.current !== requestId
+      ) {
+        return;
+      }
       const next = {};
       (data?.grades || []).forEach((grade) => {
         next[String(grade.userId)] = grade;
       });
       setGradesByStudentId(next);
     } catch (err) {
+      if (
+        latestGradesSessionRef.current !== requestSessionId
+        || latestGradesRequestRef.current !== requestId
+      ) {
+        return;
+      }
       setError(err.response?.data?.message || t('grades.questionPanel.failedLoadGrades'));
     } finally {
+      if (
+        latestGradesSessionRef.current !== requestSessionId
+        || latestGradesRequestRef.current !== requestId
+      ) {
+        return;
+      }
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, t]);
 
   useEffect(() => {
     fetchSessionGrades();
@@ -639,11 +677,13 @@ export default function SessionQuestionGradingPanel({
           const studentId = String(student?.studentId || '');
           const grade = gradesByStudentId[studentId] || null;
           const mark = (grade?.marks || []).find((entry) => String(entry?.questionId) === questionId) || null;
+          const effectiveOutOf = getEffectiveQuestionOutOf(question, mark);
           const questionResult = (student?.questionResults || []).find(
             (result) => String(result?.questionId) === questionId
           );
           const latestResponse = getLatestResponse(questionResult?.responses || []);
           if (!latestResponse) return;
+          if (effectiveOutOf <= 0) return;
           if (mark && !mark?.needsGrading) return;
           needsGradingCount += 1;
         });
@@ -681,8 +721,12 @@ export default function SessionQuestionGradingPanel({
       const latestResponse = getLatestResponse(questionResult?.responses || []);
       const responseSummary = buildResponseSummary(activeQuestion, latestResponse, t('grades.questionPanel.noAnswer'));
       const displayName = formatDisplayName(student, t('common.unknown'));
-      const markNeedsGrading = !!mark?.needsGrading;
-      const needsManualGrading = questionNeedsManualGrading && !!latestResponse && (!mark || markNeedsGrading);
+      const effectiveOutOf = getEffectiveQuestionOutOf(activeQuestion, mark);
+      const markNeedsGrading = effectiveOutOf > 0 && !!mark?.needsGrading;
+      const needsManualGrading = effectiveOutOf > 0
+        && questionNeedsManualGrading
+        && !!latestResponse
+        && (!mark || markNeedsGrading);
       const rowNeedsGrading = markNeedsGrading || needsManualGrading;
 
       return {
