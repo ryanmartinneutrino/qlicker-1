@@ -244,15 +244,32 @@ export default function Profile() {
   const nameLocked = ssoManaged;
   const passwordLocked = ssoManaged;
   const initials = `${user?.profile?.firstname?.[0] ?? ''}${user?.profile?.lastname?.[0] ?? ''}`.toUpperCase();
+  const emailAddress = user?.emails?.[0]?.address || user?.email || '';
+  const primaryRole = user?.profile?.roles?.[0] || user?.role || '';
+
+  useEffect(() => {
+    if (!user || profileHydratedRef.current) return;
+
+    const fallbackProfile = normalizeProfile(user.profile);
+    setProfile(fallbackProfile);
+    lastSavedProfileRef.current = fallbackProfile;
+    profileHydratedRef.current = true;
+
+    const fallbackLocale = user.locale || '';
+    setUserLocale(fallbackLocale);
+    if (fallbackLocale) {
+      i18n.changeLanguage(fallbackLocale);
+      localStorage.setItem('qlicker_locale', fallbackLocale);
+    }
+
+    setLoading(false);
+  }, [user]);
 
   useEffect(() => {
     let active = true;
 
-    Promise.all([
-      apiClient.get('/users/me'),
-      getPublicSettings(),
-    ])
-      .then(([userResponse, settings]) => {
+    apiClient.get('/users/me')
+      .then((userResponse) => {
         if (!active) return;
         const loadedUser = userResponse.data.user || userResponse.data;
         const normalizedProfile = normalizeProfile(loadedUser.profile);
@@ -279,10 +296,25 @@ export default function Profile() {
         }
       });
 
+    getPublicSettings()
+      .then((settings) => {
+        if (active) {
+          setPublicSettings(settings);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPublicSettings({
+            SSO_enabled: false,
+            maxImageWidth: getDefaultMaxImageWidth(),
+          });
+        }
+      });
+
     return () => {
       active = false;
     };
-  }, [t]);
+  }, []);
 
   useEffect(() => () => {
     profileHydratedRef.current = false;
@@ -540,7 +572,7 @@ export default function Profile() {
     <Box sx={{ p: 3, maxWidth: 600 }}>
       <Typography variant="h4" gutterBottom>{t('profile.title')}</Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
-        {user?.email} &middot; {user?.role}
+        {emailAddress} {primaryRole ? <>&middot; {primaryRole}</> : null}
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
