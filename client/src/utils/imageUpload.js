@@ -1,5 +1,6 @@
 const RESIZABLE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const APPROXIMATE_JPEG_BYTES_PER_PIXEL = 0.22;
+export const AVATAR_THUMBNAIL_SIZE_PX = 512;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -187,10 +188,10 @@ function drawRotatedImageToCanvas(ctx, image, rotation) {
 }
 
 export async function createAvatarThumbnailFile(source, crop, {
-  outputSize = 256,
+  outputSize = AVATAR_THUMBNAIL_SIZE_PX,
   fileName = 'profile-thumbnail.jpg',
   type = 'image/jpeg',
-  quality = 0.88,
+  quality = 0.92,
 } = {}) {
   const image = await loadImage(source);
   const width = image.naturalWidth || 0;

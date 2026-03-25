@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import Settings from '../../src/models/Settings.js';
@@ -348,6 +349,46 @@ describe('PATCH /api/v1/users/me/image', () => {
       },
     });
     expect(badThumbnailRes.statusCode).toBe(400);
+  });
+});
+
+// ---------- POST /api/v1/users/me/image/thumbnail ----------
+describe('POST /api/v1/users/me/image/thumbnail', () => {
+  it('can recrop a legacy local profile image even when no images document exists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'legacy-avatar@example.com' });
+    const token = await getAuthToken(app, user);
+    const sourceKey = 'legacy-avatar-source.png';
+    const sourceUrl = `/uploads/${sourceKey}`;
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y0Z8AAAAASUVORK5CYII=',
+      'base64'
+    );
+
+    await fs.writeFile(`${app.uploadsDir}/${sourceKey}`, pngBuffer);
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'profile.profileImage': sourceUrl,
+        'profile.profileThumbnail': sourceUrl,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/users/me/image/thumbnail', {
+      token,
+      payload: {
+        rotation: 0,
+        cropX: 0,
+        cropY: 0,
+        cropSize: 1,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().profile.profileImage).toBe(sourceUrl);
+    expect(res.json().profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+
+    const updated = await User.findById(user._id);
+    expect(updated.profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
   });
 });
 

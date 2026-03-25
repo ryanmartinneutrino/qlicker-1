@@ -13,7 +13,7 @@ import {
 } from '../utils/authPolicy.js';
 import { isSafeProfileImageUrl } from '../utils/url.js';
 
-const PROFILE_THUMBNAIL_SIZE_PX = 256;
+const PROFILE_THUMBNAIL_SIZE_PX = 512;
 
 async function getAuthSettings() {
   return Settings.findOne().select('SSO_enabled').lean();
@@ -65,6 +65,39 @@ function normalizeQuarterTurnRotation(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function deriveImageKeyFromUrl(sourceUrl = '') {
+  const rawUrl = String(sourceUrl || '').trim();
+  if (!rawUrl) return '';
+
+  const decodeKey = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
+  try {
+    const parsed = rawUrl.startsWith('/')
+      ? new URL(rawUrl, 'http://localhost')
+      : new URL(rawUrl);
+    const pathname = String(parsed.pathname || '');
+    if (pathname.startsWith('/uploads/')) {
+      return decodeKey(pathname.slice('/uploads/'.length));
+    }
+
+    const segments = pathname.split('/').filter(Boolean);
+    return segments.length > 0 ? decodeKey(segments[segments.length - 1]) : '';
+  } catch {
+    if (rawUrl.startsWith('/uploads/')) {
+      return decodeKey(rawUrl.slice('/uploads/'.length).split('?')[0]);
+    }
+    const stripped = rawUrl.split('?')[0].split('#')[0];
+    const segments = stripped.split('/').filter(Boolean);
+    return segments.length > 0 ? decodeKey(segments[segments.length - 1]) : '';
+  }
 }
 
 const updateProfileSchema = {
@@ -337,8 +370,14 @@ export default async function userRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Stored profile image URL is invalid' });
       }
 
-      const sourceImage = await Image.findOne({ url: sourceUrl }).lean();
-      if (!sourceImage?.key) {
+      const fallbackKey = deriveImageKeyFromUrl(sourceUrl);
+      const sourceImage = await Image.findOne(
+        fallbackKey
+          ? { $or: [{ url: sourceUrl }, { key: fallbackKey }] }
+          : { url: sourceUrl }
+      ).lean();
+      const sourceKey = sourceImage?.key || fallbackKey;
+      if (!sourceKey) {
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'The current profile image cannot be re-cropped. Please upload it again.',
@@ -347,9 +386,9 @@ export default async function userRoutes(app) {
 
       let sourceBuffer;
       try {
-        sourceBuffer = await app.getFileBuffer(sourceImage.key);
+        sourceBuffer = await app.getFileBuffer(sourceKey);
       } catch (err) {
-        request.log.error({ err, imageKey: sourceImage.key }, 'Failed to read source profile image');
+        request.log.error({ err, imageKey: sourceKey }, 'Failed to read source profile image');
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'The current profile image could not be loaded for thumbnail generation.',
@@ -378,7 +417,7 @@ export default async function userRoutes(app) {
         const thumbnailBuffer = await rotatedImage
           .extract({ left: cropX, top: cropY, width: cropSize, height: cropSize })
           .resize(PROFILE_THUMBNAIL_SIZE_PX, PROFILE_THUMBNAIL_SIZE_PX, { fit: 'cover' })
-          .jpeg({ quality: 88 })
+          .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer();
 
         const { url, key } = await app.uploadFile(thumbnailBuffer, 'profile-thumbnail.jpg', 'image/jpeg');
