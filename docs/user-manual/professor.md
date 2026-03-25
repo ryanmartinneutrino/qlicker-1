@@ -151,6 +151,11 @@ From the session editor you can:
 - Before publishing a quiz, verify the dates, reviewability setting, and final ordering.
 - If a question already has response data, expect some edits to be restricted to protect past results.
 
+### Session list navigation
+
+- Clicking the main body of a session card opens the session editor while the session is still draft, upcoming, or live.
+- Clicking the main body of an ended session card opens the review page instead, so grading and post-session analysis are one tap away.
+
 ## Use the question library and reuse tools
 
 The question library helps with both preparation and reuse.
@@ -214,9 +219,21 @@ Use the grading workflows to:
 - edit feedback and point values
 - export course grades to CSV
 
+From the session-review grading tab you can also change how many points a question is worth. Qlicker warns before proceeding because that action triggers a full session grade recalculation. Any marks that were manually assigned stay preserved.
+
 Short-answer questions typically require manual grading, while many objective question types can be autograded.
 
 See also the dedicated [grading guide](grading.md).
+
+## Profile and account settings
+
+From the account menu you can update your language, profile details, password, and avatar.
+
+Keep in mind:
+
+- uploading a profile picture opens a crop/rotate dialog so you can choose the square avatar thumbnail
+- when institution-wide SSO is enabled, name and password fields stay locked unless an administrator has granted your account the email-login exception
+- password-reset email follows the same rule: if the account is SSO-managed without that exception, use the SSO sign-in route or contact an administrator
 
 ## Troubleshooting checklist
 

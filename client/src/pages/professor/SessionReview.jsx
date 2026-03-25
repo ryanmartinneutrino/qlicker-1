@@ -4,7 +4,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar, Collapse,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, TableSortLabel, Tabs, Tab, LinearProgress, TextField, Autocomplete,
+  TableHead, TableRow, TableSortLabel, LinearProgress, TextField, Autocomplete,
 } from '@mui/material';
 import {
   Download as DownloadIcon,
@@ -27,6 +27,7 @@ import SessionQuestionGradingPanel from '../../components/grades/SessionQuestion
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { buildCourseTitle } from '../../utils/courseTitle';
 
 // ---------------------------------------------------------------------------
@@ -1059,26 +1060,33 @@ export default function SessionReview() {
       ) : null}
 
       {/* Tabs */}
-      <Tabs
+      <ResponsiveTabsNavigation
         value={tab}
-        onChange={(_, newTab) => setTab(newTab)}
-        aria-label={t('professor.sessionReview.sessionReviewTabs')}
-      >
-        <Tab label={t('professor.sessionReview.results')} />
-        <Tab label={t('professor.sessionReview.responseData')} />
-        <Tab label={t('professor.sessionReview.students')} />
-        <Tab
-          label={(
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-              <span>{t('professor.sessionReview.grading')}</span>
-              {hasOutstandingManualGrading && (
-                <Chip size="small" color="error" label={t('professor.sessionReview.needsGradingCount', { count: gradingNeedsSummary.marks })} />
-              )}
-            </Box>
-          )}
-          sx={hasOutstandingManualGrading ? { color: 'error.main !important', fontWeight: 700 } : undefined}
-        />
-      </Tabs>
+        onChange={setTab}
+        ariaLabel={t('professor.sessionReview.sessionReviewTabs')}
+        dropdownLabel={t('common.view')}
+        dropdownSx={{ mb: 1.5 }}
+        tabs={[
+          { value: 0, label: t('professor.sessionReview.results') },
+          { value: 1, label: t('professor.sessionReview.responseData') },
+          { value: 2, label: t('professor.sessionReview.students') },
+          {
+            value: 3,
+            label: (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <span>{t('professor.sessionReview.grading')}</span>
+                {hasOutstandingManualGrading && (
+                  <Chip size="small" color="error" label={t('professor.sessionReview.needsGradingCount', { count: gradingNeedsSummary.marks })} />
+                )}
+              </Box>
+            ),
+            dropdownLabel: t('professor.sessionReview.grading'),
+            tabProps: {
+              sx: hasOutstandingManualGrading ? { color: 'error.main !important', fontWeight: 700 } : undefined,
+            },
+          },
+        ]}
+      />
 
       {/* Questions tab – all questions shown at once with inline stats */}
       <TabPanel value={tab} index={0}>
@@ -1478,6 +1486,7 @@ export default function SessionReview() {
           session={session}
           questions={questions.filter((question) => !isSlideType(normalizeQuestionType(question)))}
           studentResults={groupFilteredStudentResults}
+          onSessionDataRefresh={fetchResults}
           onUngradedSummaryChange={handleUngradedSummaryChange}
           filterSlot={groupCategories.length > 0 ? (
             <>

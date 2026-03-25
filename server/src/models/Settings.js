@@ -26,6 +26,16 @@ const SettingsSchema = new mongoose.Schema(
     SSO_institutionName: { type: String, default: '' },
     SSO_roleIdentifier: { type: String, default: '' },
     SSO_roleProfName: { type: String, default: '' },
+    SSO_wantAssertionsSigned: { type: Boolean, default: false },
+    SSO_wantAuthnResponseSigned: { type: Boolean, default: false },
+    SSO_acceptedClockSkewMs: { type: Number, default: 60 * 1000 },
+    SSO_disableRequestedAuthnContext: { type: Boolean, default: true },
+    SSO_authnContext: { type: String, default: '' },
+    SSO_routeMode: {
+      type: String,
+      enum: ['legacy', 'api_v1'],
+      default: 'legacy',
+    },
 
     // Storage config (flat fields matching admin UI)
     storageType: {
@@ -68,7 +78,8 @@ const SettingsSchema = new mongoose.Schema(
 
     // Legacy extra fields (preserved so they aren't stripped on save)
     maxImageSize: { type: Number, default: 0 },
-    maxImageWidth: { type: Number, default: 0 },
+    maxImageWidth: { type: Number, default: 1920 },
+    avatarThumbnailSize: { type: Number, default: 512 },
   },
   {
     collection: 'settings',

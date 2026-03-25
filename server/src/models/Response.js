@@ -13,6 +13,8 @@ const ResponseSchema = new mongoose.Schema(
     mark: { type: Number },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date },
+    submittedAt: { type: Date },
+    submittedIpAddress: { type: String, default: '' },
     editable: { type: Boolean, default: false },
   },
   {

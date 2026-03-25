@@ -489,4 +489,65 @@ describe('SessionQuestionGradingPanel', () => {
     await screen.findByText('Ada Lovelace');
     expect(screen.queryByText(/fast grading interface/i)).not.toBeInTheDocument();
   });
+
+  it('updates question points and triggers a session grade recalculation after confirmation', async () => {
+    apiClient.patch.mockResolvedValueOnce({
+      data: {
+        question: {
+          _id: 'q-mc',
+          sessionOptions: { points: 6 },
+        },
+      },
+    });
+
+    const onSessionDataRefresh = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-mc',
+            type: 0,
+            content: '<p>Pick one</p>',
+            plainText: 'Pick one',
+            sessionOptions: { points: 1 },
+            options: [
+              { answer: 'Correct', plainText: 'Correct', correct: true },
+              { answer: 'Wrong', plainText: 'Wrong', correct: false },
+            ],
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-mc', responses: [{ attempt: 1, answer: '0' }] }],
+          },
+        ]}
+        onSessionDataRefresh={onSessionDataRefresh}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    fireEvent.change(screen.getByLabelText(/question points/i), { target: { value: '6' } });
+    fireEvent.click(screen.getByRole('button', { name: /update question points/i }));
+    fireEvent.click(screen.getByRole('button', { name: /proceed/i }));
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith('/questions/q-mc', {
+        sessionOptions: { points: 6 },
+      });
+      expect(apiClient.post).toHaveBeenCalledWith('/sessions/session-1/grades/recalculate', {
+        missingOnly: false,
+      });
+    });
+
+    expect(onSessionDataRefresh).toHaveBeenCalled();
+  });
 });

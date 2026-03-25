@@ -13,6 +13,7 @@
     "create": "Create",
     "copy": "Copy",
     "view": "View",
+    "proceed": "Proceed",
     "search": "Search",
     "retry": "Retry",
     "or": "or",
@@ -121,6 +122,7 @@
     "resetEmailFailed": "Failed to send reset email. Please try again.",
     "sending": "Sending…",
     "sendResetLink": "Send Reset Link",
+    "forgotPasswordSsoNotice": "When SSO is enabled, password-reset email is available only for accounts that an administrator has explicitly allowed to sign in by email.",
     "ssoDefault": "SSO"
   },
   "resetPassword": {
@@ -151,9 +153,16 @@
     "uploading": "Uploading…",
     "uploadPhoto": "Upload Photo",
     "personalInfo": "Personal Information",
-    "ssoNameManagedNote": "Your name is managed by your SSO provider and cannot be changed here.",
-    "ssoPasswordManagedNote": "Password changes are unavailable while you are signed in through SSO.",
-    "ssoEmailLoginApprovalNote": "This account was created through SSO. An administrator must approve email login before password reset or email-based sign-in can be used.",
+    "adjustPhoto": "Adjust profile photo",
+    "photoCropHelp": "Drag the image to choose the part that appears in your avatar. Rotation changes the avatar thumbnail only; your full-size photo stays unchanged.",
+    "profileImagePreview": "Profile image preview",
+    "rotateLeft": "Rotate image left",
+    "rotateRight": "Rotate image right",
+    "photoClickHelp": "Click your current photo to adjust the avatar thumbnail, or upload a new image to replace it.",
+    "openPhotoEditor": "Open profile photo editor",
+    "ssoNameManagedNote": "Name changes are disabled while institution-wide SSO is enforcing sign-in for this account.",
+    "ssoPasswordManagedNote": "Password changes are disabled while institution-wide SSO is enforcing sign-in for this account.",
+    "ssoEmailLoginApprovalNote": "An administrator must allow email login for this account before password reset or email-based sign-in can be used.",
     "firstName": "First Name",
     "lastName": "Last Name",
     "employeeNumber": "Employee Number",
@@ -238,14 +247,38 @@
       "userPropertiesHelp": "Toggle additional account permissions for this user.",
       "userPropertiesUpdated": "User properties updated",
       "failedUpdateUserProperties": "Failed to update user properties",
+      "passwordReset": "Password reset",
+      "failedResetPassword": "Failed to reset password",
+      "resetPassword": "Reset password",
+      "resetPasswordAction": "Reset password",
+      "resetPasswordHelp": "Set a new local password for this user. This takes effect immediately.",
+      "resetPasswordNeedsEmailLogin": "A local password can be set now, but the user still cannot sign in by email until email login is allowed.",
+      "newPassword": "New Password",
+      "confirmNewPassword": "Confirm New Password",
+      "passwordsNoMatch": "New passwords do not match.",
+      "passwordTooShort": "New passwords must be at least 8 characters long.",
       "openUserProperties": "Open user properties for {{name}}",
       "canPromote": "Can promote other professors",
       "canPromoteStudentDisabled": "Student-only accounts cannot keep the can-promote permission.",
       "allowEmailLogin": "Allow email login",
-      "allowEmailLoginHelp": "Enable email login and password reset for this SSO-created account.",
+      "allowEmailLoginHelp": "Enable local email sign-in and password reset for this account while SSO is enabled.",
+      "allowEmailLoginDisabledUntilSso": "This exception matters only when institution-wide SSO is enabled.",
+      "allowEmailLoginAdminAlwaysEnabled": "Admin accounts always retain email login access.",
       "allowEmailLoginNotNeeded": "Email login approval only applies to accounts that were created through SSO.",
       "ssoCreatedAccount": "Created through SSO",
       "emailLoginDisabled": "Email login disabled",
+      "sessionActivity": "Session activity",
+      "loggedInNow": "Logged in now",
+      "notLoggedInNow": "Not logged in",
+      "currentSessionsCount": "{{count}} current session(s)",
+      "sessionNumber": "Session {{number}}",
+      "sessionLoggedInAt": "Logged in: {{value}}",
+      "sessionLastSeenAt": "Last seen: {{value}}",
+      "sessionExpiresAt": "Expires: {{value}}",
+      "lastLoginValue": "Last login: {{value}}",
+      "ipAddressValue": "IP address: {{value}}",
+      "ipUnavailable": "Unavailable",
+      "unknownTime": "Unknown time",
       "never": "Never",
       "cannotChangeOwnRole": "You cannot change your own role",
       "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?",
@@ -254,6 +287,11 @@
     },
     "storage": {
       "storageType": "Storage Type",
+      "databaseManagedHelp": "Storage provider settings are saved in the database. New deployments start on local storage by default until an administrator switches to S3 or Azure here.",
+      "maxImageWidth": "Maximum upload width (px)",
+      "maxImageWidthHelp": "Images uploaded from the profile page and rich-text editors are resized to this width before upload. Approximate 16:9 JPEG size: {{size}}.",
+      "avatarThumbnailSize": "Avatar thumbnail size (px)",
+      "avatarThumbnailSizeHelp": "Profile-photo thumbnails are generated at this square size. Larger values keep avatars sharper. Approximate square JPEG size: {{size}}.",
       "local": "Local",
       "s3": "Amazon S3",
       "azure": "Azure Blob Storage",
@@ -266,6 +304,40 @@
       "storageAccount": "Storage Account",
       "storageAccessKey": "Storage Access Key",
       "storageContainer": "Storage Container"
+    },
+    "sso": {
+      "enable": "Enable SSO",
+      "entrypoint": "IdP entry point URL",
+      "logoutUrl": "IdP logout URL",
+      "entityId": "Entity ID",
+      "identifierFormat": "Identifier format",
+      "institutionName": "Institution name",
+      "emailIdentifier": "Email identifier",
+      "firstNameIdentifier": "First name identifier",
+      "lastNameIdentifier": "Last name identifier",
+      "roleIdentifier": "Role identifier",
+      "roleProfName": "Professor role name for auto-promotion",
+      "studentNumberIdentifier": "Student number identifier",
+      "cert": "IdP certificate (single string, no BEGIN/END)",
+      "privCert": "SP public certificate",
+      "privKey": "SP private key",
+      "showAdvanced": "Advanced (dangerous) settings",
+      "hideAdvanced": "Hide advanced settings",
+      "advancedWarning": "These settings change how Qlicker validates SAML responses and which callback/logout routes it presents to the IdP. Change them only when your IdP requires it.",
+      "routeMode": "Presented route set",
+      "routeModeHelp": "Choose whether metadata, AuthnRequests, and logout flows present the legacy /SSO/SAML2 routes or the newer /api/v1/auth/sso routes to the IdP.",
+      "routeModeLegacy": "Legacy /SSO/SAML2 routes",
+      "routeModeApiV1": "New /api/v1/auth routes",
+      "wantAssertionsSigned": "Require signed assertions",
+      "wantAssertionsSignedHelp": "Default is off for legacy compatibility. Turn this on only if your IdP always signs each Assertion.",
+      "wantAuthnResponseSigned": "Require signed response envelope",
+      "wantAuthnResponseSignedHelp": "Default is off for legacy compatibility. Turn this on only if your IdP always signs the top-level SAML Response.",
+      "acceptedClockSkewMs": "Accepted clock skew (ms)",
+      "acceptedClockSkewMsHelp": "Default is 60000 ms. Use -1 to disable clock-skew checking entirely, or a smaller value for stricter timing validation.",
+      "disableRequestedAuthnContext": "Disable requested authn context",
+      "disableRequestedAuthnContextHelp": "Default is on for Microsoft Entra compatibility. Turn it off only if your IdP requires a specific AuthnContext in the request.",
+      "authnContext": "Requested authn context",
+      "authnContextHelp": "Optional when requested authn context is enabled. Enter one or more values separated by commas or new lines."
     },
     "failedLoadSettings": "Failed to load settings",
     "failedSaveSettings": "Failed to save settings.",
@@ -1308,6 +1380,14 @@
       "response": "Response",
       "mark": "Mark",
       "pointsValue": "{{count}} pts",
+      "questionPoints": "Question points",
+      "updateQuestionPoints": "Update question points",
+      "updateQuestionPointsHelp": "Changing this value re-runs the session grade calculation. Manual overrides are preserved.",
+      "questionPointsUpdated": "Question points updated and grades recalculated.",
+      "failedUpdateQuestionPoints": "Failed to update question points.",
+      "confirmQuestionPointsTitle": "Recalculate grades after changing question points?",
+      "confirmQuestionPointsMessage": "This question will change from {{current}} to {{next}} point(s). Qlicker will immediately re-calculate the session grades.",
+      "confirmQuestionPointsHelp": "Any manually assigned marks stay as-is; only automatic calculations are refreshed.",
       "onlyWithResponses": "Only with responses",
       "noSelectedRows": "No selected rows can be updated.",
       "selectAllFiltered": "Select all filtered students ({{count}})",
@@ -1508,10 +1588,10 @@
     "admin": {
       "title": "Admin user manual",
       "intro": "Use this guide when configuring Qlicker for your institution or helping instructors and students.",
-      "summary": "The admin dashboard saves after short pauses, so review sensitive values like SSO certificates, storage credentials, and video settings carefully before leaving a tab.",
+      "summary": "The admin dashboard saves after short pauses, so review sensitive values like SSO certificates, storage credentials, 2-hour session defaults, and video settings carefully before leaving a tab.",
       "quickStart": [
         "Confirm institution-wide defaults in Settings before a new term starts.",
-        "Configure storage, SSO, and video before onboarding users when your deployment depends on shared services.",
+        "Configure storage, SSO, and video in the admin UI before onboarding users when your deployment depends on shared services.",
         "Use the Users and Courses tabs to verify that roles, enrollments, and active courses match reality."
       ],
       "sections": [
@@ -1520,7 +1600,7 @@
           "subtitle": "Most admin problems come from a small mismatch between expected field formats and the environment.",
           "bullets": [
             "Run the server, client, and database with the deployment environment values you actually plan to support before testing admin workflows.",
-            "Allowed email domains are a comma-separated list; login token expiry is a whole number of minutes; locale, date format, and time format become global defaults.",
+            "Allowed email domains are a comma-separated list; login/session expiry is a whole number of minutes; locale, date format, and time format become global defaults.",
             "SSO values are plain text fields for URLs, entity IDs, and attribute names. Certificates and keys should be pasted exactly as your identity provider supplies them.",
             "Storage forms expect the provider-specific fields shown in the UI, and you should always confirm the setup by uploading an image afterward."
           ],
@@ -1533,12 +1613,15 @@
         },
         {
           "title": "Configure local, S3, or Azure storage correctly",
-          "subtitle": "Storage must be configured both in Qlicker and in the cloud provider itself.",
+          "subtitle": "Storage now lives in the database, but the cloud provider still has to be ready.",
           "bullets": [
+            "New deployments start on local storage by default, and the selected backend is saved in Qlicker's Settings document rather than in runtime environment variables.",
             "Local storage is the simplest option, but the server environment must preserve uploaded files safely across restarts and deployments.",
             "Amazon S3 mode needs bucket, region, access key ID, secret key, and optional endpoint plus path-style support for compatible services such as MinIO.",
             "Azure Blob mode needs storage account, access key, and container name. The bucket or container must already exist and allow the app to read and write.",
-            "After saving storage changes, upload a sample image from the rich-text editor and confirm that it appears again in review pages."
+            "Set the maximum upload width to control image resizing before upload. The default is 1920px.",
+            "Set the avatar thumbnail size to control how large cropped profile thumbnails are generated. The default is 512px.",
+            "After saving storage changes, upload a sample image from the rich-text editor and the profile page, then confirm both the full image and avatar thumbnail render correctly."
           ],
           "warning": "Treat storage keys and private credentials as secrets. Rotate them if they are exposed.",
           "screenshot": {
@@ -1553,6 +1636,8 @@
           "bullets": [
             "Enable SSO only after you have the identity provider entry point, logout URL, entity ID, attribute mappings, and the correct certificates or private keys.",
             "Paste certificates and private keys exactly as issued. Private keys usually include BEGIN and END markers and should not be edited by hand.",
+            "Leave the advanced SAML settings on their defaults unless your IdP requires something different. The default route set presented to the IdP remains the legacy /SSO/SAML2 surface.",
+            "If another IdP expects the newer /api/v1/auth/sso callback/logout routes, switch the route mode only after retesting metadata, login, callback, and logout end to end.",
             "Enable Jitsi only after the Jitsi domain and optional Etherpad domain are correct, then choose which courses can use video.",
             "Retest login, logout, and a video-enabled course after every change so instructors are not surprised during class time."
           ],
@@ -1562,7 +1647,8 @@
           "title": "Manage users, courses, and role-based support",
           "subtitle": "Once global settings are correct, the Users and Courses tabs become your daily support tools.",
           "bullets": [
-            "Search users by name or email, change roles, verify email addresses, create accounts, and open per-user properties when local email login or professor promotion rules must change.",
+            "Search users by name or email, change roles, verify email addresses, create accounts, reset local passwords, and open per-user properties when local email login or professor promotion rules must change.",
+            "When institution-wide SSO is enabled, non-admin users need the per-account allow-email-login exception before local email sign-in and password-reset email become available.",
             "Review courses to confirm the correct instructors, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
             "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view."
           ],
@@ -1663,6 +1749,15 @@
             "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
           ],
           "success": "Professors can open the student manual from the switcher above to preview the learner workflow before class."
+        },
+        {
+          "title": "Use the profile page for language, password, and avatar changes",
+          "subtitle": "Account settings follow the same institution-wide auth rules as student accounts.",
+          "bullets": [
+            "Uploading a profile picture opens a crop-and-rotate dialog so you can choose the square avatar thumbnail before saving.",
+            "When institution-wide SSO is enabled, your name and password fields remain locked unless an administrator has granted the allow-email-login exception for your account.",
+            "Password-reset email follows the same rule, so use the SSO route or contact an administrator if the profile page says local email login is disabled."
+          ]
         }
       ]
     },
@@ -1733,6 +1828,15 @@
             "Search the question library for accessible material on the topic you want to revisit.",
             "Create practice sessions from library questions so you can rehearse at your own pace and then review the results right away.",
             "If a question contains math, images, or a worked solution, keep those visible while practicing so you can learn from the full example."
+          ]
+        },
+        {
+          "title": "Update your profile, language, and avatar carefully",
+          "subtitle": "Profile settings depend on whether your institution uses SSO for the account.",
+          "bullets": [
+            "Uploading a profile picture opens a crop-and-rotate dialog so you can position the avatar circle before saving.",
+            "If institution-wide SSO is enabled and your account has not been granted email-login access, your name and password fields stay locked on purpose.",
+            "In that same SSO-managed case, password-reset email is unavailable until an administrator grants the allow-email-login exception for your account."
           ]
         }
       ]

@@ -9,6 +9,7 @@ import {
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   FormControlLabel,
@@ -195,6 +196,34 @@ function getQuestionPoints(question) {
   const numeric = Number(question?.sessionOptions?.points);
   if (!Number.isFinite(numeric) || numeric < 0) return 0;
   return numeric;
+}
+
+function buildSessionOptionsPayload(sessionOptions = {}, nextPoints) {
+  const payload = { points: nextPoints };
+
+  if (sessionOptions.hidden !== undefined) payload.hidden = !!sessionOptions.hidden;
+  if (sessionOptions.stats !== undefined) payload.stats = !!sessionOptions.stats;
+  if (sessionOptions.correct !== undefined) payload.correct = !!sessionOptions.correct;
+
+  const maxAttempts = Number(sessionOptions.maxAttempts);
+  if (Number.isFinite(maxAttempts)) {
+    payload.maxAttempts = maxAttempts;
+  }
+
+  if (Array.isArray(sessionOptions.attemptWeights)) {
+    payload.attemptWeights = sessionOptions.attemptWeights
+      .map((weight) => Number(weight))
+      .filter((weight) => Number.isFinite(weight));
+  }
+
+  if (Array.isArray(sessionOptions.attempts)) {
+    payload.attempts = sessionOptions.attempts.map((attempt) => ({
+      number: Number(attempt?.number) || 1,
+      closed: !!attempt?.closed,
+    }));
+  }
+
+  return payload;
 }
 
 function isAutoGradeableQuestionType(questionType) {
@@ -501,6 +530,7 @@ export default function SessionQuestionGradingPanel({
   session = null,
   questions = [],
   studentResults = [],
+  onSessionDataRefresh = null,
   onUngradedSummaryChange = null,
   filterSlot = null,
 }) {
@@ -523,6 +553,9 @@ export default function SessionQuestionGradingPanel({
   const [bulkApplying, setBulkApplying] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [questionPointsDraft, setQuestionPointsDraft] = useState('');
+  const [questionPointsDialogOpen, setQuestionPointsDialogOpen] = useState(false);
+  const [questionPointsSaving, setQuestionPointsSaving] = useState(false);
   const [tableSort, setTableSort] = useState({ field: 'student', direction: 'asc' });
   const [imageViewUrl, setImageViewUrl] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState({});
@@ -577,6 +610,10 @@ export default function SessionQuestionGradingPanel({
   const activeQuestion = useMemo(() => {
     return questions.find((question) => String(question?._id) === String(activeQuestionId)) || null;
   }, [activeQuestionId, questions]);
+
+  useEffect(() => {
+    setQuestionPointsDraft(String(getQuestionPoints(activeQuestion)));
+  }, [activeQuestion]);
 
   const isQuizSession = !!(session?.quiz || session?.practiceQuiz);
 
@@ -1007,6 +1044,9 @@ export default function SessionQuestionGradingPanel({
         setGlobalMessage(t('grades.questionPanel.gradesRecalculated'));
         setGlobalMessageType('success');
       }
+      if (typeof onSessionDataRefresh === 'function') {
+        await onSessionDataRefresh();
+      }
       await fetchSessionGrades();
     } catch (err) {
       setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.failedRecalculate'));
@@ -1014,7 +1054,64 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setRecalculating(false);
     }
-  }, [fetchSessionGrades, sessionId]);
+  }, [fetchSessionGrades, onSessionDataRefresh, sessionId, t]);
+
+  const handleOpenQuestionPointsDialog = useCallback(() => {
+    const parsedPoints = Number(questionPointsDraft);
+    if (!Number.isFinite(parsedPoints) || parsedPoints < 0) {
+      setGlobalMessage(t('grades.questionPanel.pointsInvalid'));
+      setGlobalMessageType('error');
+      return;
+    }
+
+    if (!activeQuestion?._id || Math.abs(parsedPoints - getQuestionPoints(activeQuestion)) < 0.0001) {
+      return;
+    }
+
+    setQuestionPointsDialogOpen(true);
+  }, [activeQuestion, questionPointsDraft, t]);
+
+  const handleConfirmQuestionPointsUpdate = useCallback(async () => {
+    if (!activeQuestion?._id || !sessionId) return;
+
+    const nextPoints = Number(questionPointsDraft);
+    if (!Number.isFinite(nextPoints) || nextPoints < 0) {
+      setGlobalMessage(t('grades.questionPanel.pointsInvalid'));
+      setGlobalMessageType('error');
+      return;
+    }
+
+    setQuestionPointsSaving(true);
+    try {
+      await apiClient.patch(`/questions/${activeQuestion._id}`, {
+        sessionOptions: buildSessionOptionsPayload(activeQuestion.sessionOptions, nextPoints),
+      });
+
+      const { data } = await apiClient.post(`/sessions/${sessionId}/grades/recalculate`, {
+        missingOnly: false,
+      });
+      const warnings = data?.summary?.warnings || [];
+
+      if (typeof onSessionDataRefresh === 'function') {
+        await onSessionDataRefresh();
+      }
+      await fetchSessionGrades();
+      setQuestionPointsDialogOpen(false);
+
+      if (warnings.length > 0) {
+        setGlobalMessage(warnings.join(' '));
+        setGlobalMessageType('warning');
+      } else {
+        setGlobalMessage(t('grades.questionPanel.questionPointsUpdated'));
+        setGlobalMessageType('success');
+      }
+    } catch (err) {
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.failedUpdateQuestionPoints'));
+      setGlobalMessageType('error');
+    } finally {
+      setQuestionPointsSaving(false);
+    }
+  }, [activeQuestion, fetchSessionGrades, onSessionDataRefresh, questionPointsDraft, sessionId, t]);
 
   // --- Speed-grading helpers ---
 
@@ -1099,6 +1196,10 @@ export default function SessionQuestionGradingPanel({
   const allFilteredSelected = filteredStudentIds.length > 0 && selectedFilteredCount === filteredStudentIds.length;
   const someFilteredSelected = selectedFilteredCount > 0 && !allFilteredSelected;
   const questionNeedsManualGrading = !isAutoGradeableQuestionType(activeQuestionType) && activeQuestionPoints > 0;
+  const parsedQuestionPointsDraft = Number(questionPointsDraft);
+  const questionPointsDirty = Number.isFinite(parsedQuestionPointsDraft)
+    && parsedQuestionPointsDraft >= 0
+    && Math.abs(parsedQuestionPointsDraft - activeQuestionPoints) > 0.0001;
 
   const renderQuestionRibbon = () => (
     <Box
@@ -1167,6 +1268,29 @@ export default function SessionQuestionGradingPanel({
         </Box>
 
         <RichContent html={activeQuestion.content} fallback={activeQuestion.plainText} />
+
+        <Box sx={{ mt: 1.25, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <TextField
+            size="small"
+            type="number"
+            label={t('grades.questionPanel.questionPoints')}
+            value={questionPointsDraft}
+            onChange={(event) => setQuestionPointsDraft(event.target.value)}
+            sx={{ width: 160 }}
+            inputProps={{ min: 0, step: 'any' }}
+          />
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleOpenQuestionPointsDialog}
+            disabled={!questionPointsDirty || questionPointsSaving || recalculating}
+          >
+            {questionPointsSaving ? t('common.saving') : t('grades.questionPanel.updateQuestionPoints')}
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            {t('grades.questionPanel.updateQuestionPointsHelp')}
+          </Typography>
+        </Box>
 
         {optionTypeQuestion && questionOptions.length > 0 && (
           <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -1442,6 +1566,34 @@ export default function SessionQuestionGradingPanel({
             />
           ) : null}
         </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={questionPointsDialogOpen}
+        onClose={() => (questionPointsSaving ? undefined : setQuestionPointsDialogOpen(false))}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>{t('grades.questionPanel.confirmQuestionPointsTitle')}</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2">
+            {t('grades.questionPanel.confirmQuestionPointsMessage', {
+              current: formatPercent(activeQuestionPoints),
+              next: formatPercent(parsedQuestionPointsDraft),
+            })}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1.25 }}>
+            {t('grades.questionPanel.confirmQuestionPointsHelp')}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setQuestionPointsDialogOpen(false)} disabled={questionPointsSaving}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="contained" onClick={handleConfirmQuestionPointsUpdate} disabled={questionPointsSaving}>
+            {questionPointsSaving ? t('common.saving') : t('common.proceed')}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <SpeedGradingModal

@@ -514,12 +514,13 @@ production_setup/
 | `JWT_REFRESH_SECRET` | Yes | — | JWT refresh token secret (32-byte hex) |
 | `MONGO_URI` | No | `mongodb://mongo:27017/qlicker` | MongoDB connection URI |
 | `MAIL_URL` | Recommended | — | SMTP connection string |
-| `STORAGE_TYPE` | No | `local` | File storage: `local`, `s3`, `azure` |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
 | `API_PORT` | No | `3001` | Internal API port |
 | `BACKUP_RETENTION_DAYS` | No | `30` | Days to keep backups |
-| `AWS_*` | If S3 | — | S3 credentials and bucket config |
-| `AZURE_*` | If Azure | — | Azure Blob Storage config |
+
+Storage backend selection and cloud credentials are **not** read from environment variables at runtime anymore. The app boots with local storage by default; after the first admin signs in, configure **Admin -> Storage** to keep using local storage or switch to S3/Azure. The database `Settings` document is the source of truth.
+
+The only storage-related exception is the one-off maintenance script [`sanitize-s3.js`](./sanitize-s3.js), which still expects `AWS_*` variables when you run it manually.
 
 ---
 

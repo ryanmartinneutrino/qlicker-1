@@ -1,16 +1,50 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Box, Typography, TextField, Button, Alert, CircularProgress, Divider, Paper, Avatar,
-  FormControl, InputLabel, Select, MenuItem,
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { PhotoCamera as PhotoCameraIcon } from '@mui/icons-material';
+import {
+  PhotoCamera as PhotoCameraIcon,
+  RotateLeft as RotateLeftIcon,
+  RotateRight as RotateRightIcon,
+} from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import i18n, { SUPPORTED_LOCALES } from '../i18n';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import AutoSaveStatus from '../components/common/AutoSaveStatus';
+import {
+  clampAvatarCrop,
+  createAvatarThumbnailFile,
+  createCenteredAvatarCrop,
+  getAvatarPreviewLayout,
+  loadImage,
+  normalizeImageFile,
+  readFileAsDataUrl,
+} from '../utils/imageUpload';
+import {
+  getDefaultAvatarThumbnailSize,
+  getDefaultMaxImageWidth,
+  getPublicSettings,
+} from '../utils/publicSettings';
 
 const AUTO_SAVE_DELAY_MS = 600;
+const PROFILE_IMAGE_PREVIEW_SIZE = 320;
 
 function normalizeProfile(source = {}) {
   return {
@@ -28,9 +62,228 @@ function diffProfile(previousProfile, nextProfile) {
   return patchPayload;
 }
 
+function buildThumbnailFileName(originalName = '') {
+  const baseName = String(originalName || 'profile-image').replace(/\.[^.]+$/, '') || 'profile-image';
+  return `${baseName}-thumbnail.jpg`;
+}
+
+function buildImageFileNameFromUrl(sourceUrl = '') {
+  const rawUrl = String(sourceUrl || '').trim();
+  if (!rawUrl) return 'profile-image';
+
+  try {
+    const parsed = rawUrl.startsWith('/')
+      ? new URL(rawUrl, window.location.origin)
+      : new URL(rawUrl);
+    const pathname = String(parsed.pathname || '');
+    const segments = pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] || 'profile-image';
+  } catch {
+    const stripped = rawUrl.split('?')[0].split('#')[0];
+    const segments = stripped.split('/').filter(Boolean);
+    return segments[segments.length - 1] || 'profile-image';
+  }
+}
+
+function buildRoundedCropPayload(editorState = {}) {
+  return {
+    rotation: Math.round(editorState.rotation || 0),
+    cropX: Math.round(editorState.cropX || 0),
+    cropY: Math.round(editorState.cropY || 0),
+    cropSize: Math.max(1, Math.round(editorState.cropSize || 0)),
+  };
+}
+
+function shouldFallbackToServerThumbnailGeneration(error) {
+  if (!error) return false;
+  const name = String(error.name || '');
+  const message = String(error.message || '');
+  return (
+    name === 'SecurityError'
+    || /tainted/i.test(message)
+    || /Failed to (decode|encode|prepare) image/i.test(message)
+    || /Failed to prepare avatar/i.test(message)
+  );
+}
+
+async function loadExistingImageAsDataUrl(sourceUrl) {
+  const response = await fetch(sourceUrl, {
+    credentials: 'include',
+    mode: 'cors',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load existing profile image: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const file = new File(
+    [blob],
+    buildImageFileNameFromUrl(sourceUrl),
+    {
+      type: blob.type || 'image/jpeg',
+      lastModified: Date.now(),
+    },
+  );
+  const dataUrl = await readFileAsDataUrl(file);
+  return {
+    file,
+    source: dataUrl,
+  };
+}
+
+function ProfileImageEditorDialog({
+  open,
+  editorState,
+  busy,
+  onClose,
+  onRotate,
+  onMoveCrop,
+  onSave,
+  t,
+}) {
+  const dragStateRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      dragStateRef.current = null;
+    }
+  }, [open]);
+
+  useEffect(() => () => {
+    dragStateRef.current = null;
+  }, []);
+
+  const previewLayout = editorState
+    ? getAvatarPreviewLayout({
+      width: editorState.imageWidth,
+      height: editorState.imageHeight,
+      crop: editorState,
+      viewportSize: PROFILE_IMAGE_PREVIEW_SIZE,
+    })
+    : null;
+
+  const handlePointerMove = useCallback((event) => {
+    const dragState = dragStateRef.current;
+    if (!dragState) return;
+    onMoveCrop({
+      cropX: dragState.cropX - ((event.clientX - dragState.clientX) / dragState.scale),
+      cropY: dragState.cropY - ((event.clientY - dragState.clientY) / dragState.scale),
+    });
+  }, [onMoveCrop]);
+
+  const handlePointerUp = useCallback(() => {
+    dragStateRef.current = null;
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+  }, [handlePointerMove]);
+
+  useEffect(() => () => {
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', handlePointerUp);
+  }, [handlePointerMove, handlePointerUp]);
+
+  const handlePointerDown = (event) => {
+    if (!previewLayout || busy) return;
+    dragStateRef.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      cropX: previewLayout.crop.cropX,
+      cropY: previewLayout.crop.cropY,
+      scale: PROFILE_IMAGE_PREVIEW_SIZE / previewLayout.crop.cropSize,
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+  };
+
+  return (
+    <Dialog open={open} onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>{t('profile.adjustPhoto')}</DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+        <Typography variant="body2" color="text.secondary">
+          {t('profile.photoCropHelp')}
+        </Typography>
+        {previewLayout ? (
+          <Box
+            sx={{
+              width: PROFILE_IMAGE_PREVIEW_SIZE,
+              height: PROFILE_IMAGE_PREVIEW_SIZE,
+              maxWidth: '100%',
+              alignSelf: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+              borderRadius: 3,
+              bgcolor: 'grey.100',
+              border: '1px solid',
+              borderColor: 'divider',
+              cursor: busy ? 'default' : 'grab',
+              touchAction: 'none',
+            }}
+            onPointerDown={handlePointerDown}
+          >
+            <Box
+              sx={{
+                position: 'absolute',
+                left: `${previewLayout.offsetX}px`,
+                top: `${previewLayout.offsetY}px`,
+                width: `${previewLayout.wrapperWidth}px`,
+                height: `${previewLayout.wrapperHeight}px`,
+              }}
+            >
+              <Box
+                component="img"
+                src={editorState.source}
+                alt={t('profile.profileImagePreview')}
+                draggable={false}
+                sx={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: `${previewLayout.imageWidth}px`,
+                  height: `${previewLayout.imageHeight}px`,
+                  maxWidth: 'none',
+                  userSelect: 'none',
+                  transformOrigin: 'top left',
+                  transform: previewLayout.transform,
+                }}
+              />
+            </Box>
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '50%',
+                boxShadow: '0 0 0 999px rgba(15, 23, 42, 0.45)',
+                border: '2px solid',
+                borderColor: 'common.white',
+                pointerEvents: 'none',
+              }}
+            />
+          </Box>
+        ) : (
+          <CircularProgress sx={{ alignSelf: 'center', my: 2 }} />
+        )}
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
+          <IconButton onClick={() => onRotate(-90)} disabled={busy || !editorState} aria-label={t('profile.rotateLeft')}>
+            <RotateLeftIcon />
+          </IconButton>
+          <IconButton onClick={() => onRotate(90)} disabled={busy || !editorState} aria-label={t('profile.rotateRight')}>
+            <RotateRightIcon />
+          </IconButton>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={busy}>{t('common.cancel')}</Button>
+        <Button variant="contained" onClick={onSave} disabled={busy || !editorState}>
+          {busy ? t('common.saving') : t('common.save')}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
 export default function Profile() {
   const { t } = useTranslation();
-  const { user, loadUser } = useAuth();
+  const { user, loadUser, setCurrentUser } = useAuth();
   const [profile, setProfile] = useState({ firstname: '', lastname: '', studentNumber: '' });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(true);
@@ -39,8 +292,14 @@ export default function Profile() {
   const [profileSaveStatus, setProfileSaveStatus] = useState('idle');
   const [profileSaveError, setProfileSaveError] = useState('');
   const [changingPw, setChangingPw] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [imageBusy, setImageBusy] = useState(false);
   const [userLocale, setUserLocale] = useState('');
+  const [publicSettings, setPublicSettings] = useState({
+    SSO_enabled: false,
+    maxImageWidth: getDefaultMaxImageWidth(),
+    avatarThumbnailSize: getDefaultAvatarThumbnailSize(),
+  });
+  const [imageEditorState, setImageEditorState] = useState(null);
   const fileInputRef = useRef(null);
   const profileHydratedRef = useRef(false);
   const profileSaveInFlightRef = useRef(false);
@@ -49,28 +308,81 @@ export default function Profile() {
 
   const isStaff = user?.profile?.roles?.some((r) => r === 'admin' || r === 'professor');
   const numberLabel = isStaff ? t('profile.employeeNumber') : t('profile.studentNumber');
-  const isLastAuthSSO = user?.lastAuthProvider === 'sso';
-  const isSSOManaged = !!user?.isSSOUser || !!user?.isSSOCreatedUser || isLastAuthSSO;
-  const hasSSOManagedName = Boolean(normalizeProfile(user?.profile).firstname || normalizeProfile(user?.profile).lastname);
-  const nameLocked = isSSOManaged && hasSSOManagedName;
-  const passwordLocked = isSSOManaged;
+  const localEmailLoginAllowed = !!user?.allowEmailLogin;
+  const ssoManaged = publicSettings.SSO_enabled && !localEmailLoginAllowed;
+  const nameLocked = ssoManaged;
+  const passwordLocked = ssoManaged;
+  const initials = `${user?.profile?.firstname?.[0] ?? ''}${user?.profile?.lastname?.[0] ?? ''}`.toUpperCase();
+  const emailAddress = user?.emails?.[0]?.address || user?.email || '';
+  const primaryRole = user?.profile?.roles?.[0] || user?.role || '';
 
   useEffect(() => {
-    apiClient.get('/users/me').then(({ data }) => {
-      const u = data.user || data;
-      const normalizedProfile = normalizeProfile(u.profile);
-      setProfile(normalizedProfile);
-      lastSavedProfileRef.current = normalizedProfile;
-      profileHydratedRef.current = true;
-      // Load per-user locale preference (empty = use app default)
-      const savedLocale = u.locale || '';
-      setUserLocale(savedLocale);
-      if (savedLocale) {
-        i18n.changeLanguage(savedLocale);
-        localStorage.setItem('qlicker_locale', savedLocale);
-      }
-    }).catch(() => setMsg({ severity: 'error', text: t('profile.profileFailed') }))
-      .finally(() => setLoading(false));
+    if (!user || profileHydratedRef.current) return;
+
+    const fallbackProfile = normalizeProfile(user.profile);
+    setProfile(fallbackProfile);
+    lastSavedProfileRef.current = fallbackProfile;
+    profileHydratedRef.current = true;
+
+    const fallbackLocale = user.locale || '';
+    setUserLocale(fallbackLocale);
+    if (fallbackLocale) {
+      i18n.changeLanguage(fallbackLocale);
+      localStorage.setItem('qlicker_locale', fallbackLocale);
+    }
+
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    let active = true;
+
+    apiClient.get('/users/me')
+      .then((userResponse) => {
+        if (!active) return;
+        const loadedUser = userResponse.data.user || userResponse.data;
+        const normalizedProfile = normalizeProfile(loadedUser.profile);
+        setProfile(normalizedProfile);
+        lastSavedProfileRef.current = normalizedProfile;
+        profileHydratedRef.current = true;
+
+        const savedLocale = loadedUser.locale || '';
+        setUserLocale(savedLocale);
+        if (savedLocale) {
+          i18n.changeLanguage(savedLocale);
+          localStorage.setItem('qlicker_locale', savedLocale);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMsg({ severity: 'error', text: t('profile.profileFailed') });
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    getPublicSettings()
+      .then((settings) => {
+        if (active) {
+          setPublicSettings(settings);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPublicSettings({
+            SSO_enabled: false,
+            maxImageWidth: getDefaultMaxImageWidth(),
+            avatarThumbnailSize: getDefaultAvatarThumbnailSize(),
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => () => {
@@ -126,7 +438,7 @@ export default function Profile() {
     };
 
     await runSave(nextProfile);
-  }, [loadUser]);
+  }, [loadUser, t]);
 
   useEffect(() => {
     if (loading) return;
@@ -161,67 +473,244 @@ export default function Profile() {
       setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setPwMsg({ severity: 'success', text: t('profile.passwordChanged') });
     } catch (err) {
-      setPwMsg({ severity: 'error', text: err.response?.data?.error || t('profile.failedChangePassword') });
+      setPwMsg({ severity: 'error', text: err.response?.data?.message || t('profile.failedChangePassword') });
     } finally {
       setChangingPw(false);
     }
   };
 
-  const initials = `${user?.profile?.firstname?.[0] ?? ''}${user?.profile?.lastname?.[0] ?? ''}`.toUpperCase();
+  const prepareEditorState = useCallback(async ({
+    source,
+    file = null,
+    fileName = '',
+    isNewUpload = false,
+  }) => {
+    const image = await loadImage(source);
+    const initialCrop = createCenteredAvatarCrop(image.naturalWidth || 1, image.naturalHeight || 1, 0);
+    setImageEditorState({
+      source,
+      file,
+      fileName,
+      isNewUpload,
+      imageWidth: image.naturalWidth || 1,
+      imageHeight: image.naturalHeight || 1,
+      ...initialCrop,
+    });
+  }, []);
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
-    setUploading(true);
+    setImageBusy(true);
     setMsg(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const { data } = await apiClient.post('/images', formData);
-      await apiClient.patch('/users/me/image', { profileImage: data.image.url });
-      await loadUser();
-      setMsg({ severity: 'success', text: t('profile.photoUpdated') });
+      const normalizedUpload = await normalizeImageFile(file, {
+        maxWidth: publicSettings.maxImageWidth,
+      });
+      const source = await readFileAsDataUrl(normalizedUpload.file);
+      await prepareEditorState({
+        source,
+        file: normalizedUpload.file,
+        fileName: normalizedUpload.file.name || file.name,
+        isNewUpload: true,
+      });
     } catch {
       setMsg({ severity: 'error', text: t('profile.photoFailed') });
     } finally {
-      setUploading(false);
+      setImageBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleLocaleChange = async (e) => {
-    const newLocale = e.target.value;
-    setUserLocale(newLocale);
-    // Apply immediately
-    const effectiveLocale = newLocale || 'en';
-    i18n.changeLanguage(effectiveLocale);
-    localStorage.setItem('qlicker_locale', effectiveLocale);
-    // Persist to server
+  const openExistingImageEditor = async () => {
+    if (!user?.profile?.profileImage) return;
+    setImageBusy(true);
+    setMsg(null);
     try {
-      await apiClient.patch('/users/me', { locale: newLocale });
+      let source = user.profile.profileImage;
+      let fileName = user.profile.profileImage;
+      try {
+        const existingImage = await loadExistingImageAsDataUrl(user.profile.profileImage);
+        source = existingImage.source;
+        fileName = existingImage.file.name;
+      } catch {
+        // Fall back to the URL source. Save will use the server-side recrop path if needed.
+      }
+      await prepareEditorState({
+        source,
+        fileName,
+        isNewUpload: false,
+      });
     } catch {
-      // Best-effort; locale is also stored in localStorage
+      setMsg({ severity: 'error', text: t('profile.photoFailed') });
+    } finally {
+      setImageBusy(false);
     }
   };
 
-  if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  const closeImageEditor = () => {
+    if (imageBusy) return;
+    setImageEditorState(null);
+  };
+
+  const rotateImageEditor = (delta) => {
+    setImageEditorState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        ...createCenteredAvatarCrop(
+          current.imageWidth,
+          current.imageHeight,
+          current.rotation + delta,
+        ),
+      };
+    });
+  };
+
+  const moveImageEditorCrop = useCallback((nextCrop) => {
+    setImageEditorState((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        ...clampAvatarCrop(
+          { ...current, ...nextCrop },
+          current.imageWidth,
+          current.imageHeight,
+        ),
+      };
+    });
+  }, []);
+
+  const uploadSingleImage = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await apiClient.post('/images', formData);
+    return data?.image?.url || '';
+  };
+
+  const saveImageEditor = async () => {
+    if (!imageEditorState) return;
+    setImageBusy(true);
+    setMsg(null);
+    try {
+      let updatedUser = null;
+      if (imageEditorState.isNewUpload && imageEditorState.file) {
+        const thumbnailFile = await createAvatarThumbnailFile(
+          imageEditorState.source,
+          imageEditorState,
+          {
+            fileName: buildThumbnailFileName(imageEditorState.fileName),
+            outputSize: publicSettings.avatarThumbnailSize,
+          },
+        );
+
+        const profileImageUrl = await uploadSingleImage(imageEditorState.file);
+        const profileThumbnailUrl = await uploadSingleImage(thumbnailFile);
+        const { data } = await apiClient.patch('/users/me/image', {
+          profileImage: profileImageUrl,
+          profileThumbnail: profileThumbnailUrl,
+        });
+        updatedUser = data;
+      } else {
+        let thumbnailFile;
+        try {
+          thumbnailFile = await createAvatarThumbnailFile(
+            imageEditorState.source,
+            imageEditorState,
+            {
+              fileName: buildThumbnailFileName(imageEditorState.fileName),
+              outputSize: publicSettings.avatarThumbnailSize,
+            },
+          );
+        } catch (thumbErr) {
+          if (!shouldFallbackToServerThumbnailGeneration(thumbErr)) {
+            throw thumbErr;
+          }
+        }
+
+        if (thumbnailFile) {
+          const profileThumbnailUrl = await uploadSingleImage(thumbnailFile);
+          const { data } = await apiClient.patch('/users/me/image', {
+            profileImage: user?.profile?.profileImage || imageEditorState.source,
+            profileThumbnail: profileThumbnailUrl,
+          });
+          updatedUser = data;
+        } else {
+          const { data } = await apiClient.post('/users/me/image/thumbnail', buildRoundedCropPayload(imageEditorState));
+          updatedUser = data;
+        }
+      }
+
+      if (updatedUser) {
+        setCurrentUser(updatedUser);
+      } else {
+        await loadUser();
+      }
+      setImageEditorState(null);
+      setMsg({ severity: 'success', text: t('profile.photoUpdated') });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('profile.photoFailed') });
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const handleLocaleChange = async (event) => {
+    const newLocale = event.target.value;
+    setUserLocale(newLocale);
+    const effectiveLocale = newLocale || 'en';
+    i18n.changeLanguage(effectiveLocale);
+    localStorage.setItem('qlicker_locale', effectiveLocale);
+    try {
+      await apiClient.patch('/users/me', { locale: newLocale });
+    } catch {
+      // Best-effort; locale is also stored in localStorage.
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, maxWidth: 600 }}>
       <Typography variant="h4" gutterBottom>{t('profile.title')}</Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
-        {user?.email} &middot; {user?.role}
+        {emailAddress} {primaryRole ? <>&middot; {primaryRole}</> : null}
       </Typography>
 
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.photo')}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {t('profile.photoClickHelp')}
+        </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar
-            src={user?.profile?.profileImage}
-            sx={{ width: 80, height: 80, fontSize: 32 }}
+          <Box
+            component="button"
+            type="button"
+            onClick={openExistingImageEditor}
+            disabled={!user?.profile?.profileImage || imageBusy}
+            aria-label={t('profile.openPhotoEditor')}
+            sx={{
+              p: 0,
+              border: 0,
+              bgcolor: 'transparent',
+              borderRadius: '50%',
+              lineHeight: 0,
+              cursor: user?.profile?.profileImage && !imageBusy ? 'pointer' : 'default',
+            }}
           >
-            {initials}
-          </Avatar>
+            <Avatar
+              src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
+              sx={{ width: 80, height: 80, fontSize: 32 }}
+            >
+              {initials}
+            </Avatar>
+          </Box>
           <Box>
             <input
               ref={fileInputRef}
@@ -232,11 +721,11 @@ export default function Profile() {
             />
             <Button
               variant="outlined"
-              startIcon={uploading ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
+              startIcon={imageBusy ? <CircularProgress size={18} /> : <PhotoCameraIcon />}
               onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
+              disabled={imageBusy}
             >
-              {uploading ? t('profile.uploading') : t('profile.uploadPhoto')}
+              {imageBusy ? t('profile.uploading') : t('profile.uploadPhoto')}
             </Button>
           </Box>
         </Box>
@@ -266,36 +755,84 @@ export default function Profile() {
       <Paper variant="outlined" sx={{ p: 3, mb: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.personalInfo')}</Typography>
         <AutoSaveStatus status={profileSaveStatus} errorText={profileSaveError} />
-        {nameLocked && (
+        {nameLocked ? (
           <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoNameManagedNote')}</Alert>
-        )}
+        ) : null}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label={t('profile.firstName')} value={profile.firstname} onChange={(e) => setProfile((s) => ({ ...s, firstname: e.target.value }))} fullWidth disabled={nameLocked} />
-          <TextField label={t('profile.lastName')} value={profile.lastname} onChange={(e) => setProfile((s) => ({ ...s, lastname: e.target.value }))} fullWidth disabled={nameLocked} />
-          <TextField label={numberLabel} value={profile.studentNumber} onChange={(e) => setProfile((s) => ({ ...s, studentNumber: e.target.value }))} fullWidth />
-          {msg && <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert>}
+          <TextField
+            label={t('profile.firstName')}
+            value={profile.firstname}
+            onChange={(event) => setProfile((current) => ({ ...current, firstname: event.target.value }))}
+            fullWidth
+            disabled={nameLocked}
+          />
+          <TextField
+            label={t('profile.lastName')}
+            value={profile.lastname}
+            onChange={(event) => setProfile((current) => ({ ...current, lastname: event.target.value }))}
+            fullWidth
+            disabled={nameLocked}
+          />
+          <TextField
+            label={numberLabel}
+            value={profile.studentNumber}
+            onChange={(event) => setProfile((current) => ({ ...current, studentNumber: event.target.value }))}
+            fullWidth
+          />
+          {msg ? <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert> : null}
         </Box>
       </Paper>
 
       <Paper variant="outlined" sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>{t('profile.changePassword')}</Typography>
-        {passwordLocked && (
+        {passwordLocked ? (
           <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoPasswordManagedNote')}</Alert>
-        )}
-        {user?.isSSOCreatedUser && !user?.allowEmailLogin && (
+        ) : null}
+        {ssoManaged ? (
           <Alert severity="info" sx={{ mb: 2 }}>{t('profile.ssoEmailLoginApprovalNote')}</Alert>
-        )}
+        ) : null}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label={t('profile.currentPassword')} type="password" value={passwords.currentPassword} onChange={(e) => setPasswords((s) => ({ ...s, currentPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
-          <TextField label={t('profile.newPassword')} type="password" value={passwords.newPassword} onChange={(e) => setPasswords((s) => ({ ...s, newPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
-          <TextField label={t('profile.confirmNewPassword')} type="password" value={passwords.confirmPassword} onChange={(e) => setPasswords((s) => ({ ...s, confirmPassword: e.target.value }))} fullWidth disabled={passwordLocked} />
+          <TextField
+            label={t('profile.currentPassword')}
+            type="password"
+            value={passwords.currentPassword}
+            onChange={(event) => setPasswords((current) => ({ ...current, currentPassword: event.target.value }))}
+            fullWidth
+            disabled={passwordLocked}
+          />
+          <TextField
+            label={t('profile.newPassword')}
+            type="password"
+            value={passwords.newPassword}
+            onChange={(event) => setPasswords((current) => ({ ...current, newPassword: event.target.value }))}
+            fullWidth
+            disabled={passwordLocked}
+          />
+          <TextField
+            label={t('profile.confirmNewPassword')}
+            type="password"
+            value={passwords.confirmPassword}
+            onChange={(event) => setPasswords((current) => ({ ...current, confirmPassword: event.target.value }))}
+            fullWidth
+            disabled={passwordLocked}
+          />
           <Button variant="contained" onClick={handleChangePassword} disabled={changingPw || passwordLocked}>
             {changingPw ? t('profile.changingPassword') : t('profile.changePassword')}
           </Button>
-          {pwMsg && <Alert severity={pwMsg.severity} onClose={() => setPwMsg(null)}>{pwMsg.text}</Alert>}
+          {pwMsg ? <Alert severity={pwMsg.severity} onClose={() => setPwMsg(null)}>{pwMsg.text}</Alert> : null}
         </Box>
       </Paper>
 
+      <ProfileImageEditorDialog
+        open={!!imageEditorState}
+        editorState={imageEditorState}
+        busy={imageBusy}
+        onClose={closeImageEditor}
+        onRotate={rotateImageEditor}
+        onMoveCrop={moveImageEditorCrop}
+        onSave={saveImageEditor}
+        t={t}
+      />
     </Box>
   );
 }

@@ -1,5 +1,7 @@
+import fs from 'fs/promises';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
+import Settings from '../../src/models/Settings.js';
 import User from '../../src/models/User.js';
 import { generateMeteorId } from '../../src/utils/meteorId.js';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
@@ -39,6 +41,11 @@ describe('GET /api/v1/users/me', () => {
 
   it('includes SSO auth metadata for profile restrictions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-meta@example.com', verified: true }],
       services: {
@@ -116,6 +123,11 @@ describe('PATCH /api/v1/users/me', () => {
 
   it('does not let SSO-created users change their names', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-name@example.com', verified: true }],
       services: {
@@ -238,6 +250,11 @@ describe('PATCH /api/v1/users/me/password', () => {
 
   it('blocks password changes while signed in through SSO', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-password@example.com', verified: true }],
       services: {
@@ -335,6 +352,127 @@ describe('PATCH /api/v1/users/me/image', () => {
   });
 });
 
+// ---------- POST /api/v1/users/me/image/thumbnail ----------
+describe('POST /api/v1/users/me/image/thumbnail', () => {
+  it('can recrop a legacy local profile image even when no images document exists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'legacy-avatar@example.com' });
+    const token = await getAuthToken(app, user);
+    const sourceKey = 'legacy-avatar-source.png';
+    const sourceUrl = `/uploads/${sourceKey}`;
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y0Z8AAAAASUVORK5CYII=',
+      'base64'
+    );
+
+    await fs.writeFile(`${app.uploadsDir}/${sourceKey}`, pngBuffer);
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'profile.profileImage': sourceUrl,
+        'profile.profileThumbnail': sourceUrl,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/users/me/image/thumbnail', {
+      token,
+      payload: {
+        rotation: 0,
+        cropX: 0,
+        cropY: 0,
+        cropSize: 1,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().profile.profileImage).toBe(sourceUrl);
+    expect(res.json().profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+
+    const updated = await User.findById(user._id);
+    expect(updated.profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+  });
+
+  it('can recrop a legacy remote profile image when no images document exists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'legacy-remote-avatar@example.com' });
+    const token = await getAuthToken(app, user);
+    const sourceUrl = 'https://legacy-cdn.example.com/avatars/user-1/image';
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y0Z8AAAAASUVORK5CYII=',
+      'base64'
+    );
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      expect(url).toBe(sourceUrl);
+      return new Response(pngBuffer, {
+        status: 200,
+        headers: {
+          'content-type': 'image/png',
+          'content-length': String(pngBuffer.length),
+        },
+      });
+    };
+
+    try {
+      await User.findByIdAndUpdate(user._id, {
+        $set: {
+          'profile.profileImage': sourceUrl,
+          'profile.profileThumbnail': sourceUrl,
+        },
+      });
+
+      const res = await authenticatedRequest(app, 'POST', '/api/v1/users/me/image/thumbnail', {
+        token,
+        payload: {
+          rotation: 0,
+          cropX: 0,
+          cropY: 0,
+          cropSize: 1,
+        },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json().profile.profileImage).toBe(sourceUrl);
+      expect(res.json().profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('accepts decimal crop coordinates from drag interactions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'decimal-avatar@example.com' });
+    const token = await getAuthToken(app, user);
+    const sourceKey = 'decimal-avatar-source.png';
+    const sourceUrl = `/uploads/${sourceKey}`;
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y0Z8AAAAASUVORK5CYII=',
+      'base64'
+    );
+
+    await fs.writeFile(`${app.uploadsDir}/${sourceKey}`, pngBuffer);
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'profile.profileImage': sourceUrl,
+        'profile.profileThumbnail': sourceUrl,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/users/me/image/thumbnail', {
+      token,
+      payload: {
+        rotation: 0,
+        cropX: 0.4,
+        cropY: 0.7,
+        cropSize: 1.2,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+  });
+});
+
 // ---------- Admin user management ----------
 describe('Admin user management', () => {
   it('admin can list users', async (ctx) => {
@@ -350,6 +488,82 @@ describe('Admin user management', () => {
     expect(body.total).toBeGreaterThanOrEqual(2);
     // Services should be stripped
     body.users.forEach((u) => expect(u.services).toBeUndefined());
+  });
+
+  it('derives last login in the users list from active refresh sessions when needed', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-derived-list@example.com', roles: ['admin'] });
+    const derivedLastLogin = new Date('2026-03-25T14:30:00.000Z');
+    await User.create({
+      emails: [{ address: 'derived-list@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [{
+            sessionId: 'session-derived',
+            createdAt: derivedLastLogin,
+            lastUsedAt: derivedLastLogin,
+            expiresAt: new Date(Date.now() + 60_000),
+            ipAddress: '203.0.113.41',
+          }],
+        },
+      },
+      profile: { firstname: 'Derived', lastname: 'List', roles: ['student'] },
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/users', { token, headers: { 'x-forwarded-for': '198.51.100.1' } });
+    expect(res.statusCode).toBe(200);
+    const listed = res.json().users.find((user) => user.emails?.[0]?.address === 'derived-list@example.com');
+    expect(listed).toBeTruthy();
+    expect(new Date(listed.lastLogin).toISOString()).toBe(derivedLastLogin.toISOString());
+  });
+
+  it('admin can inspect current sessions and last-login IP metadata for a user', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-session-detail@example.com', roles: ['admin'] });
+    const activeCreatedAt = new Date('2026-03-25T14:30:00.000Z');
+    const activeLastUsedAt = new Date('2026-03-25T15:15:00.000Z');
+    const target = await User.create({
+      emails: [{ address: 'session-detail@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [
+            {
+              sessionId: 'active-session',
+              createdAt: activeCreatedAt,
+              lastUsedAt: activeLastUsedAt,
+              expiresAt: new Date(Date.now() + 120_000),
+              ipAddress: '203.0.113.42',
+            },
+            {
+              sessionId: 'expired-session',
+              createdAt: new Date('2026-03-20T10:00:00.000Z'),
+              lastUsedAt: new Date('2026-03-20T10:30:00.000Z'),
+              expiresAt: new Date(Date.now() - 120_000),
+              ipAddress: '203.0.113.77',
+            },
+          ],
+        },
+      },
+      profile: { firstname: 'Session', lastname: 'Detail', roles: ['student'] },
+      lastLogin: new Date('2026-03-20T10:00:00.000Z'),
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/users/${target._id}`, { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.services).toBeUndefined();
+    expect(body.currentlyLoggedIn).toBe(true);
+    expect(body.activeSessions).toHaveLength(1);
+    expect(body.activeSessions[0].ipAddress).toBe('203.0.113.42');
+    expect(new Date(body.activeSessions[0].createdAt).toISOString()).toBe(activeCreatedAt.toISOString());
+    expect(new Date(body.lastLogin).toISOString()).toBe(activeCreatedAt.toISOString());
+    expect(body.lastLoginIp).toBe('203.0.113.42');
   });
 
   it('non-admin cannot list users', async (ctx) => {
@@ -441,6 +655,11 @@ describe('Admin user management', () => {
 
   it('admin can toggle user properties for SSO approval and promotion', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const admin = await createTestUser({ email: 'admin-properties@example.com', roles: ['admin'] });
     const target = await User.create({
       emails: [{ address: 'sso-target@example.com', verified: true }],
@@ -480,6 +699,49 @@ describe('Admin user management', () => {
     expect(updated.profile.canPromote).toBe(true);
     expect(updated.allowEmailLogin).toBe(false);
     expect(updated.services?.resetPassword).toBeUndefined();
+  });
+
+  it('admin can reset a user password from the user properties flow', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
+    const admin = await createTestUser({ email: 'admin-reset@example.com', roles: ['admin'] });
+    const target = await User.create({
+      emails: [{ address: 'reset-target@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [{ sessionId: 'device-1', createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000) }],
+        },
+        resetPassword: {
+          token: 'pending-admin-reset',
+          email: 'reset-target@example.com',
+          when: new Date(),
+          reason: 'reset',
+        },
+      },
+      profile: { firstname: 'Reset', lastname: 'Target', roles: ['student'] },
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/password`, {
+      token,
+      payload: { newPassword: 'newpassword456' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().allowEmailLogin).toBe(false);
+
+    const updated = await User.findById(target._id);
+    expect(updated.refreshTokenVersion).toBe(1);
+    expect(updated.services?.resume?.loginTokens).toEqual([]);
+    expect(updated.services?.resetPassword).toBeUndefined();
+    await expect(updated.verifyPassword('newpassword456')).resolves.toBe(true);
   });
 
   it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {

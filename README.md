@@ -354,19 +354,17 @@ See [`production_setup/README.md`](production_setup/README.md) for the complete 
 
 ## Image / File Storage Configuration
 
-Qlicker supports three storage backends for uploaded images (profile photos, question images): **local**, **Amazon S3**, and **Azure Blob Storage**. The backend is selected via the `STORAGE_TYPE` environment variable (or configured in the admin settings panel).
+Qlicker supports three storage backends for uploaded images (profile photos, question images): **local**, **Amazon S3**, and **Azure Blob Storage**.
+
+The runtime storage backend is now selected from **Admin -> Storage** and saved in the database `Settings` document. New deployments always start on **local storage** by default. The application no longer requires storage environment variables at runtime, and once an admin saves storage settings in the UI those database values are authoritative.
 
 ### Local Storage (default)
 
 No additional configuration is needed. Files are stored in the `server/uploads/` directory and served directly by Fastify.
 
-```env
-STORAGE_TYPE=local
-```
-
 ### Amazon S3
 
-To use Amazon S3 (or any S3-compatible service such as MinIO):
+To use Amazon S3 (or any S3-compatible service such as MinIO), open **Admin -> Storage**, choose **Amazon S3**, and enter:
 
 1. **Create an S3 bucket** in your AWS account (or MinIO instance).
 2. **Create an IAM user** (or use an existing one) with programmatic access.
@@ -382,40 +380,24 @@ To use Amazon S3 (or any S3-compatible service such as MinIO):
    }
    ```
 4. **Copy the Access Key ID and Secret Access Key** from the IAM user credentials.
-5. **Set the environment variables:**
-
-```env
-STORAGE_TYPE=s3
-AWS_BUCKET=your-bucket-name
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-```
-
-**For S3-compatible services (e.g., MinIO):** also set the custom endpoint and enable path-style access:
-
-```env
-AWS_ENDPOINT=http://localhost:9000
-AWS_FORCE_PATH_STYLE=true
-```
+5. **Enter the provider settings in the admin panel:** bucket, region, access key ID, secret access key, and optionally a custom endpoint plus path-style support for S3-compatible services.
 
 ### Azure Blob Storage
 
-To use Azure Blob Storage:
+To use Azure Blob Storage, open **Admin -> Storage**, choose **Azure Blob**, and enter:
 
 1. **Create a Storage Account** in the Azure Portal (e.g., `qlickerstorage`).
 2. **Create a Blob Container** inside the storage account (e.g., `images`).
 3. **Copy an Access Key** from the storage account's "Access keys" blade in the Azure Portal.
-4. **Set the environment variables:**
-
-```env
-STORAGE_TYPE=azure
-AZURE_ACCOUNT_NAME=qlickerstorage
-AZURE_ACCOUNT_KEY=your-base64-encoded-access-key
-AZURE_CONTAINER_NAME=images
-```
+4. **Enter the provider settings in the admin panel:** storage account, access key, and container name.
 
 The container will be created automatically if it does not exist (provided the access key has sufficient permissions).
+
+### Upload behavior
+
+- Rich-text-editor images and profile uploads are resized on the client before upload to the admin-configured maximum width (`1920px` by default).
+- Profile photo uploads open a crop/rotate dialog and store a separate square thumbnail for avatar circles.
+- After any storage change, upload a test image from both the profile page and a rich-text editor to confirm the full image and thumbnail paths work as expected.
 
 ### Testing Storage Backends
 
@@ -429,17 +411,14 @@ docker run -p 9000:9000 -p 9001:9001 \
   minio/minio server /data --console-address ":9001"
 ```
 
-Then create a bucket (e.g., `qlicker-dev`) via the MinIO console at `http://localhost:9001` and configure:
+Then create a bucket (for example `qlicker-dev`) via the MinIO console at `http://localhost:9001`, and enter these values in **Admin -> Storage**:
 
-```env
-STORAGE_TYPE=s3
-AWS_BUCKET=qlicker-dev
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
-AWS_ENDPOINT=http://localhost:9000
-AWS_FORCE_PATH_STYLE=true
-```
+- bucket: `qlicker-dev`
+- region: `us-east-1`
+- access key ID: `minioadmin`
+- secret access key: `minioadmin`
+- endpoint: `http://localhost:9000`
+- force path style: enabled
 
 **Azure with Azurite:** [Azurite](https://learn.microsoft.com/en-us/azure/storage/common/storage-use-azurite) is the official Azure Storage emulator. It provides a local emulation of Azure Blob Storage for development and testing:
 
@@ -453,16 +432,15 @@ npm install -g azurite
 azurite --silent --location ./azurite-data
 ```
 
-Then configure Qlicker to use Azurite's well-known credentials:
+Then configure Qlicker in **Admin -> Storage** with Azurite's well-known credentials:
 
-```env
-STORAGE_TYPE=azure
-AZURE_ACCOUNT_NAME=devstoreaccount1
-AZURE_ACCOUNT_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
-AZURE_CONTAINER_NAME=images
-```
+- storage account: `devstoreaccount1`
+- access key: `Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==`
+- container name: `images`
 
 > **Note:** Azurite uses a different blob endpoint format (`http://127.0.0.1:10000/devstoreaccount1`). The upload plugin currently constructs Azure URLs using the standard `https://<account>.blob.core.windows.net` pattern. For production usage this is correct; for local Azurite testing, uploaded files can be accessed directly via the Azurite endpoint.
+
+> **Maintenance script exception:** [`production_setup/sanitize-s3.js`](production_setup/sanitize-s3.js) still reads `AWS_*` environment variables when you run that one-off migration tool. Those variables are no longer part of normal Qlicker runtime configuration.
 
 ## Internationalization (i18n)
 

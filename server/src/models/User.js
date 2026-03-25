@@ -29,6 +29,7 @@ const ResumeLoginTokenSchema = new mongoose.Schema(
     createdAt: { type: Date },
     lastUsedAt: { type: Date },
     expiresAt: { type: Date },
+    ipAddress: { type: String, default: '' },
   },
   { _id: false, strict: false }
 );
@@ -119,13 +120,16 @@ const UserSchema = new mongoose.Schema(
     services: { type: ServicesSchema, default: () => ({}) },
     profile: { type: ProfileSchema, default: () => ({}) },
     ssoCreated: { type: Boolean, default: false },
-    allowEmailLogin: { type: Boolean, default: true },
+    // Explicit exception used when institution-wide SSO is enabled.
+    // Admin accounts are always treated as allowed regardless of this flag.
+    allowEmailLogin: { type: Boolean, default: false },
     lastAuthProvider: { type: String, default: '' },
     refreshTokenVersion: { type: Number, default: 0 },
     failedLoginAttempts: { type: Number, default: 0 },
     loginLockedUntil: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
     lastLogin: { type: Date },
+    lastLoginIp: { type: String, default: '' },
     // Per-user locale preference (overrides app default from Settings).
     // Empty string or missing means "use app default".
     locale: { type: String, default: '' },
@@ -153,7 +157,6 @@ UserSchema.methods.isSSOCreatedUser = function () {
 };
 
 UserSchema.methods.canUseEmailLogin = function () {
-  if (!this.ssoCreated) return true;
   return this.allowEmailLogin === true;
 };
 

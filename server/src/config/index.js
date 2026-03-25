@@ -32,7 +32,6 @@ export default {
   jwtRefreshSecret,
   rootUrl: process.env.ROOT_URL || 'http://localhost:3000',
   mailUrl: process.env.MAIL_URL || '',
-  storageType: process.env.STORAGE_TYPE || 'local',
   redisUrl: process.env.REDIS_URL || '',
   nodeEnv,
   disableRateLimits: parseBooleanEnv(process.env.DISABLE_RATE_LIMITS)

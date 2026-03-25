@@ -309,7 +309,6 @@ if [ -n "$LOADED_FROM" ]; then
   echo "  Imported defaults from: $LOADED_FROM"
   [ -n "${DOMAIN:-}" ]       && echo "    DOMAIN=$DOMAIN"
   [ -n "${MAIL_URL:-}" ]     && echo "    MAIL_URL=$MAIL_URL"
-  [ -n "${STORAGE_TYPE:-}" ] && echo "    STORAGE_TYPE=$STORAGE_TYPE"
   [ -n "${JWT_SECRET:-}" ]   && echo "    JWT_SECRET=(set)"
   [ -n "${SERVER_REPLICAS:-}" ] && echo "    SERVER_REPLICAS=$SERVER_REPLICAS"
   echo ""
@@ -460,38 +459,9 @@ DEFAULT_REDIS_URL="${REDIS_URL:-redis://redis:6379}"
 read -r -p "REDIS_URL [$DEFAULT_REDIS_URL]: " REDIS_URL_INPUT
 REDIS_URL="${REDIS_URL_INPUT:-$DEFAULT_REDIS_URL}"
 
-# ---- Storage ----------------------------------------------------------------
 echo ""
-echo "--- File Storage ---"
-echo "  Options: local (default), s3, azure"
-DEFAULT_STORAGE="${STORAGE_TYPE:-local}"
-read -r -p "Storage type [$DEFAULT_STORAGE]: " STORAGE_INPUT
-STORAGE_TYPE="${STORAGE_INPUT:-$DEFAULT_STORAGE}"
-
-AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
-AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}"
-AWS_BUCKET="${AWS_BUCKET:-}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
-AWS_ENDPOINT="${AWS_ENDPOINT:-}"
-AWS_FORCE_PATH_STYLE="${AWS_FORCE_PATH_STYLE:-false}"
-AZURE_ACCOUNT_NAME="${AZURE_ACCOUNT_NAME:-}"
-AZURE_ACCOUNT_KEY="${AZURE_ACCOUNT_KEY:-}"
-AZURE_CONTAINER_NAME="${AZURE_CONTAINER_NAME:-}"
-
-if [ "$STORAGE_TYPE" = "s3" ]; then
-  echo "  Configure S3 settings:"
-  read -r -p "  AWS_BUCKET [$AWS_BUCKET]: " input; AWS_BUCKET="${input:-$AWS_BUCKET}"
-  read -r -p "  AWS_REGION [$AWS_REGION]: " input; AWS_REGION="${input:-$AWS_REGION}"
-  read -r -p "  AWS_ACCESS_KEY_ID [$AWS_ACCESS_KEY_ID]: " input; AWS_ACCESS_KEY_ID="${input:-$AWS_ACCESS_KEY_ID}"
-  read -r -p "  AWS_SECRET_ACCESS_KEY: " input; AWS_SECRET_ACCESS_KEY="${input:-$AWS_SECRET_ACCESS_KEY}"
-  read -r -p "  AWS_ENDPOINT (blank for AWS) [$AWS_ENDPOINT]: " input; AWS_ENDPOINT="${input:-$AWS_ENDPOINT}"
-  read -r -p "  AWS_FORCE_PATH_STYLE [$AWS_FORCE_PATH_STYLE]: " input; AWS_FORCE_PATH_STYLE="${input:-$AWS_FORCE_PATH_STYLE}"
-elif [ "$STORAGE_TYPE" = "azure" ]; then
-  echo "  Configure Azure Blob settings:"
-  read -r -p "  AZURE_ACCOUNT_NAME [$AZURE_ACCOUNT_NAME]: " input; AZURE_ACCOUNT_NAME="${input:-$AZURE_ACCOUNT_NAME}"
-  read -r -p "  AZURE_ACCOUNT_KEY: " input; AZURE_ACCOUNT_KEY="${input:-$AZURE_ACCOUNT_KEY}"
-  read -r -p "  AZURE_CONTAINER_NAME [$AZURE_CONTAINER_NAME]: " input; AZURE_CONTAINER_NAME="${input:-$AZURE_CONTAINER_NAME}"
-fi
+info "Storage backend defaults to local on first boot."
+echo "  Switch to S3 or Azure later from Admin -> Storage after signing in."
 
 # ---- Backup retention -------------------------------------------------------
 echo ""
@@ -528,18 +498,6 @@ MAIL_URL=$MAIL_URL
 
 # Redis
 REDIS_URL=$REDIS_URL
-
-# Storage
-STORAGE_TYPE=$STORAGE_TYPE
-AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-AWS_BUCKET=$AWS_BUCKET
-AWS_REGION=$AWS_REGION
-AWS_ENDPOINT=$AWS_ENDPOINT
-AWS_FORCE_PATH_STYLE=$AWS_FORCE_PATH_STYLE
-AZURE_ACCOUNT_NAME=$AZURE_ACCOUNT_NAME
-AZURE_ACCOUNT_KEY=$AZURE_ACCOUNT_KEY
-AZURE_CONTAINER_NAME=$AZURE_CONTAINER_NAME
 
 # Internal
 API_PORT=3001

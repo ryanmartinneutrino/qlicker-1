@@ -263,11 +263,13 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | DELETE | `/users/:id` | Admin | Delete user |
 | PATCH | `/users/:id/role` | Admin | Change user role |
 | PATCH | `/users/:id/properties` | Admin | Toggle user properties such as `canPromote` and SSO email-login approval |
+| PATCH | `/users/:id/password` | Admin | Reset a user's local password |
 | PATCH | `/users/:id/verify-email` | Admin | Admin-verify email |
+| POST | `/users/me/image/thumbnail` | Token | Rebuild cropped avatar thumbnail from current profile image |
 | **Settings** | | | |
 | GET | `/settings` | Admin | Get all settings |
 | PATCH | `/settings` | Admin | Update settings |
-| GET | `/settings/public` | None | Public settings (SSO status) |
+| GET | `/settings/public` | None | Public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, `avatarThumbnailSize`, etc.) |
 | **Courses** | | | |
 | POST | `/courses` | Prof+ | Create course |
 | GET | `/courses` | Token | List user's courses |
@@ -435,6 +437,18 @@ settings.resolvedAdminEmail     // returns adminEmail || email
 settings.resolvedAWSAccessKeyId // returns AWS_accessKeyId || AWS_accessKey
 ```
 
+### Settings as the Runtime Source of Truth
+
+The singleton `Settings` document is authoritative for runtime-adjustable behavior such as:
+
+- `storageType` and storage credentials
+- `tokenExpiryMinutes`
+- `maxImageWidth`
+- `avatarThumbnailSize`
+- `SSO_enabled` and advanced SAML options
+
+Do **not** duplicate those runtime settings in `.env` or add new environment-variable fallbacks for them. New deployments should boot safely with local storage and default auth/upload settings, then allow admins to change behavior from the UI.
+
 ### Indexes
 
 Every model defines Mongoose indexes matching legacy database indexes. Add indexes for any new query pattern:
@@ -493,6 +507,16 @@ await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
 const grade = await Grade.findById(id);
 const nextGrade = { ...grade.toObject(), ... };  // .toObject() was unnecessary
 await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
+```
+
+Apply this especially to singleton settings reads and paginated admin lists:
+
+```javascript
+// ✅ Correct — read-only settings lookup
+const settings = await Settings.findOne().lean();
+
+// ✅ Correct — admin list endpoint
+const users = await User.find(filter).skip(offset).limit(limit).lean();
 ```
 
 ### Delta WebSocket Events (Not Generic Broadcasts)
@@ -589,24 +613,24 @@ const scheduleFetchLive = useCallback(() => {
 }, [fetchLiveData]);
 ```
 
-### Caching Expensive Lookups
+### Avoid Stale Caches for Admin-Controlled Settings
 
-Cache frequently-accessed settings with TTL to avoid DB queries on every request:
+Do **not** add TTL caches around settings that administrators expect to take effect immediately, especially:
+
+- `tokenExpiryMinutes`
+- `storageType` and storage credentials
+- `maxImageWidth`
+- `avatarThumbnailSize`
+- `SSO_enabled` and advanced SAML settings
+
+If a request only needs current values, prefer a small `.lean()` query over a stale cache:
 
 ```javascript
-// Token expiry cached for 60 seconds
-let _cachedTokenExpiryMinutes = null;
-let _cacheExpiry = 0;
+// ✅ Correct — current settings for auth/upload behavior
+const settings = await Settings.findOne().lean();
 
-async function getTokenExpiryMinutes() {
-  if (_cachedTokenExpiryMinutes !== null && Date.now() < _cacheExpiry) {
-    return _cachedTokenExpiryMinutes;
-  }
-  const settings = await Settings.findOne();
-  _cachedTokenExpiryMinutes = settings?.tokenExpiryMinutes || 120;
-  _cacheExpiry = Date.now() + 60_000;
-  return _cachedTokenExpiryMinutes;
-}
+// ❌ Wrong — delays admin changes taking effect
+return cachedSettingsForNextMinute;
 ```
 
 ### Avoid Duplicate Queries
@@ -794,6 +818,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 3. Use `t('namespace.key')` in the component
 4. **Both files must have identical key structures** — missing keys fall back to English
 5. **Do not ship new UI with `defaultValue` only** — every new key used in code must be added to both locale files in the same PR
+6. **Update localized manuals too** — if the change affects in-app manuals, update the corresponding `manuals.*` entries in both locale files
 
 ### Adding a New Language
 
@@ -817,6 +842,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 
 - **All user-visible text must go through `t()`** — no hardcoded English in JSX
 - **Accessibility copy counts too** — translate `aria-label`, `title`, `alt`, helper text, dialog text, tooltips, empty states, and button labels
+- **Admin guidance counts too** — advanced-setting warnings, storage size hints, SSO tooltips, and password-reset notices must be translated with the rest of the UI
 - **Server error messages remain in English** — they are technical/developer-facing
 - **Use interpolation** for dynamic values: `t('key', { count: 5 })` not `` `${t('key')} 5` ``
 - **Plurals:** Use i18next plural features when needed: `t('items', { count })` with `"items_one": "{{count}} item"`, `"items_other": "{{count}} items"`
@@ -835,6 +861,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 - **Argon2id** hashing (OWASP baseline: `memoryCost: 19456, timeCost: 2, parallelism: 1`)
 - Legacy bcrypt hashes trigger forced password reset on next login
 - When institutional SSO is enabled, treat SSO-authenticated emails as verified and avoid exposing redundant course-level verified-email enrollment toggles in the UI
+- When institutional SSO is enabled, local email login and password-reset flows are blocked by default for non-admin users unless `allowEmailLogin` has been explicitly granted for that account
 
 ### Input Sanitization
 
@@ -986,6 +1013,13 @@ function MyForm() {
 ```
 
 **Queued Save Pattern:** For autosaves where a second change can arrive while the first is still in-flight, use the `saveInFlightRef` + `queuedSaveRef` pattern (see `QuestionEditor.jsx` and `Profile.jsx` for reference implementations).
+
+### Image Upload UX
+
+- Rich-text-editor images and profile-photo uploads must normalize to the public `maxImageWidth` setting before upload whenever the file type supports resizing.
+- Profile-photo thumbnails must use the runtime `avatarThumbnailSize` setting so new uploads and server-side re-crops stay consistent.
+- Profile photos use two assets: the full image and a square avatar thumbnail.
+- New profile uploads should open the crop/rotate dialog immediately so the user can choose the thumbnail framing before the image is saved.
 
 ### API Client Usage
 
@@ -1194,6 +1228,8 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
 - **Validation** — missing required fields return 400
 - **Edge cases** — legacy data shapes, empty arrays, missing fields
 - **Business logic** — grading calculations, scoring methods
+- **Settings interactions** — test both SSO on/off and storage/auth defaults when behavior depends on `Settings`
+- **Admin overrides** — when auth behavior depends on per-user exceptions such as `allowEmailLogin`, cover both the default and the override path
 
 ---
 

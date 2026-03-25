@@ -37,9 +37,10 @@ Related manuals:
 
 1. Open **Review** for a session.
 2. Switch to the **Grading** tab.
-3. Recalculate and review any conflicts or warnings.
-4. Resolve manual-vs-auto conflicts by accepting auto marks per row or in bulk when appropriate.
-5. Return to the student summary view to confirm the grading state makes sense overall.
+3. If needed, change the point value for a question and confirm the recalculation warning.
+4. Recalculate and review any conflicts or warnings.
+5. Resolve manual-vs-auto conflicts by accepting auto marks per row or in bulk when appropriate.
+6. Return to the student summary view to confirm the grading state makes sense overall.
 
 ## Reviewability and student visibility
 
@@ -63,6 +64,7 @@ Tooltip text in the Session Editor explains each formula in the app.
 ## Manual overrides and feedback
 
 - Manual mark edits are preserved during recalculation.
+- Changing a question's point value from the session-review grading panel also triggers recalculation, and those manual marks remain preserved.
 - If recalculation disagrees with an existing manual mark, the manual mark is not overwritten automatically.
 - A conflict dialog lists these differences and allows you to apply automatic values explicitly.
 - Students receive notifications when new feedback is published, so concise and actionable comments are better than long notes.

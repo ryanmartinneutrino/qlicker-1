@@ -165,6 +165,23 @@ export function transformApiDocs({ schema = {}, url = '', route }) {
     }
   }
 
+  if (
+    !nextSchema.body
+    && Array.isArray(nextSchema.consumes)
+    && nextSchema.consumes.includes('multipart/form-data')
+  ) {
+    nextSchema.body = {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Multipart file upload field',
+        },
+      },
+    };
+  }
+
   if (!nextSchema.response) {
     nextSchema.response = buildDefaultResponses(method, url);
   }

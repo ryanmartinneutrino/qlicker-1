@@ -115,6 +115,11 @@ The current app includes:
 
 When you touch auth, uploads, settings, or WebSockets, re-check the relevant protections rather than assuming they stay correct automatically.
 
+Two current implementation details are easy to miss:
+
+- runtime storage selection is database-driven (`Settings.storageType`) and defaults to local until an admin changes it in the UI
+- auth-related settings such as SSO enablement, SAML advanced options, token/session lifetime, upload width, and avatar thumbnail size should take effect immediately after save, so avoid adding caches that delay those changes
+
 ## Useful companion docs
 
 - [`../../README.md`](../../README.md)

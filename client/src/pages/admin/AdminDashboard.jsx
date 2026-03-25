@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Tabs, Tab, Typography, TextField, Button, Checkbox,
+  Box, Typography, TextField, Button, Checkbox,
   FormControlLabel, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
@@ -9,39 +9,134 @@ import {
   ButtonBase, CircularProgress, Tooltip, Chip,
   Avatar,
 } from '@mui/material';
-import { Delete as DeleteIcon, Search as SearchIcon, Add as AddIcon, CheckCircle, Cancel } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Cancel,
+  CheckCircle,
+  Delete as DeleteIcon,
+  InfoOutlined as InfoOutlinedIcon,
+  Search as SearchIcon,
+} from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatDisplayDate } from '../../utils/date';
+import { formatDisplayDateTime } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import {
+  approximate16x9JpegSizeBytes,
+  approximateSquareJpegSizeBytes,
+  formatApproximateFileSize,
+} from '../../utils/imageUpload';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
+import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionListCard from '../../components/common/SessionListCard';
 import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
+import {
+  clearPublicSettingsCache,
+  getDefaultAvatarThumbnailSize,
+  getDefaultMaxImageWidth,
+} from '../../utils/publicSettings';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
 }
 
+function FieldLabel({ label, tooltip }) {
+  if (!tooltip) return label;
+  return (
+    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+      <span>{label}</span>
+      <Tooltip title={tooltip}>
+        <InfoOutlinedIcon sx={{ fontSize: '0.95rem', color: 'text.secondary' }} />
+      </Tooltip>
+    </Box>
+  );
+}
+
 const AUTO_SAVE_DELAY_MS = 500;
 const VALID_STORAGE_TYPES = new Set(['local', 's3', 'azure']);
-const SSO_FIELDS = [
-  { key: 'SSO_enabled', label: 'Enable SSO', type: 'checkbox' },
-  { key: 'SSO_entrypoint', label: 'IDP Entry Point URL' },
-  { key: 'SSO_logoutUrl', label: 'IDP Logout URL' },
-  { key: 'SSO_EntityId', label: 'Entity ID (e.g. qlicker)' },
-  { key: 'SSO_identifierFormat', label: 'Identifier Format' },
-  { key: 'SSO_institutionName', label: 'Institution Name' },
-  { key: 'SSO_emailIdentifier', label: 'Email Identifier' },
-  { key: 'SSO_firstNameIdentifier', label: 'First Name Identifier' },
-  { key: 'SSO_lastNameIdentifier', label: 'Last Name Identifier' },
-  { key: 'SSO_roleIdentifier', label: 'Role Identifier' },
-  { key: 'SSO_roleProfName', label: 'Name of professor role for auto-promote' },
-  { key: 'SSO_studentNumberIdentifier', label: 'Student Number Identifier' },
-  { key: 'SSO_cert', label: 'IDP Certificate (single string, no BEGIN-END)', type: 'textarea' },
-  { key: 'SSO_privCert', label: 'SP Public Certificate (can contain BEGIN-END)', type: 'textarea' },
-  { key: 'SSO_privKey', label: 'SP Private Key (WITH BEGIN-END)', type: 'textarea' },
+const DEFAULT_SSO_SETTINGS = {
+  SSO_enabled: false,
+  SSO_entrypoint: '',
+  SSO_logoutUrl: '',
+  SSO_EntityId: '',
+  SSO_identifierFormat: '',
+  SSO_institutionName: '',
+  SSO_emailIdentifier: '',
+  SSO_firstNameIdentifier: '',
+  SSO_lastNameIdentifier: '',
+  SSO_roleIdentifier: '',
+  SSO_roleProfName: '',
+  SSO_studentNumberIdentifier: '',
+  SSO_cert: '',
+  SSO_privCert: '',
+  SSO_privKey: '',
+  SSO_wantAssertionsSigned: false,
+  SSO_wantAuthnResponseSigned: false,
+  SSO_acceptedClockSkewMs: 60000,
+  SSO_disableRequestedAuthnContext: true,
+  SSO_authnContext: '',
+  SSO_routeMode: 'legacy',
+};
+const SSO_BASIC_FIELDS = [
+  { key: 'SSO_enabled', labelKey: 'admin.sso.enable', type: 'checkbox' },
+  { key: 'SSO_entrypoint', labelKey: 'admin.sso.entrypoint' },
+  { key: 'SSO_logoutUrl', labelKey: 'admin.sso.logoutUrl' },
+  { key: 'SSO_EntityId', labelKey: 'admin.sso.entityId' },
+  { key: 'SSO_identifierFormat', labelKey: 'admin.sso.identifierFormat' },
+  { key: 'SSO_institutionName', labelKey: 'admin.sso.institutionName' },
+  { key: 'SSO_emailIdentifier', labelKey: 'admin.sso.emailIdentifier' },
+  { key: 'SSO_firstNameIdentifier', labelKey: 'admin.sso.firstNameIdentifier' },
+  { key: 'SSO_lastNameIdentifier', labelKey: 'admin.sso.lastNameIdentifier' },
+  { key: 'SSO_roleIdentifier', labelKey: 'admin.sso.roleIdentifier' },
+  { key: 'SSO_roleProfName', labelKey: 'admin.sso.roleProfName' },
+  { key: 'SSO_studentNumberIdentifier', labelKey: 'admin.sso.studentNumberIdentifier' },
+  { key: 'SSO_cert', labelKey: 'admin.sso.cert', type: 'textarea' },
+  { key: 'SSO_privCert', labelKey: 'admin.sso.privCert', type: 'textarea' },
+  { key: 'SSO_privKey', labelKey: 'admin.sso.privKey', type: 'textarea' },
+];
+const SSO_ADVANCED_FIELDS = [
+  {
+    key: 'SSO_routeMode',
+    labelKey: 'admin.sso.routeMode',
+    helpKey: 'admin.sso.routeModeHelp',
+    type: 'select',
+    options: [
+      { value: 'legacy', labelKey: 'admin.sso.routeModeLegacy' },
+      { value: 'api_v1', labelKey: 'admin.sso.routeModeApiV1' },
+    ],
+  },
+  {
+    key: 'SSO_wantAssertionsSigned',
+    labelKey: 'admin.sso.wantAssertionsSigned',
+    helpKey: 'admin.sso.wantAssertionsSignedHelp',
+    type: 'checkbox',
+  },
+  {
+    key: 'SSO_wantAuthnResponseSigned',
+    labelKey: 'admin.sso.wantAuthnResponseSigned',
+    helpKey: 'admin.sso.wantAuthnResponseSignedHelp',
+    type: 'checkbox',
+  },
+  {
+    key: 'SSO_acceptedClockSkewMs',
+    labelKey: 'admin.sso.acceptedClockSkewMs',
+    helpKey: 'admin.sso.acceptedClockSkewMsHelp',
+    type: 'number',
+  },
+  {
+    key: 'SSO_disableRequestedAuthnContext',
+    labelKey: 'admin.sso.disableRequestedAuthnContext',
+    helpKey: 'admin.sso.disableRequestedAuthnContextHelp',
+    type: 'checkbox',
+  },
+  {
+    key: 'SSO_authnContext',
+    labelKey: 'admin.sso.authnContext',
+    helpKey: 'admin.sso.authnContextHelp',
+    type: 'textarea',
+  },
 ];
 
 function normalizeCourseField(value) {
@@ -278,6 +373,7 @@ function UsersTab({ currentUserId }) {
   const [roleFilter, setRoleFilter] = useState('');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
 
   // Create user dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -291,6 +387,8 @@ function UsersTab({ currentUserId }) {
   const [userProperties, setUserProperties] = useState({ canPromote: false, allowEmailLogin: true });
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertiesSaving, setPropertiesSaving] = useState(false);
+  const [resetPasswordValues, setResetPasswordValues] = useState({ password: '', confirmPassword: '' });
+  const [resetPasswordSaving, setResetPasswordSaving] = useState(false);
 
   const isStudentOnlyRole = (user) => {
     const roles = user?.profile?.roles || [];
@@ -321,6 +419,22 @@ function UsersTab({ currentUserId }) {
   }, [page, rowsPerPage, search, roleFilter]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings').then(({ data }) => {
+      if (mounted) {
+        setSsoEnabled(!!data?.SSO_enabled);
+      }
+    }).catch(() => {
+      if (mounted) {
+        setSsoEnabled(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleRoleChange = async (userId, role) => {
     try {
@@ -381,8 +495,9 @@ function UsersTab({ currentUserId }) {
     setSelectedUser(userSummary);
     setUserProperties({
       canPromote: isStudentOnlyRole(userSummary) ? false : !!userSummary?.profile?.canPromote,
-      allowEmailLogin: userSummary?.allowEmailLogin !== false,
+      allowEmailLogin: userSummary?.allowEmailLogin === true,
     });
+    setResetPasswordValues({ password: '', confirmPassword: '' });
     setPropertiesOpen(true);
     setPropertiesLoading(true);
     try {
@@ -390,7 +505,7 @@ function UsersTab({ currentUserId }) {
       setSelectedUser(data);
       setUserProperties({
         canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
-        allowEmailLogin: data?.allowEmailLogin !== false,
+        allowEmailLogin: data?.allowEmailLogin === true,
       });
     } catch {
       setMsg({ severity: 'error', text: t('admin.users.failedLoadUserProperties') });
@@ -405,6 +520,8 @@ function UsersTab({ currentUserId }) {
     setSelectedUser(null);
     setPropertiesLoading(false);
     setPropertiesSaving(false);
+    setResetPasswordSaving(false);
+    setResetPasswordValues({ password: '', confirmPassword: '' });
   };
 
   const handleSaveProperties = async () => {
@@ -415,7 +532,7 @@ function UsersTab({ currentUserId }) {
       setSelectedUser(data);
       setUserProperties({
         canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
-        allowEmailLogin: data?.allowEmailLogin !== false,
+        allowEmailLogin: data?.allowEmailLogin === true,
       });
       setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
       setMsg({ severity: 'success', text: t('admin.users.userPropertiesUpdated') });
@@ -426,7 +543,37 @@ function UsersTab({ currentUserId }) {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!selectedUser?._id) return;
+    if (resetPasswordValues.password.length < 8) {
+      setMsg({ severity: 'error', text: t('admin.users.passwordTooShort') });
+      return;
+    }
+    if (resetPasswordValues.password !== resetPasswordValues.confirmPassword) {
+      setMsg({ severity: 'error', text: t('admin.users.passwordsNoMatch') });
+      return;
+    }
+
+    setResetPasswordSaving(true);
+    try {
+      const { data } = await apiClient.patch(`/users/${selectedUser._id}/password`, {
+        newPassword: resetPasswordValues.password,
+      });
+      setSelectedUser(data);
+      setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
+      setResetPasswordValues({ password: '', confirmPassword: '' });
+      setMsg({ severity: 'success', text: t('admin.users.passwordReset') });
+    } catch (err) {
+      setMsg({ severity: 'error', text: err.response?.data?.message || t('admin.users.failedResetPassword') });
+    } finally {
+      setResetPasswordSaving(false);
+    }
+  };
+
   const selectedUserIsStudentOnly = isStudentOnlyRole(selectedUser);
+  const selectedUserIsAdmin = selectedUser?.profile?.roles?.includes('admin');
+  const activeSessions = Array.isArray(selectedUser?.activeSessions) ? selectedUser.activeSessions : [];
+  const hasActiveSessions = activeSessions.length > 0;
 
   return (
     <Box>
@@ -544,7 +691,7 @@ function UsersTab({ currentUserId }) {
                   </TableCell>
                   <TableCell>
                     {u.lastLogin
-                      ? formatDisplayDate(u.lastLogin)
+                      ? formatDisplayDateTime(u.lastLogin)
                       : t('admin.users.never')}
                   </TableCell>
                   <TableCell>
@@ -666,10 +813,58 @@ function UsersTab({ currentUserId }) {
                 {selectedUser?.isSSOCreatedUser && (
                   <Chip size="small" label={t('admin.users.ssoCreatedAccount')} color="info" variant="outlined" />
                 )}
-                {selectedUser?.allowEmailLogin === false && (
+                {ssoEnabled && selectedUser?.allowEmailLogin === false && (
                   <Chip size="small" label={t('admin.users.emailLoginDisabled')} color="warning" variant="outlined" />
                 )}
+                <Chip
+                  size="small"
+                  label={hasActiveSessions ? t('admin.users.loggedInNow') : t('admin.users.notLoggedInNow')}
+                  color={hasActiveSessions ? 'success' : 'default'}
+                  variant={hasActiveSessions ? 'filled' : 'outlined'}
+                />
               </Box>
+              <Paper variant="outlined" sx={{ p: 1.5 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  {t('admin.users.sessionActivity')}
+                </Typography>
+                {hasActiveSessions ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('admin.users.currentSessionsCount', { count: activeSessions.length })}
+                    </Typography>
+                    {activeSessions.map((session, index) => (
+                      <Paper key={`${session.sessionId}-${index}`} variant="outlined" sx={{ p: 1.25 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {t('admin.users.sessionNumber', { number: index + 1 })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionLoggedInAt', { value: formatDisplayDateTime(session.createdAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionLastSeenAt', { value: formatDisplayDateTime(session.lastUsedAt || session.createdAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.sessionExpiresAt', { value: formatDisplayDateTime(session.expiresAt) || t('admin.users.unknownTime') })}
+                        </Typography>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {t('admin.users.ipAddressValue', { value: session.ipAddress || t('admin.users.ipUnavailable') })}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Box>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    <Typography variant="body2">
+                      {t('admin.users.lastLoginValue', {
+                        value: selectedUser?.lastLogin ? formatDisplayDateTime(selectedUser.lastLogin) : t('admin.users.never'),
+                      })}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {t('admin.users.ipAddressValue', { value: selectedUser?.lastLoginIp || t('admin.users.ipUnavailable') })}
+                    </Typography>
+                  </Box>
+                )}
+              </Paper>
               <FormControlLabel
                 control={(
                   <Checkbox
@@ -688,24 +883,59 @@ function UsersTab({ currentUserId }) {
               <FormControlLabel
                 control={(
                   <Checkbox
-                    checked={!!userProperties.allowEmailLogin}
-                    disabled={!selectedUser?.isSSOCreatedUser}
+                    checked={selectedUserIsAdmin ? true : !!userProperties.allowEmailLogin}
+                    disabled={!ssoEnabled || selectedUserIsAdmin}
                     onChange={(event) => setUserProperties((current) => ({ ...current, allowEmailLogin: event.target.checked }))}
                   />
                 )}
                 label={t('admin.users.allowEmailLogin')}
               />
               <Typography variant="caption" color="text.secondary">
-                {selectedUser?.isSSOCreatedUser
-                  ? t('admin.users.allowEmailLoginHelp')
-                  : t('admin.users.allowEmailLoginNotNeeded')}
+                {!ssoEnabled
+                  ? t('admin.users.allowEmailLoginDisabledUntilSso')
+                  : selectedUserIsAdmin
+                    ? t('admin.users.allowEmailLoginAdminAlwaysEnabled')
+                    : t('admin.users.allowEmailLoginHelp')}
               </Typography>
+              <Box sx={{ pt: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                <Typography variant="subtitle2">
+                  {t('admin.users.resetPassword')}
+                </Typography>
+                <TextField
+                  label={t('admin.users.newPassword')}
+                  type="password"
+                  value={resetPasswordValues.password}
+                  onChange={(event) => setResetPasswordValues((current) => ({ ...current, password: event.target.value }))}
+                  fullWidth
+                />
+                <TextField
+                  label={t('admin.users.confirmNewPassword')}
+                  type="password"
+                  value={resetPasswordValues.confirmPassword}
+                  onChange={(event) => setResetPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}
+                  fullWidth
+                />
+                <Typography variant="caption" color="text.secondary">
+                  {ssoEnabled && !selectedUserIsAdmin && !userProperties.allowEmailLogin
+                    ? t('admin.users.resetPasswordNeedsEmailLogin')
+                    : t('admin.users.resetPasswordHelp')}
+                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleResetPassword}
+                    disabled={propertiesLoading || resetPasswordSaving}
+                  >
+                    {resetPasswordSaving ? t('common.saving') : t('admin.users.resetPasswordAction')}
+                  </Button>
+                </Box>
+              </Box>
             </>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={closePropertiesModal}>{t('common.cancel')}</Button>
-          <Button variant="contained" onClick={handleSaveProperties} disabled={propertiesLoading || propertiesSaving}>
+          <Button variant="contained" onClick={handleSaveProperties} disabled={propertiesLoading || propertiesSaving || resetPasswordSaving}>
             {propertiesSaving ? t('common.saving') : t('common.save')}
           </Button>
         </DialogActions>
@@ -722,6 +952,8 @@ function UsersTab({ currentUserId }) {
 function StorageTab() {
   const { t } = useTranslation();
   const [storageType, setStorageType] = useState('local');
+  const [maxImageWidth, setMaxImageWidth] = useState(getDefaultMaxImageWidth());
+  const [avatarThumbnailSize, setAvatarThumbnailSize] = useState(getDefaultAvatarThumbnailSize());
   const [s3, setS3] = useState({
     AWS_bucket: '',
     AWS_region: '',
@@ -742,6 +974,8 @@ function StorageTab() {
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
       setStorageType(VALID_STORAGE_TYPES.has(data.storageType) ? data.storageType : 'local');
+      setMaxImageWidth(data.maxImageWidth ?? getDefaultMaxImageWidth());
+      setAvatarThumbnailSize(data.avatarThumbnailSize ?? getDefaultAvatarThumbnailSize());
       setS3({
         AWS_bucket: data.AWS_bucket ?? '',
         AWS_region: data.AWS_region ?? '',
@@ -782,10 +1016,15 @@ function StorageTab() {
       setSaveStatus('saving');
       setSaveError('');
       try {
-        const payload = { storageType };
+        const payload = {
+          storageType,
+          maxImageWidth: Math.max(1, parseInt(maxImageWidth, 10) || getDefaultMaxImageWidth()),
+          avatarThumbnailSize: Math.max(64, parseInt(avatarThumbnailSize, 10) || getDefaultAvatarThumbnailSize()),
+        };
         if (storageType === 's3') Object.assign(payload, s3);
         if (storageType === 'azure') Object.assign(payload, azure);
         await apiClient.patch('/settings', payload);
+        clearPublicSettingsCache();
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
@@ -797,13 +1036,39 @@ function StorageTab() {
     }, AUTO_SAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [storageType, s3, azure, loading]);
+  }, [storageType, s3, azure, maxImageWidth, avatarThumbnailSize, loading]);
 
   if (loading) return <CircularProgress />;
+
+  const approxImageSize = formatApproximateFileSize(
+    approximate16x9JpegSizeBytes(Math.max(1, parseInt(maxImageWidth, 10) || getDefaultMaxImageWidth())),
+  );
+  const approxAvatarSize = formatApproximateFileSize(
+    approximateSquareJpegSizeBytes(Math.max(64, parseInt(avatarThumbnailSize, 10) || getDefaultAvatarThumbnailSize())),
+  );
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
+      <Alert severity="info">{t('admin.storage.databaseManagedHelp')}</Alert>
+      <TextField
+        label={t('admin.storage.maxImageWidth')}
+        type="number"
+        value={maxImageWidth}
+        onChange={(e) => setMaxImageWidth(e.target.value)}
+        helperText={t('admin.storage.maxImageWidthHelp', { size: approxImageSize })}
+        inputProps={{ min: 1 }}
+        fullWidth
+      />
+      <TextField
+        label={t('admin.storage.avatarThumbnailSize')}
+        type="number"
+        value={avatarThumbnailSize}
+        onChange={(e) => setAvatarThumbnailSize(e.target.value)}
+        helperText={t('admin.storage.avatarThumbnailSizeHelp', { size: approxAvatarSize })}
+        inputProps={{ min: 64 }}
+        fullWidth
+      />
       <FormControl fullWidth>
         <InputLabel>{t('admin.storage.storageType')}</InputLabel>
         <Select value={storageType} label={t('admin.storage.storageType')} onChange={(e) => setStorageType(e.target.value)}>
@@ -846,24 +1111,22 @@ function StorageTab() {
 // ── SSO Tab ─────────────────────────────────────────────────────────────────
 function SSOTab() {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState(() =>
-    Object.fromEntries(SSO_FIELDS.map((f) => [f.key, f.type === 'checkbox' ? false : '']))
-  );
+  const [settings, setSettings] = useState(DEFAULT_SSO_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
-      const next = {};
-      for (const f of SSO_FIELDS) {
-        next[f.key] = data[f.key] ?? (f.type === 'checkbox' ? false : '');
-      }
-      setSettings(next);
+      setSettings({
+        ...DEFAULT_SSO_SETTINGS,
+        ...data,
+      });
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
@@ -891,7 +1154,11 @@ function SSOTab() {
       setSaveStatus('saving');
       setSaveError('');
       try {
-        await apiClient.patch('/settings', settings);
+        const parsedClockSkew = Number.parseInt(settings.SSO_acceptedClockSkewMs, 10);
+        await apiClient.patch('/settings', {
+          ...settings,
+          SSO_acceptedClockSkewMs: Number.isFinite(parsedClockSkew) ? parsedClockSkew : 60000,
+        });
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
@@ -907,36 +1174,91 @@ function SSOTab() {
 
   if (loading) return <CircularProgress />;
 
+  const renderField = (field) => {
+    const label = (
+      <FieldLabel
+        label={t(field.labelKey)}
+        tooltip={field.helpKey ? t(field.helpKey) : ''}
+      />
+    );
+
+    if (field.type === 'checkbox') {
+      return (
+        <Box key={field.key}>
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={!!settings[field.key]}
+                onChange={(event) => setSettings((current) => ({ ...current, [field.key]: event.target.checked }))}
+              />
+            )}
+            label={label}
+          />
+        </Box>
+      );
+    }
+
+    if (field.type === 'textarea') {
+      return (
+        <TextField
+          key={field.key}
+          label={label}
+          value={settings[field.key]}
+          onChange={(event) => setSettings((current) => ({ ...current, [field.key]: event.target.value }))}
+          multiline
+          minRows={field.key === 'SSO_authnContext' ? 2 : 4}
+          helperText={field.helpKey ? t(field.helpKey) : undefined}
+          fullWidth
+        />
+      );
+    }
+
+    if (field.type === 'select') {
+      return (
+        <FormControl key={field.key} fullWidth>
+          <InputLabel>{label}</InputLabel>
+          <Select
+            value={settings[field.key]}
+            label={label}
+            onChange={(event) => setSettings((current) => ({ ...current, [field.key]: event.target.value }))}
+          >
+            {field.options.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {t(option.labelKey)}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      );
+    }
+
+    return (
+      <TextField
+        key={field.key}
+        label={label}
+        type={field.type === 'number' ? 'number' : 'text'}
+        value={settings[field.key]}
+        onChange={(event) => setSettings((current) => ({ ...current, [field.key]: event.target.value }))}
+        helperText={field.helpKey ? t(field.helpKey) : undefined}
+        inputProps={field.type === 'number' ? { min: -1 } : undefined}
+        fullWidth
+      />
+    );
+  };
+
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
-      {SSO_FIELDS.map((f) =>
-        f.type === 'checkbox' ? (
-          <FormControlLabel
-            key={f.key}
-            control={<Checkbox checked={!!settings[f.key]} onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.checked }))} />}
-            label={f.label}
-          />
-        ) : f.type === 'textarea' ? (
-          <TextField
-            key={f.key}
-            label={f.label}
-            value={settings[f.key]}
-            onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))}
-            multiline
-            minRows={4}
-            fullWidth
-          />
-        ) : (
-          <TextField
-            key={f.key}
-            label={f.label}
-            value={settings[f.key]}
-            onChange={(e) => setSettings((s) => ({ ...s, [f.key]: e.target.value }))}
-            fullWidth
-          />
-        )
-      )}
+      {SSO_BASIC_FIELDS.map(renderField)}
+      <Button variant="outlined" onClick={() => setAdvancedOpen((current) => !current)}>
+        {advancedOpen ? t('admin.sso.hideAdvanced') : t('admin.sso.showAdvanced')}
+      </Button>
+      {advancedOpen ? (
+        <>
+          <Alert severity="warning">{t('admin.sso.advancedWarning')}</Alert>
+          {SSO_ADVANCED_FIELDS.map(renderField)}
+        </>
+      ) : null}
     </Box>
   );
 }
@@ -1229,14 +1551,21 @@ export default function AdminDashboard() {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>{t('admin.title')}</Typography>
-      <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-        <Tab label={t('admin.tabs.settings')} />
-        <Tab label={t('admin.tabs.users')} />
-        <Tab label={t('admin.tabs.courses')} />
-        <Tab label={t('admin.tabs.storage')} />
-        <Tab label={t('admin.tabs.sso')} />
-        <Tab label={t('admin.tabs.video')} />
-      </Tabs>
+      <ResponsiveTabsNavigation
+        value={tab}
+        onChange={setTab}
+        ariaLabel={t('common.view')}
+        dropdownLabel={t('common.view')}
+        dropdownSx={{ mb: 1.5 }}
+        tabs={[
+          { value: 0, label: t('admin.tabs.settings') },
+          { value: 1, label: t('admin.tabs.users') },
+          { value: 2, label: t('admin.tabs.courses') },
+          { value: 3, label: t('admin.tabs.storage') },
+          { value: 4, label: t('admin.tabs.sso') },
+          { value: 5, label: t('admin.tabs.video') },
+        ]}
+      />
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
       <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
       <TabPanel value={tab} index={2}><CoursesTab /></TabPanel>

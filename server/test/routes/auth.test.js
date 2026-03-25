@@ -120,6 +120,32 @@ describe('POST /api/v1/auth/register', () => {
     expect(body.user.services).toBeUndefined();
   });
 
+  it('records last-login audit metadata for newly registered users', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '203.0.113.10',
+      },
+      payload: {
+        email: 'audit-register@example.com',
+        password: 'password123',
+        firstname: 'Audit',
+        lastname: 'Register',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+
+    const stored = await User.findOne({ 'emails.address': 'audit-register@example.com' });
+    expect(stored.lastLogin).toBeInstanceOf(Date);
+    expect(stored.lastLoginIp).toBe('203.0.113.10');
+    expect(stored.services?.resume?.loginTokens).toHaveLength(1);
+    expect(stored.services.resume.loginTokens[0].ipAddress).toBe('203.0.113.10');
+  });
+
   it('rejects duplicate email', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'dup@example.com' });
@@ -233,6 +259,49 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.user).toBeDefined();
     expect(body.user.services).toBeUndefined();
     expect(body.user.profile).toBeDefined();
+  });
+
+  it('records client IP metadata on login and refresh rotation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'audit-login@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '198.51.100.20',
+      },
+      payload: {
+        email: 'audit-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(loginRes.statusCode).toBe(200);
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(refreshToken).toBeTruthy();
+
+    const storedAfterLogin = await User.findOne({ 'emails.address': 'audit-login@example.com' });
+    expect(storedAfterLogin.lastLoginIp).toBe('198.51.100.20');
+    expect(storedAfterLogin.services.resume.loginTokens[0].ipAddress).toBe('198.51.100.20');
+    const firstSessionId = storedAfterLogin.services.resume.loginTokens[0].sessionId;
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        'x-forwarded-for': '198.51.100.99',
+        cookie: `refreshToken=${refreshToken}`,
+      },
+    });
+
+    expect(refreshRes.statusCode).toBe(200);
+
+    const storedAfterRefresh = await User.findOne({ 'emails.address': 'audit-login@example.com' });
+    expect(storedAfterRefresh.services.resume.loginTokens[0].sessionId).not.toBe(firstSessionId);
+    expect(storedAfterRefresh.services.resume.loginTokens[0].ipAddress).toBe('198.51.100.99');
   });
 
   it('finds mixed-case email user (case-insensitive lookup)', async (ctx) => {
@@ -354,6 +423,11 @@ describe('POST /api/v1/auth/login', () => {
 
   it('blocks email login for SSO-created users until admin approval is enabled', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const User = (await import('../../src/models/User.js')).default;
     const hashedPassword = await User.hashPassword('password123');
     await User.create({
@@ -382,6 +456,56 @@ describe('POST /api/v1/auth/login', () => {
     const body = res.json();
     expect(body.code).toBe('SSO_EMAIL_LOGIN_DISABLED');
     expect(body.message).toMatch(/SSO/i);
+  });
+
+  it('blocks local email login for non-admin accounts when institution-wide SSO is enabled and no exception is set', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
+    await createTestUser({ email: 'local-sso-blocked@example.com', password: 'password123' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'local-sso-blocked@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('SSO_EMAIL_LOGIN_DISABLED');
+  });
+
+  it('still allows admin accounts to log in by email when SSO is enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
+    await createTestUser({
+      email: 'admin-sso-login@example.com',
+      password: 'password123',
+      roles: ['admin'],
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'admin-sso-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.allowEmailLogin).toBe(true);
   });
 });
 
@@ -664,12 +788,94 @@ describe('POST /api/v1/auth/refresh', () => {
     });
     expect(rejectedReuseRes.statusCode).toBe(401);
   });
+
+  it('uses tokenExpiryMinutes for refresh-session lifetime without extending that lifetime on rotation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { tokenExpiryMinutes: 2 } },
+      { upsert: true }
+    );
+    await createTestUser({ email: 'expiry@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'expiry@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+    expect(String(loginRes.headers['set-cookie'])).toContain('Max-Age=120');
+
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(refreshToken).toBeTruthy();
+
+    const storedAfterLogin = await User.findOne({ 'emails.address': 'expiry@example.com' });
+    const initialExpiryMs = new Date(storedAfterLogin.services.resume.loginTokens[0].expiresAt).getTime();
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${refreshToken}`,
+      },
+    });
+    expect(refreshRes.statusCode).toBe(200);
+
+    const storedAfterRefresh = await User.findOne({ 'emails.address': 'expiry@example.com' });
+    const rotatedExpiryMs = new Date(storedAfterRefresh.services.resume.loginTokens[0].expiresAt).getTime();
+    expect(rotatedExpiryMs).toBe(initialExpiryMs);
+  });
+
+  it('rejects refresh when the server-side session has expired even if the cookie JWT is still valid', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'expired-session@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'expired-session@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    expect(refreshToken).toBeTruthy();
+
+    await User.updateOne(
+      { 'emails.address': 'expired-session@example.com' },
+      { $set: { 'services.resume.loginTokens.0.expiresAt': new Date(Date.now() - 1000) } }
+    );
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${refreshToken}`,
+      },
+    });
+
+    expect(refreshRes.statusCode).toBe(401);
+  });
 });
 
 // ---------- POST /api/v1/auth/forgot-password ----------
 describe('POST /api/v1/auth/forgot-password', () => {
   it('does not create a reset token for unapproved SSO-created users', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const User = (await import('../../src/models/User.js')).default;
     await User.create({
       emails: [{ address: 'sso-forgot@example.com', verified: true }],
@@ -788,6 +994,11 @@ describe('login hardening', () => {
 describe('POST /api/v1/auth/reset-password', () => {
   it('rejects password resets for unapproved SSO-created users', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const User = (await import('../../src/models/User.js')).default;
     await User.create({
       emails: [{ address: 'sso-reset@example.com', verified: true }],
@@ -887,6 +1098,39 @@ describe('GET /api/v1/auth/sso/login', () => {
 
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('https://idp.example.com/login?SAMLRequest=current-alias');
+    expect(getAuthorizeUrlAsync).toHaveBeenCalledOnce();
+  });
+
+  it('can present the api_v1 callback and logout routes to the IdP when route mode is switched', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          SSO_enabled: true,
+          SSO_routeMode: 'api_v1',
+        },
+      },
+      { upsert: true }
+    );
+
+    const getAuthorizeUrlAsync = vi.fn(async () => 'https://idp.example.com/login?SAMLRequest=api-v1');
+    app.getSamlProvider = vi.fn(async (options) => {
+      expect(options).toEqual({
+        callbackPath: '/api/v1/auth/sso/callback',
+        logoutCallbackPath: '/api/v1/auth/sso/logout',
+      });
+      return { getAuthorizeUrlAsync };
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/sso/login',
+    });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe('https://idp.example.com/login?SAMLRequest=api-v1');
     expect(getAuthorizeUrlAsync).toHaveBeenCalledOnce();
   });
 });
@@ -1078,6 +1322,29 @@ describe('GET /api/v1/auth/sso/metadata', () => {
     expect(res.body).toContain(`${app.config.rootUrl}/SSO/SAML2/logout`);
     expect(res.body).not.toContain(`${app.config.rootUrl}/api/v1/auth/sso/callback`);
     expect(res.body).not.toContain(`${app.config.rootUrl}/api/v1/auth/sso/logout`);
+  });
+
+  it('publishes api_v1 ACS and SLO endpoints when route mode is switched', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.create({
+      _id: 'settings',
+      SSO_enabled: true,
+      SSO_routeMode: 'api_v1',
+      SSO_emailIdentifier: 'mail',
+      SSO_EntityId: 'qlicker-test',
+      SSO_entrypoint: 'https://idp.example.com/login',
+      SSO_cert: 'ZmFrZS1pZHAtY2VydA==',
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/sso/metadata',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain(`${app.config.rootUrl}/api/v1/auth/sso/callback`);
+    expect(res.body).toContain(`${app.config.rootUrl}/api/v1/auth/sso/logout`);
+    expect(res.body).not.toContain(`${app.config.rootUrl}/SSO/SAML2`);
   });
 });
 

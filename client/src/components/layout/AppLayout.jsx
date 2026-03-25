@@ -124,7 +124,7 @@ export default function AppLayout() {
           <Tooltip title={t('nav.openAccountMenuTooltip')} arrow>
             <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
               <Avatar
-                src={user?.profile?.profileImage}
+                src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
                 sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
               >
                 {getInitials()}

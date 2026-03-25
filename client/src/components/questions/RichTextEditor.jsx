@@ -33,6 +33,8 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
+import { normalizeImageFile } from '../../utils/imageUpload';
+import { getPublicSettings } from '../../utils/publicSettings';
 import {
   extractPlainTextFromHtml,
   normalizeStoredHtml,
@@ -42,70 +44,6 @@ import ResizableImage from './ResizableImage';
 
 function isImageFile(file) {
   return Boolean(file?.type?.startsWith('image/'));
-}
-
-const RESIZABLE_UPLOAD_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Failed to read image file'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadImageFromDataUrl(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Failed to decode image'));
-    img.src = dataUrl;
-  });
-}
-
-async function prepareImageForUpload(file, maxWidthPx) {
-  const safeMaxWidth = Number(maxWidthPx);
-  if (!RESIZABLE_UPLOAD_TYPES.has(file.type)) {
-    return { file, width: undefined };
-  }
-  if (!Number.isFinite(safeMaxWidth) || safeMaxWidth <= 0) {
-    return { file, width: undefined };
-  }
-
-  const sourceDataUrl = await readFileAsDataUrl(file);
-  const sourceImage = await loadImageFromDataUrl(sourceDataUrl);
-  const sourceWidth = sourceImage.naturalWidth || 0;
-  const sourceHeight = sourceImage.naturalHeight || 0;
-
-  if (!sourceWidth || !sourceHeight || sourceWidth <= safeMaxWidth) {
-    return { file, width: sourceWidth || undefined };
-  }
-
-  const scale = safeMaxWidth / sourceWidth;
-  const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
-  const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
-
-  const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return { file, width: sourceWidth || undefined };
-  ctx.drawImage(sourceImage, 0, 0, targetWidth, targetHeight);
-
-  const resizedBlob = await new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), file.type, 0.92);
-  });
-
-  if (!resizedBlob) return { file, width: sourceWidth || undefined };
-  return {
-    file: new File([resizedBlob], file.name, {
-      type: file.type,
-      lastModified: Date.now(),
-    }),
-    width: targetWidth,
-  };
 }
 
 function getMaxEditorImageWidth(view) {
@@ -168,7 +106,12 @@ export default function RichTextEditor({
   };
 
   const uploadImage = async (file, maxEditorImageWidth) => {
-    const preparedUpload = await prepareImageForUpload(file, maxEditorImageWidth);
+    const publicSettings = await getPublicSettings();
+    const configuredMaxWidth = Number(publicSettings?.maxImageWidth) || 0;
+    const effectiveMaxWidth = configuredMaxWidth > 0 && maxEditorImageWidth > 0
+      ? Math.min(configuredMaxWidth, maxEditorImageWidth)
+      : configuredMaxWidth || maxEditorImageWidth || undefined;
+    const preparedUpload = await normalizeImageFile(file, { maxWidth: effectiveMaxWidth });
     const formData = new FormData();
     formData.append('file', preparedUpload.file);
     const { data } = await apiClient.post('/images', formData);
