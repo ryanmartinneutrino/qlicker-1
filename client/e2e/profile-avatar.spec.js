@@ -2,7 +2,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import {
+  apiJson,
   loginViaUi,
+  readE2eState,
   seedUsers,
 } from './helpers.js';
 
@@ -32,6 +34,25 @@ test('profile avatar editor saves a rotated existing profile image', async ({ pa
   expect((await initialProfilePatchResponse).status()).toBe(200);
   await expect(page.getByRole('dialog', { name: /adjust profile photo/i })).toBeHidden();
   const profileAvatarImage = page.locator('button[aria-label="Open profile photo editor"] img').first();
+  const { response: currentUserResponse, body: currentUserBody } = await apiJson(request, 'GET', '/users/me', {
+    token: student.token,
+  });
+  expect(currentUserResponse.status(), JSON.stringify(currentUserBody)).toBe(200);
+  const { serverBaseUrl } = await readE2eState();
+  const absoluteProfileImageUrl = `${serverBaseUrl}${currentUserBody.user.profile.profileImage}`;
+  const absoluteProfileThumbnailUrl = `${serverBaseUrl}${currentUserBody.user.profile.profileThumbnail}`;
+  const { response: absolutePatchResponse, body: absolutePatchBody } = await apiJson(request, 'PATCH', '/users/me/image', {
+    token: student.token,
+    payload: {
+      profileImage: absoluteProfileImageUrl,
+      profileThumbnail: absoluteProfileThumbnailUrl,
+    },
+  });
+  expect(absolutePatchResponse.status(), JSON.stringify(absolutePatchBody)).toBe(200);
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/profile$/);
+
   const avatarSrcBeforeRotate = await profileAvatarImage.getAttribute('src');
   expect(avatarSrcBeforeRotate).toMatch(/\/uploads\//);
 

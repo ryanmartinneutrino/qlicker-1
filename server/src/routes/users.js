@@ -83,20 +83,44 @@ function deriveImageKeyFromUrl(sourceUrl = '') {
       ? new URL(rawUrl, 'http://localhost')
       : new URL(rawUrl);
     const pathname = String(parsed.pathname || '');
-    if (pathname.startsWith('/uploads/')) {
-      return decodeKey(pathname.slice('/uploads/'.length));
+    if (!pathname.startsWith('/uploads/')) {
+      return '';
     }
-
-    const segments = pathname.split('/').filter(Boolean);
-    return segments.length > 0 ? decodeKey(segments[segments.length - 1]) : '';
+    return decodeKey(pathname.slice('/uploads/'.length));
   } catch {
-    if (rawUrl.startsWith('/uploads/')) {
-      return decodeKey(rawUrl.slice('/uploads/'.length).split('?')[0]);
-    }
     const stripped = rawUrl.split('?')[0].split('#')[0];
-    const segments = stripped.split('/').filter(Boolean);
-    return segments.length > 0 ? decodeKey(segments[segments.length - 1]) : '';
+    if (stripped.startsWith('/uploads/')) {
+      return decodeKey(stripped.slice('/uploads/'.length));
+    }
+    return '';
   }
+}
+
+async function fetchRemoteProfileImageBuffer(sourceUrl) {
+  if (!/^https?:\/\//i.test(String(sourceUrl || ''))) {
+    return null;
+  }
+
+  const signal = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(10_000)
+    : undefined;
+  const response = await fetch(sourceUrl, { redirect: 'follow', signal });
+  if (!response.ok) {
+    throw new Error(`Remote profile image request failed with status ${response.status}`);
+  }
+
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType && !contentType.startsWith('image/')) {
+    throw new Error(`Remote profile image is not an image (${contentType})`);
+  }
+
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > 15 * 1024 * 1024) {
+    throw new Error('Remote profile image is too large to crop safely');
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 const updateProfileSchema = {
@@ -373,6 +397,7 @@ export default async function userRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Stored profile image URL is invalid' });
       }
 
+      let sourceBuffer;
       const fallbackKey = deriveImageKeyFromUrl(sourceUrl);
       const sourceImage = await Image.findOne(
         fallbackKey
@@ -380,18 +405,24 @@ export default async function userRoutes(app) {
           : { url: sourceUrl }
       ).lean();
       const sourceKey = sourceImage?.key || fallbackKey;
-      if (!sourceKey) {
-        return reply.code(400).send({
-          error: 'Bad Request',
-          message: 'The current profile image cannot be re-cropped. Please upload it again.',
-        });
+
+      if (sourceKey) {
+        try {
+          sourceBuffer = await app.getFileBuffer(sourceKey);
+        } catch (err) {
+          request.log.warn({ err, imageKey: sourceKey, sourceUrl }, 'Failed to read stored profile image source');
+        }
       }
 
-      let sourceBuffer;
-      try {
-        sourceBuffer = await app.getFileBuffer(sourceKey);
-      } catch (err) {
-        request.log.error({ err, imageKey: sourceKey }, 'Failed to read source profile image');
+      if (!sourceBuffer) {
+        try {
+          sourceBuffer = await fetchRemoteProfileImageBuffer(sourceUrl);
+        } catch (err) {
+          request.log.warn({ err, sourceUrl }, 'Failed to fetch remote profile image source');
+        }
+      }
+
+      if (!sourceBuffer) {
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'The current profile image could not be loaded for thumbnail generation.',

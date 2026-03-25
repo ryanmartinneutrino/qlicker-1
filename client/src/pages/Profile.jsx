@@ -67,6 +67,24 @@ function buildThumbnailFileName(originalName = '') {
   return `${baseName}-thumbnail.jpg`;
 }
 
+function buildImageFileNameFromUrl(sourceUrl = '') {
+  const rawUrl = String(sourceUrl || '').trim();
+  if (!rawUrl) return 'profile-image';
+
+  try {
+    const parsed = rawUrl.startsWith('/')
+      ? new URL(rawUrl, window.location.origin)
+      : new URL(rawUrl);
+    const pathname = String(parsed.pathname || '');
+    const segments = pathname.split('/').filter(Boolean);
+    return segments[segments.length - 1] || 'profile-image';
+  } catch {
+    const stripped = rawUrl.split('?')[0].split('#')[0];
+    const segments = stripped.split('/').filter(Boolean);
+    return segments[segments.length - 1] || 'profile-image';
+  }
+}
+
 function buildRoundedCropPayload(editorState = {}) {
   return {
     rotation: Math.round(editorState.rotation || 0),
@@ -86,6 +104,31 @@ function shouldFallbackToServerThumbnailGeneration(error) {
     || /Failed to (decode|encode|prepare) image/i.test(message)
     || /Failed to prepare avatar/i.test(message)
   );
+}
+
+async function loadExistingImageAsDataUrl(sourceUrl) {
+  const response = await fetch(sourceUrl, {
+    credentials: 'include',
+    mode: 'cors',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to load existing profile image: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const file = new File(
+    [blob],
+    buildImageFileNameFromUrl(sourceUrl),
+    {
+      type: blob.type || 'image/jpeg',
+      lastModified: Date.now(),
+    },
+  );
+  const dataUrl = await readFileAsDataUrl(file);
+  return {
+    file,
+    source: dataUrl,
+  };
 }
 
 function ProfileImageEditorDialog({
@@ -484,9 +527,18 @@ export default function Profile() {
     setImageBusy(true);
     setMsg(null);
     try {
+      let source = user.profile.profileImage;
+      let fileName = user.profile.profileImage;
+      try {
+        const existingImage = await loadExistingImageAsDataUrl(user.profile.profileImage);
+        source = existingImage.source;
+        fileName = existingImage.file.name;
+      } catch {
+        // Fall back to the URL source. Save will use the server-side recrop path if needed.
+      }
       await prepareEditorState({
-        source: user.profile.profileImage,
-        fileName: user.profile.profileImage,
+        source,
+        fileName,
         isNewUpload: false,
       });
     } catch {
