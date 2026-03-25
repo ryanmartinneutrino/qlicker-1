@@ -240,7 +240,7 @@ function ProfileImageEditorDialog({
 
 export default function Profile() {
   const { t } = useTranslation();
-  const { user, loadUser } = useAuth();
+  const { user, loadUser, setCurrentUser } = useAuth();
   const [profile, setProfile] = useState({ firstname: '', lastname: '', studentNumber: '' });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [loading, setLoading] = useState(true);
@@ -541,6 +541,7 @@ export default function Profile() {
     setImageBusy(true);
     setMsg(null);
     try {
+      let updatedUser = null;
       if (imageEditorState.isNewUpload && imageEditorState.file) {
         const thumbnailFile = await createAvatarThumbnailFile(
           imageEditorState.source,
@@ -553,10 +554,11 @@ export default function Profile() {
 
         const profileImageUrl = await uploadSingleImage(imageEditorState.file);
         const profileThumbnailUrl = await uploadSingleImage(thumbnailFile);
-        await apiClient.patch('/users/me/image', {
+        const { data } = await apiClient.patch('/users/me/image', {
           profileImage: profileImageUrl,
           profileThumbnail: profileThumbnailUrl,
         });
+        updatedUser = data;
       } else {
         let thumbnailFile;
         try {
@@ -576,17 +578,23 @@ export default function Profile() {
 
         if (thumbnailFile) {
           const profileThumbnailUrl = await uploadSingleImage(thumbnailFile);
-          await apiClient.patch('/users/me/image', {
+          const { data } = await apiClient.patch('/users/me/image', {
             profileImage: user?.profile?.profileImage || imageEditorState.source,
             profileThumbnail: profileThumbnailUrl,
           });
+          updatedUser = data;
         } else {
-          await apiClient.post('/users/me/image/thumbnail', buildRoundedCropPayload(imageEditorState));
+          const { data } = await apiClient.post('/users/me/image/thumbnail', buildRoundedCropPayload(imageEditorState));
+          updatedUser = data;
         }
       }
 
+      if (updatedUser) {
+        setCurrentUser(updatedUser);
+      } else {
+        await loadUser();
+      }
       setImageEditorState(null);
-      await loadUser();
       setMsg({ severity: 'success', text: t('profile.photoUpdated') });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('profile.photoFailed') });

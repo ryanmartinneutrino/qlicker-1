@@ -9,6 +9,7 @@ const {
   createAvatarThumbnailFileMock,
   loadImageMock,
   loadUserMock,
+  setCurrentUserMock,
 } = vi.hoisted(() => ({
   apiClientMock: {
     get: vi.fn(),
@@ -21,6 +22,7 @@ const {
   createAvatarThumbnailFileMock: vi.fn(),
   loadImageMock: vi.fn(),
   loadUserMock: vi.fn(),
+  setCurrentUserMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -74,6 +76,7 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     user: authState.user,
     loadUser: loadUserMock,
+    setCurrentUser: setCurrentUserMock,
   }),
 }));
 
@@ -87,6 +90,7 @@ describe('Profile', () => {
     apiClientMock.patch.mockReset();
     apiClientMock.post.mockReset();
     loadUserMock.mockReset();
+    setCurrentUserMock.mockReset();
     createAvatarThumbnailFileMock.mockReset();
     loadImageMock.mockReset();
 
@@ -136,7 +140,14 @@ describe('Profile', () => {
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
 
-    apiClientMock.patch.mockResolvedValue({ data: {} });
+    apiClientMock.patch.mockResolvedValue({
+      data: {
+        profile: {
+          profileImage: '/uploads/original-avatar.jpg',
+          profileThumbnail: '/uploads/thumb-new.jpg',
+        },
+      },
+    });
     apiClientMock.post.mockImplementation((url) => {
       if (url === '/images') {
         return Promise.resolve({
@@ -148,7 +159,14 @@ describe('Profile', () => {
         });
       }
       if (url === '/users/me/image/thumbnail') {
-        return Promise.resolve({ data: {} });
+        return Promise.resolve({
+          data: {
+            profile: {
+              profileImage: '/uploads/original-avatar.jpg',
+              profileThumbnail: '/uploads/thumb-new.jpg',
+            },
+          },
+        });
       }
       return Promise.reject(new Error(`Unexpected POST ${url}`));
     });
@@ -208,6 +226,12 @@ describe('Profile', () => {
         profileThumbnail: '/uploads/thumb-new.jpg',
       });
     });
+    expect(setCurrentUserMock).toHaveBeenCalledWith({
+      profile: {
+        profileImage: '/uploads/original-avatar.jpg',
+        profileThumbnail: '/uploads/thumb-new.jpg',
+      },
+    });
     expect(apiClientMock.post).not.toHaveBeenCalledWith('/users/me/image/thumbnail', expect.anything());
   });
 
@@ -243,6 +267,12 @@ describe('Profile', () => {
         cropY: 0,
         cropSize: 900,
       });
+    });
+    expect(setCurrentUserMock).toHaveBeenCalledWith({
+      profile: {
+        profileImage: '/uploads/original-avatar.jpg',
+        profileThumbnail: '/uploads/thumb-new.jpg',
+      },
     });
   });
 });

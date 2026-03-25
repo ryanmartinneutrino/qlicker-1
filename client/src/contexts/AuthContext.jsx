@@ -15,6 +15,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const setCurrentUser = useCallback((nextUser) => {
+    setUser(nextUser);
+  }, []);
+
   const loadUser = useCallback(async () => {
     // On initial load, try refreshing via httpOnly cookie (access token is memory-only)
     if (!getAccessToken()) {
@@ -99,7 +103,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('qlicker_auth_event');
   };
 
-  const value = { user, loading, login, register, logout, loadUser };
+  const value = { user, loading, login, register, logout, loadUser, setCurrentUser };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
