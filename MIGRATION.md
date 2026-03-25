@@ -164,8 +164,8 @@ PR 189 chose the following `@node-saml/node-saml` configuration defaults to matc
 
 | Setting | Value | Why | IdP Considerations |
 |---------|-------|-----|-------------------|
-| `wantAssertionsSigned` | `false` | `passport-saml` defaulted to `false`; node-saml v5 defaults to `true`. Setting `false` accepts a valid signature at either the Response or Assertion level. | IdPs that sign **only** the Response (not individual assertions) will fail if this is `true`. Microsoft Entra signs only the Assertion, so either value works for Entra. |
-| `wantAuthnResponseSigned` | `false` | Same as above — matches `passport-saml` legacy default. | IdPs that sign **only** the Assertion (like Entra) will fail if this is `true`. |
+| `wantAssertionsSigned` | `false` | `passport-saml` defaulted to `false`; node-saml v5 defaults to `true`. Setting `false` means the library does not **require** the Assertion specifically to be signed — it only requires at least one valid signature somewhere in the response. | Setting to `true` would still work for Entra (which signs the Assertion), but would break IdPs that sign **only** the Response envelope. Kept `false` for maximum IdP compatibility and legacy parity. |
+| `wantAuthnResponseSigned` | `false` | Same rationale — matches `passport-saml` legacy default. Does not require the outer Response to be signed. | Setting to `true` would break IdPs that sign **only** the Assertion (like Entra). Kept `false` for maximum compatibility. |
 | `acceptedClockSkewMs` | `60000` (60 s) | Tolerates minor clock drift between SP and IdP servers. | 60 seconds is a conservative, widely-used default. Increase if the IdP's clock is significantly out of sync; decrease (or set to 0) if your infrastructure uses tight NTP synchronization and you want stricter replay protection. |
 | `disableRequestedAuthnContext` | `true` | Microsoft AD / Entra does not reliably support the `RequestedAuthnContext` element in SAML AuthnRequests. | If your IdP requires a specific authentication context (e.g. `urn:oasis:…:ac:classes:PasswordProtectedTransport`), set this to `false` and configure `authnContext` accordingly. |
 
