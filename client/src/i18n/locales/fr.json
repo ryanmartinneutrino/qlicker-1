@@ -477,6 +477,8 @@
       "grade": "Évaluer",
       "review": "Réviser",
       "reviewLiveSessionResults": "Réviser les résultats de la séance en direct",
+      "loadingSessionsList": "Chargement des séances…",
+      "loadingRemainingSessions": "Chargement des autres séances en arrière-plan…",
       "practice": "Pratique",
       "extensionsActive": "Prolongations actives",
       "noInstructors": "Aucun enseignant assigné.",
@@ -521,6 +523,7 @@
       "launchSessionAria": "Lancer la session {{name}}",
       "joinLiveSessionAria": "Rejoindre la session en direct {{name}}",
       "reviewLiveQuizAria": "Réviser la session de quiz en direct {{name}}",
+      "reviewLiveSessionAria": "Réviser les résultats de la séance en direct {{name}}",
       "reviewSessionAria": "Réviser la session {{name}}"
     },
     "sessionEditor": {

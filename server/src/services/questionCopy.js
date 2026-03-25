@@ -1,5 +1,6 @@
 import Question from '../models/Question.js';
 import Session from '../models/Session.js';
+import { buildSessionResponseTracking } from '../utils/sessionResponseTracking.js';
 
 function buildCopiedSessionOptions(sessionOptions) {
   if (sessionOptions == null) return undefined;
@@ -38,6 +39,7 @@ export async function copyQuestionToSession({
   delete copiedPayload._id;
   delete copiedPayload.__v;
   delete copiedPayload.updatedAt;
+  delete copiedPayload.sessionProperties;
   copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions);
 
   const copy = await Question.create({
@@ -60,9 +62,17 @@ export async function copyQuestionToSession({
       ...((session?.questions || []).map((questionId) => String(questionId))),
       String(copy._id),
     ])];
+    const nextResponseTracking = buildSessionResponseTracking(
+      nextQuestionIds,
+      session?.questionResponseCounts
+    );
 
     await Session.findByIdAndUpdate(targetSessionId, {
-      $set: { questions: nextQuestionIds },
+      $set: {
+        questions: nextQuestionIds,
+        hasResponses: nextResponseTracking.hasResponses,
+        questionResponseCounts: nextResponseTracking.questionResponseCounts,
+      },
     });
   }
 

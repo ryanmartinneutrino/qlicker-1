@@ -153,8 +153,11 @@ From the session editor you can:
 
 ### Session list navigation
 
+- The course page shows the first batch of sessions quickly, then loads the remaining session cards in the background.
 - Clicking the main body of a session card opens the session editor while the session is still draft, upcoming, or live.
 - Clicking the main body of an ended session card opens the review page instead, so grading and post-session analysis are one tap away.
+- Live session cards now include a **Review Live Session Results** button for both interactive sessions and quizzes.
+- Draft or upcoming session cards only show a separate **Review** button after at least one question in that session has collected responses.
 
 ## Use the question library and reuse tools
 

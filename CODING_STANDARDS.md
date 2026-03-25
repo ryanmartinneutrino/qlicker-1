@@ -280,7 +280,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | DELETE | `/courses/:id/unenroll` | Token | Unenroll |
 | **Sessions** | | | |
 | POST | `/courses/:courseId/sessions` | Prof+ | Create session |
-| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`) |
+| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`; session rows include `hasResponses`) |
 | GET | `/sessions/:id` | Token | Session detail |
 | PATCH | `/sessions/:id` | Prof+ | Update session |
 | DELETE | `/sessions/:id` | Prof+ | Delete session |
@@ -415,6 +415,30 @@ const isSlide = Number(question?.type) === 6;
 // ✅ When modifying session items, update the questions array only
 await Session.findByIdAndUpdate(sessionId, {
   $push: { questions: qId },
+});
+```
+
+#### Session Response Tracking
+
+Session response presence is tracked directly on the session document so course/session lists do not need to scan `responses` just to decide whether review is available.
+
+- `session.hasResponses` is the fast-path boolean for "does any question in this session have at least one response?"
+- `session.questionResponseCounts` stores per-question total response counts for the questions currently in `session.questions`
+- `question.sessionProperties.lastAttemptNumber` and `question.sessionProperties.lastAttemptResponseCount` track the latest attempt's response count for live-session UX
+- Slides still appear in `session.questions`, but their count is treated as `0`
+
+When modifying a session's question list, keep the ordered `questions` array **and** the tracked response-count map in sync:
+
+```javascript
+const nextQuestionIds = [...session.questions, copiedQuestionId];
+const responseTracking = buildSessionResponseTracking(nextQuestionIds, session.questionResponseCounts);
+
+await Session.findByIdAndUpdate(session._id, {
+  $set: {
+    questions: nextQuestionIds,
+    hasResponses: responseTracking.hasResponses,
+    questionResponseCounts: responseTracking.questionResponseCounts,
+  },
 });
 ```
 
@@ -646,6 +670,23 @@ const responseCount = allResponses.length;
 // ❌ Wrong — two separate queries for overlapping data
 const count = await Response.countDocuments({ questionId, attempt });
 const studentResponse = await Response.findOne({ questionId, attempt, studentUserId: userId });
+```
+
+### Prefer Session/Question Response Tracking Over Review-Time Scans
+
+For course/session list affordances, use the tracked fields instead of running ad hoc response queries:
+
+```javascript
+// ✅ Correct — constant-time review availability check
+if (session.hasResponses && ['hidden', 'visible'].includes(session.status)) {
+  showReviewButton = true;
+}
+
+// ✅ Correct — live response count from question tracking after submit
+const responseCount = question.sessionProperties?.lastAttemptResponseCount || 0;
+
+// ❌ Wrong — collection scan / aggregate just to know whether review should render
+const hasResponses = await Response.exists({ questionId: { $in: session.questions } });
 ```
 
 ### Avoid N+1 Query Loops
@@ -1299,6 +1340,7 @@ Before submitting any PR, verify:
 - [ ] Read-only queries use `.lean()`
 - [ ] No database queries inside loops — use `$in` batch queries instead
 - [ ] Array access from `.lean()` queries uses `|| []` fallback
+- [ ] Session/course-list review logic uses tracked `session.hasResponses` / `question.sessionProperties` fields instead of fresh response scans
 - [ ] User input in regex is escaped with `escapeForRegex()`
 - [ ] HTML rendered with `dangerouslySetInnerHTML` is sanitized through `richTextUtils.js`
 - [ ] New `_id` fields use `generateMeteorId()`, not ObjectId

@@ -9,14 +9,18 @@ import {
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
-  PlayArrow as LaunchIcon, Login as JoinIcon,
+  PlayArrow as LaunchIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseSelectionLabel, buildCourseTitle, sortCoursesByRecent } from '../../utils/courseTitle';
-import { getProfessorSessionPrimaryPath } from '../../utils/professorSessions';
+import {
+  getProfessorSessionPrimaryPath,
+  sessionCanShowListReviewAction,
+  sessionCanShowLiveReviewAction,
+} from '../../utils/professorSessions';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
@@ -82,6 +86,7 @@ function sortSessions(items) {
 }
 
 const SESSION_PAGE_SIZE = 15;
+const SESSION_BACKGROUND_BATCH_SIZE = 4;
 const SESSION_PAGE_SIZE_OPTIONS = [15, 30, 50];
 const SESSION_STATUS_FILTER_ALL = 'all';
 const SESSION_STATUS_FILTER_OPTIONS = [
@@ -267,6 +272,8 @@ export default function CourseDetail() {
   // Sessions
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsBackgroundLoading, setSessionsBackgroundLoading] = useState(false);
+  const [sessionTotalCount, setSessionTotalCount] = useState(0);
   const [sessionPages, setSessionPages] = useState({});
   const [sessionPageSizes, setSessionPageSizes] = useState({});
   const [sessionSearchTerms, setSessionSearchTerms] = useState({});
@@ -301,6 +308,7 @@ export default function CourseDetail() {
 
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
+  const sessionFetchVersionRef = useRef(0);
   const settingsHydratedRef = useRef(false);
   const lastSavedEditFieldsHashRef = useRef('');
   const settingsSaveInFlightRef = useRef(false);
@@ -308,44 +316,106 @@ export default function CourseDetail() {
   const newSessionNameInputRef = useRef(null);
   const newSessionDescInputRef = useRef(null);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      const { data } = await apiClient.get(`/courses/${id}/sessions`);
-      const nextSessions = data.sessions || [];
-      setSessions(nextSessions);
+  const fetchSessionGradeSummaries = useCallback(async (sessionItems, {
+    merge = false,
+    fetchVersion = null,
+  } = {}) => {
+    const sessionIds = [...new Set(
+      (sessionItems || []).map((session) => session?._id).filter(Boolean)
+    )];
 
-      if (!nextSessions.length) {
+    if (sessionIds.length === 0) {
+      if (!merge && (fetchVersion === null || sessionFetchVersionRef.current === fetchVersion)) {
         setGradingSummaryBySessionId({});
+      }
+      return;
+    }
+
+    try {
+      const gradeSummaryRes = await apiClient.get(`/courses/${id}/grades`, {
+        params: { sessionIds: sessionIds.join(',') },
+      });
+      if (fetchVersion !== null && sessionFetchVersionRef.current !== fetchVersion) return;
+
+      const summaryMap = {};
+      (gradeSummaryRes.data?.sessions || []).forEach((sessionSummary) => {
+        summaryMap[sessionSummary._id] = {
+          studentsNeedingGrading: Number(sessionSummary.studentsNeedingGrading) || 0,
+          marksNeedingGrading: Number(sessionSummary.marksNeedingGrading) || 0,
+        };
+      });
+
+      setGradingSummaryBySessionId((previousSummaries) => (
+        merge ? { ...previousSummaries, ...summaryMap } : summaryMap
+      ));
+    } catch {
+      if (fetchVersion !== null && sessionFetchVersionRef.current !== fetchVersion) return;
+      if (!merge) {
+        setGradingSummaryBySessionId({});
+      }
+    }
+  }, [id]);
+
+  const fetchSessionsPage = useCallback(async (page, limit = SESSION_PAGE_SIZE) => {
+    const { data } = await apiClient.get(`/courses/${id}/sessions`, {
+      params: { page, limit },
+    });
+    return data;
+  }, [id]);
+
+  const fetchSessions = useCallback(async () => {
+    const fetchVersion = sessionFetchVersionRef.current + 1;
+    sessionFetchVersionRef.current = fetchVersion;
+    setSessionsLoading(true);
+    setSessionsBackgroundLoading(false);
+
+    try {
+      const firstPageData = await fetchSessionsPage(1);
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+      const initialSessions = firstPageData.sessions || [];
+      const totalSessions = Number(firstPageData.total) || initialSessions.length;
+      const totalPages = Math.max(Number(firstPageData.pages) || 1, 1);
+
+      setSessions(initialSessions);
+      setSessionTotalCount(totalSessions);
+      setSessionsLoading(false);
+
+      await fetchSessionGradeSummaries(initialSessions, { fetchVersion, merge: false });
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+      if (totalPages <= 1) {
+        setSessionsBackgroundLoading(false);
         return;
       }
 
-      try {
-        const sessionIds = nextSessions.map((session) => session._id).filter(Boolean).join(',');
-        if (!sessionIds) {
-          setGradingSummaryBySessionId({});
-          return;
-        }
-        const gradeSummaryRes = await apiClient.get(`/courses/${id}/grades`, {
-          params: { sessionIds },
-        });
-        const summaryMap = {};
-        (gradeSummaryRes.data?.sessions || []).forEach((sessionSummary) => {
-          summaryMap[sessionSummary._id] = {
-            studentsNeedingGrading: Number(sessionSummary.studentsNeedingGrading) || 0,
-            marksNeedingGrading: Number(sessionSummary.marksNeedingGrading) || 0,
-          };
-        });
-        setGradingSummaryBySessionId(summaryMap);
-      } catch {
-        setGradingSummaryBySessionId({});
+      setSessionsBackgroundLoading(true);
+      const allLoadedSessions = [...initialSessions];
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
+
+      for (let index = 0; index < remainingPages.length; index += SESSION_BACKGROUND_BATCH_SIZE) {
+        const pageBatch = remainingPages.slice(index, index + SESSION_BACKGROUND_BATCH_SIZE);
+        const batchResults = await Promise.all(pageBatch.map((page) => fetchSessionsPage(page)));
+        if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+        const batchSessions = batchResults.flatMap((result) => result.sessions || []);
+        if (batchSessions.length === 0) continue;
+
+        allLoadedSessions.push(...batchSessions);
+        setSessions([...allLoadedSessions]);
+        await fetchSessionGradeSummaries(batchSessions, { fetchVersion, merge: true });
+        if (sessionFetchVersionRef.current !== fetchVersion) return;
       }
+
+      setSessionsBackgroundLoading(false);
     } catch {
-      /* silently fail – sessions tab will show empty */
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
       setGradingSummaryBySessionId({});
-    } finally {
+      setSessionTotalCount(0);
       setSessionsLoading(false);
+      setSessionsBackgroundLoading(false);
     }
-  }, [id]);
+  }, [fetchSessionGradeSummaries, fetchSessionsPage]);
 
   const fetchInstructorCourses = useCallback(async () => {
     const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
@@ -866,6 +936,8 @@ export default function CourseDetail() {
   const sortedSessions = sortSessions((sessions || []).filter((session) => !session.studentCreated));
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+  const sessionCountsArePartial = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
+  const sessionCountSuffix = sessionCountsArePartial ? '+' : '';
   const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);
   const headerCourseName = settingsHydratedRef.current ? editFields.name : toText(course.name);
   const headerDeptCode = settingsHydratedRef.current ? editFields.deptCode : toText(course.deptCode);
@@ -883,8 +955,8 @@ export default function CourseDetail() {
   );
 
   const tabLabels = [
-    `${t('professor.course.interactiveSessions')} (${interactiveSessions.length})`,
-    `${t('professor.course.quizzes')} (${quizSessions.length})`,
+    `${t('professor.course.interactiveSessions')} (${interactiveSessions.length}${sessionCountSuffix})`,
+    `${t('professor.course.quizzes')} (${quizSessions.length}${sessionCountSuffix})`,
     t('professor.course.grades'),
     `${t('professor.course.students')} (${students.length})`,
     `${t('professor.course.instructors')} (${instructors.length})`,
@@ -917,12 +989,23 @@ export default function CourseDetail() {
   };
 
   const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
-    if (sessionsLoading) return <CircularProgress size={24} />;
+    const listStillHydrating = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
+    if (sessionsLoading && sessions.length === 0) return <CircularProgress size={24} />;
     if (sessionItems.length === 0) {
+      if (listStillHydrating) {
+        return (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2" color="text.secondary">
+              {t('professor.course.loadingSessionsList', { defaultValue: 'Loading sessions…' })}
+            </Typography>
+          </Stack>
+        );
+      }
       return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
     }
 
-    const controlsEnabled = sessionItems.length > SESSION_PAGE_SIZE;
+    const controlsEnabled = !listStillHydrating && sessionItems.length > SESSION_PAGE_SIZE;
     const searchTerm = controlsEnabled ? String(sessionSearchTerms[listTabIndex] || '') : '';
     const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
     const statusFilter = controlsEnabled
@@ -951,6 +1034,18 @@ export default function CourseDetail() {
 
     return (
       <>
+        {listStillHydrating && (
+          <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">
+                {t('professor.course.loadingRemainingSessions', {
+                  defaultValue: 'Loading remaining sessions in the background…',
+                })}
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
         {controlsEnabled && (
           <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
             <Stack spacing={1.25}>
@@ -1078,19 +1173,7 @@ export default function CourseDetail() {
                     {t('professor.course.launch')}
                   </Button>
                 )}
-                {!s.quiz && s.status === 'running' && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    startIcon={<JoinIcon />}
-                    onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
-                    aria-label={t('professor.course.joinLiveSessionAria', { name: s.name })}
-                  >
-                    {t('professor.course.joinSession')}
-                  </Button>
-                )}
-                {(s.quiz || s.practiceQuiz) && s.status === 'running' && (
+                {sessionCanShowLiveReviewAction(s) && (
                   <Button
                     size="small"
                     variant="contained"
@@ -1100,16 +1183,16 @@ export default function CourseDetail() {
                       `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
                       { state: { returnTab: tab } }
                     )}
-                    aria-label={t('professor.course.reviewLiveQuizAria', { name: s.name })}
+                    aria-label={t('professor.course.reviewLiveSessionAria', { name: s.name })}
                   >
                     {t('professor.course.reviewLiveSessionResults')}
                   </Button>
                 )}
-                {s.status === 'done' && (
+                {sessionCanShowListReviewAction(s) && (
                   <Button
                     size="small"
-                    variant={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'contained' : 'outlined'}
-                    color={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'warning' : 'primary'}
+                    variant="outlined"
+                    color="primary"
                     startIcon={<ReviewIcon />}
                     onClick={() => navigate(
                       `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
@@ -1117,9 +1200,7 @@ export default function CourseDetail() {
                     )}
                     aria-label={t('professor.course.reviewSessionAria', { name: s.name })}
                   >
-                    {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
-                      ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
-                      : t('professor.course.review')}
+                    {t('professor.course.review')}
                   </Button>
                 )}
                 <TextField

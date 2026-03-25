@@ -28,6 +28,13 @@ import { userCanViewQuestion } from './questions.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
 import { computeHistogramData } from '../utils/histogram.js';
 import { getRequestIp } from '../utils/sessionAudit.js';
+import {
+  buildSessionResponseTracking,
+  getSessionHasResponses,
+  getSessionQuestionResponseCounts,
+  normalizeQuestionIds,
+  sessionResponseTrackingNeedsHydration,
+} from '../utils/sessionResponseTracking.js';
 
 const createSessionSchema = {
   body: {
@@ -386,6 +393,8 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
     quiz: isQuiz,
     practiceQuiz: isPracticeQuiz,
     reviewable: !!sourceSession?.reviewable,
+    hasResponses: false,
+    questionResponseCounts: {},
     joinCodeEnabled: !!sourceSession?.joinCodeEnabled,
     joinCodeInterval: Number(sourceSession?.joinCodeInterval) || 10,
     msScoringMethod: sourceSession?.msScoringMethod || 'right-minus-wrong',
@@ -991,6 +1000,124 @@ async function loadAnswerableQuestionIdsBySession(sessionDocs = []) {
   return answerableBySessionId;
 }
 
+async function hydrateSessionResponseTracking(sessionDocs = []) {
+  const sessionsToHydrate = (sessionDocs || []).filter((session) => sessionResponseTrackingNeedsHydration(session));
+  if (sessionsToHydrate.length === 0) {
+    return sessionDocs;
+  }
+
+  const questionIds = [...new Set(
+    sessionsToHydrate.flatMap((session) => normalizeQuestionIds(session?.questions))
+  )];
+  const responseCountsByQuestionId = questionIds.length > 0
+    ? new Map(
+      (await Response.aggregate([
+        { $match: { questionId: { $in: questionIds } } },
+        { $group: { _id: '$questionId', count: { $sum: 1 } } },
+      ]))
+        .map((entry) => [String(entry?._id || ''), Number(entry?.count || 0)])
+        .filter(([questionId]) => questionId)
+    )
+    : new Map();
+
+  const hydratedBySessionId = new Map();
+  const bulkOps = [];
+
+  sessionsToHydrate.forEach((session) => {
+    const questionResponseCounts = Object.fromEntries(
+      normalizeQuestionIds(session?.questions).map((questionId) => [
+        questionId,
+        Number(responseCountsByQuestionId.get(questionId) || 0),
+      ])
+    );
+    const hydratedSession = {
+      ...session,
+      questionResponseCounts,
+      hasResponses: Object.values(questionResponseCounts).some((count) => count > 0),
+    };
+    hydratedBySessionId.set(String(session?._id || ''), hydratedSession);
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: session._id },
+        update: {
+          $set: {
+            questionResponseCounts,
+            hasResponses: hydratedSession.hasResponses,
+          },
+        },
+      },
+    });
+  });
+
+  if (bulkOps.length > 0) {
+    await Session.bulkWrite(bulkOps, { ordered: false });
+  }
+
+  return (sessionDocs || []).map((session) => hydratedBySessionId.get(String(session?._id || '')) || session);
+}
+
+async function hydrateSingleSessionResponseTracking(session) {
+  if (!session) return session;
+  const [hydratedSession] = await hydrateSessionResponseTracking([session]);
+  return hydratedSession || session;
+}
+
+async function incrementQuestionAttemptResponseTracking(questionId, attemptNumber) {
+  const normalizedQuestionId = normalizeAnswerValue(questionId);
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  const incrementedQuestion = await Question.findOneAndUpdate(
+    {
+      _id: normalizedQuestionId,
+      'sessionProperties.lastAttemptNumber': normalizedAttemptNumber,
+    },
+    {
+      $inc: { 'sessionProperties.lastAttemptResponseCount': 1 },
+    },
+    { returnDocument: 'after' }
+  ).lean();
+
+  if (incrementedQuestion) {
+    return incrementedQuestion;
+  }
+
+  const currentAttemptCount = await Response.countDocuments({
+    questionId: normalizedQuestionId,
+    attempt: normalizedAttemptNumber,
+  });
+
+  return Question.findByIdAndUpdate(
+    normalizedQuestionId,
+    {
+      $set: {
+        'sessionProperties.lastAttemptNumber': normalizedAttemptNumber,
+        'sessionProperties.lastAttemptResponseCount': currentAttemptCount,
+      },
+    },
+    { returnDocument: 'after' }
+  ).lean();
+}
+
+async function incrementSessionResponseTracking(session, questionId) {
+  const normalizedQuestionId = normalizeAnswerValue(questionId);
+  const questionResponseCounts = getSessionQuestionResponseCounts(session);
+
+  if (
+    !sessionResponseTrackingNeedsHydration(session)
+    && Object.prototype.hasOwnProperty.call(questionResponseCounts, normalizedQuestionId)
+  ) {
+    return Session.findByIdAndUpdate(
+      session._id,
+      {
+        $inc: { [`questionResponseCounts.${normalizedQuestionId}`]: 1 },
+        $set: { hasResponses: true },
+      },
+      { returnDocument: 'after' }
+    ).lean();
+  }
+
+  return hydrateSingleSessionResponseTracking(session);
+}
+
 // Helper to check if user is instructor of course or admin
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
@@ -1033,12 +1160,15 @@ function buildSessionForUser(session, user, { instructorView = false } = {}) {
     normalized.userHasUpcomingQuizExtension = runtime.userHasUpcomingQuizExtension;
   }
 
+  normalized.hasResponses = getSessionHasResponses(normalized);
+
   if (!instructorView) {
     delete normalized.submittedQuiz;
     delete normalized.joinRecords;
     delete normalized.joined;
     delete normalized.currentJoinCode;
   }
+  delete normalized.questionResponseCounts;
 
   return normalized;
 }
@@ -1329,6 +1459,8 @@ export default async function sessionRoutes(app) {
         date: date ? new Date(date) : undefined,
         msScoringMethod: msScoringMethod || undefined,
         tags: normalizeTags(tags || []),
+        hasResponses: false,
+        questionResponseCounts: {},
       });
 
       await Course.findByIdAndUpdate(course._id, {
@@ -1562,12 +1694,13 @@ export default async function sessionRoutes(app) {
         }
         normalizedSessions.push(normalizedSession);
       }
+      const trackedSessions = await hydrateSessionResponseTracking(normalizedSessions);
 
       const feedbackBySessionId = {};
       const quizProgressBySessionId = {};
       let answerableQuestionIdsBySessionId = new Map();
-      if (!isInstrOrAdmin && normalizedSessions.length > 0) {
-        const sessionIds = normalizedSessions
+      if (!isInstrOrAdmin && trackedSessions.length > 0) {
+        const sessionIds = trackedSessions
           .map((session) => String(session?._id || ''))
           .filter(Boolean);
 
@@ -1594,7 +1727,7 @@ export default async function sessionRoutes(app) {
           feedbackBySessionId[sessionId] = summarizeFeedbackFromGrades(grades);
         });
 
-        const quizSessions = normalizedSessions.filter((session) => isQuizLikeSession(session));
+        const quizSessions = trackedSessions.filter((session) => isQuizLikeSession(session));
         answerableQuestionIdsBySessionId = await loadAnswerableQuestionIdsBySession(quizSessions);
         const questionToSessionId = new Map();
         quizSessions.forEach((session) => {
@@ -1649,7 +1782,7 @@ export default async function sessionRoutes(app) {
         }
       }
 
-      const hydratedSessions = normalizedSessions.map((session) => {
+      const hydratedSessions = trackedSessions.map((session) => {
         const sessionForUser = buildSessionForUser(session, request.user, {
           instructorView: isInstrOrAdmin,
         });
@@ -1710,6 +1843,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
       let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
+      normalizedSession = await hydrateSingleSessionResponseTracking(normalizedSession);
       if (isInstrOrAdmin) {
         const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
         normalizedSession = msNormalization.session || normalizedSession;
@@ -1949,9 +2083,17 @@ export default async function sessionRoutes(app) {
         copiedQuestionIds.push(String(copiedQuestion._id));
       }
 
+      const responseTracking = buildSessionResponseTracking(copiedQuestionIds);
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { questions: copiedQuestionIds, currentQuestion: copiedQuestionIds[0] || '' } },
+        {
+          $set: {
+            questions: copiedQuestionIds,
+            currentQuestion: copiedQuestionIds[0] || '',
+            hasResponses: responseTracking.hasResponses,
+            questionResponseCounts: responseTracking.questionResponseCounts,
+          },
+        },
         { returnDocument: 'after' }
       ).lean();
 
@@ -2509,9 +2651,16 @@ export default async function sessionRoutes(app) {
         : [];
       const createdQuestionIds = createdQuestions.map((question) => String(question._id));
 
+      const responseTracking = buildSessionResponseTracking(createdQuestionIds);
       const updatedSession = await Session.findByIdAndUpdate(
         session._id,
-        { $set: { questions: createdQuestionIds } },
+        {
+          $set: {
+            questions: createdQuestionIds,
+            hasResponses: responseTracking.hasResponses,
+            questionResponseCounts: responseTracking.questionResponseCounts,
+          },
+        },
         { returnDocument: 'after' }
       );
 
@@ -2896,7 +3045,7 @@ export default async function sessionRoutes(app) {
         questionId,
         studentUserId: userId,
         attempt: 1,
-      });
+      }).lean();
 
       if (existing && existing.editable === false) {
         return reply.code(403).send({
@@ -2921,7 +3070,7 @@ export default async function sessionRoutes(app) {
 
       let response;
       if (existing) {
-        response = await Response.findByIdAndUpdate(existing._id, { $set: payload }, { returnDocument: 'after' });
+        response = await Response.findByIdAndUpdate(existing._id, { $set: payload }, { returnDocument: 'after' }).lean();
       } else {
         response = await Response.create({
           questionId,
@@ -2935,9 +3084,13 @@ export default async function sessionRoutes(app) {
           submittedIpAddress,
           editable,
         });
+        await Promise.all([
+          incrementSessionResponseTracking(normalizedSession, questionId),
+          incrementQuestionAttemptResponseTracking(questionId, 1),
+        ]);
       }
 
-      return { response: response.toObject() };
+      return { response: response?.toObject ? response.toObject() : response };
     }
   );
 
@@ -3664,7 +3817,7 @@ export default async function sessionRoutes(app) {
         questionId,
         studentUserId: userId,
         attempt: currentAttempt.number,
-      });
+      }).lean();
 
       if (existingResponse) {
         return reply.code(409).send({ error: 'Conflict', message: 'You have already responded to this attempt' });
@@ -3682,18 +3835,18 @@ export default async function sessionRoutes(app) {
         createdAt: now,
       });
 
-      // Count responses for current question/attempt (fast indexed query)
-      const responseCount = await Response.countDocuments({
-        questionId,
-        attempt: currentAttempt.number,
-      });
+      const [updatedSession, trackedQuestion] = await Promise.all([
+        incrementSessionResponseTracking(session, questionId),
+        incrementQuestionAttemptResponseTracking(questionId, currentAttempt.number),
+      ]);
+      const responseCount = Number(trackedQuestion?.sessionProperties?.lastAttemptResponseCount || 0);
 
       // Keep the response event minimal; joined students only receive it while live stats are visible.
-      notifyResponseAdded(app, course, session, {
+      notifyResponseAdded(app, course, updatedSession || session, {
         questionId: String(questionId),
         attempt: currentAttempt.number,
         responseCount,
-        joinedCount: (session.joined || []).length,
+        joinedCount: (updatedSession?.joined || session.joined || []).length,
       }, {
         includeStudents: !!question?.sessionOptions?.stats,
       });
@@ -4106,9 +4259,20 @@ export default async function sessionRoutes(app) {
       }
 
       const attempts = question.sessionOptions?.attempts || [];
+      const trackedAttemptNumber = Number(question.sessionProperties?.lastAttemptNumber) || 0;
+      const trackedAttemptResponseCount = Number(question.sessionProperties?.lastAttemptResponseCount) || 0;
+      const hasImplicitFirstAttempt = attempts.length === 0
+        && (trackedAttemptNumber > 0 || trackedAttemptResponseCount > 0);
+      const attemptsToClose = attempts.length > 0
+        ? attempts
+        : (hasImplicitFirstAttempt ? [{ number: trackedAttemptNumber || 1, closed: false }] : []);
+
       // Close current attempt
-      const closedAttempts = attempts.map((a) => ({ ...a.toObject ? a.toObject() : a, closed: true }));
-      const newAttemptNumber = (attempts.length > 0 ? Math.max(...attempts.map((a) => a.number)) : 0) + 1;
+      const closedAttempts = attemptsToClose.map((a) => ({ ...a.toObject ? a.toObject() : a, closed: true }));
+      const previousAttemptNumber = attemptsToClose.length > 0
+        ? Math.max(...attemptsToClose.map((a) => Number(a?.number) || 1))
+        : 0;
+      const newAttemptNumber = previousAttemptNumber + 1;
       closedAttempts.push({ number: newAttemptNumber, closed: false });
 
       const updatedQuestion = await Question.findByIdAndUpdate(
@@ -4117,6 +4281,8 @@ export default async function sessionRoutes(app) {
           'sessionOptions.attempts': closedAttempts,
           'sessionOptions.stats': false,
           'sessionOptions.correct': false,
+          'sessionProperties.lastAttemptNumber': newAttemptNumber,
+          'sessionProperties.lastAttemptResponseCount': 0,
         } },
         { returnDocument: 'after' }
       );
@@ -4176,7 +4342,13 @@ export default async function sessionRoutes(app) {
         // Initialize with first attempt
         const updatedQuestion = await Question.findByIdAndUpdate(
           questionId,
-          { $set: { 'sessionOptions.attempts': [{ number: 1, closed: request.body.closed }] } },
+          {
+            $set: {
+              'sessionOptions.attempts': [{ number: 1, closed: request.body.closed }],
+              'sessionProperties.lastAttemptNumber': 1,
+              'sessionProperties.lastAttemptResponseCount': 0,
+            },
+          },
           { returnDocument: 'after' }
         );
         notifyAttemptChanged(app, course, session._id, updatedQuestion, { resetResponses: true });

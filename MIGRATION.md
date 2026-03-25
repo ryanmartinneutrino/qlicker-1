@@ -106,7 +106,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ WebSocket delta messages — ~98% reduction in DB queries during live sessions
 - ✅ Course page WebSocket push — replaced polling for session status events
 - ✅ Legacy DB indexes — all models indexed
-- ✅ i18n — react-i18next with 1085 translation keys (en/fr), all 30+ components wired
+- ✅ i18n — react-i18next with maintained en/fr locale bundles, all 30+ components wired
 - ✅ CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
 - ✅ JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
 - ✅ SAML logout validation — node-saml crypto validation with XML fallback
@@ -116,7 +116,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Profile/question-library/admin/grading polish — the Profile page now leads with per-user language selection and fully locks SSO-managed name/password fields; question visibility controls are confined to the library with clearer “any prof on Qlicker” wording plus bulk visibility changes and reviewable-session warnings; student-only accounts cannot retain `canPromote`; and manual grading can now explicitly save zero-point grades while the row-selection UI avoids unnecessary full-row rerenders
 - ✅ File upload content validation — magic bytes via `file-type` library
 - ✅ Settings PATCH field whitelist — prevents injection of unexpected fields
-- ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks removed the `>500 kB` chunk warning in production builds
+- ✅ Client bundle optimization — route lazy-loading plus Vite manual chunks reduced initial bundle size and isolated large vendor/pdf bundles, though current production builds still emit chunk-size warnings for the largest chunks
 - ✅ Session UI polish — back-to-course buttons are left-aligned and professor live-session controls keep Prev/Next paired with New attempt centered between them when space allows, then stack New attempt above on narrow screens
 - ✅ Session/course workflow polish — instructor course pickers now use compact code+semester labels sorted newest-first; the course manage page can copy one or many sessions across instructor courses; copied sessions/questions reset session-specific draft/live state (including quiz/live dates and per-question attempt visibility state); student live-session pages always expose a back-to-course button; live-session controls now include a page ribbon; session counts refresh after question-library changes; wrapped course tabs keep the active underline on the selected row; grading now accepts explicit zero scores, can filter to students with responses, and applies bulk edits only to explicitly selected filtered students
 - ✅ Session export/import — the session editor can now export portable session JSON (including full question content for re-import into another database), import that JSON into the current course as a draft session with fresh question documents, and open compact print-friendly PDF export views for questions-only, answers-highlighted, or answers+solutions handouts
@@ -131,6 +131,7 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 - ✅ Remaining Phase 7 security hardening — refresh tokens now rotate on each use and are invalidated on logout/password changes, password logins temporarily lock after repeated failures, development JWT secrets are generated at runtime when env values are omitted outside production, profile image URLs accept only http(s) or site-relative paths, and file uploads plus inbound websocket messages are rate limited
 - ✅ Remaining Phase 7 additional items — professor/student live-session pages now share a common websocket context, Playwright uses axe-core accessibility regression checks across the existing browser flows, the student question approval workflow is complete, and the question library expansion work is complete enough that only SSO confirmation plus follow-up decisions remain in Phase 7
 - ✅ Performance pagination improvements — session list API now supports optional `page`/`limit` pagination (backward-compatible); student question-library visibility now uses a DB-level query (invisible questions never enter server memory, true DB-level pagination); client-side session tabs paginate at 15 items per page with Previous/Next controls
+- ✅ Course-manage response-tracking polish — sessions now persist `hasResponses` plus per-question response counts, session questions persist the latest-attempt response count, professor course pages load the first 15 sessions immediately then hydrate the rest in the background, live interactive sessions now expose the same “Review Live Session Results” action as quizzes, ended session cards rely on click-through review instead of a redundant button, and draft/upcoming review buttons only appear when tracked response data exists
 - ✅ Query efficiency sweep — added missing indexes on Course model (`students`, `instructors`, `owner`) and a composite index on Session (`courseId + status`) to eliminate collection scans on the most frequent student lookups; converted 14 read-only `findById()` calls from full Mongoose documents to `.lean()` plain objects across grades, sessions, and user routes; moved student-created-session filtering from JavaScript post-processing into the MongoDB query in the live-sessions endpoint so the database returns only the sessions a student is allowed to see
 - ✅ SSO SAML production IdP confirmation — login, professor-role promotion, and logout all verified against the institutional IdP (Microsoft Entra). PR 189 relaxed `wantAssertionsSigned` to `false` (matching the legacy `passport-saml` default) so the library accepts a valid signature at either the Response or Assertion level without mandating both. See [SAML Defaults Reference](#saml-defaults-reference) below for the full default configuration and security notes.
 
@@ -138,8 +139,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 367 tests across 16 test files
-- **Client:** 89 tests across 24 files
+- **Server:** 373 tests across 17 test files
+- **Client:** 94 tests across 24 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** 9 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -409,13 +410,14 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 - ✅ **Sessions list pagination** — `GET /courses/:courseId/sessions` now accepts optional `page`/`limit` query params; returns `total`/`page`/`pages` when pagination is active; backward-compatible (returns all sessions when params omitted)
 - ✅ **Student question-library DB-level visibility** — replaced in-memory `batchFilterVisibleQuestions()` (which loaded ALL course questions, then filtered) with a MongoDB-level `$or` visibility query that only fetches questions the student is allowed to see; enables true DB-level `skip`/`limit` pagination for students; invisible questions never enter server memory
 - ✅ **Client-side session list pagination** — student and professor CourseDetail pages now paginate session lists within each tab (15 per page) with Previous/Next controls
+- ✅ **Session response tracking** — sessions now persist `hasResponses` plus `questionResponseCounts`, while session-linked questions persist `sessionProperties.lastAttemptNumber` / `lastAttemptResponseCount`; course-manage review affordances now use those tracked fields instead of fresh response scans, and older sessions lazily hydrate the tracking fields on read
 
 ### Performance — Fixed (Previously)
 
 - ✅ Delta WebSocket events — ~98% query reduction in live sessions
 - ✅ Duplicate response queries merged
 - ✅ Course page WebSocket push replaces polling
-- ✅ Client bundle split into route/vendor chunks — production build no longer reports the `>500 kB` chunk warning
+- ✅ Client bundle split into route/vendor chunks — reduced initial bundle size and isolated the largest vendor/pdf payloads, though the current production build still reports chunk-size warnings for the biggest chunks
 - ✅ `.lean()` on all hot-path read-only queries
 - ✅ `wsSendToUsers()` single-serialize broadcast
 
@@ -446,8 +448,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| **Server coverage** | ✅ Good (367 tests/16 files) | All 11 route modules have tests |
-| **Client coverage** | ⚠️ Moderate (89 tests/24 files) | Critical auth, grading, question-editor, session-editor, question-library, and responsive-navigation flows have targeted unit coverage, but most UI components still rely on E2E coverage |
+| **Server coverage** | ✅ Good (373 tests/17 files) | All 11 route modules have tests |
+| **Client coverage** | ⚠️ Moderate (94 tests/24 files) | Critical auth, grading, question-editor, session-editor, question-library, and responsive-navigation flows have targeted unit coverage, but most UI components still rely on E2E coverage |
 | **E2E coverage** | ✅ Good (11 Playwright flows) | 9 baseline flows plus 2 dedicated SSO smoke flows; grading, group management, and question copy/export paths now have browser coverage |
 | **Test granularity** | ✅ Appropriate | Auth/permission tests are individually useful for catching regressions; no excessive duplication |
 | **Consolidation opportunity** | LOW | Authorization 403 tests could share a parametrized matrix, but individual tests are clearer for debugging |
@@ -468,7 +470,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Unit tests | ✅ 441 automated checks (359 server + 82 client) plus 11 Playwright browser flows (9 baseline + 2 SSO smoke) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
-| Internationalization | ✅ Complete — 1085+ keys in en/fr, all components wired, no hardcoded English in aria-labels |
+| Internationalization | ✅ Complete — maintained en/fr locale bundles, all components wired, no hardcoded English in aria-labels |
 | Accessibility | ✅ Improved — axe-core E2E checks, aria-labels on all interactive elements |
 
 ---
@@ -487,13 +489,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (367 tests, 16 files)
+# Server tests (373 tests, 17 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (89 tests, 24 files)
+# Client tests (94 tests, 24 files)
 cd client && npx vitest run
 
 # Client E2E tests (9 Playwright flows)
