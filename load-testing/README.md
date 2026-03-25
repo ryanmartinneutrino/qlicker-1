@@ -33,6 +33,16 @@ The five questions cover every response-collecting question type:
 | **MongoDB** | ≥ 7 | Running and accessible |
 | **Qlicker server** | — | Running (with `MONGO_URL` pointing to the same DB) |
 
+For high-concurrency tests from one host/IP, set `DISABLE_RATE_LIMITS=true`
+for the Qlicker server process (or in `.env`) so `/api/v1/auth/login` does not
+throttle load-test users.
+
+If the server runs via Docker Compose:
+
+```bash
+DISABLE_RATE_LIMITS=true docker compose up -d server
+```
+
 ### Installing k6
 
 ```bash
@@ -47,8 +57,10 @@ echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.i
   | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update && sudo apt-get install k6
 
-# Docker (no install needed)
-docker run --rm -i grafana/k6 run - <scenarios/live-session.js
+# Docker (no host install needed)
+docker run --rm --network host \
+  -v "$PWD:/work" -w /work \
+  grafana/k6 run scenarios/live-session.js
 ```
 
 ## Quick Start
@@ -223,9 +235,10 @@ is using. Verify `MONGO_URL` matches in both the seed script and the server's
 ### Login rate-limiting (429 errors)
 
 The Qlicker server rate-limits login attempts. The load test uses the server's
-`/auth/login` endpoint. If you see 429 errors:
+`/api/v1/auth/login` endpoint. If you see 429 errors:
 - Ensure rate limiting is relaxed or disabled for the load test
-  (e.g., set `RATE_LIMIT_DISABLED=true` in the server `.env`)
+  (set `DISABLE_RATE_LIMITS=true` in the server environment; legacy alias
+  `RATE_LIMIT_DISABLED=true` is also supported)
 - Or increase the `startTime` delay in the k6 options to stagger logins
 
 ### WebSocket connection failures

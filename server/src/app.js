@@ -48,6 +48,19 @@ export async function buildApp(opts = {}) {
   await app.register(helmet, {
     contentSecurityPolicy: false, // CSP managed by the frontend reverse-proxy / nginx
   });
+
+  if (app.config.disableRateLimits) {
+    // Strip per-route rate limit config before @fastify/rate-limit processes routes.
+    app.addHook('onRoute', (routeOptions) => {
+      if (routeOptions.rateLimit) {
+        delete routeOptions.rateLimit;
+      }
+      if (routeOptions.config?.rateLimit) {
+        delete routeOptions.config.rateLimit;
+      }
+    });
+  }
+
   await app.register(rateLimit, {
     global: false, // only apply to routes that opt-in
   });
@@ -91,17 +104,6 @@ export async function buildApp(opts = {}) {
   // Auth decorators
   app.decorate('authenticate', authenticate);
   app.decorate('requireRole', requireRole);
-
-  if (app.config.disableRateLimits) {
-    app.addHook('onRoute', (routeOptions) => {
-      if (routeOptions.rateLimit) {
-        delete routeOptions.rateLimit;
-      }
-      if (routeOptions.config?.rateLimit) {
-        delete routeOptions.config.rateLimit;
-      }
-    });
-  }
 
   // CSRF protection: Require X-Requested-With header on state-changing requests.
   // CORS blocks cross-origin requests from setting custom headers, so this prevents

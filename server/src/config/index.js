@@ -12,6 +12,12 @@ const runtimeJwtRefreshSecret = crypto.randomBytes(32).toString('hex');
 const jwtSecret = process.env.JWT_SECRET || runtimeJwtSecret;
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || runtimeJwtRefreshSecret;
 
+function parseBooleanEnv(value) {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
+}
+
 if (nodeEnv === 'production') {
   if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
     throw new Error('JWT_SECRET and JWT_REFRESH_SECRET must be set in production');
@@ -29,4 +35,6 @@ export default {
   storageType: process.env.STORAGE_TYPE || 'local',
   redisUrl: process.env.REDIS_URL || '',
   nodeEnv,
+  disableRateLimits: parseBooleanEnv(process.env.DISABLE_RATE_LIMITS)
+    || parseBooleanEnv(process.env.RATE_LIMIT_DISABLED),
 };

@@ -39,6 +39,7 @@ import ws from 'k6/ws';
 import { check, sleep, group } from 'k6';
 import { Counter, Trend, Rate } from 'k6/metrics';
 import { SharedArray } from 'k6/data';
+import exec from 'k6/execution';
 
 /* ── Configuration ──────────────────────────────────────────────── */
 
@@ -50,6 +51,7 @@ const STATE_FILE = __ENV.STATE_FILE || '../state.json';
 const ANSWER_WINDOW_S = parseInt(__ENV.ANSWER_WINDOW_S || '30', 10);
 const STATS_PAUSE_S = parseInt(__ENV.STATS_PAUSE_S || '15', 10);
 const CORRECT_PAUSE_S = parseInt(__ENV.CORRECT_PAUSE_S || '15', 10);
+const EMPTY_JSON_BODY = JSON.stringify({});
 
 // Load seed state (shared across VUs – read once)
 const state = JSON.parse(open(STATE_FILE));
@@ -169,7 +171,7 @@ export function professorFlow() {
   group('start_session', () => {
     const res = http.post(
       `${API}/sessions/${sessionId}/start`,
-      null,
+      EMPTY_JSON_BODY,
       { headers: apiHeaders(profToken), tags: { name: 'start_session' } },
     );
     check(res, { 'session started': (r) => r.status === 200 });
@@ -204,7 +206,7 @@ export function professorFlow() {
       // Open first attempt
       const attemptRes = http.post(
         `${API}/sessions/${sessionId}/new-attempt`,
-        null,
+        EMPTY_JSON_BODY,
         { headers: apiHeaders(profToken), tags: { name: 'open_attempt' } },
       );
       check(attemptRes, { 'attempt opened': (r) => r.status === 200 });
@@ -242,7 +244,7 @@ export function professorFlow() {
   group('end_session', () => {
     const res = http.post(
       `${API}/sessions/${sessionId}/end`,
-      null,
+      EMPTY_JSON_BODY,
       { headers: apiHeaders(profToken), tags: { name: 'end_session' } },
     );
     check(res, { 'session ended': (r) => r.status === 200 });
@@ -252,12 +254,11 @@ export function professorFlow() {
 /* ── Student flow ───────────────────────────────────────────────── */
 
 export function studentFlow() {
-  // Each VU is assigned a unique student from the shared array.
-  // The professor scenario uses 1 VU, so student VUs are numbered starting at 2.
-  // Clamp to valid range to prevent duplicate credentials if VU count is misconfigured.
-  const vuIndex = (__VU - 2) % students.length;
-  if (vuIndex < 0 || vuIndex >= students.length) return;
-  const student = students[vuIndex];
+  // Map each student iteration to a deterministic credential.
+  // For per-vu-iterations this yields one unique student per VU.
+  const studentIndex = exec.scenario.iterationInTest;
+  if (studentIndex < 0 || studentIndex >= students.length) return;
+  const student = students[studentIndex];
 
   const sessionId = state.session.id;
   const questions = state.questions;
@@ -277,11 +278,15 @@ export function studentFlow() {
     token = res.json().token;
   });
 
-  if (!token) return;
+  if (!token) {
+    joinSuccess.add(false);
+    respondSuccess.add(false);
+    return;
+  }
 
   // 2. Join the session (retry a few times – session may not be running yet)
+  let joined = false;
   group('student_join', () => {
-    let joined = false;
     for (let attempt = 0; attempt < 10 && !joined; attempt++) {
       const start = Date.now();
       const res = http.post(
@@ -302,6 +307,10 @@ export function studentFlow() {
       console.warn(`Student ${student.email} could not join session`);
     }
   });
+  if (!joined) {
+    respondSuccess.add(false);
+    return;
+  }
 
   // 3. WebSocket connection for real-time events + answering questions
   group('student_ws_session', () => {
@@ -383,5 +392,8 @@ export function studentFlow() {
     });
 
     check(res, { 'ws connected': (r) => r && r.status === 101 });
+    if (!res || res.status !== 101) {
+      respondSuccess.add(false);
+    }
   });
 }

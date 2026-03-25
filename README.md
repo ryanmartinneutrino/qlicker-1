@@ -22,6 +22,7 @@ This repository contains the **migration** from the original MeteorJS implementa
 ├── server/                                 # Fastify backend
 ├── client/                                 # React frontend (Vite)
 ├── ssoserver/                              # Isolated local SimpleSAMLphp IdP for SSO smoke tests
+├── load-testing/                           # k6 load testing scenario + seed script
 ├── scripts/                                # Setup and utility scripts
 ├── docker-compose.yml                      # Docker orchestration
 └── .env.example                            # Environment variable template
@@ -306,6 +307,25 @@ For the full setup, helper scripts, troubleshooting, and metadata details, see [
 | `scripts/changeuserpwd.sh` | Change a user's password from the CLI (dev/testing) |
 | `scripts/changeuserpwd.js` | Node.js logic for password change |
 | `scripts/build-images.sh` | Build and tag Docker images for production deployment |
+
+## Load Testing
+
+The load-test suite lives in [`load-testing/`](load-testing/README.md). It
+seeds dedicated load-test users/courses/sessions and runs a k6 scenario that
+simulates a professor + concurrent students through a full live session.
+
+Typical flow:
+
+```bash
+cd load-testing
+npm install
+MONGO_URL=mongodb://localhost:27017/qlicker node seed.mjs --students 250
+k6 run --env BASE_URL=http://localhost:3001 scenarios/live-session.js
+MONGO_URL=mongodb://localhost:27017/qlicker node seed.mjs --clean
+```
+
+For high-concurrency runs from a single host, set
+`DISABLE_RATE_LIMITS=true` on the server process.
 
 ## Production Deployment
 
