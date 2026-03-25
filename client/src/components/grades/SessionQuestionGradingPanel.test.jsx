@@ -80,6 +80,16 @@ function buildGradesPayload() {
   };
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('SessionQuestionGradingPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -549,5 +559,145 @@ describe('SessionQuestionGradingPanel', () => {
     });
 
     expect(onSessionDataRefresh).toHaveBeenCalled();
+  });
+
+  it('does not treat zero-point questions as needing grading even when a stale mark says otherwise', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 0, outOf: 0, needsGrading: true, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 0 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    fireEvent.click(screen.getByLabelText(/only need/i));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Ada Lovelace')).not.toBeInTheDocument();
+    });
+  });
+
+  it('ignores stale grade responses from a previous session when the session changes', async () => {
+    const firstGrades = createDeferred();
+    const secondGrades = createDeferred();
+    apiClient.get
+      .mockReturnValueOnce(firstGrades.promise)
+      .mockReturnValueOnce(secondGrades.promise);
+
+    const { rerender } = render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-session-1',
+            type: 2,
+            content: '<p>First question</p>',
+            plainText: 'First question',
+            sessionOptions: { points: 4 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-session-1', responses: [{ attempt: 1, answer: 'Session one response' }] }],
+          },
+        ]}
+      />
+    );
+
+    rerender(
+      <SessionQuestionGradingPanel
+        sessionId="session-2"
+        session={{ _id: 'session-2', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-session-2',
+            type: 2,
+            content: '<p>Second question</p>',
+            plainText: 'Second question',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-session-2', responses: [{ attempt: 1, answer: 'Session two response' }] }],
+          },
+        ]}
+      />
+    );
+
+    secondGrades.resolve({
+      data: {
+        grades: [
+          {
+            _id: 'grade-session-2',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-session-2', points: 4, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    await screen.findByDisplayValue('4');
+    expect(screen.getByText('/ 5')).toBeInTheDocument();
+
+    firstGrades.resolve({
+      data: {
+        grades: [
+          {
+            _id: 'grade-session-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-session-1', points: 1, outOf: 4, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('4')).toBeInTheDocument();
+      expect(screen.getByText('/ 5')).toBeInTheDocument();
+    });
   });
 });
