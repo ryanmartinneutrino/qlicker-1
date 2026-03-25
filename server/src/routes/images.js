@@ -15,13 +15,6 @@ export default async function imageRoutes(app) {
     },
     schema: {
       consumes: ['multipart/form-data'],
-      body: {
-        type: 'object',
-        required: ['file'],
-        properties: {
-          file: { type: 'string', format: 'binary' },
-        },
-      },
     },
   }, async (request, reply) => {
     try {
