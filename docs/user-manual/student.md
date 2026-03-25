@@ -182,7 +182,9 @@ From the account menu you can:
 - update your password if your account is not managed by SSO
 - change your preferred language when multiple locales are available
 
-If your account is SSO-managed, some profile fields may be locked intentionally.
+If your account is SSO-managed, your name and password may be locked intentionally unless an administrator has explicitly allowed email login for your account. In that case, password-reset email is also unavailable until the exception is granted.
+
+When you upload a profile picture, Qlicker now opens an editor so you can drag the image, rotate it, and choose the square area used for your avatar circle.
 
 ## Troubleshooting checklist
 

@@ -145,7 +145,6 @@ JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 ROOT_URL=http://localhost:$APP_PORT
 MAIL_URL=$MAIL_URL
 NODE_ENV=production
-STORAGE_TYPE=local
 EOF
 
 echo "[OK] .env file generated at $PROJECT_ROOT/.env"

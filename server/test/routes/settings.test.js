@@ -139,12 +139,12 @@ describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
 });
 
 describe('GET /api/v1/settings/public', () => {
-  it('includes the default quiz time format', async (ctx) => {
+  it('includes normalized public defaults including time format and max image width', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     await Settings.findOneAndUpdate(
       { _id: 'settings' },
-      { $set: { timeFormat: '12h' } },
+      { $set: { timeFormat: '12h', maxImageWidth: 2400 } },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -155,5 +155,24 @@ describe('GET /api/v1/settings/public', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().timeFormat).toBe('12h');
+    expect(res.json().maxImageWidth).toBe(2400);
+  });
+
+  it('falls back to the documented default image width when settings are missing or invalid', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { maxImageWidth: 0 } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/settings/public',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().maxImageWidth).toBe(1920);
   });
 });

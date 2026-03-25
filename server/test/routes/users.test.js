@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
+import Settings from '../../src/models/Settings.js';
 import User from '../../src/models/User.js';
 import { generateMeteorId } from '../../src/utils/meteorId.js';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
@@ -39,6 +40,11 @@ describe('GET /api/v1/users/me', () => {
 
   it('includes SSO auth metadata for profile restrictions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-meta@example.com', verified: true }],
       services: {
@@ -116,6 +122,11 @@ describe('PATCH /api/v1/users/me', () => {
 
   it('does not let SSO-created users change their names', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-name@example.com', verified: true }],
       services: {
@@ -238,6 +249,11 @@ describe('PATCH /api/v1/users/me/password', () => {
 
   it('blocks password changes while signed in through SSO', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const user = await User.create({
       emails: [{ address: 'sso-password@example.com', verified: true }],
       services: {
@@ -441,6 +457,11 @@ describe('Admin user management', () => {
 
   it('admin can toggle user properties for SSO approval and promotion', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
     const admin = await createTestUser({ email: 'admin-properties@example.com', roles: ['admin'] });
     const target = await User.create({
       emails: [{ address: 'sso-target@example.com', verified: true }],
@@ -480,6 +501,49 @@ describe('Admin user management', () => {
     expect(updated.profile.canPromote).toBe(true);
     expect(updated.allowEmailLogin).toBe(false);
     expect(updated.services?.resetPassword).toBeUndefined();
+  });
+
+  it('admin can reset a user password from the user properties flow', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
+    const admin = await createTestUser({ email: 'admin-reset@example.com', roles: ['admin'] });
+    const target = await User.create({
+      emails: [{ address: 'reset-target@example.com', verified: true }],
+      services: {
+        password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [{ sessionId: 'device-1', createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000) }],
+        },
+        resetPassword: {
+          token: 'pending-admin-reset',
+          email: 'reset-target@example.com',
+          when: new Date(),
+          reason: 'reset',
+        },
+      },
+      profile: { firstname: 'Reset', lastname: 'Target', roles: ['student'] },
+      allowEmailLogin: false,
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/password`, {
+      token,
+      payload: { newPassword: 'newpassword456' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().allowEmailLogin).toBe(false);
+
+    const updated = await User.findById(target._id);
+    expect(updated.refreshTokenVersion).toBe(1);
+    expect(updated.services?.resume?.loginTokens).toEqual([]);
+    expect(updated.services?.resetPassword).toBeUndefined();
+    await expect(updated.verifyPassword('newpassword456')).resolves.toBe(true);
   });
 
   it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {

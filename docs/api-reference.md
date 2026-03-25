@@ -14,7 +14,7 @@ When the backend is running locally:
 The current app exposes route groups for:
 
 - **Auth**: registration, login, logout, refresh, forgot/reset password, email verification, SSO
-- **Users**: profile, password changes, admin user management
+- **Users**: profile, password changes, avatar thumbnail regeneration, admin user management, admin password reset
 - **Courses**: CRUD, enrollment, instructors, students, course settings, session listing
 - **Sessions**: CRUD, live sessions, quiz payloads, review payloads, join-code settings, question ordering, import/export
 - **Questions**: library CRUD, visibility, copying, import/export helpers
@@ -22,7 +22,7 @@ The current app exposes route groups for:
 - **Groups**: group categories, membership, CSV import/export
 - **Video**: Jitsi availability and course/group connection data
 - **Images**: image upload and deletion
-- **Settings**: public settings and admin-only configuration
+- **Settings**: public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, etc.) and admin-only configuration (including advanced SAML settings)
 - **Health / docs**: service health and generated API docs
 
 ## WebSocket events
@@ -60,6 +60,12 @@ Qlicker uses:
 2. Keep request bodies, query strings, and path parameters documented in schema.
 3. Verify the route appears correctly in `/docs`.
 4. If the route changes how developers integrate with the app, update this file and any related developer docs.
+
+Recent auth/storage-specific route additions worth checking in Swagger:
+
+- `POST /api/v1/users/me/image/thumbnail` regenerates the cropped avatar thumbnail from the stored full-size profile image.
+- `PATCH /api/v1/users/:id/password` lets admins reset a user's local password.
+- `GET /api/v1/settings/public` now includes `maxImageWidth` so clients can normalize uploads before sending them.
 
 ## Local verification workflow
 

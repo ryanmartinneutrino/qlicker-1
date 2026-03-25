@@ -1,11 +1,12 @@
 import fp from 'fastify-plugin';
 import { SAML } from '@node-saml/node-saml';
 import Settings from '../models/Settings.js';
+import { getSamlAdvancedSettings } from '../utils/authPolicy.js';
 import { normalizeCertificatePem, normalizePrivateKeyPem } from '../utils/certificate.js';
 
 async function samlPlugin(fastify) {
   fastify.decorate('getSamlProvider', async function getSamlProvider(options = {}) {
-    const settings = await Settings.findOne();
+    const settings = await Settings.findOne().lean();
     if (!settings?.SSO_enabled) {
       return null;
     }
@@ -23,6 +24,7 @@ async function samlPlugin(fastify) {
     const logoutCallbackUrl = logoutCallbackPath.startsWith('http')
       ? logoutCallbackPath
       : `${fastify.config.rootUrl}${logoutCallbackPath}`;
+    const advancedSettings = getSamlAdvancedSettings(settings);
 
     const samlOptions = {
       entryPoint: settings.SSO_entrypoint,
@@ -31,20 +33,19 @@ async function samlPlugin(fastify) {
       callbackUrl,
       logoutCallbackUrl,
       logoutUrl: settings.SSO_logoutUrl || undefined,
-      // Match legacy passport-saml behaviour: accept the response so long as
-      // at least ONE signature (Response-level or Assertion-level) is valid.
-      // Microsoft Entra typically signs only the Assertion; other IdPs may sign
-      // only the Response.  Requiring both would break drop-in replacement of
-      // the old Meteor app.
-      wantAssertionsSigned: false,
-      wantAuthnResponseSigned: false,
-      acceptedClockSkewMs: 60 * 1000,
-      disableRequestedAuthnContext: true, // Required for Active Directory (MS) SSO
+      wantAssertionsSigned: advancedSettings.wantAssertionsSigned,
+      wantAuthnResponseSigned: advancedSettings.wantAuthnResponseSigned,
+      acceptedClockSkewMs: advancedSettings.acceptedClockSkewMs,
+      disableRequestedAuthnContext: advancedSettings.disableRequestedAuthnContext,
     };
 
     // Identifier format (e.g. urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress)
     if (settings.SSO_identifierFormat) {
       samlOptions.identifierFormat = settings.SSO_identifierFormat;
+    }
+
+    if (advancedSettings.authnContext.length > 0) {
+      samlOptions.authnContext = advancedSettings.authnContext;
     }
 
     // Private key for decryption of encrypted assertions/logout requests

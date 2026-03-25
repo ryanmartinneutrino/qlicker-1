@@ -66,17 +66,7 @@ services:
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=production
       - DISABLE_RATE_LIMITS=${DISABLE_RATE_LIMITS:-false}
-      - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_BUCKET=${AWS_BUCKET:-}
-      - AWS_REGION=${AWS_REGION:-}
-      - AWS_ENDPOINT=${AWS_ENDPOINT:-}
-      - AWS_FORCE_PATH_STYLE=${AWS_FORCE_PATH_STYLE:-}
-      - AZURE_ACCOUNT_NAME=${AZURE_ACCOUNT_NAME:-}
-      - AZURE_ACCOUNT_KEY=${AZURE_ACCOUNT_KEY:-}
-      - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME:-}
     volumes:
       - uploads:/app/uploads
     depends_on:

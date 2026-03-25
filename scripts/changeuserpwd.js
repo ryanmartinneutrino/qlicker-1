@@ -42,12 +42,14 @@ const argon2Module = await loadModule('@node-rs/argon2', '@node-rs/argon2/index.
 const { hash, Algorithm, Version } = argon2Module;
 
 function usage() {
-  console.log('Usage: ./scripts/changeuserpwd.sh --email user@example.com [--newpasswd 123456]');
+  console.log('Usage: ./scripts/changeuserpwd.sh --email user@example.com [--newpasswd 123456] [--allow-email-login true|false]');
 }
 
 function parseArgs(argv) {
   let email = '';
-  let newPassword = '123456';
+  let newPassword = null;
+  let allowEmailLogin;
+  let newPasswordProvided = false;
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -60,8 +62,27 @@ function parseArgs(argv) {
       const supplied = argv[i + 1];
       if (supplied !== undefined) {
         newPassword = String(supplied);
+        newPasswordProvided = true;
       }
       i += 1;
+      continue;
+    }
+    if (arg === '--allow-email-login') {
+      const supplied = String(argv[i + 1] || '').trim().toLowerCase();
+      if (supplied !== 'true' && supplied !== 'false') {
+        console.error('--allow-email-login must be true or false.');
+        process.exit(1);
+      }
+      allowEmailLogin = supplied === 'true';
+      i += 1;
+      continue;
+    }
+    if (arg === '--enable-email-login') {
+      allowEmailLogin = true;
+      continue;
+    }
+    if (arg === '--disable-email-login') {
+      allowEmailLogin = false;
       continue;
     }
     if (arg === '--help' || arg === '-h') {
@@ -80,12 +101,16 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
-  if (!newPassword || newPassword.length < 6) {
+  if (!newPasswordProvided && allowEmailLogin === undefined) {
+    newPassword = '123456';
+  }
+
+  if (newPassword !== null && (!newPassword || newPassword.length < 6)) {
     console.error('--newpasswd must be at least 6 characters.');
     process.exit(1);
   }
 
-  return { email, newPassword };
+  return { email, newPassword, allowEmailLogin };
 }
 
 function emailRegex(email) {
@@ -105,7 +130,7 @@ async function hashPasswordArgon2id(password) {
 }
 
 async function main() {
-  const { email, newPassword } = parseArgs(process.argv.slice(2));
+  const { email, newPassword, allowEmailLogin } = parseArgs(process.argv.slice(2));
   const MONGO_URI = process.env.MONGO_URI
     || (process.env.MONGO_PORT ? `mongodb://localhost:${process.env.MONGO_PORT}/qlicker` : '');
 
@@ -127,27 +152,39 @@ async function main() {
       return;
     }
 
-    const hashedPassword = await hashPasswordArgon2id(newPassword);
-    const updateResult = await usersCollection.updateOne(
-      { _id: user._id },
-      {
-        $set: {
-          'services.password.hash': hashedPassword,
-        },
-        $unset: {
-          'services.password.bcrypt': '',
-          'services.resetPassword': '',
-        },
+    const setUpdates = {};
+    const unsetUpdates = {};
+
+    if (newPassword !== null) {
+      const hashedPassword = await hashPasswordArgon2id(newPassword);
+      setUpdates['services.password.hash'] = hashedPassword;
+      unsetUpdates['services.password.bcrypt'] = '';
+      unsetUpdates['services.resetPassword'] = '';
+      console.log(`Password will be updated for ${email}`);
+    }
+
+    if (allowEmailLogin !== undefined) {
+      const isAdmin = Array.isArray(user.profile?.roles) && user.profile.roles.includes('admin');
+      setUpdates.allowEmailLogin = isAdmin ? true : allowEmailLogin;
+      if (allowEmailLogin === false || isAdmin) {
+        unsetUpdates['services.resetPassword'] = '';
       }
-    );
+      console.log(`allowEmailLogin will be set to ${setUpdates.allowEmailLogin} for ${email}`);
+    }
+
+    const updateDoc = {};
+    if (Object.keys(setUpdates).length > 0) updateDoc.$set = setUpdates;
+    if (Object.keys(unsetUpdates).length > 0) updateDoc.$unset = unsetUpdates;
+
+    const updateResult = await usersCollection.updateOne({ _id: user._id }, updateDoc);
 
     if (!updateResult.matchedCount) {
-      console.error(`Failed to update password for email: ${email}`);
+      console.error(`Failed to update user for email: ${email}`);
       process.exitCode = 1;
       return;
     }
 
-    console.log(`Password updated for ${email}`);
+    console.log(`User updated for ${email}`);
   } finally {
     await mongoose.disconnect();
   }

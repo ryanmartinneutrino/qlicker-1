@@ -28,7 +28,6 @@ services:
       - MAIL_URL=${MAIL_URL:-}
       - NODE_ENV=${NODE_ENV:-production}
       - DISABLE_RATE_LIMITS=${DISABLE_RATE_LIMITS:-false}
-      - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - REDIS_URL=redis://redis:${REDIS_PORT:-6379}
     volumes:
       - uploads:/app/uploads

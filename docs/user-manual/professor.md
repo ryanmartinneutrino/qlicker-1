@@ -218,6 +218,16 @@ Short-answer questions typically require manual grading, while many objective qu
 
 See also the dedicated [grading guide](grading.md).
 
+## Profile and account settings
+
+From the account menu you can update your language, profile details, password, and avatar.
+
+Keep in mind:
+
+- uploading a profile picture opens a crop/rotate dialog so you can choose the square avatar thumbnail
+- when institution-wide SSO is enabled, name and password fields stay locked unless an administrator has granted your account the email-login exception
+- password-reset email follows the same rule: if the account is SSO-managed without that exception, use the SSO sign-in route or contact an administrator
+
 ## Troubleshooting checklist
 
 ### Students cannot join the course

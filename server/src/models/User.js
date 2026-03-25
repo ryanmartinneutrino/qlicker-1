@@ -119,7 +119,9 @@ const UserSchema = new mongoose.Schema(
     services: { type: ServicesSchema, default: () => ({}) },
     profile: { type: ProfileSchema, default: () => ({}) },
     ssoCreated: { type: Boolean, default: false },
-    allowEmailLogin: { type: Boolean, default: true },
+    // Explicit exception used when institution-wide SSO is enabled.
+    // Admin accounts are always treated as allowed regardless of this flag.
+    allowEmailLogin: { type: Boolean, default: false },
     lastAuthProvider: { type: String, default: '' },
     refreshTokenVersion: { type: Number, default: 0 },
     failedLoginAttempts: { type: Number, default: 0 },
@@ -153,7 +155,6 @@ UserSchema.methods.isSSOCreatedUser = function () {
 };
 
 UserSchema.methods.canUseEmailLogin = function () {
-  if (!this.ssoCreated) return true;
   return this.allowEmailLogin === true;
 };
 

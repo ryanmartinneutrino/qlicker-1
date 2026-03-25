@@ -266,6 +266,11 @@ export default function Login() {
           <Typography variant="body2" sx={{ mb: 2 }}>
             {t('auth.forgotPasswordMessage')}
           </Typography>
+          {ssoEnabled ? (
+            <Alert severity="info" sx={{ mb: 1 }}>
+              {t('auth.forgotPasswordSsoNotice')}
+            </Alert>
+          ) : null}
           <TextField
             fullWidth
             id="forgot-password-email"

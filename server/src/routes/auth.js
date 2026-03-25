@@ -2,13 +2,16 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Settings from '../models/Settings.js';
+import {
+  canUseEmailLogin,
+  getSsoProviderRoutes,
+  normalizeTokenExpiryMinutes,
+} from '../utils/authPolicy.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 import { normalizeCertificatePem } from '../utils/certificate.js';
 
-const REFRESH_TOKEN_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
-const REFRESH_SESSION_MAX_AGE_MS = REFRESH_TOKEN_MAX_AGE_SECONDS * 1000;
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const LEGACY_REFRESH_VERSION_QUERY = {
@@ -26,35 +29,27 @@ function getAttr(profile, key) {
   return val || '';
 }
 
-function sanitizeUser(user) {
-  const obj = user.toObject();
-  obj.isSSOUser = user.isSSOLinked();
-  obj.isSSOCreatedUser = user.isSSOCreatedUser();
-  obj.allowEmailLogin = user.canUseEmailLogin();
-  obj.lastAuthProvider = user.lastAuthProvider || '';
+function sanitizeUser(user, settings = {}) {
+  const obj = user?.toObject ? user.toObject() : { ...user };
+  obj.isSSOUser = !!user?.services?.sso?.id;
+  obj.isSSOCreatedUser = !!user?.ssoCreated;
+  obj.allowEmailLogin = canUseEmailLogin(user, settings);
+  obj.lastAuthProvider = user?.lastAuthProvider || '';
   delete obj.services;
   return obj;
 }
 
-// Cache token expiry setting to avoid DB query on every token generation.
-// Refreshes every 60 seconds.
-let _cachedTokenExpiryMinutes = null;
-let _cacheExpiry = 0;
-
-async function getTokenExpiryMinutes() {
-  const now = Date.now();
-  if (_cachedTokenExpiryMinutes != null && now < _cacheExpiry) {
-    return _cachedTokenExpiryMinutes;
-  }
-  const settings = await Settings.findOne();
-  const mins = settings?.tokenExpiryMinutes;
-  _cachedTokenExpiryMinutes = (typeof mins === 'number' && mins > 0) ? mins : 120;
-  _cacheExpiry = now + 60_000; // refresh cache every 60 seconds
-  return _cachedTokenExpiryMinutes;
+async function getAuthSettings() {
+  return Settings.findOne().lean();
 }
 
-async function signAccessToken(app, user) {
-  const mins = await getTokenExpiryMinutes();
+async function getTokenExpiryMinutes(settings = null) {
+  const resolvedSettings = settings || await getAuthSettings();
+  return normalizeTokenExpiryMinutes(resolvedSettings?.tokenExpiryMinutes);
+}
+
+async function signAccessToken(app, user, settings = null) {
+  const mins = await getTokenExpiryMinutes(settings);
   return app.jwt.sign(
     { userId: user._id, roles: user.profile?.roles || [] },
     { expiresIn: `${mins}m` }
@@ -65,11 +60,21 @@ function getRefreshTokenVersion(user) {
   return Math.max(0, Number(user?.refreshTokenVersion) || 0);
 }
 
-function signRefreshToken(config, user, sessionId) {
+function getRefreshSessionMaxAgeMs(settings = {}) {
+  return normalizeTokenExpiryMinutes(settings?.tokenExpiryMinutes) * 60 * 1000;
+}
+
+function getRefreshTokenTtlSeconds(sessionEntry, nowMs = Date.now()) {
+  const expiresAtMs = sessionEntry?.expiresAt ? new Date(sessionEntry.expiresAt).getTime() : NaN;
+  if (!Number.isFinite(expiresAtMs)) return 0;
+  return Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
+}
+
+function signRefreshToken(config, user, sessionId, maxAgeSeconds) {
   return jwt.sign(
     { userId: user._id, type: 'refresh', sessionId },
     config.jwtRefreshSecret,
-    { expiresIn: '7d' }
+    { expiresIn: maxAgeSeconds }
   );
 }
 
@@ -96,20 +101,21 @@ function pruneRefreshSessions(user, nowMs = Date.now()) {
   return user.services.resume.loginTokens;
 }
 
-function buildRefreshSessionEntry(sessionId, now = new Date()) {
+function buildRefreshSessionEntry(sessionId, maxAgeMs, now = new Date()) {
   return {
     sessionId,
     createdAt: now,
     lastUsedAt: now,
-    expiresAt: new Date(now.getTime() + REFRESH_SESSION_MAX_AGE_MS),
+    expiresAt: new Date(now.getTime() + maxAgeMs),
   };
 }
 
-function issueRefreshSession(user) {
+function issueRefreshSession(user, maxAgeMs) {
   pruneRefreshSessions(user);
   const sessionId = crypto.randomBytes(24).toString('hex');
-  ensureResumeLoginTokens(user).push(buildRefreshSessionEntry(sessionId));
-  return sessionId;
+  const sessionEntry = buildRefreshSessionEntry(sessionId, maxAgeMs);
+  ensureResumeLoginTokens(user).push(sessionEntry);
+  return sessionEntry;
 }
 
 function rotateRefreshSession(user, currentSessionId) {
@@ -124,9 +130,8 @@ function rotateRefreshSession(user, currentSessionId) {
   const nextSessionId = crypto.randomBytes(24).toString('hex');
   loginTokens[index].sessionId = nextSessionId;
   loginTokens[index].lastUsedAt = now;
-  loginTokens[index].expiresAt = new Date(now.getTime() + REFRESH_SESSION_MAX_AGE_MS);
   if (!loginTokens[index].createdAt) loginTokens[index].createdAt = now;
-  return nextSessionId;
+  return loginTokens[index];
 }
 
 function revokeRefreshSession(user, sessionId) {
@@ -145,13 +150,13 @@ function revokeAllRefreshSessions(user) {
   user.services.resume.loginTokens = [];
 }
 
-function setRefreshTokenCookie(reply, app, refreshToken) {
+function setRefreshTokenCookie(reply, app, refreshToken, maxAgeSeconds) {
   reply.setCookie('refreshToken', refreshToken, {
     path: '/',
     httpOnly: true,
     secure: app.config.nodeEnv === 'production',
     sameSite: 'strict',
-    maxAge: REFRESH_TOKEN_MAX_AGE_SECONDS,
+    maxAge: maxAgeSeconds,
   });
 }
 
@@ -229,8 +234,6 @@ const CURRENT_SSO_ROUTES = {
   logoutPath: '/sso/logout',
   logoutUrlPath: '/sso/logout-url',
   metadataPaths: ['/sso/metadata'],
-  providerCallbackPath: '/SSO/SAML2',
-  providerLogoutCallbackPath: '/SSO/SAML2/logout',
 };
 
 const LEGACY_SSO_ROUTES = {
@@ -238,15 +241,14 @@ const LEGACY_SSO_ROUTES = {
   callbackPath: '/SSO/SAML2',
   logoutPath: '/SSO/SAML2/logout',
   metadataPaths: ['/SSO/SAML2/metadata', '/SSO/SAML2/metadata.xml'],
-  providerCallbackPath: '/SSO/SAML2',
-  providerLogoutCallbackPath: '/SSO/SAML2/logout',
 };
 
 function registerSsoRoutes(app, routes) {
-  const getSamlProvider = async () => app.getSamlProvider({
-    callbackPath: routes.providerCallbackPath,
-    logoutCallbackPath: routes.providerLogoutCallbackPath,
-  });
+  const getSamlProvider = async () => {
+    const settings = await getAuthSettings();
+    const providerRoutes = getSsoProviderRoutes(settings);
+    return app.getSamlProvider(providerRoutes);
+  };
 
   app.get(routes.loginPath, async (request, reply) => {
     const saml = await getSamlProvider();
@@ -280,7 +282,7 @@ function registerSsoRoutes(app, routes) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'No profile returned from IdP' });
     }
 
-    const settings = await Settings.findOne();
+    const settings = await getAuthSettings();
     const attrs = profile.attributes || profile;
 
     const email = (getAttr(attrs, settings.SSO_emailIdentifier) || profile.nameID || '').toLowerCase().trim();
@@ -360,13 +362,14 @@ function registerSsoRoutes(app, routes) {
       user.services.sso.sessions.push({ sessionIndex });
     }
 
-    const refreshSessionId = issueRefreshSession(user);
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
     await user.save();
 
-    const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
+    const token = await signAccessToken(app, user, settings);
+    const refreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(refreshSession);
+    const refreshToken = signRefreshToken(app.config, user, refreshSession.sessionId, refreshTokenMaxAgeSeconds);
 
-    setRefreshTokenCookie(reply, app, refreshToken);
+    setRefreshTokenCookie(reply, app, refreshToken, refreshTokenMaxAgeSeconds);
 
     return reply.redirect(`${app.config.rootUrl}/sso-callback?token=${encodeURIComponent(token)}`);
   });
@@ -446,7 +449,7 @@ function registerSsoRoutes(app, routes) {
         return { url: null };
       }
 
-      const settings = await Settings.findOne();
+      const settings = await getAuthSettings();
       if (!settings?.SSO_logoutUrl) {
         return { url: null };
       }
@@ -477,7 +480,7 @@ function registerSsoRoutes(app, routes) {
         return reply.code(400).send({ error: 'Bad Request', message: 'SSO is not configured' });
       }
 
-      const settings = saml._qlickerSettings || await Settings.findOne();
+      const settings = saml._qlickerSettings || await getAuthSettings();
       const decryptionCert = normalizeCertificatePem(settings.SSO_privCert || '') || null;
       const signingCert = normalizeCertificatePem(settings.SSO_privCert || '') || null;
       const metadata = saml.generateServiceProviderMetadata(decryptionCert, signingCert);
@@ -496,7 +499,7 @@ export default async function authRoutes(app) {
     const normalizedEmail = email.toLowerCase().trim();
 
     // Check domain restrictions
-    const settings = await Settings.findOne();
+    const settings = await getAuthSettings();
     if (settings?.restrictDomain && settings.allowedDomains?.length > 0) {
       const domain = normalizedEmail.split('@')[1];
       if (!settings.allowedDomains.includes(domain)) {
@@ -528,6 +531,7 @@ export default async function authRoutes(app) {
         lastname,
         roles,
       },
+      allowEmailLogin: roles.includes('admin'),
       createdAt: new Date(),
     });
 
@@ -546,15 +550,16 @@ export default async function authRoutes(app) {
       request.log.error('Failed to send verification email:', err);
     }
 
-    const refreshSessionId = issueRefreshSession(user);
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
     await user.save();
 
-    const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
+    const token = await signAccessToken(app, user, settings);
+    const refreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(refreshSession);
+    const refreshToken = signRefreshToken(app.config, user, refreshSession.sessionId, refreshTokenMaxAgeSeconds);
 
-    setRefreshTokenCookie(reply, app, refreshToken);
+    setRefreshTokenCookie(reply, app, refreshToken, refreshTokenMaxAgeSeconds);
 
-    return reply.code(201).send({ token, user: sanitizeUser(user) });
+    return reply.code(201).send({ token, user: sanitizeUser(user, settings) });
   });
 
   // POST /login
@@ -564,6 +569,7 @@ export default async function authRoutes(app) {
   }, async (request, reply) => {
     const { email, password } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
+    const settings = await getAuthSettings();
 
     // Case-insensitive lookup for legacy DB compatibility
     const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
@@ -572,7 +578,7 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
-    if (!user.canUseEmailLogin()) {
+    if (!canUseEmailLogin(user, settings)) {
       request.log.warn({ email: normalizedEmail, userId: user._id }, 'Login blocked: SSO-only account');
       return reply.code(403).send({
         error: 'Forbidden',
@@ -620,15 +626,16 @@ export default async function authRoutes(app) {
     prepareLoginLockoutReset(user);
     user.lastLogin = new Date();
     user.lastAuthProvider = 'password';
-    const refreshSessionId = issueRefreshSession(user);
+    const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
     await user.save();
 
-    const token = await signAccessToken(app, user);
-    const refreshToken = signRefreshToken(app.config, user, refreshSessionId);
+    const token = await signAccessToken(app, user, settings);
+    const refreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(refreshSession);
+    const refreshToken = signRefreshToken(app.config, user, refreshSession.sessionId, refreshTokenMaxAgeSeconds);
 
-    setRefreshTokenCookie(reply, app, refreshToken);
+    setRefreshTokenCookie(reply, app, refreshToken, refreshTokenMaxAgeSeconds);
 
-    return { token, user: sanitizeUser(user) };
+    return { token, user: sanitizeUser(user, settings) };
   });
 
   // POST /logout
@@ -705,9 +712,20 @@ export default async function authRoutes(app) {
       }
 
       await user.save();
-      const token = await signAccessToken(app, user);
-      const nextRefreshToken = signRefreshToken(app.config, user, nextSessionId);
-      setRefreshTokenCookie(reply, app, nextRefreshToken);
+      const settings = await getAuthSettings();
+      const token = await signAccessToken(app, user, settings);
+      const nextRefreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(nextSessionId);
+      if (nextRefreshTokenMaxAgeSeconds <= 0) {
+        clearRefreshTokenCookie(reply);
+        return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
+      }
+      const nextRefreshToken = signRefreshToken(
+        app.config,
+        user,
+        nextSessionId.sessionId,
+        nextRefreshTokenMaxAgeSeconds,
+      );
+      setRefreshTokenCookie(reply, app, nextRefreshToken, nextRefreshTokenMaxAgeSeconds);
       return { token };
     }
 
@@ -716,11 +734,18 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
     }
 
-    const nextSessionId = issueRefreshSession(user);
+    const settings = await getAuthSettings();
+    const nextSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings));
     await user.save();
-    const token = await signAccessToken(app, user);
-    const nextRefreshToken = signRefreshToken(app.config, user, nextSessionId);
-    setRefreshTokenCookie(reply, app, nextRefreshToken);
+    const token = await signAccessToken(app, user, settings);
+    const nextRefreshTokenMaxAgeSeconds = getRefreshTokenTtlSeconds(nextSession);
+    const nextRefreshToken = signRefreshToken(
+      app.config,
+      user,
+      nextSession.sessionId,
+      nextRefreshTokenMaxAgeSeconds,
+    );
+    setRefreshTokenCookie(reply, app, nextRefreshToken, nextRefreshTokenMaxAgeSeconds);
     return { token };
   });
 
@@ -740,10 +765,11 @@ export default async function authRoutes(app) {
     async (request, reply) => {
       const { email } = request.body;
       const normalizedEmail = email.toLowerCase().trim();
+      const settings = await getAuthSettings();
 
       // Always return success to avoid user enumeration
       const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
-      if (user && user.canUseEmailLogin()) {
+      if (user && canUseEmailLogin(user, settings)) {
         const token = crypto.randomBytes(32).toString('hex');
         user.services.resetPassword = {
           token,
@@ -788,7 +814,8 @@ export default async function authRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Invalid or expired token' });
       }
 
-      if (!user.canUseEmailLogin()) {
+      const settings = await getAuthSettings();
+      if (!canUseEmailLogin(user, settings)) {
         return reply.code(403).send({
           error: 'Forbidden',
           code: 'SSO_EMAIL_LOGIN_DISABLED',

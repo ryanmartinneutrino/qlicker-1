@@ -76,17 +76,32 @@ describe('Profile', () => {
     apiClientMock.post.mockReset();
     loadUserMock.mockReset();
 
-    apiClientMock.get.mockResolvedValue({
-      data: {
-        user: {
-          profile: {
-            firstname: 'SSO',
-            lastname: 'User',
-            studentNumber: '12345',
+    apiClientMock.get.mockImplementation((url) => {
+      if (url === '/users/me') {
+        return Promise.resolve({
+          data: {
+            user: {
+              profile: {
+                firstname: 'SSO',
+                lastname: 'User',
+                studentNumber: '12345',
+              },
+              locale: '',
+            },
           },
-          locale: '',
-        },
-      },
+        });
+      }
+
+      if (url === '/settings/public') {
+        return Promise.resolve({
+          data: {
+            SSO_enabled: true,
+            maxImageWidth: 1920,
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
   });
 

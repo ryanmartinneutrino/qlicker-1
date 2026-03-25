@@ -52,7 +52,7 @@ Common settings include:
 - allowed email domains
 - whether verified email is required
 - the administrative support email
-- login token lifetime
+- login/session lifetime
 - default locale
 - default date format
 - default time format
@@ -64,6 +64,7 @@ Common settings include:
 | Allowed domains | Keep the list explicit and comma-separated |
 | Verified email | Decide this before onboarding large numbers of users |
 | Support/admin email | Use a monitored mailbox so error messages reach a real team |
+| Login/session lifetime | Default is 120 minutes (2 hours); this now controls both access tokens and the refresh-session hard expiry |
 | Locale/date/time defaults | Pick institution-wide defaults, then let users override them when appropriate |
 
 ## User and course support
@@ -79,7 +80,8 @@ From there you can:
 - change roles
 - verify email status
 - inspect or update per-user properties
-- control whether local email login is allowed for SSO-created accounts
+- reset a user's local password
+- control whether local email login is allowed for a specific account when institution-wide SSO is enabled
 
 Use extra care when changing roles because the effect is immediate.
 
@@ -106,12 +108,15 @@ Supported modes include:
 - Amazon S3 or S3-compatible storage
 - Azure Blob storage
 
+The storage choice is saved in the database. New deployments start on local storage, and runtime `.env` values are not used for storage selection.
+
 ### Storage workflow
 
 1. Choose the provider.
 2. Fill only the fields required by that provider.
-3. Save the settings.
-4. Upload a test image from the app to confirm read and write behavior.
+3. Set the maximum upload width (default `1920px`) so profile photos and rich-text-editor images are resized before upload.
+4. Save the settings.
+5. Upload a test image from the app to confirm read and write behavior.
 
 ### Provider-specific notes
 
@@ -122,6 +127,8 @@ Supported modes include:
 | Azure Blob | storage account, access key, container name |
 
 Treat access keys, secret keys, and similar credentials as secrets.
+
+Profile pictures now open a crop/rotate dialog and store a separate square avatar thumbnail. After storage changes, test both a profile photo upload and a question-editor image upload.
 
 ## SSO configuration
 
@@ -135,6 +142,16 @@ Prepare the following before enabling SSO:
 - email, first-name, last-name, role, and student-number attribute mappings
 - the IdP certificate
 - the SP certificate and private key if your deployment requires them
+
+The advanced SAML options are hidden behind an **Advanced (dangerous) settings** control. Leave them at their defaults unless your IdP requires different `node-saml` behavior. The defaults match the current production Microsoft Entra configuration:
+
+- `wantAssertionsSigned = false`
+- `wantAuthnResponseSigned = false`
+- `acceptedClockSkewMs = 60000`
+- `disableRequestedAuthnContext = true`
+- route mode = legacy `/SSO/SAML2`
+
+If your IdP expects the newer callback/logout surface, switch the presented route set to `/api/v1/auth/sso/*`. Change that only after confirming the IdP metadata and callback URLs.
 
 ### After any SSO change, always retest
 
@@ -166,7 +183,8 @@ Check:
 
 - whether SSO is enabled unexpectedly
 - whether SSO metadata and certificates are current
-- whether local email login is allowed for the affected account
+- whether local email login has been explicitly allowed for the affected account
+- whether the configured login/session lifetime is shorter than the user's expectation
 - whether the public deployment URLs match the running environment
 
 ### Uploaded images fail

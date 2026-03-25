@@ -121,6 +121,7 @@
     "resetEmailFailed": "Échec de l'envoi du courriel de réinitialisation. Veuillez réessayer.",
     "sending": "Envoi…",
     "sendResetLink": "Envoyer le lien de réinitialisation",
+    "forgotPasswordSsoNotice": "Lorsque le SSO est activé, le courriel de réinitialisation du mot de passe n'est disponible que pour les comptes qu'un administrateur a explicitement autorisés à se connecter par courriel.",
     "ssoDefault": "SSO"
   },
   "resetPassword": {
@@ -151,9 +152,16 @@
     "uploading": "Téléversement…",
     "uploadPhoto": "Téléverser une photo",
     "personalInfo": "Informations personnelles",
-    "ssoNameManagedNote": "Votre nom est géré par votre fournisseur SSO et ne peut pas être modifié ici.",
-    "ssoPasswordManagedNote": "Le changement de mot de passe n'est pas disponible pendant que vous êtes connecté par SSO.",
-    "ssoEmailLoginApprovalNote": "Ce compte a été créé par SSO. Un administrateur doit approuver la connexion par courriel avant que la réinitialisation du mot de passe ou la connexion par courriel puisse être utilisée.",
+    "adjustPhoto": "Ajuster la photo de profil",
+    "photoCropHelp": "Faites glisser l'image pour choisir la partie qui apparaît dans votre avatar. La rotation ne change que la vignette de l'avatar; votre photo en taille réelle reste inchangée.",
+    "profileImagePreview": "Aperçu de la photo de profil",
+    "rotateLeft": "Faire pivoter l'image vers la gauche",
+    "rotateRight": "Faire pivoter l'image vers la droite",
+    "photoClickHelp": "Cliquez sur votre photo actuelle pour ajuster la vignette de l'avatar, ou téléversez une nouvelle image pour la remplacer.",
+    "openPhotoEditor": "Ouvrir l'éditeur de photo de profil",
+    "ssoNameManagedNote": "Les changements de nom sont désactivés tant que le SSO institutionnel impose l'authentification pour ce compte.",
+    "ssoPasswordManagedNote": "Les changements de mot de passe sont désactivés tant que le SSO institutionnel impose l'authentification pour ce compte.",
+    "ssoEmailLoginApprovalNote": "Un administrateur doit autoriser la connexion par courriel pour ce compte avant que la réinitialisation du mot de passe ou la connexion par courriel puissent être utilisées.",
     "firstName": "Prénom",
     "lastName": "Nom de famille",
     "employeeNumber": "Numéro d'employé",
@@ -238,11 +246,23 @@
       "userPropertiesHelp": "Activez ou désactivez des permissions supplémentaires pour cet utilisateur.",
       "userPropertiesUpdated": "Propriétés de l'utilisateur mises à jour",
       "failedUpdateUserProperties": "Échec de la mise à jour des propriétés de l'utilisateur",
+      "passwordReset": "Mot de passe réinitialisé",
+      "failedResetPassword": "Échec de la réinitialisation du mot de passe",
+      "resetPassword": "Réinitialiser le mot de passe",
+      "resetPasswordAction": "Réinitialiser le mot de passe",
+      "resetPasswordHelp": "Définissez un nouveau mot de passe local pour cet utilisateur. Il prend effet immédiatement.",
+      "resetPasswordNeedsEmailLogin": "Un mot de passe local peut être défini maintenant, mais l'utilisateur ne pourra toujours pas se connecter par courriel tant que cette option ne sera pas autorisée.",
+      "newPassword": "Nouveau mot de passe",
+      "confirmNewPassword": "Confirmer le nouveau mot de passe",
+      "passwordsNoMatch": "Les nouveaux mots de passe ne correspondent pas.",
+      "passwordTooShort": "Les nouveaux mots de passe doivent contenir au moins 8 caractères.",
       "openUserProperties": "Ouvrir les propriétés de l'utilisateur {{name}}",
       "canPromote": "Peut promouvoir d'autres professeurs",
       "canPromoteStudentDisabled": "Les comptes étudiants ne peuvent pas conserver la permission de promotion.",
       "allowEmailLogin": "Autoriser la connexion par courriel",
-      "allowEmailLoginHelp": "Active la connexion par courriel et la réinitialisation du mot de passe pour ce compte créé par SSO.",
+      "allowEmailLoginHelp": "Active la connexion locale par courriel et la réinitialisation du mot de passe pour ce compte lorsque le SSO est activé.",
+      "allowEmailLoginDisabledUntilSso": "Cette exception n'a d'effet que lorsque le SSO institutionnel est activé.",
+      "allowEmailLoginAdminAlwaysEnabled": "Les comptes administrateurs conservent toujours l'accès par courriel.",
       "allowEmailLoginNotNeeded": "L'approbation de la connexion par courriel s'applique seulement aux comptes créés par SSO.",
       "ssoCreatedAccount": "Créé par SSO",
       "emailLoginDisabled": "Connexion par courriel désactivée",
@@ -254,6 +274,9 @@
     },
     "storage": {
       "storageType": "Type de stockage",
+      "databaseManagedHelp": "Les paramètres du fournisseur de stockage sont enregistrés dans la base de données. Les nouveaux déploiements démarrent en stockage local par défaut jusqu'à ce qu'un administrateur choisisse S3 ou Azure ici.",
+      "maxImageWidth": "Largeur maximale de téléversement (px)",
+      "maxImageWidthHelp": "Les images téléversées depuis le profil et les éditeurs de texte riche sont redimensionnées à cette largeur avant le téléversement. Taille approximative d'un JPEG 16:9 : {{size}}.",
       "local": "Local",
       "s3": "Amazon S3",
       "azure": "Stockage Blob Azure",
@@ -266,6 +289,40 @@
       "storageAccount": "Compte de stockage",
       "storageAccessKey": "Clé d'accès au stockage",
       "storageContainer": "Conteneur de stockage"
+    },
+    "sso": {
+      "enable": "Activer le SSO",
+      "entrypoint": "URL du point d'entrée de l'IdP",
+      "logoutUrl": "URL de déconnexion de l'IdP",
+      "entityId": "ID d'entité",
+      "identifierFormat": "Format d'identifiant",
+      "institutionName": "Nom de l'institution",
+      "emailIdentifier": "Identifiant de courriel",
+      "firstNameIdentifier": "Identifiant du prénom",
+      "lastNameIdentifier": "Identifiant du nom",
+      "roleIdentifier": "Identifiant du rôle",
+      "roleProfName": "Nom du rôle professeur pour la promotion automatique",
+      "studentNumberIdentifier": "Identifiant du numéro d'étudiant",
+      "cert": "Certificat de l'IdP (chaîne unique, sans BEGIN/END)",
+      "privCert": "Certificat public du SP",
+      "privKey": "Clé privée du SP",
+      "showAdvanced": "Paramètres avancés (dangereux)",
+      "hideAdvanced": "Masquer les paramètres avancés",
+      "advancedWarning": "Ces paramètres changent la façon dont Qlicker valide les réponses SAML et les routes de rappel/déconnexion qu'il présente à l'IdP. Ne les modifiez que si votre IdP l'exige.",
+      "routeMode": "Jeu de routes présenté",
+      "routeModeHelp": "Choisissez si les métadonnées, les AuthnRequests et les flux de déconnexion présentent les anciennes routes /SSO/SAML2 ou les nouvelles routes /api/v1/auth/sso à l'IdP.",
+      "routeModeLegacy": "Anciennes routes /SSO/SAML2",
+      "routeModeApiV1": "Nouvelles routes /api/v1/auth",
+      "wantAssertionsSigned": "Exiger des assertions signées",
+      "wantAssertionsSignedHelp": "Désactivé par défaut pour la compatibilité avec l'ancien système. Activez ceci seulement si votre IdP signe toujours chaque assertion.",
+      "wantAuthnResponseSigned": "Exiger une enveloppe de réponse signée",
+      "wantAuthnResponseSignedHelp": "Désactivé par défaut pour la compatibilité avec l'ancien système. Activez ceci seulement si votre IdP signe toujours la réponse SAML de niveau supérieur.",
+      "acceptedClockSkewMs": "Décalage d'horloge accepté (ms)",
+      "acceptedClockSkewMsHelp": "La valeur par défaut est 60000 ms. Utilisez -1 pour désactiver complètement la vérification du décalage d'horloge, ou une valeur plus petite pour une validation temporelle plus stricte.",
+      "disableRequestedAuthnContext": "Désactiver le contexte d'authentification demandé",
+      "disableRequestedAuthnContextHelp": "Activé par défaut pour la compatibilité avec Microsoft Entra. Désactivez-le seulement si votre IdP exige un AuthnContext précis dans la requête.",
+      "authnContext": "Contexte d'authentification demandé",
+      "authnContextHelp": "Facultatif lorsque le contexte d'authentification demandé est activé. Entrez une ou plusieurs valeurs séparées par des virgules ou des retours à la ligne."
     },
     "failedLoadSettings": "Échec du chargement des paramètres",
     "failedSaveSettings": "Échec de la sauvegarde des paramètres.",
@@ -1508,10 +1565,10 @@
     "admin": {
       "title": "Guide d'utilisation administrateur",
       "intro": "Utilisez ce guide pour configurer Qlicker pour votre établissement ou aider les professeurs et les étudiants.",
-      "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage et les réglages vidéo avant de quitter un onglet.",
+      "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage, la durée de session par défaut de 2 heures et les réglages vidéo avant de quitter un onglet.",
       "quickStart": [
         "Confirmez les valeurs par défaut de l'établissement dans Paramètres avant le début d'une nouvelle session.",
-        "Configurez le stockage, le SSO et la vidéo avant l'arrivée des utilisateurs si votre déploiement dépend de services partagés.",
+        "Configurez le stockage, le SSO et la vidéo dans l'interface administrateur avant l'arrivée des utilisateurs si votre déploiement dépend de services partagés.",
         "Utilisez les onglets Utilisateurs et Cours pour vérifier que les rôles, les inscriptions et les cours actifs correspondent à la réalité."
       ],
       "sections": [
@@ -1520,7 +1577,7 @@
           "subtitle": "La plupart des problèmes d'administration viennent d'un petit écart entre le format attendu et l'environnement réel.",
           "bullets": [
             "Exécutez le serveur, le client et la base de données avec les variables d'environnement du déploiement que vous comptez réellement supporter avant de tester les flux administrateurs.",
-            "Les domaines de courriel autorisés forment une liste séparée par des virgules; l'expiration des jetons de connexion est un nombre entier de minutes; la langue, la date et l'heure deviennent des valeurs par défaut globales.",
+            "Les domaines de courriel autorisés forment une liste séparée par des virgules; l'expiration connexion/session est un nombre entier de minutes; la langue, la date et l'heure deviennent des valeurs par défaut globales.",
             "Les valeurs SSO sont des champs de texte brut pour les URL, les identifiants d'entité et les noms d'attributs. Les certificats et les clés doivent être collés exactement comme le fournisseur les donne.",
             "Les formulaires de stockage attendent les champs propres au fournisseur affichés dans l'interface; confirmez toujours la configuration par un téléversement d'image."
           ],
@@ -1533,12 +1590,14 @@
         },
         {
           "title": "Configurer correctement le stockage local, S3 ou Azure",
-          "subtitle": "Le stockage doit être configuré à la fois dans Qlicker et chez le fournisseur infonuagique.",
+          "subtitle": "Le stockage est maintenant enregistré dans la base de données, mais le fournisseur infonuagique doit tout de même être prêt.",
           "bullets": [
+            "Les nouveaux déploiements commencent en stockage local par défaut et le backend choisi est enregistré dans le document Settings de Qlicker plutôt que dans des variables d'environnement de runtime.",
             "Le stockage local est l'option la plus simple, mais l'environnement serveur doit conserver les fichiers téléversés de façon sûre à travers les redémarrages et les déploiements.",
             "Le mode Amazon S3 exige le compartiment, la région, l'identifiant de clé, la clé secrète et, au besoin, un point de terminaison avec le style path pour des services compatibles comme MinIO.",
             "Le mode Azure Blob exige le compte de stockage, la clé d'accès et le nom du conteneur. Le compartiment ou le conteneur doit déjà exister et permettre la lecture et l'écriture.",
-            "Après avoir enregistré les changements de stockage, téléversez une image d'essai depuis l'éditeur riche et confirmez qu'elle réapparaît dans les pages de révision."
+            "Réglez la largeur maximale de téléversement pour contrôler le redimensionnement avant envoi. La valeur par défaut est 1920 px et les photos de profil génèrent aussi une vignette d'avatar recadrée.",
+            "Après avoir enregistré les changements de stockage, téléversez une image d'essai depuis l'éditeur riche et depuis la page de profil, puis confirmez que l'image complète et la vignette d'avatar s'affichent correctement."
           ],
           "warning": "Traitez les clés de stockage et les identifiants privés comme des secrets et renouvelez-les s'ils sont exposés.",
           "screenshot": {
@@ -1553,6 +1612,8 @@
           "bullets": [
             "Activez le SSO seulement lorsque vous possédez le point d'entrée du fournisseur d'identité, l'URL de déconnexion, l'identifiant d'entité, les correspondances d'attributs et les bons certificats ou clés privées.",
             "Collez les certificats et les clés privées exactement comme ils sont émis. Les clés privées incluent souvent les marqueurs BEGIN et END et ne devraient pas être modifiées à la main.",
+            "Laissez les réglages SAML avancés sur leurs valeurs par défaut sauf si votre IdP exige autre chose. Le jeu de routes présenté à l'IdP reste par défaut l'ancienne surface /SSO/SAML2.",
+            "Si un autre IdP exige plutôt les nouvelles routes /api/v1/auth/sso pour le callback ou la déconnexion, changez le mode de routes seulement après avoir retesté les métadonnées, la connexion, le callback et la déconnexion de bout en bout.",
             "Activez Jitsi seulement après avoir confirmé le domaine Jitsi et, si nécessaire, le domaine Etherpad, puis choisissez les cours qui peuvent utiliser la vidéo.",
             "Retestez la connexion, la déconnexion et un cours avec vidéo après chaque changement afin d'éviter les surprises pendant un cours."
           ],
@@ -1562,7 +1623,8 @@
           "title": "Gérer les utilisateurs, les cours et le soutien par rôle",
           "subtitle": "Une fois les réglages globaux corrects, les onglets Utilisateurs et Cours deviennent vos outils de soutien quotidiens.",
           "bullets": [
-            "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
+            "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes, réinitialisez les mots de passe locaux et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
+            "Lorsque le SSO institutionnel est activé, les utilisateurs non administrateurs ont besoin de l'exception de connexion par courriel avant que la connexion locale et le courriel de réinitialisation deviennent disponibles.",
             "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
             "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
           ],
@@ -1663,6 +1725,15 @@
             "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],
           "success": "Les professeurs peuvent ouvrir le guide étudiant depuis le sélecteur ci-dessus afin de prévisualiser le flux de l'apprenant avant un cours."
+        },
+        {
+          "title": "Utiliser la page de profil pour la langue, le mot de passe et l'avatar",
+          "subtitle": "Les réglages de compte suivent les mêmes règles d'authentification institutionnelles que pour les étudiants.",
+          "bullets": [
+            "Le téléversement d'une photo de profil ouvre une boîte de dialogue de recadrage et de rotation afin de choisir la vignette carrée avant l'enregistrement.",
+            "Lorsque le SSO institutionnel est activé, vos champs de nom et de mot de passe restent verrouillés sauf si un administrateur a accordé l'exception de connexion par courriel à votre compte.",
+            "Le courriel de réinitialisation du mot de passe suit la même règle; utilisez donc le parcours SSO ou contactez un administrateur si la page de profil indique que la connexion locale par courriel est désactivée."
+          ]
         }
       ]
     },
@@ -1733,6 +1804,15 @@
             "Recherchez dans la bibliothèque le matériel accessible sur le sujet que vous voulez retravailler.",
             "Créez des séances de pratique à partir des questions de bibliothèque afin de vous exercer à votre rythme et de revoir immédiatement les résultats.",
             "Si une question contient des maths, des images ou une solution travaillée, laissez ces éléments visibles pendant la pratique pour apprendre à partir de l'exemple complet."
+          ]
+        },
+        {
+          "title": "Mettre à jour votre profil, votre langue et votre avatar avec soin",
+          "subtitle": "Les réglages de profil dépendent de l'utilisation du SSO par votre établissement.",
+          "bullets": [
+            "Le téléversement d'une photo de profil ouvre une boîte de dialogue de recadrage et de rotation afin de placer le cercle d'avatar avant l'enregistrement.",
+            "Si le SSO institutionnel est activé et que votre compte n'a pas reçu l'accès par courriel, vos champs de nom et de mot de passe restent verrouillés volontairement.",
+            "Dans ce même cas géré par SSO, le courriel de réinitialisation du mot de passe reste indisponible tant qu'un administrateur n'accorde pas l'exception de connexion par courriel."
           ]
         }
       ]

@@ -138,8 +138,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for detailed Phase 1-6 hist
 
 ### Test Summary
 
-- **Server:** 351 tests across 16 test files
-- **Client:** 76 tests across 21 files
+- **Server:** 359 tests across 16 test files
+- **Client:** 82 tests across 22 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
 - **E2E:** 9 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test` (Playwright reads `APP_PORT` / `API_PORT` from the repo root `.env`, defaulting to `3000` / `3001`)
@@ -170,6 +170,21 @@ PR 189 chose the following `@node-saml/node-saml` configuration defaults to matc
 | `disableRequestedAuthnContext` | `true` | Microsoft AD / Entra does not reliably support the `RequestedAuthnContext` element in SAML AuthnRequests. | If your IdP requires a specific authentication context (e.g. `urn:oasis:…:ac:classes:PasswordProtectedTransport`), set this to `false` and configure `authnContext` accordingly. |
 
 **Security note:** Even with both `wantAssertionsSigned` and `wantAuthnResponseSigned` set to `false`, `@node-saml/node-saml` **always requires at least one valid XML signature** — either on the Response envelope or on an individual Assertion. An unsigned SAML response will be rejected. The IdP certificate (`SSO_cert` in Settings) is used to verify the signature.
+
+### Current Auth, Storage, and Upload Defaults
+
+The current Fastify/React app now treats the following defaults as part of the migration baseline:
+
+| Area | Current default / rule | Notes |
+|------|------------------------|-------|
+| Email login while `SSO_enabled=true` | Blocked for non-admin users unless `allowEmailLogin` is explicitly granted | Admin accounts always retain local email login access. |
+| Admin user support | User modal includes password reset and email-login exception controls | This replaces ad hoc support workflows for SSO-managed accounts. |
+| SAML route set presented to the IdP | Legacy `/SSO/SAML2` routes | Admin can switch to `/api/v1/auth/sso/*` in Advanced SSO settings for other IdPs. |
+| SAML advanced settings | Production-safe defaults from PR 189 | The advanced UI exposes `wantAssertionsSigned`, `wantAuthnResponseSigned`, `acceptedClockSkewMs`, `disableRequestedAuthnContext`, `authnContext`, and route mode. |
+| Login/session lifetime | `120` minutes | `tokenExpiryMinutes` now governs both access-token expiry and the refresh-session hard expiry, so users are logged out after the configured interval by default. |
+| Storage backend on first boot | `local` | Runtime storage selection is database-driven from Admin -> Storage; `.env` storage variables are no longer used by the app. |
+| Maximum image upload width | `1920px` | Rich-text-editor images and profile uploads are normalized before upload. |
+| Profile avatars | Crop/rotate dialog plus separate thumbnail asset | Existing full-size profile images can be re-cropped without re-uploading. |
 
 ---
 
@@ -427,8 +442,8 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 
 | Aspect | Status | Notes |
 |--------|--------|-------|
-| **Server coverage** | ✅ Good (351 tests/16 files) | All 11 route modules have tests |
-| **Client coverage** | ⚠️ Moderate (76 tests/21 files) | Critical auth, grading, question-editor, session-editor, and question-library flows have targeted unit coverage, but most UI components still rely on E2E coverage |
+| **Server coverage** | ✅ Good (359 tests/16 files) | All 11 route modules have tests |
+| **Client coverage** | ⚠️ Moderate (82 tests/22 files) | Critical auth, grading, question-editor, session-editor, and question-library flows have targeted unit coverage, but most UI components still rely on E2E coverage |
 | **E2E coverage** | ✅ Good (11 Playwright flows) | 9 baseline flows plus 2 dedicated SSO smoke flows; grading, group management, and question copy/export paths now have browser coverage |
 | **Test granularity** | ✅ Appropriate | Auth/permission tests are individually useful for catching regressions; no excessive duplication |
 | **Consolidation opportunity** | LOW | Authorization 403 tests could share a parametrized matrix, but individual tests are clearer for debugging |
@@ -446,7 +461,7 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 | Fast with thousands of concurrent users | ✅ Optimized — delta WebSocket events, `.lean()` on 29+ additional queries, N+1 fixes, single-serialize broadcast |
 | Docker Compose with load balancing | ✅ Complete |
 | SAML SSO | ✅ Complete — confirmed against institutional IdP (Microsoft Entra); see [SAML Defaults Reference](#saml-defaults-reference) |
-| Unit tests | ✅ 427 automated checks (351 server + 76 client) plus 11 Playwright browser flows (9 baseline + 2 SSO smoke) |
+| Unit tests | ✅ 441 automated checks (359 server + 82 client) plus 11 Playwright browser flows (9 baseline + 2 SSO smoke) |
 | Image uploads (S3/Azure/local) | ✅ Complete |
 | Reactive UI for live sessions | ✅ Production-ready |
 | Internationalization | ✅ Complete — 1085+ keys in en/fr, all components wired, no hardcoded English in aria-labels |
@@ -468,13 +483,13 @@ See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for the full list of previo
 ### Build & Test Commands
 
 ```bash
-# Server tests (351 tests, 16 files)
+# Server tests (359 tests, 16 files)
 cd server && npm install && npx vitest run
 
 # Client build
 cd client && npm install && npx vite build
 
-# Client tests (76 tests, 21 files)
+# Client tests (82 tests, 22 files)
 cd client && npx vitest run
 
 # Client E2E tests (9 Playwright flows)

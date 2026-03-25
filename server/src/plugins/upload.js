@@ -57,6 +57,20 @@ async function uploadPlugin(fastify) {
     return err;
   }
 
+  async function streamToBuffer(body) {
+    if (!body) return Buffer.alloc(0);
+    if (Buffer.isBuffer(body)) return body;
+    if (typeof body.transformToByteArray === 'function') {
+      return Buffer.from(await body.transformToByteArray());
+    }
+
+    const chunks = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
   function ensureRequired(value, message) {
     if (!value || String(value).trim().length === 0) {
       throw createStorageConfigError(message);
@@ -64,19 +78,14 @@ async function uploadPlugin(fastify) {
   }
 
   async function getStorageConfig() {
-    const settings = await Settings.findOne();
+    const settings = await Settings.findOne().lean();
     const storageType = normalizeStorageType(
-      settings?.storageType || process.env.STORAGE_TYPE || fastify.config.storageType || 'local'
+      settings?.storageType || 'local'
     );
-    const awsEndpoint = settings?.AWS_endpoint
-      || settings?.S3_endpoint
-      || process.env.AWS_ENDPOINT
-      || process.env.S3_ENDPOINT
-      || '';
+    const awsEndpoint = settings?.AWS_endpoint || settings?.S3_endpoint || '';
     const rawForcePathStyle = settings?.AWS_forcePathStyle
       ?? settings?.S3_forcePathStyle
-      ?? process.env.AWS_FORCE_PATH_STYLE
-      ?? process.env.S3_FORCE_PATH_STYLE;
+      ?? undefined;
     const defaultPathStyleForEndpoint = Boolean(awsEndpoint);
     const awsForcePathStyle = rawForcePathStyle === undefined
       || rawForcePathStyle === null
@@ -86,34 +95,24 @@ async function uploadPlugin(fastify) {
 
     return {
       storageType,
-      AWS_bucket: settings?.AWS_bucket || process.env.AWS_BUCKET || '',
-      AWS_region: settings?.AWS_region || process.env.AWS_REGION || 'us-east-1',
+      AWS_bucket: settings?.AWS_bucket || '',
+      AWS_region: settings?.AWS_region || 'us-east-1',
       AWS_accessKeyId: settings?.AWS_accessKeyId
         || settings?.AWS_accessKey
-        || process.env.AWS_ACCESS_KEY_ID
-        || process.env.AWS_ACCESS_KEY
         || '',
       AWS_secretAccessKey: settings?.AWS_secretAccessKey
         || settings?.AWS_secret
-        || process.env.AWS_SECRET_ACCESS_KEY
-        || process.env.AWS_SECRET
         || '',
       AWS_endpoint: awsEndpoint,
       AWS_forcePathStyle: awsForcePathStyle,
       Azure_storageAccount: settings?.Azure_storageAccount
         || settings?.Azure_accountName
-        || process.env.AZURE_STORAGE_ACCOUNT
-        || process.env.AZURE_ACCOUNT_NAME
         || '',
       Azure_storageAccessKey: settings?.Azure_storageAccessKey
         || settings?.Azure_accountKey
-        || process.env.AZURE_STORAGE_ACCESS_KEY
-        || process.env.AZURE_ACCOUNT_KEY
         || '',
       Azure_storageContainer: settings?.Azure_storageContainer
         || settings?.Azure_containerName
-        || process.env.AZURE_STORAGE_CONTAINER
-        || process.env.AZURE_CONTAINER_NAME
         || '',
     };
   }
@@ -287,8 +286,64 @@ async function uploadPlugin(fastify) {
     }
   }
 
+  async function getFileBuffer(key) {
+    if (!key) {
+      throw createStorageConfigError('File key is required.');
+    }
+
+    const config = await getStorageConfig();
+    switch (config.storageType) {
+      case 'local': {
+        const filePath = path.join(UPLOADS_DIR, key);
+        return fs.promises.readFile(filePath);
+      }
+      case 's3': {
+        ensureRequired(config.AWS_bucket, 'S3 storage requires AWS bucket.');
+        ensureRequired(config.AWS_accessKeyId, 'S3 storage requires AWS access key ID.');
+        ensureRequired(config.AWS_secretAccessKey, 'S3 storage requires AWS secret access key.');
+
+        const { S3Client, GetObjectCommand } = await loadS3Module();
+        const client = new S3Client({
+          region: config.AWS_region || 'us-east-1',
+          credentials: {
+            accessKeyId: config.AWS_accessKeyId,
+            secretAccessKey: config.AWS_secretAccessKey,
+          },
+          endpoint: config.AWS_endpoint || undefined,
+          forcePathStyle: config.AWS_forcePathStyle,
+        });
+        const response = await client.send(new GetObjectCommand({
+          Bucket: config.AWS_bucket,
+          Key: key,
+        }));
+        return streamToBuffer(response.Body);
+      }
+      case 'azure': {
+        ensureRequired(config.Azure_storageAccount, 'Azure storage requires account name.');
+        ensureRequired(config.Azure_storageAccessKey, 'Azure storage requires account key.');
+        ensureRequired(config.Azure_storageContainer, 'Azure storage requires container.');
+
+        const { StorageSharedKeyCredential, BlobServiceClient } = await loadAzureModule();
+        const credential = new StorageSharedKeyCredential(
+          config.Azure_storageAccount,
+          config.Azure_storageAccessKey
+        );
+        const blobServiceClient = new BlobServiceClient(
+          `https://${config.Azure_storageAccount}.blob.core.windows.net`,
+          credential
+        );
+        const containerClient = blobServiceClient.getContainerClient(config.Azure_storageContainer);
+        const blockBlobClient = containerClient.getBlockBlobClient(key);
+        return blockBlobClient.downloadToBuffer();
+      }
+      default:
+        throw createStorageConfigError(`Unknown storage type: ${config.storageType}`);
+    }
+  }
+
   fastify.decorate('uploadFile', uploadFile);
   fastify.decorate('deleteFile', deleteFile);
+  fastify.decorate('getFileBuffer', getFileBuffer);
   fastify.decorate('uploadsDir', UPLOADS_DIR);
 }
 

@@ -271,15 +271,6 @@ REDIS_PORT=$REDIS_PORT
 # Redis (optional — enables multi-instance WebSocket pub/sub)
 REDIS_URL=$REDIS_URL
 
-# Storage (optional)
-STORAGE_TYPE=local
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_BUCKET=
-AWS_REGION=
-AZURE_ACCOUNT_NAME=
-AZURE_ACCOUNT_KEY=
-AZURE_CONTAINER_NAME=
 EOF
 
 echo "[OK] .env file generated at $PROJECT_ROOT/.env"

@@ -1,38 +1,70 @@
+import sharp from 'sharp';
 import User from '../models/User.js';
+import Image from '../models/Image.js';
+import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
+import {
+  canUseEmailLogin,
+  isAdminUser,
+  shouldLockLocalProfileEdits,
+} from '../utils/authPolicy.js';
 import { isSafeProfileImageUrl } from '../utils/url.js';
 
-function canUseEmailLogin(user = {}) {
-  if (!user.ssoCreated) return true;
-  return user.allowEmailLogin === true;
+const PROFILE_THUMBNAIL_SIZE_PX = 256;
+
+async function getAuthSettings() {
+  return Settings.findOne().select('SSO_enabled').lean();
 }
 
 function hasOnlyStudentRole(roles = []) {
   return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
 }
 
-function sanitizeUser(user) {
+function sanitizeUser(user, settings = {}) {
   const obj = user.toObject();
   obj.isSSOUser = !!user.services?.sso?.id;
   obj.isSSOCreatedUser = !!user.ssoCreated;
-  obj.allowEmailLogin = canUseEmailLogin(user);
+  obj.allowEmailLogin = canUseEmailLogin(user, settings);
   obj.lastAuthProvider = user.lastAuthProvider || '';
   delete obj.services;
   return obj;
 }
 
-function sanitizeRawUser(user = {}) {
+function sanitizeRawUser(user = {}, settings = {}) {
   return {
     ...user,
     isSSOUser: !!user.services?.sso?.id,
     isSSOCreatedUser: !!user.ssoCreated,
-    allowEmailLogin: canUseEmailLogin(user),
+    allowEmailLogin: canUseEmailLogin(user, settings),
     lastAuthProvider: user.lastAuthProvider || '',
     services: undefined,
   };
+}
+
+async function setLocalPassword(user, newPassword) {
+  const hashedPassword = await User.hashPassword(newPassword);
+  if (!user.services) user.services = {};
+  if (!user.services.password) user.services.password = {};
+  if (!user.services.resume) user.services.resume = {};
+  user.services.password.hash = hashedPassword;
+  user.services.password.bcrypt = undefined;
+  user.services.resetPassword = undefined;
+  user.services.resume.loginTokens = [];
+  user.refreshTokenVersion = (Number(user.refreshTokenVersion) || 0) + 1;
+}
+
+function normalizeQuarterTurnRotation(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  const normalized = ((Math.round(raw / 90) % 4) + 4) % 4;
+  return normalized * 90;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 const updateProfileSchema = {
@@ -55,6 +87,20 @@ const updateProfileImageSchema = {
     properties: {
       profileImage: { type: 'string', minLength: 1 },
       profileThumbnail: { type: 'string', minLength: 1 },
+    },
+    additionalProperties: false,
+  },
+};
+
+const regenerateProfileThumbnailSchema = {
+  body: {
+    type: 'object',
+    required: ['rotation', 'cropX', 'cropY', 'cropSize'],
+    properties: {
+      rotation: { type: 'integer' },
+      cropX: { type: 'integer', minimum: 0 },
+      cropY: { type: 'integer', minimum: 0 },
+      cropSize: { type: 'integer', minimum: 1 },
     },
     additionalProperties: false,
   },
@@ -101,6 +147,18 @@ const updateUserPropertiesSchema = {
   },
 };
 
+const adminResetPasswordSchema = {
+  ...userIdParamsSchema,
+  body: {
+    type: 'object',
+    required: ['newPassword'],
+    properties: {
+      newPassword: { type: 'string', minLength: 8 },
+    },
+    additionalProperties: false,
+  },
+};
+
 export default async function userRoutes(app) {
   const { authenticate, requireRole } = app;
   const userMutationRateLimit = {
@@ -111,11 +169,14 @@ export default async function userRoutes(app) {
 
   // GET /me
   app.get('/me', { preHandler: authenticate }, async (request, reply) => {
-    const user = await User.findById(request.user.userId).lean();
+    const [user, settings] = await Promise.all([
+      User.findById(request.user.userId).lean(),
+      getAuthSettings(),
+    ]);
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return { user: sanitizeRawUser(user) };
+    return { user: sanitizeRawUser(user, settings) };
   });
 
   // PATCH /me
@@ -123,16 +184,19 @@ export default async function userRoutes(app) {
     const profileAllowed = ['firstname', 'lastname', 'studentNumber'];
     const updates = {};
 
-    const user = await User.findById(request.user.userId);
+    const [user, settings] = await Promise.all([
+      User.findById(request.user.userId),
+      getAuthSettings(),
+    ]);
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
 
-    const isSSONameLocked = !!user.ssoCreated || !!user.services?.sso?.id || user.lastAuthProvider === 'sso';
+    const nameLocked = shouldLockLocalProfileEdits(user, settings);
 
     for (const key of profileAllowed) {
       if (request.body?.[key] !== undefined) {
-        if (isSSONameLocked && (key === 'firstname' || key === 'lastname')) {
+        if (nameLocked && (key === 'firstname' || key === 'lastname')) {
           continue; // SSO users cannot change name fields
         }
         updates[`profile.${key}`] = request.body[key];
@@ -152,7 +216,7 @@ export default async function userRoutes(app) {
     if (!updated) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return sanitizeUser(updated);
+    return sanitizeUser(updated, settings);
   });
 
   // PATCH /me/password
@@ -174,12 +238,15 @@ export default async function userRoutes(app) {
     async (request, reply) => {
       const { currentPassword, newPassword } = request.body;
 
-      const user = await User.findById(request.user.userId);
+      const [user, settings] = await Promise.all([
+        User.findById(request.user.userId),
+        getAuthSettings(),
+      ]);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
 
-      if (user.lastAuthProvider === 'sso' || user.ssoCreated || user.services?.sso?.id) {
+      if (shouldLockLocalProfileEdits(user, settings)) {
         return reply.code(403).send({
           error: 'Forbidden',
           code: 'SSO_PASSWORD_CHANGE_DISABLED',
@@ -205,13 +272,7 @@ export default async function userRoutes(app) {
         return reply.code(401).send({ error: 'Unauthorized', message: 'Current password is incorrect' });
       }
 
-      const hashed = await User.hashPassword(newPassword);
-      if (!user.services.password) user.services.password = {};
-      if (!user.services.resume) user.services.resume = {};
-      user.services.password.hash = hashed;
-      user.services.password.bcrypt = undefined;
-      user.services.resume.loginTokens = [];
-      user.refreshTokenVersion = (Number(user.refreshTokenVersion) || 0) + 1;
+      await setLocalPassword(user, newPassword);
       await user.save();
 
       return { success: true };
@@ -249,8 +310,102 @@ export default async function userRoutes(app) {
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return sanitizeUser(user);
+    const settings = await getAuthSettings();
+    return sanitizeUser(user, settings);
   });
+
+  // POST /me/image/thumbnail — regenerate avatar thumbnail from the stored full-size profile image
+  app.post(
+    '/me/image/thumbnail',
+    {
+      preHandler: authenticate,
+      schema: regenerateProfileThumbnailSchema,
+      ...userMutationRateLimit,
+    },
+    async (request, reply) => {
+      const user = await User.findById(request.user.userId);
+      if (!user) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      const sourceUrl = user.profile?.profileImage || '';
+      if (!sourceUrl) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'No profile image is available to crop' });
+      }
+
+      if (!isSafeProfileImageUrl(sourceUrl)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Stored profile image URL is invalid' });
+      }
+
+      const sourceImage = await Image.findOne({ url: sourceUrl }).lean();
+      if (!sourceImage?.key) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'The current profile image cannot be re-cropped. Please upload it again.',
+        });
+      }
+
+      let sourceBuffer;
+      try {
+        sourceBuffer = await app.getFileBuffer(sourceImage.key);
+      } catch (err) {
+        request.log.error({ err, imageKey: sourceImage.key }, 'Failed to read source profile image');
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'The current profile image could not be loaded for thumbnail generation.',
+        });
+      }
+
+      const rotation = normalizeQuarterTurnRotation(request.body.rotation);
+      const initialCropX = Number(request.body.cropX) || 0;
+      const initialCropY = Number(request.body.cropY) || 0;
+      const initialCropSize = Number(request.body.cropSize) || 0;
+
+      try {
+        const rotatedImage = sharp(sourceBuffer).rotate(rotation);
+        const metadata = await rotatedImage.clone().metadata();
+        const rotatedWidth = Number(metadata.width) || 0;
+        const rotatedHeight = Number(metadata.height) || 0;
+        if (!rotatedWidth || !rotatedHeight) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Profile image dimensions could not be determined' });
+        }
+
+        const maxCropSize = Math.min(rotatedWidth, rotatedHeight);
+        const cropSize = clamp(initialCropSize || maxCropSize, 1, maxCropSize);
+        const cropX = clamp(initialCropX, 0, rotatedWidth - cropSize);
+        const cropY = clamp(initialCropY, 0, rotatedHeight - cropSize);
+
+        const thumbnailBuffer = await rotatedImage
+          .extract({ left: cropX, top: cropY, width: cropSize, height: cropSize })
+          .resize(PROFILE_THUMBNAIL_SIZE_PX, PROFILE_THUMBNAIL_SIZE_PX, { fit: 'cover' })
+          .jpeg({ quality: 88 })
+          .toBuffer();
+
+        const { url, key } = await app.uploadFile(thumbnailBuffer, 'profile-thumbnail.jpg', 'image/jpeg');
+        await Image.create({
+          _id: generateMeteorId(),
+          url,
+          key,
+          UID: request.user.userId,
+          type: 'image/jpeg',
+          size: thumbnailBuffer.length,
+          createdAt: new Date(),
+        });
+
+        user.profile.profileThumbnail = url;
+        await user.save();
+
+        const settings = await getAuthSettings();
+        return sanitizeUser(user, settings);
+      } catch (err) {
+        request.log.error({ err }, 'Failed to generate profile thumbnail');
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Failed to generate profile thumbnail',
+        });
+      }
+    }
+  );
 
   // GET / (admin only - paginated user list)
   app.get(
@@ -276,18 +431,17 @@ export default async function userRoutes(app) {
         filter['profile.roles'] = role;
       }
 
-      const [users, total] = await Promise.all([
+      const [users, total, settings] = await Promise.all([
         User.find(filter)
           .skip((page - 1) * limit)
           .limit(limit)
           .lean(),
         User.countDocuments(filter),
+        getAuthSettings(),
       ]);
 
       // Remove services from each user
-      const sanitized = users.map((u) => {
-        return sanitizeRawUser(u);
-      });
+      const sanitized = users.map((u) => sanitizeRawUser(u, settings));
 
       return {
         users: sanitized,
@@ -303,11 +457,14 @@ export default async function userRoutes(app) {
     '/:id',
       { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
-      const user = await User.findById(request.params.id);
+      const [user, settings] = await Promise.all([
+        User.findById(request.params.id),
+        getAuthSettings(),
+      ]);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
-      return sanitizeUser(user);
+      return sanitizeUser(user, settings);
     }
   );
 
@@ -322,7 +479,10 @@ export default async function userRoutes(app) {
       },
     },
     async (request, reply) => {
-      const existingUser = await User.findById(request.params.id);
+      const [existingUser, settings] = await Promise.all([
+        User.findById(request.params.id),
+        getAuthSettings(),
+      ]);
       if (!existingUser) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
@@ -338,8 +498,8 @@ export default async function userRoutes(app) {
         setUpdates['profile.canPromote'] = !!request.body.canPromote;
       }
       if (request.body?.allowEmailLogin !== undefined) {
-        setUpdates.allowEmailLogin = !!request.body.allowEmailLogin;
-        if (request.body.allowEmailLogin === false) {
+        setUpdates.allowEmailLogin = isAdminUser(existingUser) ? true : !!request.body.allowEmailLogin;
+        if (request.body.allowEmailLogin === false || isAdminUser(existingUser)) {
           unsetUpdates['services.resetPassword'] = 1;
         }
       }
@@ -360,7 +520,33 @@ export default async function userRoutes(app) {
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
-      return sanitizeUser(user);
+      return sanitizeUser(user, settings);
+    }
+  );
+
+  // PATCH /:id/password (admin only)
+  app.patch(
+    '/:id/password',
+    {
+      preHandler: requireRole(['admin']),
+      schema: adminResetPasswordSchema,
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const [user, settings] = await Promise.all([
+        User.findById(request.params.id),
+        getAuthSettings(),
+      ]);
+      if (!user) {
+        return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
+      }
+
+      await setLocalPassword(user, request.body.newPassword);
+      await user.save();
+
+      return sanitizeUser(user, settings);
     }
   );
 
@@ -394,6 +580,9 @@ export default async function userRoutes(app) {
       if (role === 'student') {
         roleUpdates['profile.canPromote'] = false;
       }
+      if (role === 'admin') {
+        roleUpdates.allowEmailLogin = true;
+      }
 
       const user = await User.findByIdAndUpdate(
         request.params.id,
@@ -403,7 +592,8 @@ export default async function userRoutes(app) {
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
-      return sanitizeUser(user);
+      const settings = await getAuthSettings();
+      return sanitizeUser(user, settings);
     }
   );
 
@@ -412,7 +602,10 @@ export default async function userRoutes(app) {
     '/:id/verify-email',
       { preHandler: requireRole(['admin']), schema: userIdParamsSchema },
     async (request, reply) => {
-      const user = await User.findById(request.params.id);
+      const [user, settings] = await Promise.all([
+        User.findById(request.params.id),
+        getAuthSettings(),
+      ]);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
@@ -420,7 +613,7 @@ export default async function userRoutes(app) {
         user.emails[0].verified = true;
         await user.save();
       }
-      return sanitizeUser(user);
+      return sanitizeUser(user, settings);
     }
   );
 
@@ -466,6 +659,7 @@ export default async function userRoutes(app) {
       }
 
       const hashedPassword = await User.hashPassword(password);
+      const roleName = role || 'student';
       const user = await User.create({
         _id: generateMeteorId(),
         emails: [{ address: normalizedEmail, verified: false }],
@@ -475,12 +669,14 @@ export default async function userRoutes(app) {
         profile: {
           firstname,
           lastname,
-          roles: [role || 'student'],
+          roles: [roleName],
         },
+        allowEmailLogin: roleName === 'admin',
         createdAt: new Date(),
       });
 
-      return reply.code(201).send(sanitizeUser(user));
+      const settings = await getAuthSettings();
+      return reply.code(201).send(sanitizeUser(user, settings));
     }
   );
 }

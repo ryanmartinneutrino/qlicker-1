@@ -284,14 +284,14 @@ fi
 
 # ---- Sanitize S3 (optional) -------------------------------------------------
 if [ "$SANITIZE_S3" = true ]; then
-  if [ "${STORAGE_TYPE:-local}" = "s3" ]; then
+  if [ -n "${AWS_BUCKET:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
     info "Running S3 ACL sanitization..."
     docker exec "$SERVER_CONTAINER" node -e "
       $(cat "$SCRIPT_DIR/sanitize-s3.js")
     "
     info "S3 sanitization complete."
   else
-    warn "--sanitize-s3 requested but STORAGE_TYPE is not 's3'. Skipping."
+    warn "--sanitize-s3 requested but AWS_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set. Skipping."
   fi
 fi
 
@@ -307,7 +307,7 @@ echo "    2. Change the admin password:"
 echo "       ./manage-user.sh change-password --email admin@example.com"
 echo "    3. Create a backup: ./backup.sh"
 echo ""
-if [ "$SANITIZE_S3" = false ] && [ "${STORAGE_TYPE:-local}" = "s3" ]; then
+if [ "$SANITIZE_S3" = false ] && [ -n "${AWS_BUCKET:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
   echo "  S3 note: If migrating to a private bucket, run:"
   echo "    ./init-from-legacy.sh --sanitize-s3"
   echo "    (or manually: node sanitize-s3.js inside the server container)"

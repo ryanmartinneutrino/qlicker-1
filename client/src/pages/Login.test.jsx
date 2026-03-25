@@ -38,10 +38,13 @@ vi.mock('react-i18next', () => ({
       'auth.haveEmailAccount': 'Have an email-based account',
       'auth.forgotPasswordTitle': 'Forgot Password',
       'auth.forgotPasswordMessage': 'Reset your password',
+      'auth.forgotPasswordSsoNotice': 'When SSO is enabled, password reset is limited to approved email-login accounts.',
       'auth.sendResetLink': 'Send Reset Link',
       'auth.sending': 'Sending',
       'auth.loginThrough': `Login through ${params?.institution ?? 'SSO'}`,
       'auth.ssoDefault': 'SSO',
+      'auth.resetLinkSent': 'Reset link sent',
+      'auth.resetEmailFailed': 'Reset email failed',
     }[key] ?? key),
   }),
 }));
@@ -122,5 +125,25 @@ describe('Login', () => {
     expect(passwordField).not.toBeNull();
     expect(passwordField).toHaveAttribute('autocomplete', 'new-password');
     expect(screen.getByRole('form', { name: 'Register' })).toBeInTheDocument();
+  });
+
+  it('shows the SSO password-reset notice in the forgot-password dialog when SSO is enabled', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: true,
+        SSO_institutionName: 'Example University',
+      },
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Have an email-based account' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot Password?' }));
+
+    expect(screen.getByText('When SSO is enabled, password reset is limited to approved email-login accounts.')).toBeInTheDocument();
   });
 });

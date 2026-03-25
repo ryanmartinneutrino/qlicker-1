@@ -1,5 +1,6 @@
 import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
+import { normalizeSettingsPayload } from '../utils/authPolicy.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
 
 async function getOrCreateSettings() {
@@ -34,6 +35,12 @@ const updateSettingsSchema = {
       SSO_institutionName: { type: 'string' },
       SSO_roleIdentifier: { type: 'string' },
       SSO_roleProfName: { type: 'string' },
+      SSO_wantAssertionsSigned: { type: 'boolean' },
+      SSO_wantAuthnResponseSigned: { type: 'boolean' },
+      SSO_acceptedClockSkewMs: { type: 'number', minimum: -1 },
+      SSO_disableRequestedAuthnContext: { type: 'boolean' },
+      SSO_authnContext: { type: 'string' },
+      SSO_routeMode: { type: 'string', enum: ['legacy', 'api_v1'] },
       storageType: { type: 'string', enum: ['local', 's3', 'azure'] },
       AWS_bucket: { type: 'string' },
       AWS_region: { type: 'string' },
@@ -58,7 +65,7 @@ const updateSettingsSchema = {
       dateFormat: { type: 'string' },
       timeFormat: { type: 'string', enum: ['24h', '12h'] },
       maxImageSize: { type: 'number', minimum: 0 },
-      maxImageWidth: { type: 'number', minimum: 0 },
+      maxImageWidth: { type: 'number', minimum: 1 },
     },
     additionalProperties: false,
   },
@@ -79,7 +86,7 @@ export default async function settingsRoutes(app) {
   // GET / (admin only)
   app.get('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
     const settings = await getOrCreateSettings();
-    return settings.toObject();
+    return normalizeSettingsPayload(settings.toObject());
   });
 
   // Whitelist of fields that may be updated via the admin settings PATCH endpoint.
@@ -90,6 +97,8 @@ export default async function settingsRoutes(app) {
     'SSO_EntityId', 'SSO_logoutUrl', 'SSO_identifierFormat', 'SSO_emailIdentifier',
     'SSO_firstNameIdentifier', 'SSO_lastNameIdentifier', 'SSO_studentNumberIdentifier',
     'SSO_institutionName', 'SSO_roleIdentifier', 'SSO_roleProfName',
+    'SSO_wantAssertionsSigned', 'SSO_wantAuthnResponseSigned', 'SSO_acceptedClockSkewMs',
+    'SSO_disableRequestedAuthnContext', 'SSO_authnContext', 'SSO_routeMode',
     'storageType', 'AWS_bucket', 'AWS_region', 'AWS_accessKeyId', 'AWS_secretAccessKey',
     'AWS_endpoint', 'AWS_forcePathStyle', 'AWS_accessKey', 'AWS_secret',
     'Azure_storageAccount', 'Azure_storageAccessKey', 'Azure_storageContainer',
@@ -126,7 +135,7 @@ export default async function settingsRoutes(app) {
         }
       );
 
-      return updatedSettings.toObject();
+      return normalizeSettingsPayload(updatedSettings.toObject());
     } catch (err) {
       request.log.error({ err }, 'Failed to update settings');
       return reply.code(400).send({
@@ -139,13 +148,15 @@ export default async function settingsRoutes(app) {
   // GET /public (no auth)
   app.get('/public', async (request, reply) => {
     const settings = await getOrCreateSettings();
+    const normalizedSettings = normalizeSettingsPayload(settings.toObject());
     return {
-      SSO_enabled: settings.SSO_enabled || false,
-      SSO_institutionName: settings.SSO_institutionName || '',
-      restrictDomain: settings.restrictDomain || false,
-      requireVerified: settings.requireVerified || false,
-      Jitsi_Enabled: settings.Jitsi_Enabled || false,
-      timeFormat: settings.timeFormat || '24h',
+      SSO_enabled: normalizedSettings.SSO_enabled || false,
+      SSO_institutionName: normalizedSettings.SSO_institutionName || '',
+      restrictDomain: normalizedSettings.restrictDomain || false,
+      requireVerified: normalizedSettings.requireVerified || false,
+      Jitsi_Enabled: normalizedSettings.Jitsi_Enabled || false,
+      timeFormat: normalizedSettings.timeFormat || '24h',
+      maxImageWidth: normalizedSettings.maxImageWidth,
     };
   });
 
