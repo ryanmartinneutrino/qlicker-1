@@ -67,7 +67,7 @@ Recent auth/storage-specific route additions worth checking in Swagger:
 - The thumbnail endpoint accepts drag-generated decimal crop coordinates and rounds them server-side before extraction.
 - `PATCH /api/v1/users/:id/password` lets admins reset a user's local password.
 - `GET /api/v1/settings/public` now includes `maxImageWidth` and `avatarThumbnailSize` so clients can normalize uploads and generate sharp profile thumbnails before sending them.
-- `GET /api/v1/courses/:courseId/sessions` supports opt-in `page` / `limit` pagination and session rows now include `hasResponses` so professor course pages can show review affordances without scanning the `responses` collection on every load.
+- `GET /api/v1/courses/:courseId/sessions` supports opt-in `page` / `limit` pagination, returns `sessionTypeCounts` alongside paginated totals so course pages can reserve stable session-list controls before background hydration completes, and session rows now include `hasResponses` so professor course pages can show review affordances without scanning the `responses` collection on every load.
 
 ## Local verification workflow
 

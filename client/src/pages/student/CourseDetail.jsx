@@ -63,6 +63,22 @@ function normalizeSessionSearchValue(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function getStudentSessionTypeCounts(sessionItems = []) {
+  return sessionItems.reduce((counts, session) => {
+    if (session?.studentCreated && session?.practiceQuiz) {
+      counts.practice += 1;
+      return counts;
+    }
+    if (session?.studentCreated) return counts;
+    if (isQuizSession(session)) {
+      counts.quizzes += 1;
+    } else {
+      counts.interactive += 1;
+    }
+    return counts;
+  }, { interactive: 0, quizzes: 0, practice: 0 });
+}
+
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -100,6 +116,7 @@ export default function StudentCourseDetail() {
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsBackgroundLoading, setSessionsBackgroundLoading] = useState(false);
   const [sessionTotalCount, setSessionTotalCount] = useState(0);
+  const [sessionTypeCounts, setSessionTypeCounts] = useState({ interactive: 0, quizzes: 0, practice: 0 });
   const [sessionPages, setSessionPages] = useState({});
   const [sessionPageSizes, setSessionPageSizes] = useState({});
   const [sessionSearchTerms, setSessionSearchTerms] = useState({});
@@ -153,9 +170,17 @@ export default function StudentCourseDetail() {
       const initialSessions = firstPageData.sessions || [];
       const totalSessions = Number(firstPageData.total) || initialSessions.length;
       const totalPages = Math.max(Number(firstPageData.pages) || 1, 1);
+      const nextSessionTypeCounts = firstPageData.sessionTypeCounts
+        ? {
+          interactive: Number(firstPageData.sessionTypeCounts.interactive) || 0,
+          quizzes: Number(firstPageData.sessionTypeCounts.quizzes) || 0,
+          practice: Number(firstPageData.sessionTypeCounts.practice) || 0,
+        }
+        : getStudentSessionTypeCounts(initialSessions);
 
       setSessions(initialSessions);
       setSessionTotalCount(totalSessions);
+      setSessionTypeCounts(nextSessionTypeCounts);
       setSessionsLoading(false);
 
       if (totalPages <= 1) {
@@ -184,6 +209,7 @@ export default function StudentCourseDetail() {
     } catch {
       if (sessionFetchVersionRef.current !== fetchVersion) return;
       setSessionTotalCount(0);
+      setSessionTypeCounts({ interactive: 0, quizzes: 0, practice: 0 });
       setSessionsLoading(false);
       setSessionsBackgroundLoading(false);
     }
@@ -311,38 +337,162 @@ export default function StudentCourseDetail() {
   const interactiveSessions = sortedSessions.filter((session) => !isQuizSession(session) && !session.studentCreated);
   const quizSessions = sortedSessions.filter((session) => isQuizSession(session) && !session.studentCreated);
   const sessionCountsArePartial = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
-  const sessionCountSuffix = sessionCountsArePartial ? '+' : '';
+  const interactiveSessionCount = Number(sessionTypeCounts.interactive) || interactiveSessions.length;
+  const quizSessionCount = Number(sessionTypeCounts.quizzes) || quizSessions.length;
+  const practiceSessionCount = Number(sessionTypeCounts.practice) || practiceSessions.length;
   const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
   const practiceTabIndex = 2;
   const questionLibraryTabIndex = 3;
   const gradesTabIndex = 4;
 
-  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
+  const renderSessionListControls = ({
+    listTabIndex,
+    controlsVisible,
+    controlsDisabled,
+    searchTerm,
+    statusFilter,
+    pageSize,
+    safePage,
+    totalPages,
+  }) => {
+    if (!controlsVisible) return null;
+    return (
+      <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+        <Stack spacing={1.25}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
+            <TextField
+              size="small"
+              label={t('common.search')}
+              placeholder={t('student.course.searchSessionsPlaceholder', { defaultValue: 'Search by session name' })}
+              value={searchTerm}
+              onChange={(event) => {
+                setSessionSearchTerms((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
+                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+              }}
+              disabled={controlsDisabled}
+              sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
+            />
+            <TextField
+              select
+              size="small"
+              label={t('common.status')}
+              value={statusFilter}
+              onChange={(event) => {
+                setSessionStatusFilters((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
+                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+              }}
+              disabled={controlsDisabled}
+              sx={{ minWidth: { xs: '100%', sm: 170 } }}
+            >
+              {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
+                <MenuItem key={`status-filter-${listTabIndex}-${option.value}`} value={option.value}>
+                  {t(option.labelKey, { defaultValue: option.defaultLabel })}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label={t('common.rowsPerPage', { defaultValue: 'Rows per page' })}
+              value={String(pageSize)}
+              onChange={(event) => {
+                const nextPageSize = Number(event.target.value);
+                const safePageSize = SESSION_PAGE_SIZE_OPTIONS.includes(nextPageSize) ? nextPageSize : SESSION_PAGE_SIZE;
+                setSessionPageSizes((prev) => ({ ...prev, [listTabIndex]: safePageSize }));
+                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+              }}
+              disabled={controlsDisabled}
+              sx={{ minWidth: { xs: '100%', sm: 152 } }}
+            >
+              {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
+                <MenuItem key={`page-size-${listTabIndex}-${option}`} value={String(option)}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Stack>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              {t('common.paginationSummary', {
+                page: safePage,
+                pages: totalPages,
+                defaultValue: `Page ${safePage} of ${totalPages}`,
+              })}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                disabled={controlsDisabled || safePage <= 1}
+                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
+              >
+                {t('common.previous')}
+              </Button>
+              <Button
+                size="small"
+                disabled={controlsDisabled || safePage >= totalPages}
+                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+              >
+                {t('common.next')}
+              </Button>
+            </Stack>
+          </Box>
+        </Stack>
+      </Paper>
+    );
+  };
+
+  const renderSessionListPagination = ({
+    listTabIndex,
+    controlsVisible,
+    controlsDisabled,
+    safePage,
+    totalPages,
+    showFooter,
+  }) => {
+    if (!controlsVisible || totalPages <= 1 || !showFooter) return null;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          {t('common.paginationSummary', {
+            page: safePage,
+            pages: totalPages,
+            defaultValue: `Page ${safePage} of ${totalPages}`,
+          })}
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            size="small"
+            disabled={controlsDisabled || safePage <= 1}
+            onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
+          >
+            {t('common.previous')}
+          </Button>
+          <Button
+            size="small"
+            disabled={controlsDisabled || safePage >= totalPages}
+            onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+          >
+            {t('common.next')}
+          </Button>
+        </Stack>
+      </Box>
+    );
+  };
+
+  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0, totalItemCount = sessionItems.length) => {
     const listStillHydrating = sessionCountsArePartial;
     if (sessionsLoading && sessions.length === 0) return <CircularProgress size={24} />;
-    if (sessionItems.length === 0) {
-      if (listStillHydrating) {
-        return (
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <CircularProgress size={18} />
-            <Typography variant="body2" color="text.secondary">
-              {t('student.course.loadingSessionsList', { defaultValue: 'Loading sessions…' })}
-            </Typography>
-          </Stack>
-        );
-      }
-      return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
-    }
 
-    const controlsEnabled = !listStillHydrating && sessionItems.length > SESSION_PAGE_SIZE;
-    const searchTerm = controlsEnabled ? String(sessionSearchTerms[listTabIndex] || '') : '';
-    const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
-    const statusFilter = controlsEnabled
+    const controlsVisible = totalItemCount > SESSION_PAGE_SIZE;
+    const controlsDisabled = listStillHydrating;
+    const searchTerm = controlsVisible ? String(sessionSearchTerms[listTabIndex] || '') : '';
+    const normalizedSearchTerm = controlsDisabled ? '' : normalizeSessionSearchValue(searchTerm);
+    const statusFilter = controlsVisible
       ? String(sessionStatusFilters[listTabIndex] || SESSION_STATUS_FILTER_ALL)
       : SESSION_STATUS_FILTER_ALL;
 
-    const filteredSessionItems = controlsEnabled
+    const filteredSessionItems = controlsVisible && !controlsDisabled
       ? sessionItems.filter((session) => {
         const matchesSearch = !normalizedSearchTerm
           || String(session?.name || '').toLowerCase().includes(normalizedSearchTerm);
@@ -352,20 +502,33 @@ export default function StudentCourseDetail() {
       })
       : sessionItems;
 
-    const rawPageSize = controlsEnabled
+    const rawPageSize = controlsVisible
       ? Number(sessionPageSizes[listTabIndex] || SESSION_PAGE_SIZE)
       : SESSION_PAGE_SIZE;
     const pageSize = SESSION_PAGE_SIZE_OPTIONS.includes(rawPageSize) ? rawPageSize : SESSION_PAGE_SIZE;
     const currentPage = sessionPages[listTabIndex] || 1;
-    const totalPages = Math.max(Math.ceil(filteredSessionItems.length / pageSize), 1);
-    const safePage = Math.min(currentPage, totalPages);
+    const totalPages = Math.max(Math.ceil((controlsDisabled ? totalItemCount : filteredSessionItems.length) / pageSize), 1);
+    const safePage = controlsDisabled ? 1 : Math.min(currentPage, totalPages);
     const startIdx = (safePage - 1) * pageSize;
-    const pageItems = filteredSessionItems.slice(startIdx, startIdx + pageSize);
+    const pageItems = controlsDisabled
+      ? sessionItems.slice(0, pageSize)
+      : filteredSessionItems.slice(startIdx, startIdx + pageSize);
+    const hasNoLoadedItems = sessionItems.length === 0;
 
     return (
       <>
+        {renderSessionListControls({
+          listTabIndex,
+          controlsVisible,
+          controlsDisabled,
+          searchTerm,
+          statusFilter,
+          pageSize,
+          safePage,
+          totalPages,
+        })}
         {listStillHydrating && (
-          <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+          <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               <CircularProgress size={16} />
               <Typography variant="body2" color="text.secondary">
@@ -376,88 +539,11 @@ export default function StudentCourseDetail() {
             </Stack>
           </Paper>
         )}
-        {controlsEnabled && (
-          <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-            <Stack spacing={1.25}>
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
-                <TextField
-                  size="small"
-                  label={t('common.search')}
-                  placeholder={t('student.course.searchSessionsPlaceholder', { defaultValue: 'Search by session name' })}
-                  value={searchTerm}
-                  onChange={(event) => {
-                    setSessionSearchTerms((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
-                    setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-                  }}
-                  sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
-                />
-                <TextField
-                  select
-                  size="small"
-                  label={t('common.status')}
-                  value={statusFilter}
-                  onChange={(event) => {
-                    setSessionStatusFilters((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
-                    setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-                  }}
-                  sx={{ minWidth: { xs: '100%', sm: 170 } }}
-                >
-                  {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
-                    <MenuItem key={`status-filter-${listTabIndex}-${option.value}`} value={option.value}>
-                      {t(option.labelKey, { defaultValue: option.defaultLabel })}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  label={t('common.rowsPerPage', { defaultValue: 'Rows per page' })}
-                  value={String(pageSize)}
-                  onChange={(event) => {
-                    const nextPageSize = Number(event.target.value);
-                    const safePageSize = SESSION_PAGE_SIZE_OPTIONS.includes(nextPageSize) ? nextPageSize : SESSION_PAGE_SIZE;
-                    setSessionPageSizes((prev) => ({ ...prev, [listTabIndex]: safePageSize }));
-                    setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-                  }}
-                  sx={{ minWidth: { xs: '100%', sm: 152 } }}
-                >
-                  {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
-                    <MenuItem key={`page-size-${listTabIndex}-${option}`} value={String(option)}>
-                      {option}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              </Stack>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {t('common.paginationSummary', {
-                    page: safePage,
-                    pages: totalPages,
-                    defaultValue: `Page ${safePage} of ${totalPages}`,
-                  })}
-                </Typography>
-                <Stack direction="row" spacing={1}>
-                  <Button
-                    size="small"
-                    disabled={safePage <= 1}
-                    onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
-                  >
-                    {t('common.previous')}
-                  </Button>
-                  <Button
-                    size="small"
-                    disabled={safePage >= totalPages}
-                    onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
-                  >
-                    {t('common.next')}
-                  </Button>
-                </Stack>
-              </Box>
-            </Stack>
-          </Paper>
-        )}
-
-        {filteredSessionItems.length === 0 ? (
+        {hasNoLoadedItems ? (
+          !listStillHydrating ? (
+            <Typography variant="body2" color="text.secondary">{emptyText}</Typography>
+          ) : null
+        ) : filteredSessionItems.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {t('student.course.noSessionsMatchFilters', { defaultValue: 'No sessions match the current filters.' })}
           </Typography>
@@ -521,33 +607,14 @@ export default function StudentCourseDetail() {
             })}
           </Box>
         )}
-        {filteredSessionItems.length > 0 && totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              {t('common.paginationSummary', {
-                page: safePage,
-                pages: totalPages,
-                defaultValue: `Page ${safePage} of ${totalPages}`,
-              })}
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
-                size="small"
-                disabled={safePage <= 1}
-                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
-              >
-                {t('common.previous')}
-              </Button>
-              <Button
-                size="small"
-                disabled={safePage >= totalPages}
-                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
-              >
-                {t('common.next')}
-              </Button>
-            </Stack>
-          </Box>
-        )}
+        {renderSessionListPagination({
+          listTabIndex,
+          controlsVisible,
+          controlsDisabled,
+          safePage,
+          totalPages,
+          showFooter: pageItems.length > 0 || listStillHydrating,
+        })}
       </>
     );
   };
@@ -607,9 +674,9 @@ export default function StudentCourseDetail() {
         dropdownLabel={t('common.view')}
         dropdownSx={{ mb: 1.5 }}
         tabs={[
-          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessions.length}${sessionCountSuffix})` },
-          { value: 1, label: `${t('student.course.quizzes')} (${quizSessions.length}${sessionCountSuffix})` },
-          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessions.length}${sessionCountSuffix})` },
+          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessionCount})` },
+          { value: 1, label: `${t('student.course.quizzes')} (${quizSessionCount})` },
+          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessionCount})` },
           { value: 3, label: t('questionLibrary.title', { defaultValue: 'Question Library' }) },
           { value: 4, label: t('student.course.grades') },
           ...(courseHasVideo ? [{ value: videoTabIndex, label: t('student.course.video') }] : []),
@@ -623,12 +690,12 @@ export default function StudentCourseDetail() {
 
       <TabPanel value={tab} index={0}>
         <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.lectures')}</Typography>
-        {renderSessionList(interactiveSessions, t('student.course.noLectures'), 0)}
+        {renderSessionList(interactiveSessions, t('student.course.noLectures'), 0, interactiveSessionCount)}
       </TabPanel>
 
       <TabPanel value={tab} index={1}>
         <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.quizzes')}</Typography>
-        {renderSessionList(quizSessions, t('student.course.noQuizzes'), 1)}
+        {renderSessionList(quizSessions, t('student.course.noQuizzes'), 1, quizSessionCount)}
       </TabPanel>
 
       <TabPanel value={tab} index={practiceTabIndex}>
@@ -638,28 +705,17 @@ export default function StudentCourseDetail() {
             {t('student.course.newPracticeSession', { defaultValue: 'New practice session' })}
           </Button>
         </Box>
-        {sessionsLoading && sessions.length === 0 ? <CircularProgress size={24} /> : practiceSessions.length === 0 ? (
-          sessionCountsArePartial ? (
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2" color="text.secondary">
-                {t('student.course.loadingSessionsList', { defaultValue: 'Loading sessions…' })}
-              </Typography>
-            </Stack>
-          ) : (
-          <Typography variant="body2" color="text.secondary">
-            {t('student.course.noPracticeSessions', { defaultValue: 'No practice sessions yet.' })}
-          </Typography>
-          )
-        ) : (() => {
-          const controlsEnabled = !sessionCountsArePartial && practiceSessions.length > SESSION_PAGE_SIZE;
-          const searchTerm = controlsEnabled ? String(sessionSearchTerms[practiceTabIndex] || '') : '';
-          const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
-          const statusFilter = controlsEnabled
+        {sessionsLoading && sessions.length === 0 ? <CircularProgress size={24} /> : (() => {
+          const listStillHydrating = sessionCountsArePartial;
+          const controlsVisible = practiceSessionCount > SESSION_PAGE_SIZE;
+          const controlsDisabled = listStillHydrating;
+          const searchTerm = controlsVisible ? String(sessionSearchTerms[practiceTabIndex] || '') : '';
+          const normalizedSearchTerm = controlsDisabled ? '' : normalizeSessionSearchValue(searchTerm);
+          const statusFilter = controlsVisible
             ? String(sessionStatusFilters[practiceTabIndex] || SESSION_STATUS_FILTER_ALL)
             : SESSION_STATUS_FILTER_ALL;
 
-          const filteredPracticeSessions = controlsEnabled
+          const filteredPracticeSessions = controlsVisible && !controlsDisabled
             ? practiceSessions.filter((session) => {
               const matchesSearch = !normalizedSearchTerm
                 || String(session?.name || '').toLowerCase().includes(normalizedSearchTerm);
@@ -669,19 +725,33 @@ export default function StudentCourseDetail() {
             })
             : practiceSessions;
 
-          const rawPageSize = controlsEnabled
+          const rawPageSize = controlsVisible
             ? Number(sessionPageSizes[practiceTabIndex] || SESSION_PAGE_SIZE)
             : SESSION_PAGE_SIZE;
           const pageSize = SESSION_PAGE_SIZE_OPTIONS.includes(rawPageSize) ? rawPageSize : SESSION_PAGE_SIZE;
           const currentPage = sessionPages[practiceTabIndex] || 1;
-          const totalPages = Math.max(Math.ceil(filteredPracticeSessions.length / pageSize), 1);
-          const safePage = Math.min(currentPage, totalPages);
+          const totalPages = Math.max(Math.ceil((controlsDisabled ? practiceSessionCount : filteredPracticeSessions.length) / pageSize), 1);
+          const safePage = controlsDisabled ? 1 : Math.min(currentPage, totalPages);
           const startIdx = (safePage - 1) * pageSize;
-          const pageItems = filteredPracticeSessions.slice(startIdx, startIdx + pageSize);
+          const pageItems = controlsDisabled
+            ? practiceSessions.slice(0, pageSize)
+            : filteredPracticeSessions.slice(startIdx, startIdx + pageSize);
+          const hasNoLoadedItems = practiceSessions.length === 0;
+
           return (
             <>
-              {sessionCountsArePartial && (
-                <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+              {renderSessionListControls({
+                listTabIndex: practiceTabIndex,
+                controlsVisible,
+                controlsDisabled,
+                searchTerm,
+                statusFilter,
+                pageSize,
+                safePage,
+                totalPages,
+              })}
+              {listStillHydrating && (
+                <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                     <CircularProgress size={16} />
                     <Typography variant="body2" color="text.secondary">
@@ -692,88 +762,13 @@ export default function StudentCourseDetail() {
                   </Stack>
                 </Paper>
               )}
-              {controlsEnabled && (
-                <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-                  <Stack spacing={1.25}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
-                      <TextField
-                        size="small"
-                        label={t('common.search')}
-                        placeholder={t('student.course.searchSessionsPlaceholder', { defaultValue: 'Search by session name' })}
-                        value={searchTerm}
-                        onChange={(event) => {
-                          setSessionSearchTerms((prev) => ({ ...prev, [practiceTabIndex]: event.target.value }));
-                          setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: 1 }));
-                        }}
-                        sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
-                      />
-                      <TextField
-                        select
-                        size="small"
-                        label={t('common.status')}
-                        value={statusFilter}
-                        onChange={(event) => {
-                          setSessionStatusFilters((prev) => ({ ...prev, [practiceTabIndex]: event.target.value }));
-                          setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: 1 }));
-                        }}
-                        sx={{ minWidth: { xs: '100%', sm: 170 } }}
-                      >
-                        {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
-                          <MenuItem key={`status-filter-${practiceTabIndex}-${option.value}`} value={option.value}>
-                            {t(option.labelKey, { defaultValue: option.defaultLabel })}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                      <TextField
-                        select
-                        size="small"
-                        label={t('common.rowsPerPage', { defaultValue: 'Rows per page' })}
-                        value={String(pageSize)}
-                        onChange={(event) => {
-                          const nextPageSize = Number(event.target.value);
-                          const safePageSize = SESSION_PAGE_SIZE_OPTIONS.includes(nextPageSize) ? nextPageSize : SESSION_PAGE_SIZE;
-                          setSessionPageSizes((prev) => ({ ...prev, [practiceTabIndex]: safePageSize }));
-                          setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: 1 }));
-                        }}
-                        sx={{ minWidth: { xs: '100%', sm: 152 } }}
-                      >
-                        {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
-                          <MenuItem key={`page-size-${practiceTabIndex}-${option}`} value={String(option)}>
-                            {option}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </Stack>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('common.paginationSummary', {
-                          page: safePage,
-                          pages: totalPages,
-                          defaultValue: `Page ${safePage} of ${totalPages}`,
-                        })}
-                      </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          disabled={safePage <= 1}
-                          onClick={() => setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: safePage - 1 }))}
-                        >
-                          {t('common.previous')}
-                        </Button>
-                        <Button
-                          size="small"
-                          disabled={safePage >= totalPages}
-                          onClick={() => setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: safePage + 1 }))}
-                        >
-                          {t('common.next')}
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </Paper>
-              )}
-
-              {filteredPracticeSessions.length === 0 ? (
+              {hasNoLoadedItems ? (
+                !listStillHydrating ? (
+                  <Typography variant="body2" color="text.secondary">
+                    {t('student.course.noPracticeSessions', { defaultValue: 'No practice sessions yet.' })}
+                  </Typography>
+                ) : null
+              ) : filteredPracticeSessions.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   {t('student.course.noSessionsMatchFilters', { defaultValue: 'No sessions match the current filters.' })}
                 </Typography>
@@ -833,33 +828,14 @@ export default function StudentCourseDetail() {
                   })}
                 </Box>
               )}
-              {filteredPracticeSessions.length > 0 && totalPages > 1 && (
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {t('common.paginationSummary', {
-                      page: safePage,
-                      pages: totalPages,
-                      defaultValue: `Page ${safePage} of ${totalPages}`,
-                    })}
-                  </Typography>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      disabled={safePage <= 1}
-                      onClick={() => setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: safePage - 1 }))}
-                    >
-                      {t('common.previous')}
-                    </Button>
-                    <Button
-                      size="small"
-                      disabled={safePage >= totalPages}
-                      onClick={() => setSessionPages((prev) => ({ ...prev, [practiceTabIndex]: safePage + 1 }))}
-                    >
-                      {t('common.next')}
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
+              {renderSessionListPagination({
+                listTabIndex: practiceTabIndex,
+                controlsVisible,
+                controlsDisabled,
+                safePage,
+                totalPages,
+                showFooter: pageItems.length > 0 || listStillHydrating,
+              })}
             </>
           );
         })()}

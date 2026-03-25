@@ -280,7 +280,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | DELETE | `/courses/:id/unenroll` | Token | Unenroll |
 | **Sessions** | | | |
 | POST | `/courses/:courseId/sessions` | Prof+ | Create session |
-| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`; session rows include `hasResponses`) |
+| GET | `/courses/:courseId/sessions` | Token | List course sessions (opt-in pagination: `?page=&limit=`; paginated responses include `sessionTypeCounts`; session rows include `hasResponses`) |
 | GET | `/sessions/:id` | Token | Session detail |
 | PATCH | `/sessions/:id` | Prof+ | Update session |
 | DELETE | `/sessions/:id` | Prof+ | Delete session |

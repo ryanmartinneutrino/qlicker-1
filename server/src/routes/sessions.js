@@ -415,6 +415,76 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
   };
 }
 
+async function getSessionTypeCounts(filter = {}) {
+  const [summary] = await Session.aggregate([
+    { $match: filter },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        interactive: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ['$studentCreated', true] },
+                  { $ne: ['$quiz', true] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        quizzes: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: ['$studentCreated', true] },
+                  { $eq: ['$quiz', true] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        practice: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ['$studentCreated', true] },
+                  { $eq: ['$practiceQuiz', true] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        total: 1,
+        interactive: 1,
+        quizzes: 1,
+        practice: 1,
+      },
+    },
+  ]);
+
+  return {
+    total: Number(summary?.total) || 0,
+    interactive: Number(summary?.interactive) || 0,
+    quizzes: Number(summary?.quizzes) || 0,
+    practice: Number(summary?.practice) || 0,
+  };
+}
+
 function optionDisplayContent(option, index) {
   return option?.content || option?.plainText || option?.answer || `Option ${index + 1}`;
 }
@@ -1671,19 +1741,24 @@ export default async function sessionRoutes(app) {
       }
 
       let total;
+      let sessionTypeCounts;
       let sessions;
       if (usePagination) {
-        [total, sessions] = await Promise.all([
-          Session.countDocuments(filter),
+        [sessionTypeCounts, sessions] = await Promise.all([
+          getSessionTypeCounts(filter),
           Session.find(filter)
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(limit)
             .lean(),
         ]);
+        total = sessionTypeCounts.total;
       } else {
-        sessions = await Session.find(filter).lean();
-        total = sessions.length;
+        [sessionTypeCounts, sessions] = await Promise.all([
+          getSessionTypeCounts(filter),
+          Session.find(filter).lean(),
+        ]);
+        total = sessionTypeCounts.total;
       }
       const normalizedSessions = [];
 
@@ -1810,7 +1885,7 @@ export default async function sessionRoutes(app) {
         return sessionForUser;
       });
 
-      const result = { sessions: hydratedSessions, total };
+      const result = { sessions: hydratedSessions, total, sessionTypeCounts };
       if (usePagination) {
         result.page = page;
         result.pages = Math.ceil(total / limit);

@@ -564,6 +564,56 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     expect(body3.pages).toBe(3);
   });
 
+  it('returns per-type session counts for paginated professor and student session lists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const interactiveARes = await createSessionInCourse(profToken, course._id, { name: 'Interactive A' });
+    const interactiveBRes = await createSessionInCourse(profToken, course._id, { name: 'Interactive B' });
+    const quizRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Quiz A',
+      quiz: true,
+      quizStart: new Date(Date.now() + (60 * 1000)).toISOString(),
+      quizEnd: new Date(Date.now() + (120 * 60 * 1000)).toISOString(),
+    });
+    expect(quizRes.statusCode).toBe(201);
+    await Promise.all([
+      interactiveARes,
+      interactiveBRes,
+      quizRes,
+    ].map((response) => authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${response.json().session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    })));
+    const practiceRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'My Practice',
+      practiceQuiz: true,
+    });
+    expect(practiceRes.statusCode).toBe(201);
+
+    const profListRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: profToken,
+    });
+    expect(profListRes.statusCode).toBe(200);
+    expect(profListRes.json().sessionTypeCounts).toEqual({
+      total: 3,
+      interactive: 2,
+      quizzes: 1,
+      practice: 0,
+    });
+
+    const studentListRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: studentToken,
+    });
+    expect(studentListRes.statusCode).toBe(200);
+    expect(studentListRes.json().sessionTypeCounts).toEqual({
+      total: 4,
+      interactive: 2,
+      quizzes: 1,
+      practice: 1,
+    });
+  });
+
   it('returns all sessions without pagination fields when no page/limit params', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof-nopg@example.com', roles: ['professor'] });
