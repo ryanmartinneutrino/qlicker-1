@@ -277,6 +277,8 @@
       "databaseManagedHelp": "Les paramètres du fournisseur de stockage sont enregistrés dans la base de données. Les nouveaux déploiements démarrent en stockage local par défaut jusqu'à ce qu'un administrateur choisisse S3 ou Azure ici.",
       "maxImageWidth": "Largeur maximale de téléversement (px)",
       "maxImageWidthHelp": "Les images téléversées depuis le profil et les éditeurs de texte riche sont redimensionnées à cette largeur avant le téléversement. Taille approximative d'un JPEG 16:9 : {{size}}.",
+      "avatarThumbnailSize": "Taille de la vignette d'avatar (px)",
+      "avatarThumbnailSizeHelp": "Les vignettes des photos de profil sont générées à cette taille carrée. Une valeur plus grande garde les avatars plus nets. Taille approximative d'un JPEG carré : {{size}}.",
       "local": "Local",
       "s3": "Amazon S3",
       "azure": "Stockage Blob Azure",
@@ -1596,7 +1598,8 @@
             "Le stockage local est l'option la plus simple, mais l'environnement serveur doit conserver les fichiers téléversés de façon sûre à travers les redémarrages et les déploiements.",
             "Le mode Amazon S3 exige le compartiment, la région, l'identifiant de clé, la clé secrète et, au besoin, un point de terminaison avec le style path pour des services compatibles comme MinIO.",
             "Le mode Azure Blob exige le compte de stockage, la clé d'accès et le nom du conteneur. Le compartiment ou le conteneur doit déjà exister et permettre la lecture et l'écriture.",
-            "Réglez la largeur maximale de téléversement pour contrôler le redimensionnement avant envoi. La valeur par défaut est 1920 px et les photos de profil génèrent aussi une vignette d'avatar recadrée.",
+            "Réglez la largeur maximale de téléversement pour contrôler le redimensionnement avant envoi. La valeur par défaut est 1920 px.",
+            "Réglez la taille de la vignette d'avatar pour contrôler la taille de génération des miniatures recadrées de profil. La valeur par défaut est 512 px.",
             "Après avoir enregistré les changements de stockage, téléversez une image d'essai depuis l'éditeur riche et depuis la page de profil, puis confirmez que l'image complète et la vignette d'avatar s'affichent correctement."
           ],
           "warning": "Traitez les clés de stockage et les identifiants privés comme des secrets et renouvelez-les s'ils sont exposés.",

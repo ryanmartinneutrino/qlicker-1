@@ -37,7 +37,11 @@ import {
   normalizeImageFile,
   readFileAsDataUrl,
 } from '../utils/imageUpload';
-import { getDefaultMaxImageWidth, getPublicSettings } from '../utils/publicSettings';
+import {
+  getDefaultAvatarThumbnailSize,
+  getDefaultMaxImageWidth,
+  getPublicSettings,
+} from '../utils/publicSettings';
 
 const AUTO_SAVE_DELAY_MS = 600;
 const PROFILE_IMAGE_PREVIEW_SIZE = 320;
@@ -229,6 +233,7 @@ export default function Profile() {
   const [publicSettings, setPublicSettings] = useState({
     SSO_enabled: false,
     maxImageWidth: getDefaultMaxImageWidth(),
+    avatarThumbnailSize: getDefaultAvatarThumbnailSize(),
   });
   const [imageEditorState, setImageEditorState] = useState(null);
   const fileInputRef = useRef(null);
@@ -276,7 +281,6 @@ export default function Profile() {
         setProfile(normalizedProfile);
         lastSavedProfileRef.current = normalizedProfile;
         profileHydratedRef.current = true;
-        setPublicSettings(settings);
 
         const savedLocale = loadedUser.locale || '';
         setUserLocale(savedLocale);
@@ -307,6 +311,7 @@ export default function Profile() {
           setPublicSettings({
             SSO_enabled: false,
             maxImageWidth: getDefaultMaxImageWidth(),
+            avatarThumbnailSize: getDefaultAvatarThumbnailSize(),
           });
         }
       });
@@ -519,7 +524,10 @@ export default function Profile() {
         const thumbnailFile = await createAvatarThumbnailFile(
           imageEditorState.source,
           imageEditorState,
-          { fileName: buildThumbnailFileName(imageEditorState.fileName) },
+          {
+            fileName: buildThumbnailFileName(imageEditorState.fileName),
+            outputSize: publicSettings.avatarThumbnailSize,
+          },
         );
 
         const profileImageUrl = await uploadSingleImage(imageEditorState.file);
@@ -530,10 +538,10 @@ export default function Profile() {
         });
       } else {
         await apiClient.post('/users/me/image/thumbnail', {
-          rotation: imageEditorState.rotation,
-          cropX: imageEditorState.cropX,
-          cropY: imageEditorState.cropY,
-          cropSize: imageEditorState.cropSize,
+          rotation: Math.round(imageEditorState.rotation || 0),
+          cropX: Math.round(imageEditorState.cropX || 0),
+          cropY: Math.round(imageEditorState.cropY || 0),
+          cropSize: Math.max(1, Math.round(imageEditorState.cropSize || 0)),
         });
       }
 

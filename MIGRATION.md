@@ -184,7 +184,8 @@ The current Fastify/React app now treats the following defaults as part of the m
 | Login/session lifetime | `120` minutes | `tokenExpiryMinutes` now governs both access-token expiry and the refresh-session hard expiry, so users are logged out after the configured interval by default. |
 | Storage backend on first boot | `local` | Runtime storage selection is database-driven from Admin -> Storage; `.env` storage variables are no longer used by the app. |
 | Maximum image upload width | `1920px` | Rich-text-editor images and profile uploads are normalized before upload. |
-| Profile avatars | Crop/rotate dialog plus separate thumbnail asset | Existing full-size profile images can be re-cropped without re-uploading. |
+| Avatar thumbnail size | `512px` | Runtime-controlled from Admin -> Storage and exposed via `GET /api/v1/settings/public` so new uploads and server-side re-crops match. |
+| Profile avatars | Crop/rotate dialog plus separate thumbnail asset | Existing full-size profile images can be re-cropped without re-uploading, including decimal crop coordinates from drag interactions. |
 
 ---
 

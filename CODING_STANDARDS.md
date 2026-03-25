@@ -269,7 +269,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | **Settings** | | | |
 | GET | `/settings` | Admin | Get all settings |
 | PATCH | `/settings` | Admin | Update settings |
-| GET | `/settings/public` | None | Public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, etc.) |
+| GET | `/settings/public` | None | Public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, `avatarThumbnailSize`, etc.) |
 | **Courses** | | | |
 | POST | `/courses` | Prof+ | Create course |
 | GET | `/courses` | Token | List user's courses |
@@ -444,6 +444,7 @@ The singleton `Settings` document is authoritative for runtime-adjustable behavi
 - `storageType` and storage credentials
 - `tokenExpiryMinutes`
 - `maxImageWidth`
+- `avatarThumbnailSize`
 - `SSO_enabled` and advanced SAML options
 
 Do **not** duplicate those runtime settings in `.env` or add new environment-variable fallbacks for them. New deployments should boot safely with local storage and default auth/upload settings, then allow admins to change behavior from the UI.
@@ -619,6 +620,7 @@ Do **not** add TTL caches around settings that administrators expect to take eff
 - `tokenExpiryMinutes`
 - `storageType` and storage credentials
 - `maxImageWidth`
+- `avatarThumbnailSize`
 - `SSO_enabled` and advanced SAML settings
 
 If a request only needs current values, prefer a small `.lean()` query over a stale cache:
@@ -1015,6 +1017,7 @@ function MyForm() {
 ### Image Upload UX
 
 - Rich-text-editor images and profile-photo uploads must normalize to the public `maxImageWidth` setting before upload whenever the file type supports resizing.
+- Profile-photo thumbnails must use the runtime `avatarThumbnailSize` setting so new uploads and server-side re-crops stay consistent.
 - Profile photos use two assets: the full image and a square avatar thumbnail.
 - New profile uploads should open the crop/rotate dialog immediately so the user can choose the thumbnail framing before the image is saved.
 

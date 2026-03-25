@@ -66,6 +66,7 @@ const updateSettingsSchema = {
       timeFormat: { type: 'string', enum: ['24h', '12h'] },
       maxImageSize: { type: 'number', minimum: 0 },
       maxImageWidth: { type: 'number', minimum: 1 },
+      avatarThumbnailSize: { type: 'number', minimum: 64 },
     },
     additionalProperties: false,
   },
@@ -106,7 +107,7 @@ export default async function settingsRoutes(app) {
     'tokenExpiryMinutes',
     'Jitsi_Enabled', 'Jitsi_Domain', 'Jitsi_EtherpadDomain', 'Jitsi_EnabledCourses',
     'locale', 'dateFormat', 'timeFormat',
-    'maxImageSize', 'maxImageWidth',
+    'maxImageSize', 'maxImageWidth', 'avatarThumbnailSize',
   ]);
 
   // PATCH / (admin only)
@@ -157,6 +158,7 @@ export default async function settingsRoutes(app) {
       Jitsi_Enabled: normalizedSettings.Jitsi_Enabled || false,
       timeFormat: normalizedSettings.timeFormat || '24h',
       maxImageWidth: normalizedSettings.maxImageWidth,
+      avatarThumbnailSize: normalizedSettings.avatarThumbnailSize,
     };
   });
 

@@ -9,14 +9,13 @@ import { stringParamsSchema } from '../utils/apiDocs.js';
 import {
   canUseEmailLogin,
   isAdminUser,
+  normalizeAvatarThumbnailSize,
   shouldLockLocalProfileEdits,
 } from '../utils/authPolicy.js';
 import { isSafeProfileImageUrl } from '../utils/url.js';
 
-const PROFILE_THUMBNAIL_SIZE_PX = 512;
-
 async function getAuthSettings() {
-  return Settings.findOne().select('SSO_enabled').lean();
+  return Settings.findOne().select('SSO_enabled avatarThumbnailSize').lean();
 }
 
 function hasOnlyStudentRole(roles = []) {
@@ -130,10 +129,10 @@ const regenerateProfileThumbnailSchema = {
     type: 'object',
     required: ['rotation', 'cropX', 'cropY', 'cropSize'],
     properties: {
-      rotation: { type: 'integer' },
-      cropX: { type: 'integer', minimum: 0 },
-      cropY: { type: 'integer', minimum: 0 },
-      cropSize: { type: 'integer', minimum: 1 },
+      rotation: { type: 'number' },
+      cropX: { type: 'number', minimum: 0 },
+      cropY: { type: 'number', minimum: 0 },
+      cropSize: { type: 'number', minimum: 1 },
     },
     additionalProperties: false,
   },
@@ -356,10 +355,14 @@ export default async function userRoutes(app) {
       ...userMutationRateLimit,
     },
     async (request, reply) => {
-      const user = await User.findById(request.user.userId);
+      const [user, settings] = await Promise.all([
+        User.findById(request.user.userId),
+        getAuthSettings(),
+      ]);
       if (!user) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
+      const thumbnailSize = normalizeAvatarThumbnailSize(settings?.avatarThumbnailSize);
 
       const sourceUrl = user.profile?.profileImage || '';
       if (!sourceUrl) {
@@ -396,9 +399,9 @@ export default async function userRoutes(app) {
       }
 
       const rotation = normalizeQuarterTurnRotation(request.body.rotation);
-      const initialCropX = Number(request.body.cropX) || 0;
-      const initialCropY = Number(request.body.cropY) || 0;
-      const initialCropSize = Number(request.body.cropSize) || 0;
+      const initialCropX = Math.round(Number(request.body.cropX) || 0);
+      const initialCropY = Math.round(Number(request.body.cropY) || 0);
+      const initialCropSize = Math.round(Number(request.body.cropSize) || 0);
 
       try {
         const rotatedImage = sharp(sourceBuffer).rotate(rotation);
@@ -416,7 +419,7 @@ export default async function userRoutes(app) {
 
         const thumbnailBuffer = await rotatedImage
           .extract({ left: cropX, top: cropY, width: cropSize, height: cropSize })
-          .resize(PROFILE_THUMBNAIL_SIZE_PX, PROFILE_THUMBNAIL_SIZE_PX, { fit: 'cover' })
+          .resize(thumbnailSize, thumbnailSize, { fit: 'cover' })
           .jpeg({ quality: 92, mozjpeg: true })
           .toBuffer();
 
@@ -434,7 +437,6 @@ export default async function userRoutes(app) {
         user.profile.profileThumbnail = url;
         await user.save();
 
-        const settings = await getAuthSettings();
         return sanitizeUser(user, settings);
       } catch (err) {
         request.log.error({ err }, 'Failed to generate profile thumbnail');

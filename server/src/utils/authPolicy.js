@@ -1,5 +1,6 @@
 export const DEFAULT_TOKEN_EXPIRY_MINUTES = 120;
 export const DEFAULT_MAX_IMAGE_WIDTH = 1920;
+export const DEFAULT_AVATAR_THUMBNAIL_SIZE = 512;
 export const DEFAULT_SSO_ROUTE_MODE = 'legacy';
 export const DEFAULT_SSO_CLOCK_SKEW_MS = 60 * 1000;
 
@@ -59,6 +60,10 @@ export function normalizeMaxImageWidth(value) {
   return normalizeInteger(value, DEFAULT_MAX_IMAGE_WIDTH, { min: 1 });
 }
 
+export function normalizeAvatarThumbnailSize(value) {
+  return normalizeInteger(value, DEFAULT_AVATAR_THUMBNAIL_SIZE, { min: 64 });
+}
+
 export function normalizeSsoRouteMode(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'legacy' || normalized === 'api_v1') {
@@ -102,6 +107,7 @@ export function normalizeSettingsPayload(settings = {}) {
     ...settings,
     tokenExpiryMinutes: normalizeTokenExpiryMinutes(settings?.tokenExpiryMinutes),
     maxImageWidth: normalizeMaxImageWidth(settings?.maxImageWidth),
+    avatarThumbnailSize: normalizeAvatarThumbnailSize(settings?.avatarThumbnailSize),
     SSO_routeMode: normalizeSsoRouteMode(settings?.SSO_routeMode),
     SSO_wantAssertionsSigned: normalizeBoolean(settings?.SSO_wantAssertionsSigned, false),
     SSO_wantAuthnResponseSigned: normalizeBoolean(settings?.SSO_wantAuthnResponseSigned, false),

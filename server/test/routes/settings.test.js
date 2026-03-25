@@ -139,12 +139,12 @@ describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
 });
 
 describe('GET /api/v1/settings/public', () => {
-  it('includes normalized public defaults including time format and max image width', async (ctx) => {
+  it('includes normalized public defaults including time format and image settings', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     await Settings.findOneAndUpdate(
       { _id: 'settings' },
-      { $set: { timeFormat: '12h', maxImageWidth: 2400 } },
+      { $set: { timeFormat: '12h', maxImageWidth: 2400, avatarThumbnailSize: 640 } },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -156,14 +156,15 @@ describe('GET /api/v1/settings/public', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().timeFormat).toBe('12h');
     expect(res.json().maxImageWidth).toBe(2400);
+    expect(res.json().avatarThumbnailSize).toBe(640);
   });
 
-  it('falls back to the documented default image width when settings are missing or invalid', async (ctx) => {
+  it('falls back to documented default image settings when values are missing or invalid', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     await Settings.findOneAndUpdate(
       { _id: 'settings' },
-      { $set: { maxImageWidth: 0 } },
+      { $set: { maxImageWidth: 0, avatarThumbnailSize: 0 } },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -174,5 +175,6 @@ describe('GET /api/v1/settings/public', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().maxImageWidth).toBe(1920);
+    expect(res.json().avatarThumbnailSize).toBe(512);
   });
 });

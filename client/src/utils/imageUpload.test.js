@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   approximate16x9JpegSizeBytes,
+  approximateSquareJpegSizeBytes,
   clampAvatarCrop,
   createCenteredAvatarCrop,
   formatApproximateFileSize,
@@ -54,7 +55,9 @@ describe('imageUpload helpers', () => {
 
   it('formats approximate upload sizes for admin guidance', () => {
     const approxBytes = approximate16x9JpegSizeBytes(1920);
+    const approxSquareBytes = approximateSquareJpegSizeBytes(512);
     expect(approxBytes).toBeGreaterThan(400000);
+    expect(approxSquareBytes).toBeGreaterThan(50000);
     expect(formatApproximateFileSize(approxBytes)).toMatch(/KB|MB/);
     expect(formatApproximateFileSize(0)).toBe('0 KB');
   });

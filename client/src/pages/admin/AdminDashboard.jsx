@@ -24,12 +24,18 @@ import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
   approximate16x9JpegSizeBytes,
+  approximateSquareJpegSizeBytes,
   formatApproximateFileSize,
 } from '../../utils/imageUpload';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import SessionListCard from '../../components/common/SessionListCard';
 import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
+import {
+  clearPublicSettingsCache,
+  getDefaultAvatarThumbnailSize,
+  getDefaultMaxImageWidth,
+} from '../../utils/publicSettings';
 
 function TabPanel({ children, value, index }) {
   return value === index ? <Box sx={{ pt: 3 }}>{children}</Box> : null;
@@ -895,7 +901,8 @@ function UsersTab({ currentUserId }) {
 function StorageTab() {
   const { t } = useTranslation();
   const [storageType, setStorageType] = useState('local');
-  const [maxImageWidth, setMaxImageWidth] = useState(1920);
+  const [maxImageWidth, setMaxImageWidth] = useState(getDefaultMaxImageWidth());
+  const [avatarThumbnailSize, setAvatarThumbnailSize] = useState(getDefaultAvatarThumbnailSize());
   const [s3, setS3] = useState({
     AWS_bucket: '',
     AWS_region: '',
@@ -916,7 +923,8 @@ function StorageTab() {
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
       setStorageType(VALID_STORAGE_TYPES.has(data.storageType) ? data.storageType : 'local');
-      setMaxImageWidth(data.maxImageWidth ?? 1920);
+      setMaxImageWidth(data.maxImageWidth ?? getDefaultMaxImageWidth());
+      setAvatarThumbnailSize(data.avatarThumbnailSize ?? getDefaultAvatarThumbnailSize());
       setS3({
         AWS_bucket: data.AWS_bucket ?? '',
         AWS_region: data.AWS_region ?? '',
@@ -959,11 +967,13 @@ function StorageTab() {
       try {
         const payload = {
           storageType,
-          maxImageWidth: Math.max(1, parseInt(maxImageWidth, 10) || 1920),
+          maxImageWidth: Math.max(1, parseInt(maxImageWidth, 10) || getDefaultMaxImageWidth()),
+          avatarThumbnailSize: Math.max(64, parseInt(avatarThumbnailSize, 10) || getDefaultAvatarThumbnailSize()),
         };
         if (storageType === 's3') Object.assign(payload, s3);
         if (storageType === 'azure') Object.assign(payload, azure);
         await apiClient.patch('/settings', payload);
+        clearPublicSettingsCache();
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
@@ -975,12 +985,15 @@ function StorageTab() {
     }, AUTO_SAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [storageType, s3, azure, maxImageWidth, loading]);
+  }, [storageType, s3, azure, maxImageWidth, avatarThumbnailSize, loading]);
 
   if (loading) return <CircularProgress />;
 
   const approxImageSize = formatApproximateFileSize(
-    approximate16x9JpegSizeBytes(Math.max(1, parseInt(maxImageWidth, 10) || 1920)),
+    approximate16x9JpegSizeBytes(Math.max(1, parseInt(maxImageWidth, 10) || getDefaultMaxImageWidth())),
+  );
+  const approxAvatarSize = formatApproximateFileSize(
+    approximateSquareJpegSizeBytes(Math.max(64, parseInt(avatarThumbnailSize, 10) || getDefaultAvatarThumbnailSize())),
   );
 
   return (
@@ -994,6 +1007,15 @@ function StorageTab() {
         onChange={(e) => setMaxImageWidth(e.target.value)}
         helperText={t('admin.storage.maxImageWidthHelp', { size: approxImageSize })}
         inputProps={{ min: 1 }}
+        fullWidth
+      />
+      <TextField
+        label={t('admin.storage.avatarThumbnailSize')}
+        type="number"
+        value={avatarThumbnailSize}
+        onChange={(e) => setAvatarThumbnailSize(e.target.value)}
+        helperText={t('admin.storage.avatarThumbnailSizeHelp', { size: approxAvatarSize })}
+        inputProps={{ min: 64 }}
         fullWidth
       />
       <FormControl fullWidth>

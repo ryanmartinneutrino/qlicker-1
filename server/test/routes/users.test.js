@@ -390,6 +390,39 @@ describe('POST /api/v1/users/me/image/thumbnail', () => {
     const updated = await User.findById(user._id);
     expect(updated.profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
   });
+
+  it('accepts decimal crop coordinates from drag interactions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'decimal-avatar@example.com' });
+    const token = await getAuthToken(app, user);
+    const sourceKey = 'decimal-avatar-source.png';
+    const sourceUrl = `/uploads/${sourceKey}`;
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+y0Z8AAAAASUVORK5CYII=',
+      'base64'
+    );
+
+    await fs.writeFile(`${app.uploadsDir}/${sourceKey}`, pngBuffer);
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        'profile.profileImage': sourceUrl,
+        'profile.profileThumbnail': sourceUrl,
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/users/me/image/thumbnail', {
+      token,
+      payload: {
+        rotation: 0,
+        cropX: 0.4,
+        cropY: 0.7,
+        cropSize: 1.2,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().profile.profileThumbnail).toMatch(/^\/uploads\/.+\.jpg$/);
+  });
 });
 
 // ---------- Admin user management ----------

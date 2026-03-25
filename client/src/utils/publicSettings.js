@@ -1,11 +1,21 @@
 import apiClient from '../api/client';
+import { DEFAULT_AVATAR_THUMBNAIL_SIZE_PX } from './imageUpload';
 
 export const DEFAULT_MAX_IMAGE_WIDTH = 1920;
+export const DEFAULT_AVATAR_THUMBNAIL_SIZE = DEFAULT_AVATAR_THUMBNAIL_SIZE_PX;
 
 function normalizeMaxImageWidth(value) {
   const width = Number(value);
   if (!Number.isFinite(width) || width <= 0) {
     return DEFAULT_MAX_IMAGE_WIDTH;
+  }
+  return Math.round(width);
+}
+
+function normalizeAvatarThumbnailSize(value) {
+  const width = Number(value);
+  if (!Number.isFinite(width) || width < 64) {
+    return DEFAULT_AVATAR_THUMBNAIL_SIZE;
   }
   return Math.round(width);
 }
@@ -19,6 +29,7 @@ function normalizePublicSettings(data = {}) {
     Jitsi_Enabled: !!data.Jitsi_Enabled,
     timeFormat: data.timeFormat === '12h' ? '12h' : '24h',
     maxImageWidth: normalizeMaxImageWidth(data.maxImageWidth),
+    avatarThumbnailSize: normalizeAvatarThumbnailSize(data.avatarThumbnailSize),
   };
 }
 
@@ -57,4 +68,8 @@ export function clearPublicSettingsCache() {
 
 export function getDefaultMaxImageWidth() {
   return DEFAULT_MAX_IMAGE_WIDTH;
+}
+
+export function getDefaultAvatarThumbnailSize() {
+  return DEFAULT_AVATAR_THUMBNAIL_SIZE;
 }

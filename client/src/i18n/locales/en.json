@@ -277,6 +277,8 @@
       "databaseManagedHelp": "Storage provider settings are saved in the database. New deployments start on local storage by default until an administrator switches to S3 or Azure here.",
       "maxImageWidth": "Maximum upload width (px)",
       "maxImageWidthHelp": "Images uploaded from the profile page and rich-text editors are resized to this width before upload. Approximate 16:9 JPEG size: {{size}}.",
+      "avatarThumbnailSize": "Avatar thumbnail size (px)",
+      "avatarThumbnailSizeHelp": "Profile-photo thumbnails are generated at this square size. Larger values keep avatars sharper. Approximate square JPEG size: {{size}}.",
       "local": "Local",
       "s3": "Amazon S3",
       "azure": "Azure Blob Storage",
@@ -1596,7 +1598,8 @@
             "Local storage is the simplest option, but the server environment must preserve uploaded files safely across restarts and deployments.",
             "Amazon S3 mode needs bucket, region, access key ID, secret key, and optional endpoint plus path-style support for compatible services such as MinIO.",
             "Azure Blob mode needs storage account, access key, and container name. The bucket or container must already exist and allow the app to read and write.",
-            "Set the maximum upload width to control image resizing before upload. The default is 1920px, and profile-photo uploads also generate a separate cropped avatar thumbnail.",
+            "Set the maximum upload width to control image resizing before upload. The default is 1920px.",
+            "Set the avatar thumbnail size to control how large cropped profile thumbnails are generated. The default is 512px.",
             "After saving storage changes, upload a sample image from the rich-text editor and the profile page, then confirm both the full image and avatar thumbnail render correctly."
           ],
           "warning": "Treat storage keys and private credentials as secrets. Rotate them if they are exposed.",

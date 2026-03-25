@@ -22,7 +22,7 @@ The current app exposes route groups for:
 - **Groups**: group categories, membership, CSV import/export
 - **Video**: Jitsi availability and course/group connection data
 - **Images**: image upload and deletion
-- **Settings**: public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, etc.) and admin-only configuration (including advanced SAML settings)
+- **Settings**: public settings (`SSO_enabled`, `timeFormat`, `maxImageWidth`, `avatarThumbnailSize`, etc.) and admin-only configuration (including advanced SAML settings)
 - **Health / docs**: service health and generated API docs
 
 ## WebSocket events
@@ -64,8 +64,9 @@ Qlicker uses:
 Recent auth/storage-specific route additions worth checking in Swagger:
 
 - `POST /api/v1/users/me/image/thumbnail` regenerates the cropped avatar thumbnail from the stored full-size profile image.
+- The thumbnail endpoint accepts drag-generated decimal crop coordinates and rounds them server-side before extraction.
 - `PATCH /api/v1/users/:id/password` lets admins reset a user's local password.
-- `GET /api/v1/settings/public` now includes `maxImageWidth` so clients can normalize uploads before sending them.
+- `GET /api/v1/settings/public` now includes `maxImageWidth` and `avatarThumbnailSize` so clients can normalize uploads and generate sharp profile thumbnails before sending them.
 
 ## Local verification workflow
 

@@ -79,6 +79,7 @@ const SettingsSchema = new mongoose.Schema(
     // Legacy extra fields (preserved so they aren't stripped on save)
     maxImageSize: { type: Number, default: 0 },
     maxImageWidth: { type: Number, default: 1920 },
+    avatarThumbnailSize: { type: Number, default: 512 },
   },
   {
     collection: 'settings',

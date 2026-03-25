@@ -115,8 +115,9 @@ The storage choice is saved in the database. New deployments start on local stor
 1. Choose the provider.
 2. Fill only the fields required by that provider.
 3. Set the maximum upload width (default `1920px`) so profile photos and rich-text-editor images are resized before upload.
-4. Save the settings.
-5. Upload a test image from the app to confirm read and write behavior.
+4. Set the avatar thumbnail size (default `512px`) to control cropped profile-photo sharpness.
+5. Save the settings.
+6. Upload a test image from the app to confirm read and write behavior.
 
 ### Provider-specific notes
 
@@ -128,7 +129,7 @@ The storage choice is saved in the database. New deployments start on local stor
 
 Treat access keys, secret keys, and similar credentials as secrets.
 
-Profile pictures now open a crop/rotate dialog and store a separate square avatar thumbnail. After storage changes, test both a profile photo upload and a question-editor image upload.
+Profile pictures now open a crop/rotate dialog and store a separate square avatar thumbnail. Dragging the crop can produce sub-pixel coordinates, and Qlicker rounds those safely on save. After storage changes, test both a profile photo upload and a question-editor image upload.
 
 ## SSO configuration
 

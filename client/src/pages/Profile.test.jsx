@@ -97,6 +97,7 @@ describe('Profile', () => {
           data: {
             SSO_enabled: true,
             maxImageWidth: 1920,
+            avatarThumbnailSize: 512,
           },
         });
       }
