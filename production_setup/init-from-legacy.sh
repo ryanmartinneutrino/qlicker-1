@@ -14,7 +14,7 @@
 # Usage:
 #   ./init-from-legacy.sh                    # Interactive
 #   ./init-from-legacy.sh --dump-dir ./legacydb/<dump_name>  # Specify dump root
-#   ./init-from-legacy.sh --sanitize-s3      # Also run S3 privatization
+#   ./init-from-legacy.sh --sanitize-s3      # Also rewrite DB image refs + privatize S3 objects
 # =============================================================================
 set -euo pipefail
 
@@ -110,7 +110,7 @@ while [ $# -gt 0 ]; do
     --help|-h)
       echo "Usage: ./init-from-legacy.sh [--dump-dir DIR] [--sanitize-s3]"
       echo "  --dump-dir DIR    Path to mongodump directory"
-      echo "  --sanitize-s3     Run S3 ACL sanitization after restore"
+      echo "  --sanitize-s3     Rewrite DB image refs and run S3 privatization after restore"
       exit 0
       ;;
     *) error "Unknown argument: $1"; exit 1 ;;
@@ -284,14 +284,12 @@ fi
 
 # ---- Sanitize S3 (optional) -------------------------------------------------
 if [ "$SANITIZE_S3" = true ]; then
-  if [ -n "${AWS_BUCKET:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-    info "Running S3 ACL sanitization..."
-    docker exec "$SERVER_CONTAINER" node -e "
-      $(cat "$SCRIPT_DIR/sanitize-s3.js")
-    "
+  if [ -x "$SCRIPT_DIR/sanitize-s3.sh" ]; then
+    info "Running S3 sanitization (DB rewrite + ACL pass)..."
+    "$SCRIPT_DIR/sanitize-s3.sh" --apply
     info "S3 sanitization complete."
   else
-    warn "--sanitize-s3 requested but AWS_BUCKET / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are not set. Skipping."
+    warn "sanitize-s3.sh is missing or not executable. Skipping S3 sanitization."
   fi
 fi
 
@@ -306,10 +304,7 @@ echo "    1. Verify the app: https://${DOMAIN:-localhost}"
 echo "    2. Change the admin password:"
 echo "       ./manage-user.sh change-password --email admin@example.com"
 echo "    3. Create a backup: ./backup.sh"
+echo "    4. If legacy images still point at public S3 URLs, run:"
+echo "       ./sanitize-s3.sh"
+echo "       ./sanitize-s3.sh --apply"
 echo ""
-if [ "$SANITIZE_S3" = false ] && [ -n "${AWS_BUCKET:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-  echo "  S3 note: If migrating to a private bucket, run:"
-  echo "    ./init-from-legacy.sh --sanitize-s3"
-  echo "    (or manually: node sanitize-s3.js inside the server container)"
-  echo ""
-fi

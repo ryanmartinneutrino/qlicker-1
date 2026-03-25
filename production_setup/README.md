@@ -246,7 +246,9 @@ docker compose up -d --scale server=4
 
 ## Initializing from Legacy Database
 
-To migrate from the legacy MeteorJS Qlicker instance:
+Use this flow when you are preparing the Fastify deployment to take over an existing Meteor-backed database.
+
+Important operational rule: once you rewrite legacy image URLs to `/uploads/<key>`, that database copy is considered cut over to Fastify. The old Meteor app should no longer be treated as the active reader for that database because it does not serve the Fastify `/uploads/...` path.
 
 ### 1. Create a Dump of the Legacy Database
 
@@ -258,17 +260,22 @@ mongodump --uri='mongodb://host:port/qlicker' --out=/tmp/qlicker-dump
 ### 2. Transfer the Dump
 
 ```bash
-# Copy to the production server
+# Copy the full mongodump output under production_setup/legacydb/
 scp -r /tmp/qlicker-dump/qlicker user@server:/opt/qlicker/legacydb/qlicker
 ```
 
-### 3. Run the Initialization Script
+If your dump contains multiple database directories, copy the top-level dump folder instead and let the script choose the primary application database automatically.
+
+### 3. Bring Up the Fastify Stack
 
 ```bash
-# Ensure services are running
 docker compose up -d
+```
 
-# Run the initialization
+### 4. Restore the Legacy Data
+
+```bash
+# Interactive restore + question-type migration
 ./init-from-legacy.sh
 ```
 
@@ -276,44 +283,117 @@ The script will:
 1. Detect the dump directory in `./legacydb/`
 2. Back up any existing data
 3. Restore the legacy dump using `mongorestore --drop`
-4. Run the question-type migration (converts legacy question types to new format)
-5. Optionally sanitize S3 ACLs (see below)
+4. Run the question-type migration
 
-### With S3 Sanitization
+### 5. Configure Storage in the Admin Panel
 
-If migrating storage from public to private S3 buckets:
+After the restore, sign in to the Fastify app as an admin and open **Admin -> Storage**.
+
+For Amazon S3, enter:
+
+1. bucket
+2. region
+3. access key ID
+4. secret access key
+5. optional endpoint
+6. optional path-style toggle for S3-compatible services
+
+Save the settings before running the sanitize step so the application knows how to read S3 objects through `/uploads/<key>`.
+
+### 6. If You Are Keeping S3 Public for the Moment, Validate First
+
+Before changing bucket privacy, confirm:
+
+1. the Fastify app can log in against the restored database
+2. a new image upload works from the profile page
+3. a new image upload works from a rich-text editor
+
+### 7. Run the S3 Sanitize Step When You Are Ready to Cut Over
+
+If legacy image fields still contain direct public S3 URLs and you want Fastify to serve them from a private bucket, run:
+
+```bash
+./sanitize-s3.sh          # Dry run
+./sanitize-s3.sh --apply  # Rewrite DB refs + attempt ACL privatization
+```
+
+Or, as a single maintenance-window command immediately after restore:
 
 ```bash
 ./init-from-legacy.sh --sanitize-s3
 ```
 
+That option now runs the same sanitize workflow in apply mode after the database restore and question-type migration.
+
+### 8. Final Validation Before Bucket Lockdown
+
+After `sanitize-s3.sh --apply`, verify:
+
+1. several old profile images load
+2. several old question-editor images load inside question content
+3. profile thumbnail regeneration still works
+4. a brand new upload still works
+
 ---
 
 ## S3 Private-Bucket Migration
 
-The legacy app used `ACL: public-read` for S3 uploads. To switch to private buckets:
+The legacy Meteor app stored direct public S3 URLs in MongoDB. Fastify now serves uploads through `/uploads/<key>` and reads the object from the configured storage backend. The cutover has two distinct parts:
 
-### Step 1: Dry Run
+1. rewrite the database references
+2. remove public access from S3
+
+Do not do part 2 first on the live bucket if Meteor is still serving traffic.
+
+### S3-Side Preparation
+
+Before the Fastify cutover window:
+
+1. Identify the existing bucket name and region.
+2. Create or confirm an IAM principal with `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on `arn:aws:s3:::BUCKET/*`.
+3. Keep any current public-read bucket policy or object-access path in place until Fastify has been validated against the restored DB.
+4. Decide whether you want to keep ACLs enabled temporarily. If you move directly to Object Ownership `Bucket owner enforced`, the sanitize script will still rewrite MongoDB URLs, but the ACL pass will be reported as skipped because S3 no longer accepts ACL writes.
+
+### Dry Run
 
 ```bash
-# See what would change (no modifications made)
-docker exec $(docker compose ps -q server | head -1) node /app/sanitize-s3.js
+./sanitize-s3.sh
 ```
 
-### Step 2: Apply
+### Apply
 
 ```bash
-# Switch all S3 objects to private ACL
-docker exec $(docker compose ps -q server | head -1) node /app/sanitize-s3.js --apply --verbose
+./sanitize-s3.sh --apply --verbose
 ```
 
 ### What It Does
 
-1. Scans `users` collection for profile image URLs
-2. Scans `questions` collection for image URLs in content HTML
-3. For each S3 object, sets the ACL from `public-read` to `private`
+1. Reads S3 settings from the database `Settings` document, with `AWS_*` env vars available as overrides
+2. Scans `users`, `images`, and `questions`
+3. Rewrites matching legacy public S3 URLs to `/uploads/<key>`
+4. Backfills `images.key` if needed
+5. Collects the referenced S3 object keys
+6. In `--apply` mode, attempts `PutObjectAcl(..., ACL=private)` for each discovered key when credentials are available
 
-**Note:** After making S3 objects private, the application serves them through signed URLs or backend proxy. Ensure the server has proper S3 credentials configured in `.env`.
+### Admin-Panel Requirements
+
+The sanitize step assumes **Admin -> Storage** already points Fastify at the correct S3 bucket. Specifically, confirm all of the following before you apply it:
+
+1. storage type = `Amazon S3`
+2. bucket matches the legacy bucket
+3. region matches the bucket region
+4. access key ID and secret access key are valid
+5. endpoint/path-style are set correctly if you use MinIO or another S3-compatible service
+
+### Bucket Lockdown After Validation
+
+Once Fastify is rendering old and new images correctly:
+
+1. remove any public bucket policy or public website access that made the old URLs readable
+2. enable **Block Public Access** for the bucket
+3. optionally switch Object Ownership to **Bucket owner enforced**
+
+At that point, the objects can remain private while Fastify continues to serve them from `/uploads/<key>`.
 
 ---
 
@@ -481,7 +561,8 @@ production_setup/
 ├── .env                    # Your configuration (generated by setup.sh)
 ├── setup.sh                # Interactive setup wizard
 ├── init-from-legacy.sh     # Initialize from legacy MongoDB dump
-├── sanitize-s3.js          # S3 ACL migration script
+├── sanitize-s3.js          # Self-contained DB rewrite + S3 ACL script
+├── sanitize-s3.sh          # Host-side wrapper to run sanitize-s3.js in Docker
 ├── update.sh               # Pull/rebuild and restart
 ├── backup.sh               # Create MongoDB backup
 ├── restore.sh              # Restore from backup
@@ -520,7 +601,7 @@ production_setup/
 
 Storage backend selection and cloud credentials are **not** read from environment variables at runtime anymore. The app boots with local storage by default; after the first admin signs in, configure **Admin -> Storage** to keep using local storage or switch to S3/Azure. The database `Settings` document is the source of truth.
 
-The only storage-related exception is the one-off maintenance script [`sanitize-s3.js`](./sanitize-s3.js), which still expects `AWS_*` variables when you run it manually.
+The one storage-related maintenance exception is [`sanitize-s3.js`](./sanitize-s3.js) / [`sanitize-s3.sh`](./sanitize-s3.sh): they resolve S3 settings from the database first and accept `AWS_*` variables as overrides when needed.
 
 ---
 

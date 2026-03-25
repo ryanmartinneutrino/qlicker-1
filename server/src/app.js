@@ -7,8 +7,6 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import fs from 'fs';
-import path from 'path';
 import config from './config/index.js';
 import dbPlugin from './plugins/db.js';
 import uploadPlugin from './plugins/upload.js';
@@ -27,6 +25,7 @@ import gradeRoutes from './routes/grades.js';
 import groupRoutes from './routes/groups.js';
 import videoRoutes from './routes/video.js';
 import { transformApiDocs } from './utils/apiDocs.js';
+import { guessImageContentTypeFromKey, normalizeRequestedStorageKey } from './utils/storageUrls.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -166,40 +165,47 @@ export async function buildApp(opts = {}) {
     redis: typeof app.redis !== 'undefined' && app.redis !== null,
   }));
 
-  // Serve local uploads as static files
-  app.get('/uploads/:filename', {
+  // Serve uploaded images from the configured storage backend through a stable app URL.
+  app.get('/uploads/*', {
     config: {
       rateLimit: { max: 120, timeWindow: '1 minute' },
     },
     schema: {
       params: {
         type: 'object',
-        required: ['filename'],
+        required: ['*'],
         properties: {
-          filename: { type: 'string', minLength: 1 },
+          '*': { type: 'string', minLength: 1 },
         },
         additionalProperties: false,
       },
     },
   }, async (request, reply) => {
-    const filename = request.params.filename;
-    // Prevent directory traversal
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    const key = normalizeRequestedStorageKey(request.params['*']);
+    if (!key) {
       return reply.code(400).send({ error: 'Bad Request', message: 'Invalid filename' });
     }
-    const filePath = path.resolve(app.uploadsDir, filename);
-    // Ensure resolved path is still within uploads directory (prevents symlink attacks)
-    if (!filePath.startsWith(path.resolve(app.uploadsDir))) {
-      return reply.code(400).send({ error: 'Bad Request', message: 'Invalid filename' });
+
+    try {
+      const { buffer, contentType } = await app.getFileObject(key);
+      return reply.type(contentType || guessImageContentTypeFromKey(key)).send(buffer);
+    } catch (err) {
+      request.log.warn({ err, key }, 'Failed to serve uploaded image');
+
+      const errorName = String(err?.name || '');
+      const errorCode = String(err?.code || '');
+      const httpStatus = Number(err?.$metadata?.httpStatusCode || err?.statusCode || 0);
+
+      if (errorCode === 'ENOENT' || errorName === 'NoSuchKey' || errorCode === 'NoSuchKey' || errorCode === 'BlobNotFound' || httpStatus === 404) {
+        return reply.code(404).send({ error: 'Not Found', message: 'File not found' });
+      }
+
+      if (err?.code === 'UPLOAD_CONFIG_ERROR') {
+        return reply.code(500).send({ error: 'Internal Server Error', message: err.message });
+      }
+
+      return reply.code(500).send({ error: 'Internal Server Error', message: 'Failed to load file' });
     }
-    if (!fs.existsSync(filePath)) {
-      return reply.code(404).send({ error: 'Not Found', message: 'File not found' });
-    }
-    const ext = path.extname(filename).toLowerCase();
-    const mimeTypes = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp' };
-    const contentType = mimeTypes[ext] || 'application/octet-stream';
-    const stream = fs.createReadStream(filePath);
-    return reply.type(contentType).send(stream);
   });
 
   // Routes

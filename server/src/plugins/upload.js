@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateMeteorId } from '../utils/meteorId.js';
 import Settings from '../models/Settings.js';
+import { guessImageContentTypeFromKey, toUploadsUrl } from '../utils/storageUrls.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
@@ -131,28 +132,6 @@ async function uploadPlugin(fastify) {
     return azureModulePromise;
   }
 
-  function toS3ObjectUrl({
-    bucket,
-    region,
-    key,
-    endpoint,
-    forcePathStyle,
-  }) {
-    const encodedKey = encodeURIComponent(key).replace(/%2F/g, '/');
-    if (endpoint) {
-      const baseEndpoint = endpoint.replace(/\/+$/, '');
-      if (forcePathStyle) {
-        return `${baseEndpoint}/${encodeURIComponent(bucket)}/${encodedKey}`;
-      }
-      const endpointUrl = new URL(baseEndpoint);
-      const host = endpointUrl.host;
-      const protocol = endpointUrl.protocol;
-      return `${protocol}//${bucket}.${host}/${encodedKey}`;
-    }
-
-    return `https://${bucket}.s3.${region}.amazonaws.com/${encodedKey}`;
-  }
-
   async function uploadFile(fileBuffer, filename, mimetype) {
     const config = await getStorageConfig();
     const ext = getFileExtension(filename, mimetype);
@@ -162,7 +141,7 @@ async function uploadPlugin(fastify) {
       case 'local': {
         const filePath = path.join(UPLOADS_DIR, key);
         await fs.promises.writeFile(filePath, fileBuffer);
-        const url = `/uploads/${key}`;
+        const url = toUploadsUrl(key);
         return { url, key };
       }
       case 's3': {
@@ -185,17 +164,9 @@ async function uploadPlugin(fastify) {
           Key: key,
           Body: fileBuffer,
           ContentType: mimetype,
-          // Match legacy Meteor Slingshot behavior (acl: 'public-read').
-          ACL: 'public-read',
         }));
 
-        const url = toS3ObjectUrl({
-          bucket: config.AWS_bucket,
-          region: config.AWS_region || 'us-east-1',
-          key,
-          endpoint: config.AWS_endpoint,
-          forcePathStyle: config.AWS_forcePathStyle,
-        });
+        const url = toUploadsUrl(key);
         return { url, key };
       }
       case 'azure': {
@@ -222,7 +193,7 @@ async function uploadPlugin(fastify) {
           },
         });
 
-        return { url: blockBlobClient.url, key };
+        return { url: toUploadsUrl(key), key };
       }
       default:
         throw createStorageConfigError(`Unknown storage type: ${config.storageType}`);
@@ -286,7 +257,7 @@ async function uploadPlugin(fastify) {
     }
   }
 
-  async function getFileBuffer(key) {
+  async function getFileObject(key) {
     if (!key) {
       throw createStorageConfigError('File key is required.');
     }
@@ -295,7 +266,11 @@ async function uploadPlugin(fastify) {
     switch (config.storageType) {
       case 'local': {
         const filePath = path.join(UPLOADS_DIR, key);
-        return fs.promises.readFile(filePath);
+        const buffer = await fs.promises.readFile(filePath);
+        return {
+          buffer,
+          contentType: guessImageContentTypeFromKey(key),
+        };
       }
       case 's3': {
         ensureRequired(config.AWS_bucket, 'S3 storage requires AWS bucket.');
@@ -316,7 +291,10 @@ async function uploadPlugin(fastify) {
           Bucket: config.AWS_bucket,
           Key: key,
         }));
-        return streamToBuffer(response.Body);
+        return {
+          buffer: await streamToBuffer(response.Body),
+          contentType: response.ContentType || guessImageContentTypeFromKey(key),
+        };
       }
       case 'azure': {
         ensureRequired(config.Azure_storageAccount, 'Azure storage requires account name.');
@@ -334,15 +312,25 @@ async function uploadPlugin(fastify) {
         );
         const containerClient = blobServiceClient.getContainerClient(config.Azure_storageContainer);
         const blockBlobClient = containerClient.getBlockBlobClient(key);
-        return blockBlobClient.downloadToBuffer();
+        const response = await blockBlobClient.download();
+        return {
+          buffer: await streamToBuffer(response.readableStreamBody),
+          contentType: response.contentType || guessImageContentTypeFromKey(key),
+        };
       }
       default:
         throw createStorageConfigError(`Unknown storage type: ${config.storageType}`);
     }
   }
 
+  async function getFileBuffer(key) {
+    const { buffer } = await getFileObject(key);
+    return buffer;
+  }
+
   fastify.decorate('uploadFile', uploadFile);
   fastify.decorate('deleteFile', deleteFile);
+  fastify.decorate('getFileObject', getFileObject);
   fastify.decorate('getFileBuffer', getFileBuffer);
   fastify.decorate('uploadsDir', UPLOADS_DIR);
 }
