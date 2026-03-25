@@ -67,6 +67,27 @@ function buildThumbnailFileName(originalName = '') {
   return `${baseName}-thumbnail.jpg`;
 }
 
+function buildRoundedCropPayload(editorState = {}) {
+  return {
+    rotation: Math.round(editorState.rotation || 0),
+    cropX: Math.round(editorState.cropX || 0),
+    cropY: Math.round(editorState.cropY || 0),
+    cropSize: Math.max(1, Math.round(editorState.cropSize || 0)),
+  };
+}
+
+function shouldFallbackToServerThumbnailGeneration(error) {
+  if (!error) return false;
+  const name = String(error.name || '');
+  const message = String(error.message || '');
+  return (
+    name === 'SecurityError'
+    || /tainted/i.test(message)
+    || /Failed to (decode|encode|prepare) image/i.test(message)
+    || /Failed to prepare avatar/i.test(message)
+  );
+}
+
 function ProfileImageEditorDialog({
   open,
   editorState,
@@ -537,16 +558,35 @@ export default function Profile() {
           profileThumbnail: profileThumbnailUrl,
         });
       } else {
-        await apiClient.post('/users/me/image/thumbnail', {
-          rotation: Math.round(imageEditorState.rotation || 0),
-          cropX: Math.round(imageEditorState.cropX || 0),
-          cropY: Math.round(imageEditorState.cropY || 0),
-          cropSize: Math.max(1, Math.round(imageEditorState.cropSize || 0)),
-        });
+        let thumbnailFile;
+        try {
+          thumbnailFile = await createAvatarThumbnailFile(
+            imageEditorState.source,
+            imageEditorState,
+            {
+              fileName: buildThumbnailFileName(imageEditorState.fileName),
+              outputSize: publicSettings.avatarThumbnailSize,
+            },
+          );
+        } catch (thumbErr) {
+          if (!shouldFallbackToServerThumbnailGeneration(thumbErr)) {
+            throw thumbErr;
+          }
+        }
+
+        if (thumbnailFile) {
+          const profileThumbnailUrl = await uploadSingleImage(thumbnailFile);
+          await apiClient.patch('/users/me/image', {
+            profileImage: user?.profile?.profileImage || imageEditorState.source,
+            profileThumbnail: profileThumbnailUrl,
+          });
+        } else {
+          await apiClient.post('/users/me/image/thumbnail', buildRoundedCropPayload(imageEditorState));
+        }
       }
 
-      await loadUser();
       setImageEditorState(null);
+      await loadUser();
       setMsg({ severity: 'success', text: t('profile.photoUpdated') });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('profile.photoFailed') });

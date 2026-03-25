@@ -1,10 +1,13 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Profile from './Profile';
 
 const {
   apiClientMock,
+  authState,
+  createAvatarThumbnailFileMock,
+  loadImageMock,
   loadUserMock,
 } = vi.hoisted(() => ({
   apiClientMock: {
@@ -12,6 +15,11 @@ const {
     patch: vi.fn(),
     post: vi.fn(),
   },
+  authState: {
+    user: null,
+  },
+  createAvatarThumbnailFileMock: vi.fn(),
+  loadImageMock: vi.fn(),
   loadUserMock: vi.fn(),
 }));
 
@@ -25,9 +33,16 @@ vi.mock('react-i18next', () => ({
       'profile.currentPassword': 'Current Password',
       'profile.newPassword': 'New Password',
       'profile.confirmNewPassword': 'Confirm New Password',
+      'profile.openPhotoEditor': 'Open profile photo editor',
+      'profile.adjustPhoto': 'Adjust profile photo',
+      'profile.photoUpdated': 'Profile photo updated',
+      'profile.photoFailed': 'Failed to upload photo',
       'profile.ssoNameManagedNote': 'Your name is managed by your SSO provider and cannot be changed here.',
       'profile.ssoPasswordManagedNote': 'Password changes are unavailable while you are signed in through SSO.',
       'profile.ssoEmailLoginApprovalNote': 'This account was created through SSO. An administrator must approve email login before password reset or email-based sign-in can be used.',
+      'common.save': 'Save',
+      'common.cancel': 'Cancel',
+      'common.saving': 'Saving',
     }[key] ?? key),
   }),
 }));
@@ -46,21 +61,18 @@ vi.mock('../api/client', () => ({
   default: apiClientMock,
 }));
 
+vi.mock('../utils/imageUpload', async () => {
+  const actual = await vi.importActual('../utils/imageUpload');
+  return {
+    ...actual,
+    createAvatarThumbnailFile: createAvatarThumbnailFileMock,
+    loadImage: loadImageMock,
+  };
+});
+
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: {
-      email: 'sso-profile@example.com',
-      role: 'student',
-      profile: {
-        firstname: 'SSO',
-        lastname: 'User',
-        roles: ['student'],
-      },
-      isSSOUser: true,
-      isSSOCreatedUser: true,
-      allowEmailLogin: false,
-      lastAuthProvider: 'sso',
-    },
+    user: authState.user,
     loadUser: loadUserMock,
   }),
 }));
@@ -75,6 +87,25 @@ describe('Profile', () => {
     apiClientMock.patch.mockReset();
     apiClientMock.post.mockReset();
     loadUserMock.mockReset();
+    createAvatarThumbnailFileMock.mockReset();
+    loadImageMock.mockReset();
+
+    authState.user = {
+      email: 'sso-profile@example.com',
+      role: 'student',
+      profile: {
+        firstname: 'SSO',
+        lastname: 'User',
+        roles: ['student'],
+      },
+      isSSOUser: true,
+      isSSOCreatedUser: true,
+      allowEmailLogin: false,
+      lastAuthProvider: 'sso',
+    };
+    loadUserMock.mockResolvedValue(undefined);
+    loadImageMock.mockResolvedValue({ naturalWidth: 1200, naturalHeight: 900 });
+    createAvatarThumbnailFileMock.mockResolvedValue(new File(['thumb'], 'thumb.jpg', { type: 'image/jpeg' }));
 
     apiClientMock.get.mockImplementation((url) => {
       if (url === '/users/me') {
@@ -104,6 +135,23 @@ describe('Profile', () => {
 
       return Promise.reject(new Error(`Unexpected GET ${url}`));
     });
+
+    apiClientMock.patch.mockResolvedValue({ data: {} });
+    apiClientMock.post.mockImplementation((url) => {
+      if (url === '/images') {
+        return Promise.resolve({
+          data: {
+            image: {
+              url: '/uploads/thumb-new.jpg',
+            },
+          },
+        });
+      }
+      if (url === '/users/me/image/thumbnail') {
+        return Promise.resolve({ data: {} });
+      }
+      return Promise.reject(new Error(`Unexpected POST ${url}`));
+    });
   });
 
   it('greys out SSO-managed name and password fields', async () => {
@@ -124,5 +172,77 @@ describe('Profile', () => {
     const [languageHeading] = screen.getAllByText('Language', { selector: 'h6' });
     const personalInfoHeading = screen.getByText('Personal Information', { selector: 'h6' });
     expect(languageHeading.compareDocumentPosition(personalInfoHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('replaces an existing avatar thumbnail client-side before falling back to the server route', async () => {
+    authState.user = {
+      ...authState.user,
+      profile: {
+        firstname: 'SSO',
+        lastname: 'User',
+        roles: ['student'],
+        profileImage: '/uploads/original-avatar.jpg',
+        profileThumbnail: '/uploads/original-thumb.jpg',
+      },
+    };
+
+    render(<Profile />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/users/me');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open profile photo editor' }));
+    await screen.findByText('Adjust profile photo');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createAvatarThumbnailFileMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/images', expect.any(FormData));
+    });
+    await waitFor(() => {
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/users/me/image', {
+        profileImage: '/uploads/original-avatar.jpg',
+        profileThumbnail: '/uploads/thumb-new.jpg',
+      });
+    });
+    expect(apiClientMock.post).not.toHaveBeenCalledWith('/users/me/image/thumbnail', expect.anything());
+  });
+
+  it('falls back to the server thumbnail route when the browser cannot generate a thumbnail', async () => {
+    authState.user = {
+      ...authState.user,
+      profile: {
+        firstname: 'SSO',
+        lastname: 'User',
+        roles: ['student'],
+        profileImage: '/uploads/original-avatar.jpg',
+        profileThumbnail: '/uploads/original-thumb.jpg',
+      },
+    };
+    const securityError = new Error('Canvas is tainted');
+    securityError.name = 'SecurityError';
+    createAvatarThumbnailFileMock.mockRejectedValueOnce(securityError);
+
+    render(<Profile />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/users/me');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open profile photo editor' }));
+    await screen.findByText('Adjust profile photo');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/users/me/image/thumbnail', {
+        rotation: 0,
+        cropX: 150,
+        cropY: 0,
+        cropSize: 900,
+      });
+    });
   });
 });
