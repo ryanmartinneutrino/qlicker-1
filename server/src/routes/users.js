@@ -12,7 +12,7 @@ import {
   normalizeAvatarThumbnailSize,
   shouldLockLocalProfileEdits,
 } from '../utils/authPolicy.js';
-import { isSafeProfileImageUrl } from '../utils/url.js';
+import { isSafeProfileImageUrl, isPrivateHostname } from '../utils/url.js';
 import { getLastLoginAudit } from '../utils/sessionAudit.js';
 
 async function getAuthSettings() {
@@ -118,6 +118,16 @@ function deriveImageKeyFromUrl(sourceUrl = '') {
 
 async function fetchRemoteProfileImageBuffer(sourceUrl) {
   if (!/^https?:\/\//i.test(String(sourceUrl || ''))) {
+    return null;
+  }
+
+  // SSRF protection: block requests to private/internal networks
+  try {
+    const parsed = new URL(sourceUrl);
+    if (isPrivateHostname(parsed.hostname)) {
+      return null;
+    }
+  } catch {
     return null;
   }
 

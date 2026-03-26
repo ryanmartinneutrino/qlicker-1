@@ -466,7 +466,7 @@ function LiveSessionContent() {
                 inputMode: 'numeric',
                 pattern: '[0-9]*',
                 maxLength: 6,
-                'aria-label': 'Join code',
+                'aria-label': t('student.liveSession.joinCodeAriaLabel'),
                 style: {
                   textAlign: 'center',
                   fontSize: '2rem',
@@ -924,7 +924,7 @@ function LiveSessionContent() {
               type="number"
               fullWidth
               disabled={isLocked}
-              inputProps={{ 'aria-label': 'Numerical response' }}
+              inputProps={{ 'aria-label': t('student.liveSession.numericalResponseAriaLabel') }}
             />
             {currentQ.toleranceNumerical != null && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>

@@ -781,7 +781,7 @@ function QuestionEditor({
                   <RichTextEditor
                     value={opt.content}
                     onChange={({ html }) => setOption(i, 'content', html)}
-                    placeholder={`Option ${i + 1}`}
+                    placeholder={t('questions.editor.optionPlaceholder', { number: i + 1 })}
                     minHeight={30}
                     compact
                   />

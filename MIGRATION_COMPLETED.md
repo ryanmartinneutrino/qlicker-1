@@ -13,13 +13,14 @@
 5. [Phase 4 — Sessions & Questions](#phase-4--sessions--questions)
 6. [Phase 5 — Live Sessions & Quizzes](#phase-5--live-sessions--quizzes)
 7. [Phase 6 — Grading](#phase-6--grading)
-8. [Phase 7 — Groups, Video, i18n (Completed Items)](#phase-7--groups-video-i18n-completed-items)
-9. [Bug Fix History](#bug-fix-history)
-10. [PR History](#pr-history)
-11. [Legacy Compatibility Fixes](#legacy-compatibility-fixes)
-12. [UI Updates History](#ui-updates-history)
-13. [Code Review Findings (2026-03-07) — Fixed Items](#code-review-findings-2026-03-07--fixed-items)
-14. [Code Review Findings (2026-03-12) — Fixed Items](#code-review-findings-2026-03-12--fixed-items)
+8. [Phase 7 — Groups, Video, i18n, SSO, Security, Performance](#phase-7--groups-video-i18n-completed-items)
+9. [Code Review Findings (2026-03-12, 2026-03-18) — Fixed Items](#code-review-findings-2026-03-12-2026-03-18--fixed-items)
+10. [Bug Fix History](#bug-fix-history)
+11. [PR History](#pr-history)
+12. [Legacy Compatibility Fixes](#legacy-compatibility-fixes)
+13. [UI Updates History](#ui-updates-history)
+14. [Code Review Findings (2026-03-07) — Fixed Items](#code-review-findings-2026-03-07--fixed-items)
+15. [Code Review Findings (2026-03-12) — Fixed Items](#code-review-findings-2026-03-12--fixed-items)
 
 ---
 
@@ -31,8 +32,9 @@
 | 2. Profile & uploads | ✅ Complete | Phase 2 |
 | 3. Course management | ✅ Complete | Phase 3 |
 | 4. Session editor | ✅ Complete | Phase 4 |
-| 6. Live sessions & quizzes | ✅ Complete | Phase 5 |
-| 7. Grading | ✅ Complete | Phase 6 |
+| 5. Live sessions & quizzes | ✅ Complete | Phase 5 |
+| 6. Grading | ✅ Complete | Phase 6 |
+| 7. Groups, video, SSO confirmed | ✅ Complete | Phase 7 |
 
 ---
 
@@ -226,9 +228,105 @@ Session review option rendering fix, CSV per-attempt export, Students tab, LiveS
 - Added to User, Question, Session, Grade, Image models
 
 ### ✅ i18n Framework
-- `react-i18next` with 879 translation keys (en/fr)
+- `react-i18next` with 1496+ translation keys (en/fr, full parity)
 - Admin locale selector, per-user locale override on Profile page
 - All 30+ components wired with `useTranslation()` hook
+
+### ✅ SSO SAML (Verified Against Production IdP)
+- CSRF protection — custom header pattern (X-Requested-With) with CORS enforcement
+- JWT access token security — moved from localStorage to in-memory with httpOnly cookie refresh
+- SAML logout validation — node-saml crypto validation with XML fallback
+- Local SAML smoke infrastructure — `ssoserver/` provides an isolated SimpleSAMLphp IdP with seeded users, generated local certificates, signed + encrypted assertions, SP-initiated logout coverage
+- Legacy Meteor SAML route compatibility — Fastify serves `/SSO/SAML2`, `/SSO/SAML2/logout`, `/SSO/SAML2/metadata`, `/SSO/SAML2/metadata.xml`
+- SSO account controls — SSO-created accounts tracked separately, profile name/password edits disabled, local email login blocked unless admin-granted
+- SSO SAML production IdP confirmation — login, professor-role promotion, and logout verified against Microsoft Entra (PR 189)
+
+### ✅ Security Hardening
+- File upload content validation — magic bytes via `file-type` library
+- Settings PATCH field whitelist
+- Refresh token rotation on each use, invalidated on logout/password changes
+- Account lockout after repeated password failures (15 min)
+- Dev JWT secrets generated at runtime when env values omitted outside production
+- Profile image URL validation (http(s) or site-relative paths only)
+- File upload and WebSocket inbound message rate limiting
+- SSRF protection — profile image fetch blocks private/internal IP ranges (RFC 1918, loopback, link-local, cloud metadata)
+
+### ✅ Client Bundle & Performance
+- Route lazy-loading plus Vite manual chunks
+- Session list pagination (server + client, 15 items per page)
+- Student question-library DB-level visibility (invisible questions never enter server memory)
+- WebSocket delta events — ~98% query reduction in live sessions
+- N+1 query fixes (userCanManageQuestion, userCanViewQuestion)
+- 29+ missing `.lean()` calls added across read-only queries
+- Session response tracking (hasResponses, questionResponseCounts)
+- Course/Session model indexes added (students, instructors, owner, courseId+status)
+
+### ✅ Session & Editor Features
+- Session slides (type: 6) — content-only slides in editor, live, quiz, review
+- Session export/import (JSON) with PDF handout views
+- Session/course copy workflow with state reset
+- Live session editing and delta sync
+- TipTap text-alignment controls
+- Session sequencing simplification (ordered `questions` array as source of truth)
+
+### ✅ Student Library & Practice Sessions
+- Student question-library with topic suggestions from professor-managed course topics
+- Practice session editor with inline question creation and library pickers
+- Question approval workflow
+
+### ✅ Phase 8 Completed Items
+- Full E2E test suite with Playwright (9 baseline flows plus 2 SSO smoke flows)
+- Load testing with k6 (see `load-testing/`)
+- Production Docker Compose with Nginx load balancer
+- Backup and restore scripts
+- Private-bucket cutover scripts for S3 images
+- Developer guide and user manual refresh
+- npm audit 0 vulnerabilities (server + client)
+- Major dependency upgrades (React 19, MUI 7, Vite 8, Mongoose 9, etc.)
+- Redis pub/sub for multi-instance WebSocket scaling
+
+---
+
+## Code Review Findings (2026-03-12, 2026-03-18) — Fixed Items
+
+### Security — Fixed
+
+| Issue | Severity | Fix Applied |
+|-------|----------|-------------|
+| **npm audit vulnerabilities** | HIGH | Server: fast-xml-parser override; Client: jspdf fix. 0 vulnerabilities remaining. |
+| **Hardcoded English aria-labels** | LOW | 15+ hardcoded English aria-label strings replaced with `t()` i18n calls |
+| **No refresh token rotation** | LOW-MEDIUM | Refresh tokens rotate atomically on refresh/logout/password changes |
+| **No account lockout** | LOW-MEDIUM | Password login locks for 15 minutes after repeated failures |
+| **Profile image URL no validation** | MEDIUM | Only http(s) or site-relative URLs accepted |
+| **Hardcoded dev secrets in config** | LOW | Runtime-generated when env vars absent outside production |
+| **File upload no rate limit** | LOW | Image upload route opts into Fastify rate limiting |
+| **No CSRF protection** | HIGH | Custom header (`X-Requested-With`) with CORS enforcement |
+| **JWT access token in localStorage** | HIGH | Moved to in-memory with httpOnly cookie refresh |
+| **SAML logout not validated** | MEDIUM | node-saml `validatePostRequestAsync` attempted first |
+| **File upload no magic bytes** | MEDIUM | `file-type` library validates file content |
+| **Settings PATCH no field whitelist** | HIGH | Explicit allowed-fields whitelist |
+| **No WebSocket rate limiting** | LOW | Connections close when inbound message limits exceeded |
+| **WebSocket state single-instance** | MEDIUM | Redis pub/sub added via ioredis for multi-instance |
+
+### Performance — Fixed
+
+- N+1 in `userCanManageQuestion()` and `userCanViewQuestion()` — batch queries
+- 29 missing `.lean()` calls added to read-only queries
+- Sessions list pagination (server + client)
+- Student question-library DB-level visibility
+- Session response tracking (avoid fresh response scans)
+- Delta WebSocket events (~98% query reduction)
+- Duplicate response queries merged
+- Course page WebSocket push replaces polling
+- Client bundle split into route/vendor chunks
+- `wsSendToUsers()` single-serialize broadcast
+
+### i18n & Accessibility — Fixed
+
+- 15+ hardcoded English aria-labels replaced with i18n `t()` calls across 8 components
+- 20+ missing aria-labels added to IconButton elements across 7 components
+- 35+ new translation keys added to both en.json and fr.json
+- en/fr key parity confirmed (1496+ keys each)
 
 ---
 
