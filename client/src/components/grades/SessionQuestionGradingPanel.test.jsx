@@ -244,7 +244,9 @@ describe('SessionQuestionGradingPanel', () => {
     const row = screen.getByText('Ada Lovelace').closest('tr');
     const rowSaveButton = within(row).getByRole('button', { name: /^save$/i });
 
-    expect(rowSaveButton).toBeDisabled();
+    await waitFor(() => {
+      expect(rowSaveButton).toBeDisabled();
+    });
 
     fireEvent.change(feedbackInput, { target: { value: 'Immediate feedback' } });
 

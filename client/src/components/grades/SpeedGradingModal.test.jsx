@@ -237,6 +237,54 @@ describe('SpeedGradingModal', () => {
     });
   });
 
+  it('uses Enter as Save + Next and keeps current student when parent rows refresh', async () => {
+    const onSaveGrade = vi.fn().mockResolvedValue();
+    const rows = buildRows();
+    const { rerender } = render(
+      <SpeedGradingModal
+        open
+        onClose={vi.fn()}
+        rows={rows}
+        initialIndex={0}
+        activeQuestionId="q-sa"
+        onSaveGrade={onSaveGrade}
+      />
+    );
+
+    const pointsInput = screen.getByRole('spinbutton', { name: /points/i });
+    fireEvent.change(pointsInput, { target: { value: '5' } });
+    fireEvent.keyDown(pointsInput, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => {
+      expect(onSaveGrade).toHaveBeenCalledTimes(1);
+      expect(onSaveGrade).toHaveBeenCalledWith(
+        rows[0],
+        expect.objectContaining({ points: 5 })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+      expect(screen.getByText('2 of 3')).toBeInTheDocument();
+    });
+
+    rerender(
+      <SpeedGradingModal
+        open
+        onClose={vi.fn()}
+        rows={buildRows()}
+        initialIndex={0}
+        activeQuestionId="q-sa"
+        onSaveGrade={onSaveGrade}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+      expect(screen.getByText('2 of 3')).toBeInTheDocument();
+    });
+  });
+
   it('does not render when rows are empty', () => {
     const { container } = render(
       <SpeedGradingModal

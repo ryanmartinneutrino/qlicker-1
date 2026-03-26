@@ -302,47 +302,12 @@ export default function RichTextEditor({
   };
 
   return (
-    <Box>
-      {(label || editor) ? (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: label ? 'space-between' : 'flex-end',
-            gap: 1,
-            mb: 0.35,
-            minHeight: 28,
-          }}
-        >
-          {label ? (
-            <Typography variant="subtitle2">
-              {label}
-            </Typography>
-          ) : <Box />}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
-            <Typography variant="caption" color="text.secondary">
-              {toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
-            </Typography>
-            <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
-              <span>
-                <IconButton
-                  size="small"
-                  aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
-                  onClick={() => setToolbarExpanded((current) => !current)}
-                  disabled={disabled}
-                  sx={{ p: 0.5 }}
-                >
-                  {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Box>
-        </Box>
-      ) : null}
-
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Paper
         variant="outlined"
         sx={{
+          display: 'flex',
+          flexDirection: 'column',
           borderRadius: 1.5,
           px: 1.25,
           py: toolbarExpanded ? 1.25 : 0.85,
@@ -350,6 +315,7 @@ export default function RichTextEditor({
           borderColor: 'divider',
           '&:focus-within': { borderColor: 'primary.main', boxShadow: theme => `0 0 0 1px ${theme.palette.primary.main}` },
           '& .editor-toolbar-controls': {
+            order: -1,
             position: 'sticky',
             top: 0,
             zIndex: 1,
@@ -453,6 +419,8 @@ export default function RichTextEditor({
             </Paper>
           </BubbleMenu>
         )}
+
+        <EditorContent editor={editor} />
 
         {editor && toolbarExpanded ? (
           <Box className="editor-toolbar-controls">
@@ -590,9 +558,45 @@ export default function RichTextEditor({
                 </Button>
           </Box>
         ) : null}
-
-        <EditorContent editor={editor} />
       </Paper>
+
+      {(label || editor) ? (
+        <Box
+          sx={{
+            order: -1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: label ? 'space-between' : 'flex-end',
+            gap: 1,
+            mb: 0.35,
+            minHeight: 28,
+          }}
+        >
+          {label ? (
+            <Typography variant="subtitle2">
+              {label}
+            </Typography>
+          ) : <Box />}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35 }}>
+            <Typography variant="caption" color="text.secondary">
+              {toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+            </Typography>
+            <Tooltip title={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}>
+              <span>
+                <IconButton
+                  size="small"
+                  aria-label={toolbarExpanded ? t('questions.richText.hideToolbar') : t('questions.richText.showToolbar')}
+                  onClick={() => setToolbarExpanded((current) => !current)}
+                  disabled={disabled}
+                  sx={{ p: 0.5 }}
+                >
+                  {toolbarExpanded ? <CollapseToolbarIcon fontSize="small" /> : <ExpandToolbarIcon fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        </Box>
+      ) : null}
 
       <Box sx={{ mt: showTip || uploading || uploadError ? 0.75 : 0, minHeight: showTip || uploading || uploadError ? 26 : 0 }}>
         {uploading ? (

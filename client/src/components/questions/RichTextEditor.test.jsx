@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import RichTextEditor from './RichTextEditor';
 
 vi.mock('../../api/client', () => ({
@@ -95,5 +100,19 @@ describe('RichTextEditor image resizing', () => {
     });
 
     expect(wrapper.style.width).toBe('200px');
+  });
+
+  it('keeps editor content before the toolbar toggle in keyboard tab order', async () => {
+    render(<RichTextEditor value="<p>Hello</p>" />);
+
+    await waitFor(() => {
+      expect(document.querySelector('.ProseMirror')).toBeTruthy();
+    });
+
+    const proseMirror = document.querySelector('.ProseMirror');
+    expect(proseMirror).toBeTruthy();
+    const toggleToolbarButton = screen.getByRole('button', { name: 'questions.richText.showToolbar' });
+
+    expect(proseMirror.compareDocumentPosition(toggleToolbarButton)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
