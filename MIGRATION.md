@@ -108,6 +108,16 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 
 All core Qlicker functionality has been restored: authentication (local + SAML SSO), course management, session/quiz editor with slides, live interactive sessions with real-time WebSocket updates, grading (auto + manual), question library, group management, Jitsi video chat, session export/import, PDF handouts, i18n (en/fr), and admin settings. See [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md) for full details.
 
+### Recent 2026-03-26 Fixes
+
+- Session grade rows are now seeded when a session reaches the **Ended** state, even before the session is marked reviewable for students.
+- Manual grade editing and session grade recalculation are now locked until the session is **Ended**, which keeps grading writes aligned with when grade items exist.
+- Latest-attempt grading is now standardized across server and client: the highest `attempt` wins for each student/question, with `updatedAt` / `createdAt` as the tie-breaker.
+- Legacy duplicate `Grade` rows for the same `{ userId, courseId, sessionId }` identity are synchronized during recalculation so stale rows cannot keep outdated `outOf`, `needsGrading`, or attempt data.
+- Professor and student course session lists now keep search and pagination controls inside a collapsible tools area; professor lists also support a **Needs grading** filter and show **Needs grading** chips plus joined-student counts on session cards.
+- Student live-session stats now refresh word clouds and histograms automatically when the server publishes updates; a manual page refresh is no longer required.
+- Admins can now disable and later restore user accounts. Disabled accounts are blocked from local login, SSO callback, token refresh, and authenticated API use.
+
 ---
 
 ## Phase 8 — Remaining Work

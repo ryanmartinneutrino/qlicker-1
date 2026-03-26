@@ -231,10 +231,8 @@ function LiveSessionContent() {
         setLiveData((prev) => applyJoinCodeChanged(prev, data));
         break;
       case 'session:word-cloud-updated':
-        setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
-        break;
       case 'session:histogram-updated':
-        setLiveData((prev) => prev ? { ...prev, histogramData: data.histogramData } : prev);
+        fetchLive();
         break;
       default:
         break;

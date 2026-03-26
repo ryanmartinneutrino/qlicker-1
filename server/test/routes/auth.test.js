@@ -240,6 +240,25 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.message).toMatch(/invalid/i);
   });
 
+  it('rejects disabled accounts', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'disabled-login@example.com', password: 'password123' });
+    await User.updateOne({ _id: user._id }, { $set: { disabled: true, disabledAt: new Date() } });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'disabled-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('ACCOUNT_DISABLED');
+  });
+
   it('returns user profile without services field', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'profile@example.com', password: 'password123' });
@@ -627,6 +646,37 @@ describe('POST /api/v1/auth/logout', () => {
 
 // ---------- POST /api/v1/auth/refresh ----------
 describe('POST /api/v1/auth/refresh', () => {
+  it('rejects refresh for disabled accounts and clears the cookie', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const user = await createTestUser({ email: 'disabled-refresh@example.com', password: 'password123' });
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'disabled-refresh@example.com',
+        password: 'password123',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+
+    const refreshToken = extractCookieValue(loginRes.headers['set-cookie'], 'refreshToken');
+    await User.updateOne({ _id: user._id }, { $set: { disabled: true, disabledAt: new Date() } });
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      headers: {
+        ...csrfHeaders,
+        cookie: `refreshToken=${refreshToken}`,
+      },
+    });
+
+    expect(refreshRes.statusCode).toBe(403);
+    expect(refreshRes.json().code).toBe('ACCOUNT_DISABLED');
+  });
+
   it('rotates refresh tokens so the previous token becomes invalid after use', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'rotate@example.com', password: 'password123' });

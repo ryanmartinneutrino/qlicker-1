@@ -11,10 +11,12 @@ import {
 } from '@mui/material';
 import {
   Add as AddIcon,
+  Block as BlockIcon,
   Cancel,
   CheckCircle,
   Delete as DeleteIcon,
   InfoOutlined as InfoOutlinedIcon,
+  Restore as RestoreIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
@@ -384,7 +386,7 @@ function UsersTab({ currentUserId }) {
   const [imageViewUser, setImageViewUser] = useState(null);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [userProperties, setUserProperties] = useState({ canPromote: false, allowEmailLogin: true });
+  const [userProperties, setUserProperties] = useState({ canPromote: false, allowEmailLogin: true, disabled: false });
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [propertiesSaving, setPropertiesSaving] = useState(false);
   const [resetPasswordValues, setResetPasswordValues] = useState({ password: '', confirmPassword: '' });
@@ -479,6 +481,28 @@ function UsersTab({ currentUserId }) {
     }
   };
 
+  const handleToggleDisabled = async (targetUser) => {
+    if (!targetUser?._id) return;
+    const nextDisabled = !(targetUser?.disabled === true);
+    try {
+      const { data } = await apiClient.patch(`/users/${targetUser._id}/properties`, {
+        disabled: nextDisabled,
+      });
+      setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
+      setSelectedUser((prev) => (prev?._id === data._id ? data : prev));
+      setUserProperties((prev) => ({ ...prev, disabled: !!data?.disabled }));
+      setMsg({
+        severity: 'success',
+        text: nextDisabled ? t('admin.users.userDisabled') : t('admin.users.userRestored'),
+      });
+    } catch (err) {
+      setMsg({
+        severity: 'error',
+        text: err.response?.data?.message || t('admin.users.failedToggleDisabled'),
+      });
+    }
+  };
+
   const handleCreate = async () => {
     try {
       await apiClient.post('/users', newUser);
@@ -496,6 +520,7 @@ function UsersTab({ currentUserId }) {
     setUserProperties({
       canPromote: isStudentOnlyRole(userSummary) ? false : !!userSummary?.profile?.canPromote,
       allowEmailLogin: userSummary?.allowEmailLogin === true,
+      disabled: userSummary?.disabled === true,
     });
     setResetPasswordValues({ password: '', confirmPassword: '' });
     setPropertiesOpen(true);
@@ -506,6 +531,7 @@ function UsersTab({ currentUserId }) {
       setUserProperties({
         canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
         allowEmailLogin: data?.allowEmailLogin === true,
+        disabled: data?.disabled === true,
       });
     } catch {
       setMsg({ severity: 'error', text: t('admin.users.failedLoadUserProperties') });
@@ -533,6 +559,7 @@ function UsersTab({ currentUserId }) {
       setUserProperties({
         canPromote: isStudentOnlyRole(data) ? false : !!data?.profile?.canPromote,
         allowEmailLogin: data?.allowEmailLogin === true,
+        disabled: data?.disabled === true,
       });
       setUsers((prev) => prev.map((user) => (user._id === data._id ? { ...user, ...data } : user)));
       setMsg({ severity: 'success', text: t('admin.users.userPropertiesUpdated') });
@@ -572,6 +599,7 @@ function UsersTab({ currentUserId }) {
 
   const selectedUserIsStudentOnly = isStudentOnlyRole(selectedUser);
   const selectedUserIsAdmin = selectedUser?.profile?.roles?.includes('admin');
+  const selectedUserIsDisabled = selectedUser?.disabled === true;
   const activeSessions = Array.isArray(selectedUser?.activeSessions) ? selectedUser.activeSessions : [];
   const hasActiveSessions = activeSessions.length > 0;
 
@@ -673,6 +701,14 @@ function UsersTab({ currentUserId }) {
                            {getFullName(u)}
                          </ButtonBase>
                        </Tooltip>
+                       {u.disabled && (
+                         <Chip
+                           size="small"
+                           color="warning"
+                           variant="outlined"
+                           label={t('admin.users.disabled')}
+                         />
+                       )}
                      </Box>
                    </TableCell>
                   <TableCell>{u.emails?.[0]?.address}</TableCell>
@@ -711,6 +747,19 @@ function UsersTab({ currentUserId }) {
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right">
+                    <Tooltip title={u.disabled ? t('admin.users.restoreUser') : t('admin.users.disableUser')}>
+                      <span>
+                        <IconButton
+                          color={u.disabled ? 'success' : 'warning'}
+                          size="small"
+                          aria-label={u.disabled ? t('admin.users.restoreUser') : t('admin.users.disableUser')}
+                          onClick={() => handleToggleDisabled(u)}
+                          disabled={u._id === currentUserId}
+                        >
+                          {u.disabled ? <RestoreIcon fontSize="small" /> : <BlockIcon fontSize="small" />}
+                        </IconButton>
+                      </span>
+                    </Tooltip>
                     <IconButton color="error" size="small" aria-label={t('common.deleteUser')} onClick={() => setDeleteTarget(u)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
@@ -810,6 +859,12 @@ function UsersTab({ currentUserId }) {
                 {t('admin.users.userPropertiesHelp')}
               </Typography>
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Chip
+                  size="small"
+                  label={selectedUserIsDisabled ? t('admin.users.disabled') : t('admin.users.active')}
+                  color={selectedUserIsDisabled ? 'warning' : 'success'}
+                  variant={selectedUserIsDisabled ? 'filled' : 'outlined'}
+                />
                 {selectedUser?.isSSOCreatedUser && (
                   <Chip size="small" label={t('admin.users.ssoCreatedAccount')} color="info" variant="outlined" />
                 )}
@@ -823,6 +878,21 @@ function UsersTab({ currentUserId }) {
                   variant={hasActiveSessions ? 'filled' : 'outlined'}
                 />
               </Box>
+              <FormControlLabel
+                control={(
+                  <Checkbox
+                    checked={!!userProperties.disabled}
+                    disabled={selectedUser?._id === currentUserId}
+                    onChange={(event) => setUserProperties((current) => ({ ...current, disabled: event.target.checked }))}
+                  />
+                )}
+                label={t('admin.users.disableLogin')}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {selectedUser?._id === currentUserId
+                  ? t('admin.users.cannotDisableOwnAccount')
+                  : t('admin.users.disableLoginHelp')}
+              </Typography>
               <Paper variant="outlined" sx={{ p: 1.5 }}>
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   {t('admin.users.sessionActivity')}

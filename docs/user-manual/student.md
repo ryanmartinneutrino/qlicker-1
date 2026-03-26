@@ -59,6 +59,7 @@ On the course page you will typically see:
 - **Video chat** when your course has Jitsi enabled
 
 If a course has many sessions, the page shows the first batch of session cards quickly and continues loading the remaining session lists in the background.
+Search, status, page-size, and pagination controls now live inside a collapsible **Session tools** area so the session cards remain easier to scan.
 
 ### How to choose the right tab
 
@@ -88,6 +89,7 @@ Live sessions are used when an instructor is controlling the pace of the class.
 - Instructors can stop responses and reopen them for another attempt.
 - Slides can appear between questions. Slides are content-only pages, so read them before moving on.
 - Statistics and correct answers only become visible when the instructor turns them on.
+- When statistics include a word cloud or histogram, those visualizations should appear automatically as soon as the instructor reveals them.
 
 ## Take quizzes
 

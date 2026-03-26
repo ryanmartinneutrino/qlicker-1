@@ -262,7 +262,7 @@ app.post('/register', { schema: registerSchema, ...authRateLimit }, async (reque
 | POST | `/users` | Admin | Create user |
 | DELETE | `/users/:id` | Admin | Delete user |
 | PATCH | `/users/:id/role` | Admin | Change user role |
-| PATCH | `/users/:id/properties` | Admin | Toggle user properties such as `canPromote` and SSO email-login approval |
+| PATCH | `/users/:id/properties` | Admin | Toggle user properties such as `canPromote`, `disabled`, and SSO email-login approval |
 | PATCH | `/users/:id/password` | Admin | Reset a user's local password |
 | PATCH | `/users/:id/verify-email` | Admin | Admin-verify email |
 | POST | `/users/me/image/thumbnail` | Token | Rebuild cropped avatar thumbnail from current profile image |
@@ -452,6 +452,19 @@ Legacy Meteor users have `services.password.bcrypt` (bcrypt `$2a$`/`$2b$`). New 
 user.passwordResetRequired()  // true if only bcrypt hash exists
 ```
 
+#### Account Lifecycle
+
+- Prefer `User.disabled = true` over hard deletion when an account may need to be restored later.
+- Disabling a user must also clear login sessions/tokens and bump `refreshTokenVersion` so existing auth state is revoked immediately.
+- Disabled accounts must be blocked consistently in local login, SSO callback, refresh-token exchange, and authenticated API middleware.
+
+#### Grading Lifecycle Invariants
+
+- Session grade rows are created when a session reaches `status: 'done'`; do not wait for `reviewable` to seed them.
+- Manual mark edits and recalculation are only valid once the session is ended.
+- Latest-response selection for grading must use the student's highest `attempt`, then break ties with `updatedAt || createdAt`.
+- Treat grade identity as `{ userId, courseId, sessionId }`, not only `_id`, because legacy data may contain duplicate `Grade` rows for the same student/session pair that must be synchronized together.
+
 #### Settings Virtual Getters
 
 Settings has virtual getters that resolve new or legacy field names:
@@ -531,6 +544,17 @@ await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
 const grade = await Grade.findById(id);
 const nextGrade = { ...grade.toObject(), ... };  // .toObject() was unnecessary
 await Grade.updateOne({ _id: grade._id }, { $set: { ... } });
+```
+
+For grading code, prefer a small `.lean()` read plus an identity-based write so duplicate legacy grade rows stay in sync:
+
+```javascript
+const grade = await Grade.findById(id).select('userId courseId sessionId marks').lean();
+
+await Grade.updateMany(
+  { userId: grade.userId, courseId: grade.courseId, sessionId: grade.sessionId },
+  { $set: { marks: nextMarks, points: nextPoints, outOf: nextOutOf } }
+);
 ```
 
 Apply this especially to singleton settings reads and paginated admin lists:
@@ -1162,6 +1186,7 @@ ws.onmessage = (event) => {
 | `useAuth()` | `client/src/contexts/AuthContext.jsx` | Auth context hook: `{ user, login, logout, register, loadUser, loading }` |
 | `formatDisplayDate(value)` | `client/src/utils/date.js` | Format date as `DD-MMM-YYYY` (e.g., `11-Jan-2026`) |
 | `buildHistogramData(values, maxBins)` | `client/src/utils/histogram.js` | Bin numeric values for Recharts histograms |
+| `getLatestResponse(responses)` | `client/src/utils/responses.js` | Return the latest response by highest attempt, then newest timestamp. **Do not duplicate latest-attempt logic in grading UIs.** |
 | `SEMESTER_OPTIONS`, `parseSemester()`, `formatSemester()` | `client/src/utils/courseSemester.js` | Semester/year parsing and formatting |
 | `prepareRichTextInput(value, fallback)` | `client/src/components/questions/richTextUtils.js` | Sanitize and normalize HTML for display |
 | `sanitizeRichHtml(html)` | `client/src/components/questions/richTextUtils.js` | DOMPurify sanitization |

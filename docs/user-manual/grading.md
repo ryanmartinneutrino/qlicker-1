@@ -21,10 +21,11 @@ Related manuals:
 
 1. Open a course and go to the **Grades** tab.
 2. Select one or more sessions to display.
-3. Use **Re-calculate** for one session or all visible sessions to run autograding.
-4. Click a grade cell to open grade details.
-5. Edit marks and feedback per question as needed.
-6. Export CSV using the currently visible columns or sessions.
+3. Make sure the session is **Ended** before you recalculate or edit grades.
+4. Use **Re-calculate** for one session or all visible sessions to run autograding.
+5. Click a grade cell to open grade details.
+6. Edit marks and feedback per question as needed.
+7. Export CSV using the currently visible columns or sessions.
 
 ### Good instructor habits
 
@@ -37,14 +38,16 @@ Related manuals:
 
 1. Open **Review** for a session.
 2. Switch to the **Grading** tab.
-3. If needed, change the point value for a question and confirm the recalculation warning.
-4. Recalculate and review any conflicts or warnings.
-5. Resolve manual-vs-auto conflicts by accepting auto marks per row or in bulk when appropriate.
-6. Return to the student summary view to confirm the grading state makes sense overall.
+3. If the session is still live, end it first. The grading tab stays locked until the session reaches **Ended**.
+4. If needed, change the point value for a question and confirm the recalculation warning.
+5. Recalculate and review any conflicts or warnings.
+6. Resolve manual-vs-auto conflicts by accepting auto marks per row or in bulk when appropriate.
+7. Return to the student summary view to confirm the grading state makes sense overall.
 
 ## Reviewability and student visibility
 
-- Making a session reviewable triggers grade backfill for missing students and makes grades visible.
+- Ending a session creates the instructor-facing grade rows, even if the session is not reviewable yet.
+- Making a session reviewable makes those grades visible to students.
 - Making a session non-reviewable hides grades from students.
 - If autograding cannot fully grade a session, warnings appear so you know more manual work is required.
 - A non-reviewable session does not appear in the student grade table, even if the activity has already finished.
@@ -67,6 +70,7 @@ Tooltip text in the Session Editor explains each formula in the app.
 - Changing a question's point value from the session-review grading panel also triggers recalculation, and those manual marks remain preserved.
 - If recalculation disagrees with an existing manual mark, the manual mark is not overwritten automatically.
 - A conflict dialog lists these differences and allows you to apply automatic values explicitly.
+- When a student has multiple attempts on a question, grading uses that student's latest attempt for that question.
 - Students receive notifications when new feedback is published, so concise and actionable comments are better than long notes.
 
 ## Student expectations

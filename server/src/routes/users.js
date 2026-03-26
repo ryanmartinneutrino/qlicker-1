@@ -228,6 +228,7 @@ const updateUserPropertiesSchema = {
     properties: {
       canPromote: { type: 'boolean' },
       allowEmailLogin: { type: 'boolean' },
+      disabled: { type: 'boolean' },
     },
     additionalProperties: false,
   },
@@ -594,6 +595,10 @@ export default async function userRoutes(app) {
       const existingRoles = existingUser.profile?.roles || [];
       const targetIsStudentOnly = hasOnlyStudentRole(existingRoles);
 
+      if (request.body?.disabled === true && request.params.id === request.user.userId) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Admins cannot disable their own account' });
+      }
+
       if (targetIsStudentOnly) {
         setUpdates['profile.canPromote'] = false;
       } else if (request.body?.canPromote !== undefined) {
@@ -602,6 +607,17 @@ export default async function userRoutes(app) {
       if (request.body?.allowEmailLogin !== undefined) {
         setUpdates.allowEmailLogin = isAdminUser(existingUser) ? true : !!request.body.allowEmailLogin;
         if (request.body.allowEmailLogin === false || isAdminUser(existingUser)) {
+          unsetUpdates['services.resetPassword'] = 1;
+        }
+      }
+      if (request.body?.disabled !== undefined) {
+        const disabled = !!request.body.disabled;
+        setUpdates.disabled = disabled;
+        setUpdates.disabledAt = disabled ? new Date() : null;
+        if (disabled) {
+          setUpdates['services.resume.loginTokens'] = [];
+          setUpdates['services.sso.sessions'] = [];
+          setUpdates.refreshTokenVersion = (Number(existingUser.refreshTokenVersion) || 0) + 1;
           unsetUpdates['services.resetPassword'] = 1;
         }
       }

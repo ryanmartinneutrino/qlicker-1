@@ -36,8 +36,10 @@ import {
 } from '../questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../questions/richTextUtils';
 import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
+import { getLatestResponse } from '../../utils/responses';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const FEEDBACK_INPUT_DEBOUNCE_MS = 180;
 
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
@@ -101,17 +103,6 @@ function buildStudentInitials(student) {
   }
   const email = normalizeValue(student?.email);
   return email ? email.charAt(0).toUpperCase() : '?';
-}
-
-function getLatestResponse(responses = []) {
-  if (!Array.isArray(responses) || responses.length === 0) return null;
-  return [...responses].sort((a, b) => {
-    const attemptDiff = (Number(a?.attempt) || 0) - (Number(b?.attempt) || 0);
-    if (attemptDiff !== 0) return attemptDiff;
-    const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return aTime - bTime;
-  })[responses.length - 1];
 }
 
 function collectAnswerEntries(answer) {
@@ -491,7 +482,7 @@ const GradingTableRow = memo(function GradingTableRow({
           <StudentRichTextEditor
             value={draft.feedback}
             disabled={rowDisabled || saving}
-            onChangeDebounceMs={0}
+            onChangeDebounceMs={FEEDBACK_INPUT_DEBOUNCE_MS}
             onChange={({ html }) => {
               const value = html || '';
               onUpdateDraft((current) => ({ ...current, feedback: value }));
@@ -654,6 +645,9 @@ export default function SessionQuestionGradingPanel({
   }, [activeQuestion]);
 
   const isQuizSession = !!(session?.quiz || session?.practiceQuiz);
+  const gradingLocked = normalizeValue(session?.status)
+    ? session?.status !== 'done'
+    : false;
 
   const questionStatuses = useMemo(() => {
     const eligibleStudents = studentResults.filter((student) => {
@@ -1287,6 +1281,12 @@ export default function SessionQuestionGradingPanel({
         </Alert>
       ) : null}
 
+      {gradingLocked && (
+        <Alert severity="info" sx={{ mb: 1.5 }}>
+          {t('grades.questionPanel.gradingLockedUntilEnded')}
+        </Alert>
+      )}
+
       {renderQuestionRibbon()}
 
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
@@ -1322,12 +1322,13 @@ export default function SessionQuestionGradingPanel({
             onChange={(event) => setQuestionPointsDraft(event.target.value)}
             sx={{ width: 160 }}
             inputProps={{ min: 0, step: 'any' }}
+            disabled={gradingLocked}
           />
           <Button
             size="small"
             variant="outlined"
             onClick={handleOpenQuestionPointsDialog}
-            disabled={!questionPointsDirty || questionPointsSaving || recalculating}
+            disabled={gradingLocked || !questionPointsDirty || questionPointsSaving || recalculating}
           >
             {questionPointsSaving ? t('common.saving') : t('grades.questionPanel.updateQuestionPoints')}
           </Button>
@@ -1405,6 +1406,7 @@ export default function SessionQuestionGradingPanel({
             value={bulkPoints}
             onChange={(event) => setBulkPoints(event.target.value)}
             sx={{ width: 140 }}
+            disabled={gradingLocked || bulkApplying}
           />
           <TextField
             size="small"
@@ -1412,12 +1414,13 @@ export default function SessionQuestionGradingPanel({
             value={bulkFeedback}
             onChange={(event) => setBulkFeedback(event.target.value)}
             sx={{ minWidth: 260, flex: 1 }}
+            disabled={gradingLocked || bulkApplying}
           />
           <Button
             size="small"
             variant="contained"
             onClick={handleBulkSave}
-            disabled={bulkApplying || (!bulkPoints && !bulkFeedback) || selectedFilteredCount === 0}
+            disabled={gradingLocked || bulkApplying || (!bulkPoints && !bulkFeedback) || selectedFilteredCount === 0}
           >
             {bulkApplying ? t('common.saving') : t('common.save')}
           </Button>
@@ -1445,7 +1448,7 @@ export default function SessionQuestionGradingPanel({
           variant="outlined"
           startIcon={<RefreshIcon />}
           onClick={handleRecalculateAll}
-          disabled={recalculating}
+          disabled={gradingLocked || recalculating}
         >
           {t('grades.questionPanel.recalculateGrades')}
         </Button>
@@ -1483,14 +1486,17 @@ export default function SessionQuestionGradingPanel({
       {questionNeedsManualGrading && sortedRows.length > 0 && (
         <Box sx={{ mb: 1.25 }}>
           <Tooltip title={t('grades.questionPanel.speedGrading.buttonTooltip')} arrow>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<SpeedIcon />}
-              onClick={handleOpenSpeedGrading}
-            >
-              {t('grades.questionPanel.speedGrading.buttonLabel')}
-            </Button>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<SpeedIcon />}
+                onClick={handleOpenSpeedGrading}
+                disabled={gradingLocked}
+              >
+                {t('grades.questionPanel.speedGrading.buttonLabel')}
+              </Button>
+            </span>
           </Tooltip>
         </Box>
       )}
@@ -1564,7 +1570,7 @@ export default function SessionQuestionGradingPanel({
             {sortedRows.map((row) => {
               const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
               const saving = !!savingByStudentId[row.studentId];
-              const rowDisabled = !row.gradeId || !row.mark;
+              const rowDisabled = gradingLocked || !row.gradeId || !row.mark;
               const rowDirty = isRowDirty(row);
 
               return (

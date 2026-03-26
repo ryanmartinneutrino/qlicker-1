@@ -24,6 +24,7 @@
     "next": "Suivant",
     "previous": "Précédent",
     "paginationSummary": "Page {{page}} sur {{pages}}",
+    "sessionTools": "Outils des séances",
     "required": "obligatoire",
     "actions": "Actions",
     "status": "Statut",
@@ -247,6 +248,9 @@
       "userPropertiesHelp": "Activez ou désactivez des permissions supplémentaires pour cet utilisateur.",
       "userPropertiesUpdated": "Propriétés de l'utilisateur mises à jour",
       "failedUpdateUserProperties": "Échec de la mise à jour des propriétés de l'utilisateur",
+      "userDisabled": "Utilisateur désactivé",
+      "userRestored": "Utilisateur rétabli",
+      "failedToggleDisabled": "Échec de la mise à jour de l'état du compte",
       "passwordReset": "Mot de passe réinitialisé",
       "failedResetPassword": "Échec de la réinitialisation du mot de passe",
       "resetPassword": "Réinitialiser le mot de passe",
@@ -266,6 +270,13 @@
       "allowEmailLoginAdminAlwaysEnabled": "Les comptes administrateurs conservent toujours l'accès par courriel.",
       "allowEmailLoginNotNeeded": "L'approbation de la connexion par courriel s'applique seulement aux comptes créés par SSO.",
       "ssoCreatedAccount": "Créé par SSO",
+      "active": "Actif",
+      "disabled": "Désactivé",
+      "disableUser": "Désactiver l'utilisateur",
+      "restoreUser": "Rétablir l'utilisateur",
+      "disableLogin": "Désactiver la connexion",
+      "disableLoginHelp": "Empêche la connexion à ce compte tout en conservant ses données pour une restauration ultérieure.",
+      "cannotDisableOwnAccount": "Vous ne pouvez pas désactiver votre propre compte.",
       "emailLoginDisabled": "Connexion par courriel désactivée",
       "sessionActivity": "Activité de session",
       "loggedInNow": "Connecté maintenant",
@@ -506,6 +517,10 @@
       "courseNotFound": "Cours introuvable",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
+      "joinedCount": "{{count}} étudiant a rejoint",
+      "joinedCount_other": "{{count}} étudiants ont rejoint",
+      "needsGrading": "À évaluer",
+      "needsGradingOnly": "À évaluer seulement",
       "video": "Vidéo",
       "failedLoadCourses": "Échec du chargement des cours",
       "failedLoadSessionsForCopy": "Échec du chargement des séances à copier",
@@ -1379,6 +1394,7 @@
       "gradesRecalculated": "Notes recalculées.",
       "failedRecalculate": "Échec du recalcul des notes.",
       "failedLoadGrades": "Échec du chargement des notes pour cette session.",
+      "gradingLockedUntilEnded": "Cette interface d'évaluation est verrouillée pendant que la séance est en direct. Terminez la séance avant de corriger; les éléments de note sont créés lorsque la séance passe à l'état Terminée.",
       "noAnswer": "(pas de réponse)",
       "noCorrectOption": "Aucune option correcte configurée.",
       "manualGradingRequired": "Notation manuelle requise.",
@@ -1656,6 +1672,7 @@
           "subtitle": "Une fois les réglages globaux corrects, les onglets Utilisateurs et Cours deviennent vos outils de soutien quotidiens.",
           "bullets": [
             "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes, réinitialisez les mots de passe locaux et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
+            "Désactivez un utilisateur lorsque vous devez bloquer sa connexion sans effacer l'historique du compte, puis rétablissez ce même compte plus tard si l'accès doit revenir.",
             "Lorsque le SSO institutionnel est activé, les utilisateurs non administrateurs ont besoin de l'exception de connexion par courriel avant que la connexion locale et le courriel de réinitialisation deviennent disponibles.",
             "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
             "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
@@ -1753,6 +1770,7 @@
           "bullets": [
             "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants une fois l'activité terminée.",
             "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
+            "L'onglet de correction reste verrouillé tant que la séance n'est pas Terminée. Terminer la séance crée les éléments de note; la rendre révisable plus tard ne fait que contrôler la visibilité étudiante.",
             "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables.",
             "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],
@@ -1785,6 +1803,7 @@
           "bullets": [
             "Entrez le code d'inscription exactement comme votre enseignant vous le donne. Une fois inscrit, le cours apparaît sur votre tableau de bord.",
             "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux.",
+            "Les listes de séances gardent la recherche, les filtres et la pagination dans une zone d'outils de séance repliable afin que vous n'ouvriez les contrôles que lorsque nécessaire.",
             "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais.",
             "En général, vous n'avez besoin du code d'inscription qu'une seule fois par cours. Une fois accepté, le cours reste sur votre tableau de bord jusqu'à ce que vous en soyez retiré ou qu'il soit archivé pour votre compte."
           ],
@@ -1801,7 +1820,8 @@
             "Les séances interactives se déroulent généralement en direct. Un code d'accès peut être requis et l'enseignant décide quand les réponses ouvrent, ferment ou affichent des statistiques.",
             "Les quiz ont une fenêtre de temps définie et demandent généralement de répondre à tout l'ensemble avant la remise finale. Votre travail s'enregistre pendant la navigation.",
             "Les séances de pratique servent à l'étude personnelle et peuvent sembler plus flexibles parce qu'elles sont conçues pour la répétition, non pour suivre un cours en direct.",
-            "Des diapositives peuvent apparaître entre les questions. Ce sont des pages de contenu; lisez-les attentivement avant de continuer."
+            "Des diapositives peuvent apparaître entre les questions. Ce sont des pages de contenu; lisez-les attentivement avant de continuer.",
+            "Si votre enseignant révèle les statistiques d'un nuage de mots ou d'un histogramme, la vue devrait se mettre à jour automatiquement sans rechargement."
           ]
         },
         {

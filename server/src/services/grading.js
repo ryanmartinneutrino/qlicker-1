@@ -770,7 +770,18 @@ export async function recalculateSessionGrades({
   });
 
   const studentById = new Map(studentDocs.map((student) => [String(student._id), student]));
-  const existingGradeByStudentId = new Map(existingGradeDocs.map((grade) => [String(grade.userId), grade]));
+  const existingGradesByStudentId = new Map();
+  existingGradeDocs.forEach((grade) => {
+    const studentId = String(grade?.userId || '');
+    if (!studentId) return;
+    if (!existingGradesByStudentId.has(studentId)) {
+      existingGradesByStudentId.set(studentId, []);
+    }
+    existingGradesByStudentId.get(studentId).push(grade);
+  });
+  const duplicateGradeStudentIds = [...existingGradesByStudentId.entries()]
+    .filter(([, grades]) => grades.length > 1)
+    .map(([studentId]) => studentId);
 
   const studentIds = Array.isArray(course.students) ? course.students.map((studentId) => String(studentId)) : [];
 
@@ -780,7 +791,10 @@ export async function recalculateSessionGrades({
   const manualMarkConflicts = [];
 
   for (const studentId of studentIds) {
-    const existingGradeDoc = existingGradeByStudentId.get(studentId) || null;
+    const existingGradeGroup = existingGradesByStudentId.get(studentId) || [];
+    const existingGradeDoc = existingGradeGroup.length > 0
+      ? existingGradeGroup[existingGradeGroup.length - 1]
+      : null;
 
     if (missingOnly && existingGradeDoc) {
       skippedExistingCount += 1;
@@ -915,8 +929,12 @@ export async function recalculateSessionGrades({
     }
 
     if (existingGradeDoc) {
-      await Grade.updateOne(
-        { _id: existingGradeDoc._id },
+      await Grade.updateMany(
+        {
+          sessionId: normalizedSessionId,
+          courseId,
+          userId: studentId,
+        },
         {
           $set: {
             name: gradeSource.name,
@@ -958,6 +976,9 @@ export async function recalculateSessionGrades({
   }
   if (manualMarkConflicts.length > 0) {
     warningMessages.push('Some manual mark overrides differ from recalculated automatic marks and were preserved.');
+  }
+  if (duplicateGradeStudentIds.length > 0) {
+    warningMessages.push('Duplicate legacy grade rows were synchronized for some students.');
   }
 
   return {

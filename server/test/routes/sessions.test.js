@@ -1712,6 +1712,67 @@ describe('POST /api/v1/sessions/:id/end', () => {
     expect(body.session.reviewable).toBe(true);
   });
 
+  it('seeds hidden grade rows when ending a session without making it reviewable', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await Question.create({
+      type: 0,
+      creator: prof._id,
+      owner: prof._id,
+      courseId: course._id,
+      sessionId: session._id,
+      plainText: 'Pick one',
+      content: '<p>Pick one</p>',
+      options: [
+        { answer: 'A', plainText: 'A', correct: true },
+        { answer: 'B', plainText: 'B', correct: false },
+      ],
+      sessionOptions: {
+        points: 1,
+        maxAttempts: 1,
+        attemptWeights: [1],
+        attempts: [{ number: 1, closed: false }],
+      },
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [question._id],
+        joined: [student._id],
+      },
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'A',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const res = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.status).toBe('done');
+    expect(res.json().session.reviewable).toBe(false);
+
+    const grades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
+    expect(grades).toHaveLength(1);
+    expect(grades[0].visibleToStudents).toBe(false);
+    expect(grades[0].marks).toHaveLength(1);
+    expect(grades[0].marks[0].attempt).toBe(1);
+  });
+
   it('returns a non-mutating warning before ending with reviewable manual-grading questions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { prof, profToken, course } = await setupCourseWithStudent();

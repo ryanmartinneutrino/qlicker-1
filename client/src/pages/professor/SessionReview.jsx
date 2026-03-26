@@ -29,6 +29,7 @@ import HistogramPanel from '../../components/questions/HistogramPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import { getLatestResponse } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -238,17 +239,6 @@ function collectAnswerEntries(answer) {
     }
   }
   return [answer];
-}
-
-function getLatestResponse(responses = []) {
-  if (!Array.isArray(responses) || responses.length === 0) return null;
-  return [...responses].sort((a, b) => {
-    const attemptDiff = (Number(a?.attempt) || 0) - (Number(b?.attempt) || 0);
-    if (attemptDiff !== 0) return attemptDiff;
-    const aTime = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return aTime - bTime;
-  })[responses.length - 1];
 }
 
 function isLatestResponseCorrect(question, response) {

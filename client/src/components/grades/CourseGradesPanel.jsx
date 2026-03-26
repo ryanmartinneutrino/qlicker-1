@@ -40,6 +40,12 @@ import apiClient from '../../api/client';
 import StudentIdentity from '../common/StudentIdentity';
 import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
 import QuestionDisplay from '../questions/QuestionDisplay';
+import {
+  TYPE_COLORS,
+  getQuestionTypeLabel,
+  normalizeQuestionType,
+} from '../questions/constants';
+import { getLatestResponse } from '../../utils/responses';
 
 function normalizeAnswerValue(value) {
   if (value === null || value === undefined) return '';
@@ -268,30 +274,6 @@ function isCorrectOption(option) {
   return Boolean(value);
 }
 
-function getLatestResponse(responses = []) {
-  if (!Array.isArray(responses) || responses.length === 0) return null;
-
-  let latestResponse = responses[0];
-  for (let index = 1; index < responses.length; index += 1) {
-    const current = responses[index];
-    const currentAttempt = Number(current?.attempt) || 0;
-    const latestAttempt = Number(latestResponse?.attempt) || 0;
-    if (currentAttempt > latestAttempt) {
-      latestResponse = current;
-      continue;
-    }
-    if (currentAttempt < latestAttempt) continue;
-
-    const currentTime = new Date(current?.updatedAt || current?.createdAt || 0).getTime();
-    const latestTime = new Date(latestResponse?.updatedAt || latestResponse?.createdAt || 0).getTime();
-    if (currentTime >= latestTime) {
-      latestResponse = current;
-    }
-  }
-
-  return latestResponse;
-}
-
 function formatAnswerValue(question, answer) {
   if (!question) return normalizeAnswerValue(answer) || '—';
   const type = Number(question?.type);
@@ -323,29 +305,6 @@ function formatAnswerValue(question, answer) {
   }
 
   return normalizeAnswerValue(answer) || '—';
-}
-
-function formatCorrectAnswerValue(question, t) {
-  if (!question) return '—';
-  const type = Number(question?.type);
-  const options = Array.isArray(question?.options) ? question.options : [];
-
-  if ([QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(type)) {
-    const correctLabels = options
-      .map((option, index) => (isCorrectOption(option) ? OPTION_LETTERS[index] : null))
-      .filter(Boolean);
-    return correctLabels.length ? correctLabels.join(', ') : '—';
-  }
-
-  if (type === QUESTION_TYPES.NUMERICAL) {
-    const expected = Number(question?.correctNumerical);
-    const toleranceRaw = Number(question?.toleranceNumerical ?? 0);
-    if (!Number.isFinite(expected)) return '—';
-    const tolerance = Number.isFinite(toleranceRaw) ? Math.abs(toleranceRaw) : 0;
-    return t('grades.coursePanel.toleranceLabel', { expected, tolerance });
-  }
-
-  return normalizeAnswerValue(question?.solution) || t('grades.coursePanel.manualGrading');
 }
 
 function buildConflictQuestionLabel(conflict, t) {
@@ -392,6 +351,7 @@ function MarkQuestionDetailPanel({
   error = '',
   student = null,
   summary = null,
+  mark = null,
   question = null,
   latestResponse = null,
   manualPoints = '0',
@@ -404,7 +364,14 @@ function MarkQuestionDetailPanel({
 }) {
   const { t } = useTranslation();
   const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
-  const correctAnswer = formatCorrectAnswerValue(question, t);
+  const questionType = normalizeQuestionType(question);
+  const questionTypeLabel = question
+    ? getQuestionTypeLabel(t, questionType, {
+      key: 'grades.coursePanel.question',
+      defaultValue: 'Question',
+    })
+    : '';
+  const needsGrading = !!mark?.needsGrading;
 
   if (loading) {
     return (
@@ -433,6 +400,23 @@ function MarkQuestionDetailPanel({
 
       {question ? (
         <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1 }}>
+            {questionTypeLabel ? (
+              <Chip
+                size="small"
+                label={questionTypeLabel}
+                color={TYPE_COLORS[questionType] || 'default'}
+              />
+            ) : null}
+            {mark ? (
+              <Chip
+                size="small"
+                label={needsGrading ? t('grades.coursePanel.needsGrading') : t('grades.coursePanel.graded')}
+                color={needsGrading ? 'error' : 'success'}
+                variant={needsGrading ? 'filled' : 'outlined'}
+              />
+            ) : null}
+          </Box>
           <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{t('grades.coursePanel.question')}</Typography>
           <QuestionDisplay question={question} />
         </Paper>
@@ -445,9 +429,6 @@ function MarkQuestionDetailPanel({
       <Paper variant="outlined" sx={{ p: 1.25, mb: 1.5 }}>
         <Typography variant="body2" sx={{ mb: 0.5 }}>
           <strong>{t('grades.coursePanel.studentAnswer')}</strong> {studentAnswer}
-        </Typography>
-        <Typography variant="body2">
-          <strong>{t('grades.coursePanel.correctAnswer')}</strong> {correctAnswer}
         </Typography>
       </Paper>
 
@@ -747,6 +728,7 @@ function ConflictMarkDialog({
           loading={loading}
           error={error}
           student={fallbackStudent}
+          mark={conflict}
           question={question}
           latestResponse={latestResponse}
           manualPoints={manualPoints}
@@ -828,6 +810,7 @@ function QuestionMarkDialog({
           loading={loading}
           error={error}
           student={student}
+          mark={mark}
           question={question}
           latestResponse={latestResponse}
           manualPoints={manualPoints}
@@ -848,13 +831,13 @@ function QuestionMarkDialog({
           )}
           actionButtons={(
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Button size="small" variant="outlined" onClick={onSave} disabled={saving}>
+              <Button size="small" variant="contained" onClick={onSave} disabled={saving}>
                 {t('grades.coursePanel.saveMark')}
               </Button>
               {canSetAutomatic ? (
                 <Button
                   size="small"
-                  variant="text"
+                  variant="outlined"
                   startIcon={<AutoFixHighIcon />}
                   onClick={onSetAutomatic}
                   disabled={saving}

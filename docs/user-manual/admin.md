@@ -80,12 +80,15 @@ From there you can:
 - change roles
 - verify email status
 - inspect or update per-user properties
+- disable an account temporarily and restore it later without losing its history
 - confirm whether a user is currently logged in and see the IP address for each active session
 - inspect the last recorded login time and IP address when the user is not currently signed in
 - reset a user's local password
 - control whether local email login is allowed for a specific account when institution-wide SSO is enabled
 
 Use extra care when changing roles because the effect is immediate.
+
+Prefer disabling over deleting when support staff may need to restore the account later. A disabled user cannot log in, refresh tokens, or continue using an existing authenticated session, but the underlying records stay available for future restoration.
 
 The Last Login column now shows date and time, not just the day, so support staff can compare account activity against reports from a user more accurately.
 

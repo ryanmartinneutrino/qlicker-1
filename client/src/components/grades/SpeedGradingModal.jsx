@@ -33,6 +33,8 @@ const richContentSx = {
   },
 };
 
+const FEEDBACK_INPUT_DEBOUNCE_MS = 180;
+
 function RichContent({ html, fallback }) {
   const ref = useRef(null);
   const prepared = prepareRichTextInput(html || '', fallback || '');
@@ -330,7 +332,7 @@ export default memo(function SpeedGradingModal({
           <StudentRichTextEditor
             value={feedback}
             disabled={saving}
-            onChangeDebounceMs={0}
+            onChangeDebounceMs={FEEDBACK_INPUT_DEBOUNCE_MS}
             onChange={({ html }) => setFeedback(html || '')}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={t('grades.coursePanel.feedback')}

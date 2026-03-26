@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitForElementToBeRemoved, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, waitForElementToBeRemoved, within } from '@testing-library/react';
 import CourseGradesPanel from './CourseGradesPanel';
 import apiClient from '../../api/client';
 import i18n from '../../i18n';
@@ -82,6 +82,33 @@ describe('CourseGradesPanel', () => {
     vi.clearAllMocks();
     i18n.changeLanguage('en');
     apiClient.get.mockResolvedValue({ data: buildGradesPayload() });
+    apiClient.patch.mockResolvedValue({
+      data: {
+        grade: {
+          ...buildGradesPayload().rows[0].grades[0],
+          marks: [
+            {
+              questionId: 'q-mc',
+              points: 1,
+              outOf: 1,
+              automatic: true,
+              needsGrading: false,
+              attempt: 1,
+              feedback: '',
+            },
+            {
+              questionId: 'q-sa',
+              points: 0.5,
+              outOf: 1,
+              automatic: false,
+              needsGrading: false,
+              attempt: 1,
+              feedback: '',
+            },
+          ],
+        },
+      },
+    });
   });
 
   it('uses student-mode grading labels without numeric ungraded counts', async () => {
@@ -192,9 +219,78 @@ describe('CourseGradesPanel', () => {
     await screen.findByText(/manual only/i);
 
     fireEvent.click(screen.getByRole('button', { name: /q2/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
 
-    expect(await screen.findByText(/because the derivative is positive\./i)).toBeInTheDocument();
-    expect(screen.getByText(/explain your reasoning/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save mark/i })).toBeInTheDocument();
+    expect(await within(questionDialog).findByText(/because the derivative is positive\./i)).toBeInTheDocument();
+    expect(within(questionDialog).getByText(/explain your reasoning/i)).toBeInTheDocument();
+    expect(within(questionDialog).getAllByText(/short answer/i).length).toBeGreaterThan(0);
+    expect(within(questionDialog).getByRole('button', { name: /save mark/i })).toBeInTheDocument();
+  });
+
+  it('saves updated manual points from the nested question detail dialog', async () => {
+    apiClient.get.mockImplementation(async (url) => {
+      if (url === '/courses/course-1/grades') {
+        return { data: buildGradesPayload() };
+      }
+      if (url === '/sessions/session-1/results') {
+        return {
+          data: {
+            questions: [
+              {
+                _id: 'q-sa',
+                type: 2,
+                content: '<p>Explain your reasoning</p>',
+                plainText: 'Explain your reasoning',
+                sessionOptions: { points: 1 },
+              },
+            ],
+            studentResults: [
+              {
+                studentId: 'student-1',
+                questionResults: [
+                  {
+                    questionId: 'q-sa',
+                    responses: [
+                      {
+                        attempt: 1,
+                        answer: 'Because the derivative is positive.',
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    render(
+      <CourseGradesPanel
+        courseId="course-1"
+        instructorView
+        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 5, autoGradeableQuestionIds: ['q-mc'] }]}
+      />
+    );
+
+    await openInstructorGradeTable();
+    fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
+    await screen.findByText(/manual only/i);
+    fireEvent.click(screen.getByRole('button', { name: /q2/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
+
+    fireEvent.change(within(questionDialog).getByLabelText(/manual points/i), { target: { value: '0.5' } });
+    fireEvent.click(within(questionDialog).getByRole('button', { name: /save mark/i }));
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith('/grades/grade-1/marks/q-sa', {
+        points: 0.5,
+        feedback: '',
+      });
+    });
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledTimes(3);
+    });
   });
 });

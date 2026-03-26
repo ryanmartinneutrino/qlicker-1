@@ -665,6 +665,9 @@ describe('Admin user management', () => {
       emails: [{ address: 'sso-target@example.com', verified: true }],
       services: {
         password: { hash: await User.hashPassword('password123') },
+        resume: {
+          loginTokens: [{ sessionId: 'device-1', createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000) }],
+        },
         sso: { id: 'sso-target-1', email: 'sso-target@example.com' },
         resetPassword: {
           token: 'pending-reset',
@@ -695,10 +698,28 @@ describe('Admin user management', () => {
     expect(disableRes.statusCode).toBe(200);
     expect(disableRes.json().allowEmailLogin).toBe(false);
 
+    const disableAccountRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { disabled: true },
+    });
+    expect(disableAccountRes.statusCode).toBe(200);
+    expect(disableAccountRes.json().disabled).toBe(true);
+
+    const restoreAccountRes = await authenticatedRequest(app, 'PATCH', `/api/v1/users/${target._id}/properties`, {
+      token,
+      payload: { disabled: false },
+    });
+    expect(restoreAccountRes.statusCode).toBe(200);
+    expect(restoreAccountRes.json().disabled).toBe(false);
+
     const updated = await User.findById(target._id);
     expect(updated.profile.canPromote).toBe(true);
     expect(updated.allowEmailLogin).toBe(false);
     expect(updated.services?.resetPassword).toBeUndefined();
+    expect(updated.refreshTokenVersion).toBe(1);
+    expect(updated.services?.resume?.loginTokens).toEqual([]);
+    expect(updated.disabled).toBe(false);
+    expect(updated.disabledAt).toBeNull();
   });
 
   it('admin can reset a user password from the user properties flow', async (ctx) => {

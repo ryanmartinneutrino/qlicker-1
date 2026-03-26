@@ -230,7 +230,7 @@ describe('SessionQuestionGradingPanel', () => {
     });
   });
 
-  it('updates feedback drafts immediately while typing in the grading table', async () => {
+  it('updates feedback drafts after the editor debounce while typing in the grading table', async () => {
     apiClient.get.mockResolvedValueOnce({
       data: {
         grades: [
@@ -279,7 +279,54 @@ describe('SessionQuestionGradingPanel', () => {
 
     fireEvent.change(feedbackInput, { target: { value: 'Immediate feedback' } });
 
-    expect(rowSaveButton).not.toBeDisabled();
+    await waitFor(() => {
+      expect(rowSaveButton).not.toBeDisabled();
+    });
+  });
+
+  it('locks grading controls until the session has ended', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', status: 'running', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    expect(await screen.findByText(/locked while the session is live/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /re-calculate all grades/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /fast grading interface/i })).toBeDisabled();
+    expect(screen.getByLabelText(/feedback — ada lovelace/i)).toBeDisabled();
   });
 
   it('filters the grading table down to students with responses only', async () => {

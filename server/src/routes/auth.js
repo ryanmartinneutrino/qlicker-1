@@ -165,6 +165,14 @@ function isLoginLocked(user) {
   return !!lockedUntil && lockedUntil.getTime() > Date.now();
 }
 
+function isUserDisabled(user) {
+  return user?.disabled === true;
+}
+
+function getDisabledAccountMessage() {
+  return 'This account has been disabled. Please contact an administrator.';
+}
+
 function prepareLoginLockoutReset(user) {
   if (!user) return;
   user.failedLoginAttempts = 0;
@@ -295,6 +303,14 @@ function registerSsoRoutes(app, routes) {
     let user = await User.findOne({ 'emails.address': emailRegex(email) });
 
     const requestIp = getRequestIp(request);
+
+    if (user && isUserDisabled(user)) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'ACCOUNT_DISABLED',
+        message: getDisabledAccountMessage(),
+      });
+    }
 
     if (!user) {
       const isProfessor = settings.SSO_roleProfName && roleValue === settings.SSO_roleProfName;
@@ -583,6 +599,14 @@ export default async function authRoutes(app) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
     }
 
+    if (isUserDisabled(user)) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'ACCOUNT_DISABLED',
+        message: getDisabledAccountMessage(),
+      });
+    }
+
     if (!canUseEmailLogin(user, settings)) {
       request.log.warn({ email: normalizedEmail, userId: user._id }, 'Login blocked: SSO-only account');
       return reply.code(403).send({
@@ -711,6 +735,14 @@ export default async function authRoutes(app) {
       if (!user) {
         return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
       }
+      if (isUserDisabled(user)) {
+        clearRefreshTokenCookie(reply);
+        return reply.code(403).send({
+          error: 'Forbidden',
+          code: 'ACCOUNT_DISABLED',
+          message: getDisabledAccountMessage(),
+        });
+      }
 
       const nextSessionId = rotateRefreshSession(user, payload.sessionId, getRequestIp(request));
       if (!nextSessionId) {
@@ -738,6 +770,14 @@ export default async function authRoutes(app) {
     const user = await consumeLegacyRefreshTokenVersion(payload.userId, payload.version);
     if (!user) {
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid refresh token' });
+    }
+    if (isUserDisabled(user)) {
+      clearRefreshTokenCookie(reply);
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'ACCOUNT_DISABLED',
+        message: getDisabledAccountMessage(),
+      });
     }
 
     const settings = await getAuthSettings();
@@ -775,7 +815,7 @@ export default async function authRoutes(app) {
 
       // Always return success to avoid user enumeration
       const user = await User.findOne({ 'emails.address': emailRegex(normalizedEmail) });
-      if (user && canUseEmailLogin(user, settings)) {
+      if (user && !isUserDisabled(user) && canUseEmailLogin(user, settings)) {
         const token = crypto.randomBytes(32).toString('hex');
         user.services.resetPassword = {
           token,
@@ -818,6 +858,13 @@ export default async function authRoutes(app) {
       const user = await User.findOne({ 'services.resetPassword.token': token });
       if (!user) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Invalid or expired token' });
+      }
+      if (isUserDisabled(user)) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          code: 'ACCOUNT_DISABLED',
+          message: getDisabledAccountMessage(),
+        });
       }
 
       const settings = await getAuthSettings();
