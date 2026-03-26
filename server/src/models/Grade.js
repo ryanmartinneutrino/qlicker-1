@@ -49,6 +49,10 @@ GradeSchema.index({ userId: 1 });
 GradeSchema.index({ sessionId: 1 });
 GradeSchema.index({ courseId: 1 });
 GradeSchema.index({ userId: 1, sessionId: 1 });
+GradeSchema.index(
+  { courseId: 1, sessionId: 1, userId: 1 },
+  { unique: true, name: 'grade_identity_unique' }
+);
 
 const Grade = mongoose.model('Grade', GradeSchema);
 

@@ -692,12 +692,14 @@ export async function recalculateSessionGrades({
 
   const responsesByQuestionId = new Map();
   const latestResponseByStudentQuestion = new Map();
+  const responderUserIds = new Set();
 
   responseDocs.forEach((response) => {
     const questionId = normalizeAnswerValue(response?.questionId);
     if (!questionId) return;
     const studentId = getResponseStudentId(response);
     if (!studentId) return;
+    responderUserIds.add(studentId);
 
     if (!responsesByQuestionId.has(questionId)) {
       responsesByQuestionId.set(questionId, []);
@@ -783,11 +785,28 @@ export async function recalculateSessionGrades({
     .filter(([, grades]) => grades.length > 1)
     .map(([studentId]) => studentId);
 
-  const studentIds = Array.isArray(course.students) ? course.students.map((studentId) => String(studentId)) : [];
+  const courseStudentIds = Array.isArray(course.students) ? course.students.map((studentId) => String(studentId)) : [];
+  const courseStudentSet = new Set(courseStudentIds);
+  const supplementalStudentIds = [...new Set([
+    ...joinedSet,
+    ...responderUserIds,
+    ...existingGradesByStudentId.keys(),
+  ])].filter((studentId) => !courseStudentSet.has(studentId));
+  const studentIds = [...courseStudentIds, ...supplementalStudentIds];
+
+  if (supplementalStudentIds.length > 0) {
+    const supplementalStudentDocs = await User.find({ _id: { $in: supplementalStudentIds } })
+      .select('_id profile emails email')
+      .lean();
+    supplementalStudentDocs.forEach((student) => {
+      studentById.set(String(student._id), student);
+    });
+  }
 
   let createdGradeCount = 0;
   let updatedGradeCount = 0;
   let skippedExistingCount = 0;
+  let deduplicatedGradeRowCount = 0;
   const manualMarkConflicts = [];
 
   for (const studentId of studentIds) {
@@ -795,8 +814,18 @@ export async function recalculateSessionGrades({
     const existingGradeDoc = existingGradeGroup.length > 0
       ? existingGradeGroup[existingGradeGroup.length - 1]
       : null;
+    const canonicalGradeId = normalizeAnswerValue(existingGradeDoc?._id);
+    const duplicateGradeIds = existingGradeGroup
+      .map((grade) => normalizeAnswerValue(grade?._id))
+      .filter((gradeId) => gradeId && gradeId !== canonicalGradeId);
 
     if (missingOnly && existingGradeDoc) {
+      if (duplicateGradeIds.length > 0) {
+        const duplicateDeleteResult = await Grade.deleteMany({ _id: { $in: duplicateGradeIds } });
+        deduplicatedGradeRowCount += Number(
+          duplicateDeleteResult?.deletedCount ?? duplicateDeleteResult?.n ?? 0
+        );
+      }
       skippedExistingCount += 1;
       continue;
     }
@@ -928,36 +957,48 @@ export async function recalculateSessionGrades({
       });
     }
 
+    const gradeIdentityFilter = {
+      sessionId: normalizedSessionId,
+      courseId,
+      userId: studentId,
+    };
+    const gradeUpdateSet = {
+      name: gradeSource.name,
+      marks: gradeSource.marks,
+      joined: gradeSource.joined,
+      participation: gradeSource.participation,
+      value: gradeSource.value,
+      automatic: gradeSource.automatic,
+      points: gradeSource.points,
+      outOf: gradeSource.outOf,
+      numAnswered: gradeSource.numAnswered,
+      numQuestions: gradeSource.numQuestions,
+      numAnsweredTotal: gradeSource.numAnsweredTotal,
+      numQuestionsTotal: gradeSource.numQuestionsTotal,
+      visibleToStudents: gradeSource.visibleToStudents,
+      needsGrading: gradeSource.needsGrading,
+    };
+
     if (existingGradeDoc) {
-      await Grade.updateMany(
-        {
-          sessionId: normalizedSessionId,
-          courseId,
-          userId: studentId,
-        },
-        {
-          $set: {
-            name: gradeSource.name,
-            marks: gradeSource.marks,
-            joined: gradeSource.joined,
-            participation: gradeSource.participation,
-            value: gradeSource.value,
-            automatic: gradeSource.automatic,
-            points: gradeSource.points,
-            outOf: gradeSource.outOf,
-            numAnswered: gradeSource.numAnswered,
-            numQuestions: gradeSource.numQuestions,
-            numAnsweredTotal: gradeSource.numAnsweredTotal,
-            numQuestionsTotal: gradeSource.numQuestionsTotal,
-            visibleToStudents: gradeSource.visibleToStudents,
-            needsGrading: gradeSource.needsGrading,
-          },
-        }
-      );
+      await Grade.updateMany(gradeIdentityFilter, { $set: gradeUpdateSet });
       updatedGradeCount += 1;
     } else {
-      await Grade.create(gradeSource);
-      createdGradeCount += 1;
+      try {
+        await Grade.create(gradeSource);
+        createdGradeCount += 1;
+      } catch (err) {
+        // Another concurrent recalculation may have inserted this identity.
+        if (err?.code !== 11000) throw err;
+        await Grade.updateMany(gradeIdentityFilter, { $set: gradeUpdateSet });
+        updatedGradeCount += 1;
+      }
+    }
+
+    if (duplicateGradeIds.length > 0) {
+      const duplicateDeleteResult = await Grade.deleteMany({ _id: { $in: duplicateGradeIds } });
+      deduplicatedGradeRowCount += Number(
+        duplicateDeleteResult?.deletedCount ?? duplicateDeleteResult?.n ?? 0
+      );
     }
   }
 
@@ -977,8 +1018,8 @@ export async function recalculateSessionGrades({
   if (manualMarkConflicts.length > 0) {
     warningMessages.push('Some manual mark overrides differ from recalculated automatic marks and were preserved.');
   }
-  if (duplicateGradeStudentIds.length > 0) {
-    warningMessages.push('Duplicate legacy grade rows were synchronized for some students.');
+  if (duplicateGradeStudentIds.length > 0 || deduplicatedGradeRowCount > 0) {
+    warningMessages.push('Duplicate legacy grade rows were synchronized and deduplicated for some students.');
   }
 
   return {
@@ -992,6 +1033,7 @@ export async function recalculateSessionGrades({
       createdGradeCount,
       updatedGradeCount,
       skippedExistingCount,
+      deduplicatedGradeRowCount,
       totalGradeCount: persistedGrades.length,
       ungradableQuestionIds: [...ungradableQuestionIds],
       lowResponseExcludedQuestionIds: [...lowResponseExcludedQuestionIds],

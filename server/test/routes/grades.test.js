@@ -713,15 +713,104 @@ describe('Grading routes', () => {
     expect(restoredGrades.every((grade) => grade.marks[0]?.needsGrading === true)).toBe(true);
   });
 
-  it('synchronizes duplicate legacy grade rows and keeps the latest attempt per student', async (ctx) => {
+  it('keeps recalculating existing session grade rows after students are removed from course roster', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'removed-roster-student',
+    });
+
+    const activeStudent = students[0];
+    const removedStudent = students[1];
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Removed roster grading session' });
+    const question = await createSaQuestion({
+      creatorId: activeStudent._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: true,
+        joined: [activeStudent._id, removedStudent._id],
+        questions: [question._id],
+      },
+    });
+
+    await Response.create([
+      {
+        questionId: question._id,
+        studentUserId: activeStudent._id,
+        attempt: 1,
+        answer: 'Still enrolled response',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      {
+        questionId: question._id,
+        studentUserId: removedStudent._id,
+        attempt: 1,
+        answer: 'Removed roster response',
+        createdAt: new Date('2026-01-01T00:01:00.000Z'),
+      },
+    ]);
+
+    const initialRecalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(initialRecalc.statusCode).toBe(200);
+
+    const removedStudentGradeBeforeRemoval = await Grade.findOne({
+      sessionId: session._id,
+      courseId: course._id,
+      userId: removedStudent._id,
+    }).lean();
+    expect(removedStudentGradeBeforeRemoval).toBeTruthy();
+    expect(removedStudentGradeBeforeRemoval.marks[0]?.outOf).toBe(1);
+    expect(removedStudentGradeBeforeRemoval.marks[0]?.needsGrading).toBe(true);
+
+    await Course.findByIdAndUpdate(course._id, {
+      $set: { students: [activeStudent._id] },
+    });
+
+    await Question.findByIdAndUpdate(question._id, {
+      $set: { 'sessionOptions.points': 0 },
+    });
+
+    const recalcAfterRemoval = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(recalcAfterRemoval.statusCode).toBe(200);
+    expect(recalcAfterRemoval.json().summary.updatedGradeCount).toBe(2);
+
+    const removedStudentGradeAfterRemoval = await Grade.findOne({
+      sessionId: session._id,
+      courseId: course._id,
+      userId: removedStudent._id,
+    }).lean();
+    const removedStudentMark = removedStudentGradeAfterRemoval.marks.find(
+      (mark) => mark.questionId === question._id
+    );
+    expect(removedStudentMark.outOf).toBe(0);
+    expect(removedStudentMark.points).toBe(0);
+    expect(removedStudentMark.needsGrading).toBe(false);
+    expect(removedStudentGradeAfterRemoval.needsGrading).toBe(false);
+  });
+
+  it('prevents duplicate grade identities and keeps the latest attempt per student', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     const { profToken, course, students } = await setupCourseWithStudents({
       studentCount: 1,
-      prefix: 'duplicate-grade-sync',
+      prefix: 'grade-identity-unique',
     });
 
-    const session = await createSessionInCourse(profToken, course._id, { name: 'Duplicate grade sync session' });
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Grade identity unique session' });
     const question = await createSaQuestion({
       creatorId: students[0]._id,
       sessionId: session._id,
@@ -756,48 +845,25 @@ describe('Grading routes', () => {
       },
     ]);
 
-    await Grade.create([
-      {
-        userId: students[0]._id,
-        courseId: course._id,
-        sessionId: session._id,
-        name: session.name,
-        joined: true,
-        points: 0,
-        outOf: 1,
-        visibleToStudents: false,
-        marks: [{
-          questionId: question._id,
-          points: 0,
-          outOf: 1,
-          automatic: false,
-          needsGrading: true,
-          attempt: 1,
-          responseId: new mongoose.Types.ObjectId().toString(),
-          feedback: '',
-        }],
-      },
-      {
-        userId: students[0]._id,
-        courseId: course._id,
-        sessionId: session._id,
-        name: session.name,
-        joined: true,
-        points: 0,
-        outOf: 1,
-        visibleToStudents: false,
-        marks: [{
-          questionId: question._id,
-          points: 0,
-          outOf: 1,
-          automatic: false,
-          needsGrading: true,
-          attempt: 1,
-          responseId: new mongoose.Types.ObjectId().toString(),
-          feedback: '',
-        }],
-      },
-    ]);
+    const initialRecalcRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+    expect(initialRecalcRes.statusCode).toBe(200);
+
+    await Grade.syncIndexes();
+
+    await expect(Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: session._id,
+      name: session.name,
+      joined: true,
+      points: 0,
+      outOf: 0,
+      visibleToStudents: false,
+      marks: [],
+    })).rejects.toMatchObject({ code: 11000 });
 
     const recalcRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
       token: profToken,
@@ -805,16 +871,17 @@ describe('Grading routes', () => {
     });
 
     expect(recalcRes.statusCode).toBe(200);
-    expect(recalcRes.json().summary.warnings.join(' ')).toContain('Duplicate legacy grade rows');
 
-    const duplicateGrades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
-    expect(duplicateGrades).toHaveLength(2);
-    duplicateGrades.forEach((grade) => {
-      expect(grade.outOf).toBe(0);
-      expect(grade.marks[0]?.outOf).toBe(0);
-      expect(grade.marks[0]?.attempt).toBe(2);
-      expect(grade.marks[0]?.needsGrading).toBe(false);
-    });
+    const persistedGrades = await Grade.find({
+      sessionId: session._id,
+      courseId: course._id,
+      userId: students[0]._id,
+    }).lean();
+    expect(persistedGrades).toHaveLength(1);
+    expect(persistedGrades[0].outOf).toBe(0);
+    expect(persistedGrades[0].marks[0]?.outOf).toBe(0);
+    expect(persistedGrades[0].marks[0]?.attempt).toBe(2);
+    expect(persistedGrades[0].marks[0]?.needsGrading).toBe(false);
   });
 
   it('enforces student visibility restrictions for course/session grades and blocks student recalculation', async (ctx) => {
