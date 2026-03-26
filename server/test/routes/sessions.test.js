@@ -333,6 +333,50 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     expect(listedWithoutFeedback.hasNewFeedback).toBe(false);
   });
 
+  it('hydrates legacy session response tracking and exposes hasResponses in the session list', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student } = await setupCourseWithStudent();
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Tracked Session' });
+    const session = sessionRes.json().session;
+    const question = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Tracked question</p>',
+      plainText: 'Tracked question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '0',
+      createdAt: new Date(),
+    });
+    await Session.updateOne(
+      { _id: session._id },
+      { $unset: { hasResponses: 1, questionResponseCounts: 1 } }
+    );
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const listed = res.json().sessions.find((row) => row._id === session._id);
+    expect(listed).toBeDefined();
+    expect(listed.hasResponses).toBe(true);
+    expect(listed.questionResponseCounts).toBeUndefined();
+
+    const persisted = await Session.findById(session._id).lean();
+    expect(persisted.hasResponses).toBe(true);
+    expect(Number(persisted.questionResponseCounts?.[question._id] || 0)).toBe(1);
+  });
+
   it('non-member gets 403', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -518,6 +562,56 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     expect(body3.total).toBe(5);
     expect(body3.page).toBe(3);
     expect(body3.pages).toBe(3);
+  });
+
+  it('returns per-type session counts for paginated professor and student session lists', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const interactiveARes = await createSessionInCourse(profToken, course._id, { name: 'Interactive A' });
+    const interactiveBRes = await createSessionInCourse(profToken, course._id, { name: 'Interactive B' });
+    const quizRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Quiz A',
+      quiz: true,
+      quizStart: new Date(Date.now() + (60 * 1000)).toISOString(),
+      quizEnd: new Date(Date.now() + (120 * 60 * 1000)).toISOString(),
+    });
+    expect(quizRes.statusCode).toBe(201);
+    await Promise.all([
+      interactiveARes,
+      interactiveBRes,
+      quizRes,
+    ].map((response) => authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${response.json().session._id}`, {
+      token: profToken,
+      payload: { status: 'visible' },
+    })));
+    const practiceRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'My Practice',
+      practiceQuiz: true,
+    });
+    expect(practiceRes.statusCode).toBe(201);
+
+    const profListRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: profToken,
+    });
+    expect(profListRes.statusCode).toBe(200);
+    expect(profListRes.json().sessionTypeCounts).toEqual({
+      total: 3,
+      interactive: 2,
+      quizzes: 1,
+      practice: 0,
+    });
+
+    const studentListRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: studentToken,
+    });
+    expect(studentListRes.statusCode).toBe(200);
+    expect(studentListRes.json().sessionTypeCounts).toEqual({
+      total: 4,
+      interactive: 2,
+      quizzes: 1,
+      practice: 1,
+    });
   });
 
   it('returns all sessions without pagination fields when no page/limit params', async (ctx) => {
@@ -1962,6 +2056,16 @@ describe('Student quiz routes', () => {
     }).lean();
     expect(stored.submittedIpAddress).toBe('203.0.113.61');
     expect(stored.submittedAt).toBeTruthy();
+
+    const trackedSession = await Session.findById(session._id).lean();
+    expect(trackedSession.hasResponses).toBe(true);
+    expect(Number(trackedSession.questionResponseCounts?.[question._id] || 0)).toBe(1);
+
+    const trackedQuestion = await Question.findById(question._id).lean();
+    expect(trackedQuestion.sessionProperties).toEqual(expect.objectContaining({
+      lastAttemptNumber: 1,
+      lastAttemptResponseCount: 1,
+    }));
   });
 
   it('student practice sessions can quiz over library questions without attaching them to the session', async (ctx) => {
@@ -2375,6 +2479,63 @@ describe('Live session websocket delta events', () => {
       ],
     ]));
     expect(responseCalls.some(([userIds]) => userIds.includes(String(spectator._id)))).toBe(false);
+  });
+
+  it('tracks live response counts on the session and resets the question attempt counter on new attempts', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const question = await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>Tracked live question</p>',
+      plainText: 'Tracked live question',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: '0' },
+    });
+    expect(respondRes.statusCode).toBe(201);
+
+    const trackedSession = await Session.findById(session._id).lean();
+    expect(trackedSession.hasResponses).toBe(true);
+    expect(Number(trackedSession.questionResponseCounts?.[question._id] || 0)).toBe(1);
+
+    const trackedQuestion = await Question.findById(question._id).lean();
+    expect(trackedQuestion.sessionProperties).toEqual(expect.objectContaining({
+      lastAttemptNumber: 1,
+      lastAttemptResponseCount: 1,
+    }));
+
+    const newAttemptRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/new-attempt`, {
+      token: profToken,
+    });
+    expect(newAttemptRes.statusCode).toBe(200);
+
+    const resetQuestion = await Question.findById(question._id).lean();
+    expect(resetQuestion.sessionProperties).toEqual(expect.objectContaining({
+      lastAttemptNumber: 2,
+      lastAttemptResponseCount: 0,
+    }));
   });
 });
 

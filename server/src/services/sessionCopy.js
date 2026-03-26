@@ -16,6 +16,8 @@ function buildSessionCopyPayload(sourceSession = {}, targetCourseId, userId) {
     msScoringMethod: sourceSession.msScoringMethod,
     tags: Array.isArray(sourceSession.tags) ? sourceSession.tags : [],
     reviewable: false,
+    hasResponses: false,
+    questionResponseCounts: {},
     questions: [],
     joined: [],
     joinRecords: [],

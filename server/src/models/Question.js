@@ -70,6 +70,14 @@ const HistogramDataSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const SessionPropertiesSchema = new mongoose.Schema(
+  {
+    lastAttemptNumber: { type: Number, default: 0 },
+    lastAttemptResponseCount: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 const SessionOptionsSchema = new mongoose.Schema(
   {
     hidden: { type: Boolean, default: false },
@@ -110,6 +118,7 @@ const QuestionSchema = new mongoose.Schema(
     approved: { type: Boolean, default: true },
     tags: { type: [TagSchema], default: [] },
     sessionOptions: { type: SessionOptionsSchema },
+    sessionProperties: { type: SessionPropertiesSchema },
     imagePath: { type: String, default: '' },
     studentCopyOfPublic: { type: Boolean, default: false },
     studentCreated: { type: Boolean, default: false },

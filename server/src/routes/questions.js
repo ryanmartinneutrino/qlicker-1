@@ -12,6 +12,7 @@ import {
 import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
 import { computeHistogramData } from '../utils/histogram.js';
+import { buildSessionResponseTracking } from '../utils/sessionResponseTracking.js';
 
 const createQuestionSchema = {
   body: {
@@ -1840,12 +1841,12 @@ export default async function questionRoutes(app) {
     '/sessions/:sessionId/questions/:questionId',
     { preHandler: authenticate },
     async (request, reply) => {
-      const session = await Session.findById(request.params.sessionId);
+      const session = await Session.findById(request.params.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const course = await Course.findById(session.courseId);
+      const course = await Course.findById(session.courseId).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
@@ -1862,9 +1863,17 @@ export default async function questionRoutes(app) {
         });
       }
 
+      const nextQuestionIds = (session.questions || []).filter((questionId) => String(questionId) !== String(request.params.questionId));
+      const responseTracking = buildSessionResponseTracking(nextQuestionIds, session.questionResponseCounts);
       const updated = await Session.findByIdAndUpdate(
         session._id,
-        { $pull: { questions: request.params.questionId } },
+        {
+          $set: {
+            questions: nextQuestionIds,
+            hasResponses: responseTracking.hasResponses,
+            questionResponseCounts: responseTracking.questionResponseCounts,
+          },
+        },
         { returnDocument: 'after' }
       );
 

@@ -54,6 +54,8 @@ const SessionSchema = new mongoose.Schema(
     submittedQuiz: { type: [String], default: [] },
     tags: { type: [TagSchema], default: [] },
     reviewable: { type: Boolean, default: false },
+    hasResponses: { type: Boolean, default: false },
+    questionResponseCounts: { type: Map, of: Number, default: {} },
     // Interactive session join-code settings
     joinCodeEnabled: { type: Boolean, default: false },
     joinCodeActive: { type: Boolean, default: false },

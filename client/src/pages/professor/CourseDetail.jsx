@@ -9,14 +9,18 @@ import {
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
-  PlayArrow as LaunchIcon, Login as JoinIcon,
+  PlayArrow as LaunchIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import apiClient, { getAccessToken } from '../../api/client';
 import { formatDisplayDate } from '../../utils/date';
 import { buildCourseSelectionLabel, buildCourseTitle, sortCoursesByRecent } from '../../utils/courseTitle';
-import { getProfessorSessionPrimaryPath } from '../../utils/professorSessions';
+import {
+  getProfessorSessionPrimaryPath,
+  sessionCanShowListReviewAction,
+  sessionCanShowLiveReviewAction,
+} from '../../utils/professorSessions';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
@@ -82,6 +86,7 @@ function sortSessions(items) {
 }
 
 const SESSION_PAGE_SIZE = 15;
+const SESSION_BACKGROUND_BATCH_SIZE = 4;
 const SESSION_PAGE_SIZE_OPTIONS = [15, 30, 50];
 const SESSION_STATUS_FILTER_ALL = 'all';
 const SESSION_STATUS_FILTER_OPTIONS = [
@@ -94,6 +99,18 @@ const SESSION_STATUS_FILTER_OPTIONS = [
 
 function normalizeSessionSearchValue(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+function getProfessorSessionTypeCounts(sessionItems = []) {
+  return sessionItems.reduce((counts, session) => {
+    if (session?.studentCreated) return counts;
+    if (session?.quiz) {
+      counts.quizzes += 1;
+    } else {
+      counts.interactive += 1;
+    }
+    return counts;
+  }, { interactive: 0, quizzes: 0 });
 }
 
 // Tab indices: 0=Interactive Sessions, 1=Quizzes, 2=Grades, 3=Students, 4=Instructors, 5=Groups, 6=Video?, 7=Settings, 8=Question Library
@@ -267,6 +284,9 @@ export default function CourseDetail() {
   // Sessions
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsBackgroundLoading, setSessionsBackgroundLoading] = useState(false);
+  const [sessionTotalCount, setSessionTotalCount] = useState(0);
+  const [sessionTypeCounts, setSessionTypeCounts] = useState({ interactive: 0, quizzes: 0 });
   const [sessionPages, setSessionPages] = useState({});
   const [sessionPageSizes, setSessionPageSizes] = useState({});
   const [sessionSearchTerms, setSessionSearchTerms] = useState({});
@@ -301,6 +321,7 @@ export default function CourseDetail() {
 
   // Polling ref for auto-refresh
   const pollingRef = useRef(null);
+  const sessionFetchVersionRef = useRef(0);
   const settingsHydratedRef = useRef(false);
   const lastSavedEditFieldsHashRef = useRef('');
   const settingsSaveInFlightRef = useRef(false);
@@ -308,44 +329,136 @@ export default function CourseDetail() {
   const newSessionNameInputRef = useRef(null);
   const newSessionDescInputRef = useRef(null);
 
-  const fetchSessions = useCallback(async () => {
-    try {
-      const { data } = await apiClient.get(`/courses/${id}/sessions`);
-      const nextSessions = data.sessions || [];
-      setSessions(nextSessions);
+  const fetchSessionGradeSummaries = useCallback(async (sessionItems, {
+    merge = false,
+    fetchVersion = null,
+  } = {}) => {
+    const sessionIds = [...new Set(
+      (sessionItems || []).map((session) => session?._id).filter(Boolean)
+    )];
 
-      if (!nextSessions.length) {
+    if (sessionIds.length === 0) {
+      if (!merge && (fetchVersion === null || sessionFetchVersionRef.current === fetchVersion)) {
         setGradingSummaryBySessionId({});
+      }
+      return;
+    }
+
+    try {
+      const gradeSummaryRes = await apiClient.get(`/courses/${id}/grades`, {
+        params: { sessionIds: sessionIds.join(',') },
+      });
+      if (fetchVersion !== null && sessionFetchVersionRef.current !== fetchVersion) return;
+
+      const summaryMap = {};
+      (gradeSummaryRes.data?.sessions || []).forEach((sessionSummary) => {
+        summaryMap[sessionSummary._id] = {
+          studentsNeedingGrading: Number(sessionSummary.studentsNeedingGrading) || 0,
+          marksNeedingGrading: Number(sessionSummary.marksNeedingGrading) || 0,
+        };
+      });
+
+      setGradingSummaryBySessionId((previousSummaries) => (
+        merge ? { ...previousSummaries, ...summaryMap } : summaryMap
+      ));
+    } catch {
+      if (fetchVersion !== null && sessionFetchVersionRef.current !== fetchVersion) return;
+      if (!merge) {
+        setGradingSummaryBySessionId({});
+      }
+    }
+  }, [id]);
+
+  const fetchSessionsPage = useCallback(async (page, limit = SESSION_PAGE_SIZE) => {
+    const { data } = await apiClient.get(`/courses/${id}/sessions`, {
+      params: { page, limit },
+    });
+    return data;
+  }, [id]);
+
+  const refreshSingleSession = useCallback(async (sessionId) => {
+    if (!sessionId) return;
+    const { data } = await apiClient.get(`/sessions/${sessionId}`);
+    const nextSession = data?.session || data;
+    if (!nextSession?._id || nextSession.studentCreated) return;
+
+    setSessions((previousSessions) => previousSessions.map((session) => (
+      String(session?._id || '') === String(sessionId)
+        ? { ...session, ...nextSession }
+        : session
+    )));
+  }, []);
+
+  const patchSingleSessionStatus = useCallback((sessionId, status) => {
+    if (!sessionId || !status) return;
+    setSessions((previousSessions) => previousSessions.map((session) => (
+      String(session?._id || '') === String(sessionId)
+        ? { ...session, status }
+        : session
+    )));
+  }, []);
+
+  const fetchSessions = useCallback(async () => {
+    const fetchVersion = sessionFetchVersionRef.current + 1;
+    sessionFetchVersionRef.current = fetchVersion;
+    setSessionsLoading(true);
+    setSessionsBackgroundLoading(false);
+
+    try {
+      const firstPageData = await fetchSessionsPage(1);
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+      const initialSessions = firstPageData.sessions || [];
+      const totalSessions = Number(firstPageData.total) || initialSessions.length;
+      const totalPages = Math.max(Number(firstPageData.pages) || 1, 1);
+      const nextSessionTypeCounts = firstPageData.sessionTypeCounts
+        ? {
+          interactive: Number(firstPageData.sessionTypeCounts.interactive) || 0,
+          quizzes: Number(firstPageData.sessionTypeCounts.quizzes) || 0,
+        }
+        : getProfessorSessionTypeCounts(initialSessions);
+
+      setSessions(initialSessions);
+      setSessionTotalCount(totalSessions);
+      setSessionTypeCounts(nextSessionTypeCounts);
+      setSessionsLoading(false);
+
+      await fetchSessionGradeSummaries(initialSessions, { fetchVersion, merge: false });
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+      if (totalPages <= 1) {
+        setSessionsBackgroundLoading(false);
         return;
       }
 
-      try {
-        const sessionIds = nextSessions.map((session) => session._id).filter(Boolean).join(',');
-        if (!sessionIds) {
-          setGradingSummaryBySessionId({});
-          return;
-        }
-        const gradeSummaryRes = await apiClient.get(`/courses/${id}/grades`, {
-          params: { sessionIds },
-        });
-        const summaryMap = {};
-        (gradeSummaryRes.data?.sessions || []).forEach((sessionSummary) => {
-          summaryMap[sessionSummary._id] = {
-            studentsNeedingGrading: Number(sessionSummary.studentsNeedingGrading) || 0,
-            marksNeedingGrading: Number(sessionSummary.marksNeedingGrading) || 0,
-          };
-        });
-        setGradingSummaryBySessionId(summaryMap);
-      } catch {
-        setGradingSummaryBySessionId({});
+      setSessionsBackgroundLoading(true);
+      const allLoadedSessions = [...initialSessions];
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
+
+      for (let index = 0; index < remainingPages.length; index += SESSION_BACKGROUND_BATCH_SIZE) {
+        const pageBatch = remainingPages.slice(index, index + SESSION_BACKGROUND_BATCH_SIZE);
+        const batchResults = await Promise.all(pageBatch.map((page) => fetchSessionsPage(page)));
+        if (sessionFetchVersionRef.current !== fetchVersion) return;
+
+        const batchSessions = batchResults.flatMap((result) => result.sessions || []);
+        if (batchSessions.length === 0) continue;
+
+        allLoadedSessions.push(...batchSessions);
+        setSessions([...allLoadedSessions]);
+        await fetchSessionGradeSummaries(batchSessions, { fetchVersion, merge: true });
+        if (sessionFetchVersionRef.current !== fetchVersion) return;
       }
+
+      setSessionsBackgroundLoading(false);
     } catch {
-      /* silently fail – sessions tab will show empty */
+      if (sessionFetchVersionRef.current !== fetchVersion) return;
       setGradingSummaryBySessionId({});
-    } finally {
+      setSessionTotalCount(0);
+      setSessionTypeCounts({ interactive: 0, quizzes: 0 });
       setSessionsLoading(false);
+      setSessionsBackgroundLoading(false);
     }
-  }, [id]);
+  }, [fetchSessionGradeSummaries, fetchSessionsPage]);
 
   const fetchInstructorCourses = useCallback(async () => {
     const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
@@ -480,9 +593,10 @@ export default function CourseDetail() {
           const evt = message?.event;
           const d = message?.data;
           if (String(d?.courseId || '') !== String(id)) return;
-          if (evt === 'session:metadata-changed' || evt === 'session:status-changed'
-            || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
-            fetchSessions();
+          if (evt === 'session:status-changed') {
+            patchSingleSessionStatus(d?.sessionId, d?.status);
+          } else if (evt === 'session:metadata-changed') {
+            refreshSingleSession(d?.sessionId).catch(() => {});
           }
           if (evt === 'video:updated') {
             fetchCourse();
@@ -514,7 +628,7 @@ export default function CourseDetail() {
         ws.close();
       }
     };
-  }, [fetchSessions, fetchCourse, id]);
+  }, [patchSingleSessionStatus, refreshSingleSession, fetchCourse, id]);
 
   useEffect(() => {
     const urlTab = parseCourseTab(searchParams.get('tab'));
@@ -838,10 +952,9 @@ export default function CourseDetail() {
       } else {
         setMsg({ severity: 'success', text: t('professor.course.sessionUpdated') });
       }
-      await fetchSessions();
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedUpdateSession') });
-      fetchSessions();
+      refreshSingleSession(sessionId).catch(() => {});
     } finally {
       setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: false }));
     }
@@ -866,6 +979,8 @@ export default function CourseDetail() {
   const sortedSessions = sortSessions((sessions || []).filter((session) => !session.studentCreated));
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+  const interactiveSessionCount = Number(sessionTypeCounts.interactive) || interactiveSessions.length;
+  const quizSessionCount = Number(sessionTypeCounts.quizzes) || quizSessions.length;
   const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);
   const headerCourseName = settingsHydratedRef.current ? editFields.name : toText(course.name);
   const headerDeptCode = settingsHydratedRef.current ? editFields.deptCode : toText(course.deptCode);
@@ -883,8 +998,8 @@ export default function CourseDetail() {
   );
 
   const tabLabels = [
-    `${t('professor.course.interactiveSessions')} (${interactiveSessions.length})`,
-    `${t('professor.course.quizzes')} (${quizSessions.length})`,
+    `${t('professor.course.interactiveSessions')} (${interactiveSessionCount})`,
+    `${t('professor.course.quizzes')} (${quizSessionCount})`,
     t('professor.course.grades'),
     `${t('professor.course.students')} (${students.length})`,
     `${t('professor.course.instructors')} (${instructors.length})`,
@@ -916,20 +1031,19 @@ export default function CourseDetail() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0) => {
-    if (sessionsLoading) return <CircularProgress size={24} />;
-    if (sessionItems.length === 0) {
-      return <Typography variant="body2" color="text.secondary">{emptyText}</Typography>;
-    }
+  const renderSessionList = (sessionItems, emptyText, listTabIndex = 0, totalItemCount = sessionItems.length) => {
+    const listStillHydrating = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
+    if (sessionsLoading && sessions.length === 0) return <CircularProgress size={24} />;
 
-    const controlsEnabled = sessionItems.length > SESSION_PAGE_SIZE;
-    const searchTerm = controlsEnabled ? String(sessionSearchTerms[listTabIndex] || '') : '';
-    const normalizedSearchTerm = normalizeSessionSearchValue(searchTerm);
-    const statusFilter = controlsEnabled
+    const controlsVisible = totalItemCount > SESSION_PAGE_SIZE;
+    const controlsDisabled = listStillHydrating;
+    const searchTerm = controlsVisible ? String(sessionSearchTerms[listTabIndex] || '') : '';
+    const normalizedSearchTerm = controlsDisabled ? '' : normalizeSessionSearchValue(searchTerm);
+    const statusFilter = controlsVisible
       ? String(sessionStatusFilters[listTabIndex] || SESSION_STATUS_FILTER_ALL)
       : SESSION_STATUS_FILTER_ALL;
 
-    const filteredSessionItems = controlsEnabled
+    const filteredSessionItems = controlsVisible && !controlsDisabled
       ? sessionItems.filter((session) => {
         const matchesSearch = !normalizedSearchTerm
           || String(session?.name || '').toLowerCase().includes(normalizedSearchTerm);
@@ -939,19 +1053,22 @@ export default function CourseDetail() {
       })
       : sessionItems;
 
-    const rawPageSize = controlsEnabled
+    const rawPageSize = controlsVisible
       ? Number(sessionPageSizes[listTabIndex] || SESSION_PAGE_SIZE)
       : SESSION_PAGE_SIZE;
     const pageSize = SESSION_PAGE_SIZE_OPTIONS.includes(rawPageSize) ? rawPageSize : SESSION_PAGE_SIZE;
     const currentPage = sessionPages[listTabIndex] || 1;
-    const totalPages = Math.max(Math.ceil(filteredSessionItems.length / pageSize), 1);
-    const safePage = Math.min(currentPage, totalPages);
+    const totalPages = Math.max(Math.ceil((controlsDisabled ? totalItemCount : filteredSessionItems.length) / pageSize), 1);
+    const safePage = controlsDisabled ? 1 : Math.min(currentPage, totalPages);
     const startIdx = (safePage - 1) * pageSize;
-    const pageItems = filteredSessionItems.slice(startIdx, startIdx + pageSize);
+    const pageItems = controlsDisabled
+      ? sessionItems.slice(0, pageSize)
+      : filteredSessionItems.slice(startIdx, startIdx + pageSize);
+    const hasNoLoadedItems = sessionItems.length === 0;
 
     return (
       <>
-        {controlsEnabled && (
+        {controlsVisible && (
           <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
             <Stack spacing={1.25}>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
@@ -964,6 +1081,7 @@ export default function CourseDetail() {
                     setSessionSearchTerms((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
                     setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
                   }}
+                  disabled={controlsDisabled}
                   sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
                 />
                 <TextField
@@ -975,6 +1093,7 @@ export default function CourseDetail() {
                     setSessionStatusFilters((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
                     setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
                   }}
+                  disabled={controlsDisabled}
                   sx={{ minWidth: { xs: '100%', sm: 170 } }}
                 >
                   {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
@@ -994,6 +1113,7 @@ export default function CourseDetail() {
                     setSessionPageSizes((prev) => ({ ...prev, [listTabIndex]: safePageSize }));
                     setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
                   }}
+                  disabled={controlsDisabled}
                   sx={{ minWidth: { xs: '100%', sm: 152 } }}
                 >
                   {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
@@ -1014,14 +1134,14 @@ export default function CourseDetail() {
                 <Stack direction="row" spacing={1}>
                   <Button
                     size="small"
-                    disabled={safePage <= 1}
+                    disabled={controlsDisabled || safePage <= 1}
                     onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
                   >
                     {t('common.previous')}
                   </Button>
                   <Button
                     size="small"
-                    disabled={safePage >= totalPages}
+                    disabled={controlsDisabled || safePage >= totalPages}
                     onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
                   >
                     {t('common.next')}
@@ -1031,174 +1151,176 @@ export default function CourseDetail() {
             </Stack>
           </Paper>
         )}
+        {listStillHydrating && (
+          <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <CircularProgress size={16} />
+              <Typography variant="body2" color="text.secondary">
+                {t('professor.course.loadingRemainingSessions', {
+                  defaultValue: 'Loading remaining sessions in the background…',
+                })}
+              </Typography>
+            </Stack>
+          </Paper>
+        )}
 
-        {filteredSessionItems.length === 0 ? (
+        {hasNoLoadedItems ? (
+          !listStillHydrating ? (
+            <Typography variant="body2" color="text.secondary">{emptyText}</Typography>
+          ) : null
+        ) : filteredSessionItems.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {t('professor.course.noSessionsMatchFilters', { defaultValue: 'No sessions match the current filters.' })}
           </Typography>
         ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-          {pageItems.map((s) => (
-          <SessionListCard
-            key={s._id}
-            highlighted={s.status === 'running'}
-            onClick={() => navigate(
-              getProfessorSessionPrimaryPath(s, id, tab),
-              { state: { returnTab: tab } }
-            )}
-            title={s.name}
-            badges={(
-              <>
-                <SessionStatusChip status={s.status} />
-                {s.practiceQuiz && <Chip label={t('professor.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
-                {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
-                  <Chip
-                    label={t('professor.course.extensionsActive')}
-                    size="small"
-                    color="warning"
-                    variant="outlined"
-                    sx={COMPACT_CHIP_SX}
-                  />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+            {pageItems.map((s) => (
+              <SessionListCard
+                key={s._id}
+                highlighted={s.status === 'running'}
+                onClick={() => navigate(
+                  getProfessorSessionPrimaryPath(s, id, tab),
+                  { state: { returnTab: tab } }
                 )}
-              </>
-            )}
-            subtitle={`${t('professor.course.questionCount', { count: (s.questions || []).length })}${getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}`}
-            actions={(
-              <>
-                {!s.quiz && s.status !== 'running' && s.status !== 'done' && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="primary"
-                    startIcon={<LaunchIcon />}
-                    onClick={() => handleLaunchSession(s._id)}
-                    disabled={!!sessionUpdatesInFlight[s._id]}
-                    aria-label={t('professor.course.launchSessionAria', { name: s.name })}
-                  >
-                    {t('professor.course.launch')}
-                  </Button>
-                )}
-                {!s.quiz && s.status === 'running' && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    startIcon={<JoinIcon />}
-                    onClick={() => navigate(`/manage/course/${id}/session/${s._id}/live`)}
-                    aria-label={t('professor.course.joinLiveSessionAria', { name: s.name })}
-                  >
-                    {t('professor.course.joinSession')}
-                  </Button>
-                )}
-                {(s.quiz || s.practiceQuiz) && s.status === 'running' && (
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="success"
-                    startIcon={<ReviewIcon />}
-                    onClick={() => navigate(
-                      `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
-                      { state: { returnTab: tab } }
+                title={s.name}
+                badges={(
+                  <>
+                    <SessionStatusChip status={s.status} />
+                    {s.practiceQuiz && <Chip label={t('professor.course.practice')} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
+                    {(s.quiz || s.practiceQuiz) && s.quizHasActiveExtensions && (
+                      <Chip
+                        label={t('professor.course.extensionsActive')}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={COMPACT_CHIP_SX}
+                      />
                     )}
-                    aria-label={t('professor.course.reviewLiveQuizAria', { name: s.name })}
-                  >
-                    {t('professor.course.reviewLiveSessionResults')}
-                  </Button>
+                  </>
                 )}
-                {s.status === 'done' && (
-                  <Button
-                    size="small"
-                    variant={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'contained' : 'outlined'}
-                    color={(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0 ? 'warning' : 'primary'}
-                    startIcon={<ReviewIcon />}
-                    onClick={() => navigate(
-                      `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
-                      { state: { returnTab: tab } }
+                subtitle={`${t('professor.course.questionCount', { count: (s.questions || []).length })}${getSessionSortTime(s) > 0 ? ` · ${formatDisplayDate(getSessionSortTime(s))}` : ''}`}
+                actions={(
+                  <>
+                    {!s.quiz && s.status !== 'running' && s.status !== 'done' && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        startIcon={<LaunchIcon />}
+                        onClick={() => handleLaunchSession(s._id)}
+                        disabled={!!sessionUpdatesInFlight[s._id]}
+                        aria-label={t('professor.course.launchSessionAria', { name: s.name })}
+                      >
+                        {t('professor.course.launch')}
+                      </Button>
                     )}
-                    aria-label={t('professor.course.reviewSessionAria', { name: s.name })}
-                  >
-                    {(gradingSummaryBySessionId[s._id]?.marksNeedingGrading || 0) > 0
-                      ? `${t('professor.course.grade')} (${gradingSummaryBySessionId[s._id].marksNeedingGrading})`
-                      : t('professor.course.review')}
-                  </Button>
-                )}
-                <TextField
-                  select
-                  size="small"
-                  label={t('common.status')}
-                  value={s.status || 'hidden'}
-                  onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
-                  disabled={!!sessionUpdatesInFlight[s._id]}
-                  sx={{ minWidth: 122 }}
-                >
-                  <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
-                  <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
-                  <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
-                  <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
-                </TextField>
-                <FormControlLabel
-                  sx={{ m: 0 }}
-                  control={(
-                    <Switch
+                    {sessionCanShowLiveReviewAction(s) && (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        color="success"
+                        startIcon={<ReviewIcon />}
+                        onClick={() => navigate(
+                          `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                          { state: { returnTab: tab } }
+                        )}
+                        aria-label={t('professor.course.reviewLiveSessionAria', { name: s.name })}
+                      >
+                        {t('professor.course.reviewLiveSessionResults')}
+                      </Button>
+                    )}
+                    {sessionCanShowListReviewAction(s) && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="primary"
+                        startIcon={<ReviewIcon />}
+                        onClick={() => navigate(
+                          `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                          { state: { returnTab: tab } }
+                        )}
+                        aria-label={t('professor.course.reviewSessionAria', { name: s.name })}
+                      >
+                        {t('professor.course.review')}
+                      </Button>
+                    )}
+                    <TextField
+                      select
                       size="small"
-                      checked={!!s.reviewable}
-                      onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
-                      disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
+                      label={t('common.status')}
+                      value={s.status || 'hidden'}
+                      onChange={(event) => patchSessionFromList(s._id, { status: event.target.value })}
+                      disabled={!!sessionUpdatesInFlight[s._id]}
+                      sx={{ minWidth: 122 }}
+                    >
+                      <MenuItem value="hidden">{t('sessionStatus.draft')}</MenuItem>
+                      <MenuItem value="visible">{t('sessionStatus.upcoming')}</MenuItem>
+                      <MenuItem value="running">{t('sessionStatus.live')}</MenuItem>
+                      <MenuItem value="done">{t('sessionStatus.ended')}</MenuItem>
+                    </TextField>
+                    <FormControlLabel
+                      sx={{ m: 0 }}
+                      control={(
+                        <Switch
+                          size="small"
+                          checked={!!s.reviewable}
+                          onChange={(event) => patchSessionFromList(s._id, { reviewable: event.target.checked })}
+                          disabled={!!sessionUpdatesInFlight[s._id] || s.status !== 'done'}
+                        />
+                      )}
+                      label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
                     />
-                  )}
-                  label={<Typography variant="caption">{t('professor.course.reviewable')}</Typography>}
-                />
-                <Tooltip title={t('professor.course.copySession')}>
-                  <IconButton
-                    size="small"
-                    aria-label={t('common.copySession')}
-                    onClick={() => {
-                      setCopySessionTarget(s);
-                      setCopySessionTargetCourseId(id);
-                    }}
-                    disabled={!!sessionUpdatesInFlight[s._id]}
-                  >
-                    <CopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('professor.course.deleteSession')}>
-                  <IconButton size="small" color="error" aria-label={t('common.deleteSession')} onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          />
-        ))}
-        </Box>
+                    <Tooltip title={t('professor.course.copySession')}>
+                      <IconButton
+                        size="small"
+                        aria-label={t('common.copySession')}
+                        onClick={() => {
+                          setCopySessionTarget(s);
+                          setCopySessionTargetCourseId(id);
+                        }}
+                        disabled={!!sessionUpdatesInFlight[s._id]}
+                      >
+                        <CopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={t('professor.course.deleteSession')}>
+                      <IconButton size="small" color="error" aria-label={t('common.deleteSession')} onClick={() => setDeleteSessionTarget(s)} disabled={!!sessionUpdatesInFlight[s._id]}>
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
+              />
+            ))}
+          </Box>
         )}
-      {filteredSessionItems.length > 0 && totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            {t('common.paginationSummary', {
-              page: safePage,
-              pages: totalPages,
-              defaultValue: `Page ${safePage} of ${totalPages}`,
-            })}
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              size="small"
-              disabled={safePage <= 1}
-              onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
-            >
-              {t('common.previous')}
-            </Button>
-            <Button
-              size="small"
-              disabled={safePage >= totalPages}
-              onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
-            >
-              {t('common.next')}
-            </Button>
-          </Stack>
-        </Box>
-      )}
+        {controlsVisible && totalPages > 1 && (pageItems.length > 0 || listStillHydrating) && (
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, flexWrap: 'wrap', gap: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              {t('common.paginationSummary', {
+                page: safePage,
+                pages: totalPages,
+                defaultValue: `Page ${safePage} of ${totalPages}`,
+              })}
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                disabled={controlsDisabled || safePage <= 1}
+                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
+              >
+                {t('common.previous')}
+              </Button>
+              <Button
+                size="small"
+                disabled={controlsDisabled || safePage >= totalPages}
+                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+              >
+                {t('common.next')}
+              </Button>
+            </Stack>
+          </Box>
+        )}
       </>
     );
   };
@@ -1263,7 +1385,7 @@ export default function CourseDetail() {
             {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(interactiveSessions, t('professor.course.noInteractiveSessions'), 0)}
+        {renderSessionList(interactiveSessions, t('professor.course.noInteractiveSessions'), 0, interactiveSessionCount)}
       </TabPanel>
 
       {/* Quizzes Tab */}
@@ -1282,7 +1404,7 @@ export default function CourseDetail() {
             {t('professor.course.createSession')}
           </Button>
         </Box>
-        {renderSessionList(quizSessions, t('professor.course.noQuizzes'), 1)}
+        {renderSessionList(quizSessions, t('professor.course.noQuizzes'), 1, quizSessionCount)}
       </TabPanel>
 
       {/* Grades Tab */}
