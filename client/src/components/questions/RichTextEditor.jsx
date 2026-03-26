@@ -97,12 +97,21 @@ export default function RichTextEditor({
   const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
   const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
 
+  // Keep callback refs current so useEditor doesn't need to list them as
+  // dependencies.  Without this, every new onChange/onBlur reference causes
+  // useEditor to destroy & recreate the TipTap instance, which drops focus
+  // and makes typing in the grading table impossible.
+  const onChangeRef = useRef(onChange);
+  const onBlurRef = useRef(onBlur);
+  onChangeRef.current = onChange;
+  onBlurRef.current = onBlur;
+
   const emitEditorChange = (nextEditor) => {
     if (!nextEditor) return;
     const html = normalizeStoredHtml(nextEditor.getHTML());
     if (html === lastEditorHtmlRef.current) return;
     lastEditorHtmlRef.current = html;
-    onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
+    onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
   };
 
   const uploadImage = async (file, maxEditorImageWidth) => {
@@ -194,7 +203,7 @@ export default function RichTextEditor({
         handleDOMEvents: {
           blur: () => {
             emitEditorChange(editor);
-            onBlur?.();
+            onBlurRef.current?.();
             return false;
           },
         },
@@ -221,7 +230,7 @@ export default function RichTextEditor({
         const html = normalizeStoredHtml(createdEditor.getHTML());
         lastEditorHtmlRef.current = html;
         lastPropHtmlRef.current = preparedValue || '';
-        onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
+        onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
       },
       onUpdate: ({ editor: updatedEditor }) => {
         emitEditorChange(updatedEditor);
@@ -231,7 +240,7 @@ export default function RichTextEditor({
         emitEditorChange(transactionEditor);
       },
     },
-    [ariaDescribedBy, disabled, editorAriaLabel, onBlur, placeholder, t]
+    [ariaDescribedBy, disabled, editorAriaLabel, placeholder, t]
   );
 
   useEffect(() => {
@@ -289,7 +298,7 @@ export default function RichTextEditor({
     editor.commands.setContent(normalizeStoredHtml(sourceDraft || ''), false, { preserveWhitespace: 'full' });
     const html = normalizeStoredHtml(editor.getHTML());
     lastEditorHtmlRef.current = html;
-    onChange?.({ html, plainText: extractPlainTextFromHtml(html) });
+    onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
     setSourceDialogOpen(false);
   };
 
