@@ -87,16 +87,7 @@ export default memo(function SpeedGradingModal({
 
   const pointsInputRef = useRef(null);
   const touchStartRef = useRef(null);
-
-  // Reset state when modal opens or rows/initialIndex change
-  useEffect(() => {
-    if (!open) return;
-    const idx = Math.max(0, Math.min(initialIndex, rows.length - 1));
-    setCurrentIndex(idx);
-    loadRowDraft(idx);
-  }, [open, rows, initialIndex]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const currentRow = rows[currentIndex] || null;
+  const initializedRef = useRef(false);
 
   function loadRowDraft(idx) {
     const row = rows[idx];
@@ -105,6 +96,32 @@ export default memo(function SpeedGradingModal({
     setPoints(mark && mark.points !== null && mark.points !== undefined ? String(mark.points) : '');
     setFeedback(mark?.feedback || '');
   }
+
+  // Initialize state when opening, and keep index in range when row count changes.
+  useEffect(() => {
+    if (!open) {
+      initializedRef.current = false;
+      return;
+    }
+
+    if (!initializedRef.current) {
+      const idx = Math.max(0, Math.min(initialIndex, rows.length - 1));
+      setCurrentIndex(idx);
+      loadRowDraft(idx);
+      initializedRef.current = true;
+      return;
+    }
+
+    setCurrentIndex((previousIndex) => {
+      const boundedIndex = Math.max(0, Math.min(previousIndex, rows.length - 1));
+      if (boundedIndex !== previousIndex) {
+        loadRowDraft(boundedIndex);
+      }
+      return boundedIndex;
+    });
+  }, [initialIndex, open, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentRow = rows[currentIndex] || null;
 
   const focusPointsInput = useCallback(() => {
     if (!open) return;

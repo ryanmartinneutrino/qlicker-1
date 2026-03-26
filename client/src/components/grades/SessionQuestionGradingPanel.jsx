@@ -414,7 +414,7 @@ const GradingTableRow = memo(function GradingTableRow({
         <Checkbox
           size="small"
           checked={selected}
-          onChange={(event) => onToggleSelected(event.target.checked)}
+          onChange={(event) => onToggleSelected(row.studentId, event.target.checked)}
           inputProps={{
             'aria-label': t('grades.questionPanel.selectStudent', { name: row.displayName }),
           }}
@@ -464,7 +464,7 @@ const GradingTableRow = memo(function GradingTableRow({
             disabled={rowDisabled || saving}
             onChange={(event) => {
               const value = event.target.value;
-              onUpdateDraft((current) => ({ ...current, points: value }));
+              onUpdateDraft(row.studentId, (current) => ({ ...current, points: value }));
             }}
             sx={{ width: 82 }}
             inputProps={{ min: 0 }}
@@ -499,7 +499,7 @@ const GradingTableRow = memo(function GradingTableRow({
             disabled={rowDisabled || saving}
             onChange={({ html }) => {
               const value = html || '';
-              onUpdateDraft((current) => ({ ...current, feedback: value }));
+              onUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
             }}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
@@ -513,7 +513,7 @@ const GradingTableRow = memo(function GradingTableRow({
           <Button
             size="small"
             variant="outlined"
-            onClick={onSave}
+            onClick={() => onSave(row)}
             disabled={rowDisabled || saving || !rowDirty}
           >
             {t('common.save')}
@@ -521,7 +521,7 @@ const GradingTableRow = memo(function GradingTableRow({
           <Button
             size="small"
             variant="text"
-            onClick={onCancel}
+            onClick={() => onCancel(row)}
             disabled={rowDisabled || saving || !rowDirty}
             sx={{ visibility: rowDirty ? 'visible' : 'hidden' }}
           >
@@ -897,7 +897,10 @@ export default function SessionQuestionGradingPanel({
       const next = typeof updater === 'function' ? updater(current) : updater;
       return { ...prev, [studentId]: next };
     });
-    setEditedStudentIds((prev) => ({ ...prev, [studentId]: true }));
+    setEditedStudentIds((prev) => {
+      if (prev[studentId]) return prev;
+      return { ...prev, [studentId]: true };
+    });
   }, []);
 
   const isRowDirty = useCallback((row) => {
@@ -933,7 +936,10 @@ export default function SessionQuestionGradingPanel({
         }
       );
       applyUpdatedGrade(data?.grade);
-      setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
+      setEditedStudentIds((prev) => {
+        if (!prev[row.studentId]) return prev;
+        return { ...prev, [row.studentId]: false };
+      });
       setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
       setGlobalMessageType('success');
     } catch (err) {
@@ -953,7 +959,10 @@ export default function SessionQuestionGradingPanel({
         feedback: normalizeValue(row.mark?.feedback),
       },
     }));
-    setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
+    setEditedStudentIds((prev) => {
+      if (!prev[row.studentId]) return prev;
+      return { ...prev, [row.studentId]: false };
+    });
   }, []);
 
   const handleBulkApplyPoints = useCallback(async () => {
@@ -1208,7 +1217,10 @@ export default function SessionQuestionGradingPanel({
         ...prev,
         [row.studentId]: { points: String(points), feedback },
       }));
-      setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
+      setEditedStudentIds((prev) => {
+        if (!prev[row.studentId]) return prev;
+        return { ...prev, [row.studentId]: false };
+      });
     }
     setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
     setGlobalMessageType('success');
@@ -1612,10 +1624,10 @@ export default function SessionQuestionGradingPanel({
                   rowDisabled={rowDisabled}
                   rowDirty={rowDirty}
                   selected={!!selectedStudentIds[row.studentId]}
-                  onToggleSelected={(checked) => handleToggleRowSelected(row.studentId, checked)}
-                  onUpdateDraft={(updater) => handleUpdateDraft(row.studentId, updater)}
-                  onSave={() => handleSaveRow(row)}
-                  onCancel={() => handleCancelRow(row)}
+                  onToggleSelected={handleToggleRowSelected}
+                  onUpdateDraft={handleUpdateDraft}
+                  onSave={handleSaveRow}
+                  onCancel={handleCancelRow}
                   onOpenImage={setImageViewUrl}
                   t={t}
                 />
