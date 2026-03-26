@@ -730,7 +730,7 @@ function getQuizRuntimeState(session, { userId = '', instructorView = false, now
   return defaultState;
 }
 
-async function maybeAutoCloseScheduledQuiz(session) {
+async function maybeAutoCloseScheduledQuiz(session, { course = null } = {}) {
   if (!isQuizLikeSession(session)) {
     return { session, changed: false };
   }
@@ -753,11 +753,15 @@ async function maybeAutoCloseScheduledQuiz(session) {
     { returnDocument: 'after' }
   ).lean();
 
-  if (updated) {
-    return { session: updated, changed: true };
+  const nextSession = updated || { ...session, status: 'done' };
+
+  if (course) {
+    await seedSessionGradesIfNeeded(nextSession, course, {
+      visibleToStudents: nextSession.reviewable,
+    });
   }
 
-  return { session: { ...session, status: 'done' }, changed: true };
+  return { session: nextSession, changed: true };
 }
 
 function formatUserDisplayName(user) {
@@ -1775,7 +1779,7 @@ export default async function sessionRoutes(app) {
       const normalizedSessions = [];
 
       for (const rawSession of sessions) {
-        const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession);
+        const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(rawSession, { course });
         if (changed) {
           notifyStatusChanged(app, course, normalizedSession?._id || rawSession?._id, { status: 'done' });
         }
@@ -1929,7 +1933,7 @@ export default async function sessionRoutes(app) {
       if (!isInstrOrAdmin && session.studentCreated && !isStudentOwnedSession(session, request.user)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not available' });
       }
-      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
+      let { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session, { course });
       normalizedSession = await hydrateSingleSessionResponseTracking(normalizedSession);
       if (isInstrOrAdmin) {
         const msNormalization = await ensureSessionMsScoringMethod(normalizedSession);
@@ -2771,7 +2775,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || session._id, { status: 'done' });
       }
@@ -2862,7 +2866,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -2937,7 +2941,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can access quiz mode' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -3073,7 +3077,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -3197,7 +3201,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quiz responses' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -3282,7 +3286,7 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Only students can submit quizzes' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(sessionDoc, { course });
       if (changed) {
         notifyStatusChanged(app, course, normalizedSession?._id || sessionDoc._id, { status: 'done' });
       }
@@ -4598,7 +4602,7 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
       }
 
-      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session);
+      const { session: normalizedSession, changed } = await maybeAutoCloseScheduledQuiz(session, { course });
       session = normalizedSession;
       if (changed) {
         notifyStatusChanged(app, course, session?._id || request.params.id, { status: 'done' });

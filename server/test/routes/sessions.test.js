@@ -290,34 +290,48 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     });
 
     const now = new Date();
-    await Grade.create({
-      userId: student._id,
-      courseId: course._id,
-      sessionId: sessionWithFeedback._id,
-      name: sessionWithFeedback.name,
-      visibleToStudents: true,
-      marks: [
-        {
-          questionId: 'q-feedback-1',
-          feedback: '<p>New feedback</p>',
-          feedbackUpdatedAt: now,
+    await Grade.findOneAndUpdate(
+      {
+        userId: student._id,
+        courseId: course._id,
+        sessionId: sessionWithFeedback._id,
+      },
+      {
+        $set: {
+          name: sessionWithFeedback.name,
+          visibleToStudents: true,
+          marks: [
+            {
+              questionId: 'q-feedback-1',
+              feedback: '<p>New feedback</p>',
+              feedbackUpdatedAt: now,
+            },
+          ],
         },
-      ],
-    });
-    await Grade.create({
-      userId: student._id,
-      courseId: course._id,
-      sessionId: sessionWithoutFeedback._id,
-      name: sessionWithoutFeedback.name,
-      visibleToStudents: true,
-      marks: [
-        {
-          questionId: 'q-feedback-2',
-          feedback: '',
-          feedbackUpdatedAt: null,
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Grade.findOneAndUpdate(
+      {
+        userId: student._id,
+        courseId: course._id,
+        sessionId: sessionWithoutFeedback._id,
+      },
+      {
+        $set: {
+          name: sessionWithoutFeedback.name,
+          visibleToStudents: true,
+          marks: [
+            {
+              questionId: 'q-feedback-2',
+              feedback: '',
+              feedbackUpdatedAt: null,
+            },
+          ],
         },
-      ],
-    });
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
 
     const res = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
       token: studentToken,
@@ -3287,20 +3301,27 @@ describe('GET /api/v1/sessions/:id/review', () => {
     const { profToken, course, student, studentToken } = await setupCourseWithStudent();
     const { session, question } = await createReviewableSession(profToken, course._id);
 
-    await Grade.create({
-      userId: student._id,
-      courseId: course._id,
-      sessionId: session._id,
-      name: session.name,
-      visibleToStudents: true,
-      marks: [
-        {
-          questionId: question._id,
-          feedback: '<p>Please revisit this step.</p>',
-          feedbackUpdatedAt: new Date(),
+    await Grade.findOneAndUpdate(
+      {
+        userId: student._id,
+        courseId: course._id,
+        sessionId: session._id,
+      },
+      {
+        $set: {
+          name: session.name,
+          visibleToStudents: true,
+          marks: [
+            {
+              questionId: question._id,
+              feedback: '<p>Please revisit this step.</p>',
+              feedbackUpdatedAt: new Date(),
+            },
+          ],
         },
-      ],
-    });
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
 
     const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/review`, {
       token: studentToken,
@@ -3489,20 +3510,33 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
       payload: { status: 'done', reviewable: true },
     });
 
-    const grade = await Grade.create({
-      userId: student._id,
-      courseId: course._id,
-      sessionId: session._id,
-      name: session.name,
-      visibleToStudents: true,
-      marks: [
-        {
-          questionId: question._id,
-          feedback: '<p>Initial feedback</p>',
-          feedbackUpdatedAt: new Date(),
+    const grade = await Grade.findOneAndUpdate(
+      {
+        userId: student._id,
+        courseId: course._id,
+        sessionId: session._id,
+      },
+      {
+        $set: {
+          name: session.name,
+          visibleToStudents: true,
+          marks: [
+            {
+              questionId: question._id,
+              points: 0,
+              outOf: 1,
+              automatic: false,
+              needsGrading: false,
+              attempt: 1,
+              responseId: new mongoose.Types.ObjectId().toString(),
+              feedback: '<p>Initial feedback</p>',
+              feedbackUpdatedAt: new Date(),
+            },
+          ],
         },
-      ],
-    });
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
 
     const beforeDismiss = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions`, {
       token: studentToken,
