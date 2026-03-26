@@ -255,6 +255,70 @@ describe('SessionQuestionGradingPanel', () => {
     });
   });
 
+  it('saves latest feedback even when Save is clicked before the feedback editor blurs', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+    apiClient.patch.mockResolvedValueOnce({
+      data: {
+        grade: {
+          _id: 'grade-1',
+          userId: 'student-a',
+          marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: 'Immediate feedback text' }],
+        },
+      },
+    });
+
+    render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[
+          {
+            _id: 'q-manual',
+            type: 2,
+            content: '<p>Explain your reasoning</p>',
+            plainText: 'Explain your reasoning',
+            sessionOptions: { points: 5 },
+          },
+        ]}
+        studentResults={[
+          {
+            studentId: 'student-a',
+            firstname: 'Ada',
+            lastname: 'Lovelace',
+            email: 'ada@example.edu',
+            inSession: true,
+            questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+          },
+        ]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    fireEvent.change(screen.getByLabelText(/feedback — ada lovelace/i), {
+      target: { value: 'Immediate feedback text' },
+    });
+    const row = screen.getByText('Ada Lovelace').closest('tr');
+    fireEvent.click(within(row).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenCalledWith(
+        '/grades/grade-1/marks/q-manual',
+        { points: 3, feedback: 'Immediate feedback text' }
+      );
+    });
+  });
+
   it('preserves an in-progress feedback draft when grading rows refresh', async () => {
     apiClient.get.mockResolvedValueOnce({
       data: {
@@ -547,6 +611,85 @@ describe('SessionQuestionGradingPanel', () => {
 
     await screen.findByText('Ada Lovelace');
     expect(screen.getByText(/fast grading interface/i)).toBeInTheDocument();
+  });
+
+  it('keeps the speed-grading student list frozen while the modal is open', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+          {
+            _id: 'grade-2',
+            userId: 'student-b',
+            marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    const question = {
+      _id: 'q-manual',
+      type: 2,
+      content: '<p>Explain your reasoning</p>',
+      plainText: 'Explain your reasoning',
+      sessionOptions: { points: 5 },
+    };
+    const firstStudent = {
+      studentId: 'student-a',
+      firstname: 'Ada',
+      lastname: 'Lovelace',
+      email: 'ada@example.edu',
+      inSession: true,
+      questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+    };
+    const secondStudent = {
+      studentId: 'student-b',
+      firstname: 'Grace',
+      lastname: 'Hopper',
+      email: 'grace@example.edu',
+      inSession: true,
+      questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Debugging matters.' }] }],
+    };
+
+    const { rerender } = render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[question]}
+        studentResults={[firstStudent, secondStudent]}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+    await screen.findByText('Grace Hopper');
+
+    fireEvent.click(screen.getByRole('button', { name: /fast grading interface/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('1 of 2')).toBeInTheDocument();
+    });
+
+    rerender(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ _id: 'session-1', quiz: false, practiceQuiz: false }}
+        questions={[question]}
+        studentResults={[firstStudent]}
+      />
+    );
+
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /next/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Grace Hopper')).toBeInTheDocument();
+      expect(screen.getByText('2 of 2')).toBeInTheDocument();
+    });
   });
 
   it('does not show fast grading button for auto-gradeable question types', async () => {

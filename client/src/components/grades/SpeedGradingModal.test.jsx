@@ -11,6 +11,26 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
+vi.mock('../questions/StudentRichTextEditor', () => ({
+  default: ({
+    value,
+    onChange,
+    ariaLabel,
+    disabled,
+  }) => (
+    <textarea
+      aria-label={ariaLabel || 'feedback'}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        onChange?.({ html: nextValue, plainText: nextValue });
+      }}
+    />
+  ),
+  MathPreview: () => null,
+}));
+
 function buildRows() {
   return [
     {
@@ -173,7 +193,34 @@ describe('SpeedGradingModal', () => {
       expect(onSaveGrade).toHaveBeenCalledTimes(1);
       expect(onSaveGrade).toHaveBeenCalledWith(
         rows[1],
-        expect.objectContaining({ points: 4 })
+        expect.objectContaining({ points: 4, feedback: '<p>Nice</p>' })
+      );
+    });
+  });
+
+  it('preserves points when only feedback is changed before saving', async () => {
+    const onSaveGrade = vi.fn().mockResolvedValue();
+    const rows = buildRows();
+    render(
+      <SpeedGradingModal
+        open
+        onClose={vi.fn()}
+        rows={rows}
+        initialIndex={1}
+        activeQuestionId="q-sa"
+        onSaveGrade={onSaveGrade}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: /feedback/i }), {
+      target: { value: 'Updated feedback text' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(onSaveGrade).toHaveBeenCalledWith(
+        rows[1],
+        { points: 3, feedback: 'Updated feedback text' }
       );
     });
   });
