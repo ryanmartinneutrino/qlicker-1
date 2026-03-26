@@ -376,6 +376,28 @@ export default function CourseDetail() {
     return data;
   }, [id]);
 
+  const refreshSingleSession = useCallback(async (sessionId) => {
+    if (!sessionId) return;
+    const { data } = await apiClient.get(`/sessions/${sessionId}`);
+    const nextSession = data?.session || data;
+    if (!nextSession?._id || nextSession.studentCreated) return;
+
+    setSessions((previousSessions) => previousSessions.map((session) => (
+      String(session?._id || '') === String(sessionId)
+        ? { ...session, ...nextSession }
+        : session
+    )));
+  }, []);
+
+  const patchSingleSessionStatus = useCallback((sessionId, status) => {
+    if (!sessionId || !status) return;
+    setSessions((previousSessions) => previousSessions.map((session) => (
+      String(session?._id || '') === String(sessionId)
+        ? { ...session, status }
+        : session
+    )));
+  }, []);
+
   const fetchSessions = useCallback(async () => {
     const fetchVersion = sessionFetchVersionRef.current + 1;
     sessionFetchVersionRef.current = fetchVersion;
@@ -571,9 +593,10 @@ export default function CourseDetail() {
           const evt = message?.event;
           const d = message?.data;
           if (String(d?.courseId || '') !== String(id)) return;
-          if (evt === 'session:metadata-changed' || evt === 'session:status-changed'
-            || evt === 'session:question-changed' || evt === 'session:visibility-changed') {
-            fetchSessions();
+          if (evt === 'session:status-changed') {
+            patchSingleSessionStatus(d?.sessionId, d?.status);
+          } else if (evt === 'session:metadata-changed') {
+            refreshSingleSession(d?.sessionId).catch(() => {});
           }
           if (evt === 'video:updated') {
             fetchCourse();
@@ -605,7 +628,7 @@ export default function CourseDetail() {
         ws.close();
       }
     };
-  }, [fetchSessions, fetchCourse, id]);
+  }, [patchSingleSessionStatus, refreshSingleSession, fetchCourse, id]);
 
   useEffect(() => {
     const urlTab = parseCourseTab(searchParams.get('tab'));
@@ -929,10 +952,9 @@ export default function CourseDetail() {
       } else {
         setMsg({ severity: 'success', text: t('professor.course.sessionUpdated') });
       }
-      await fetchSessions();
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedUpdateSession') });
-      fetchSessions();
+      refreshSingleSession(sessionId).catch(() => {});
     } finally {
       setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: false }));
     }

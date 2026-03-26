@@ -123,6 +123,8 @@ export default function StudentCourseDetail() {
   const [sessionStatusFilters, setSessionStatusFilters] = useState({});
   const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
   const sessionFetchVersionRef = useRef(0);
+  const sessionsFullyLoadedRef = useRef(false);
+  const sessionsRef = useRef([]);
 
   // Video chat availability
   const [videoEnabled, setVideoEnabled] = useState(false);
@@ -157,9 +159,87 @@ export default function StudentCourseDetail() {
     return data;
   }, [id]);
 
+  const recomputeLoadedSessionTypeCounts = useCallback((sessionItems) => {
+    const nextCounts = getStudentSessionTypeCounts(sessionItems);
+    setSessionTypeCounts(nextCounts);
+  }, []);
+
+  const upsertStudentSession = useCallback((previousSessions, nextSession) => {
+    const targetId = String(nextSession?._id || '');
+    if (!targetId) return previousSessions;
+    const existingIndex = previousSessions.findIndex((session) => String(session?._id || '') === targetId);
+
+    if (existingIndex === -1) {
+      return [...previousSessions, nextSession];
+    }
+
+    return previousSessions.map((session, index) => (
+      index === existingIndex
+        ? { ...session, ...nextSession }
+        : session
+    ));
+  }, []);
+
+  const removeStudentSession = useCallback((previousSessions, sessionId) => (
+    previousSessions.filter((session) => String(session?._id || '') !== String(sessionId || ''))
+  ), []);
+
+  const refreshSingleSession = useCallback(async (sessionId) => {
+    if (!sessionId) return;
+    try {
+      const { data } = await apiClient.get(`/sessions/${sessionId}`);
+      const nextSession = data?.session || data;
+      if (!nextSession?._id) return;
+
+      setSessions((previousSessions) => {
+        const nextSessions = upsertStudentSession(previousSessions, nextSession);
+        if (sessionsFullyLoadedRef.current) {
+          recomputeLoadedSessionTypeCounts(nextSessions);
+        }
+        return nextSessions;
+      });
+    } catch (err) {
+      const statusCode = Number(err?.response?.status || 0);
+      if (statusCode === 403 || statusCode === 404) {
+        setSessions((previousSessions) => {
+          const nextSessions = removeStudentSession(previousSessions, sessionId);
+          if (sessionsFullyLoadedRef.current) {
+            recomputeLoadedSessionTypeCounts(nextSessions);
+          }
+          return nextSessions;
+        });
+      }
+    }
+  }, [recomputeLoadedSessionTypeCounts, removeStudentSession, upsertStudentSession]);
+
+  const patchSessionStatusLocally = useCallback((sessionId, status) => {
+    if (!sessionId || !status) return;
+
+    if (status === 'hidden') {
+      setSessions((previousSessions) => {
+        const nextSessions = previousSessions.filter((session) => {
+          if (String(session?._id || '') !== String(sessionId)) return true;
+          return !!session?.studentCreated;
+        });
+        if (sessionsFullyLoadedRef.current) {
+          recomputeLoadedSessionTypeCounts(nextSessions);
+        }
+        return nextSessions;
+      });
+      return;
+    }
+
+    setSessions((previousSessions) => previousSessions.map((session) => (
+      String(session?._id || '') === String(sessionId)
+        ? { ...session, status }
+        : session
+    )));
+  }, [recomputeLoadedSessionTypeCounts]);
+
   const fetchSessions = useCallback(async () => {
     const fetchVersion = sessionFetchVersionRef.current + 1;
     sessionFetchVersionRef.current = fetchVersion;
+    sessionsFullyLoadedRef.current = false;
     setSessionsLoading(true);
     setSessionsBackgroundLoading(false);
 
@@ -184,6 +264,7 @@ export default function StudentCourseDetail() {
       setSessionsLoading(false);
 
       if (totalPages <= 1) {
+        sessionsFullyLoadedRef.current = true;
         setSessionsBackgroundLoading(false);
         return;
       }
@@ -205,9 +286,11 @@ export default function StudentCourseDetail() {
       }
 
       if (sessionFetchVersionRef.current !== fetchVersion) return;
+      sessionsFullyLoadedRef.current = true;
       setSessionsBackgroundLoading(false);
     } catch {
       if (sessionFetchVersionRef.current !== fetchVersion) return;
+      sessionsFullyLoadedRef.current = false;
       setSessionTotalCount(0);
       setSessionTypeCounts({ interactive: 0, quizzes: 0, practice: 0 });
       setSessionsLoading(false);
@@ -216,6 +299,10 @@ export default function StudentCourseDetail() {
   }, [fetchSessionsPage]);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   useEffect(() => {
     const urlTab = parseCourseTab(searchParams.get('tab'));
@@ -266,10 +353,18 @@ export default function StudentCourseDetail() {
           const evt = message?.event;
           const d = message?.data;
           if (String(d?.courseId || '') !== String(id)) return;
-          if (evt === 'session:metadata-changed' || evt === 'session:status-changed'
-            || evt === 'session:question-changed' || evt === 'session:visibility-changed'
-            || evt === 'session:feedback-updated' || evt === 'session:quiz-submitted') {
-            fetchSessions();
+          if (evt === 'session:status-changed') {
+            const hasSessionLoaded = sessionsRef.current
+              .some((session) => String(session?._id || '') === String(d?.sessionId || ''));
+            if (hasSessionLoaded) {
+              patchSessionStatusLocally(d?.sessionId, d?.status);
+            } else if (d?.status && d.status !== 'hidden') {
+              refreshSingleSession(d?.sessionId).catch(() => {});
+            }
+          } else if (evt === 'session:metadata-changed'
+            || evt === 'session:feedback-updated'
+            || evt === 'session:quiz-submitted') {
+            refreshSingleSession(d?.sessionId).catch(() => {});
           }
           if (evt === 'video:updated') {
             fetchCourse();
@@ -316,7 +411,7 @@ export default function StudentCourseDetail() {
       window.removeEventListener('focus', refreshSessions);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchSessions, id]);
+  }, [fetchSessions, fetchCourse, id, patchSessionStatusLocally, refreshSingleSession]);
 
   const handleUnenroll = async () => {
     setUnenrolling(true);
