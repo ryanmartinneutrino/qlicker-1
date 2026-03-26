@@ -403,6 +403,33 @@ const GradingTableRow = memo(function GradingTableRow({
   t,
 }) {
   const rowNeedsGrading = !!row.rowNeedsGrading;
+  const [pointsValue, setPointsValue] = useState(draft.points);
+  const [feedbackValue, setFeedbackValue] = useState(draft.feedback);
+
+  useEffect(() => {
+    setPointsValue(draft.points);
+  }, [draft.points, row.studentId]);
+
+  useEffect(() => {
+    setFeedbackValue(draft.feedback);
+  }, [draft.feedback, row.studentId]);
+
+  const pointsChanged = !arePointValuesEqual(pointsValue, row.mark?.points);
+  const feedbackChanged = normalizeValue(feedbackValue) !== normalizeValue(row.mark?.feedback);
+  const numericPoints = Number(pointsValue);
+  const confirmingManualGrade = rowNeedsGrading
+    && hasExplicitPointsValue(pointsValue)
+    && Number.isFinite(numericPoints)
+    && numericPoints >= 0;
+  const localRowDirty = rowDirty || pointsChanged || feedbackChanged || confirmingManualGrade;
+
+  const syncDraftToParent = useCallback((nextPoints = pointsValue, nextFeedback = feedbackValue) => {
+    onUpdateDraft(row.studentId, (current) => ({
+      ...current,
+      points: nextPoints,
+      feedback: nextFeedback,
+    }));
+  }, [feedbackValue, onUpdateDraft, pointsValue, row.studentId]);
 
   return (
     <TableRow
@@ -460,12 +487,12 @@ const GradingTableRow = memo(function GradingTableRow({
           <TextField
             size="small"
             type="number"
-            value={draft.points}
+            value={pointsValue}
             disabled={rowDisabled || saving}
             onChange={(event) => {
-              const value = event.target.value;
-              onUpdateDraft(row.studentId, (current) => ({ ...current, points: value }));
+              setPointsValue(event.target.value);
             }}
+            onBlur={() => syncDraftToParent(pointsValue, feedbackValue)}
             sx={{ width: 82 }}
             inputProps={{ min: 0 }}
           />
@@ -495,12 +522,12 @@ const GradingTableRow = memo(function GradingTableRow({
       <TableCell>
         <Box sx={{ minWidth: 170 }}>
           <RichTextEditor
-            value={draft.feedback}
+            value={feedbackValue}
             disabled={rowDisabled || saving}
             onChange={({ html }) => {
-              const value = html || '';
-              onUpdateDraft(row.studentId, (current) => ({ ...current, feedback: value }));
+              setFeedbackValue(html || '');
             }}
+            onBlur={() => syncDraftToParent(pointsValue, feedbackValue)}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
             minHeight={30}
@@ -513,17 +540,24 @@ const GradingTableRow = memo(function GradingTableRow({
           <Button
             size="small"
             variant="outlined"
-            onClick={() => onSave(row)}
-            disabled={rowDisabled || saving || !rowDirty}
+            onClick={() => {
+              syncDraftToParent(pointsValue, feedbackValue);
+              onSave(row, { points: pointsValue, feedback: feedbackValue });
+            }}
+            disabled={rowDisabled || saving || !localRowDirty}
           >
             {t('common.save')}
           </Button>
           <Button
             size="small"
             variant="text"
-            onClick={() => onCancel(row)}
-            disabled={rowDisabled || saving || !rowDirty}
-            sx={{ visibility: rowDirty ? 'visible' : 'hidden' }}
+            onClick={() => {
+              setPointsValue(row.mark ? String(row.mark.points ?? 0) : '');
+              setFeedbackValue(normalizeValue(row.mark?.feedback));
+              onCancel(row);
+            }}
+            disabled={rowDisabled || saving || !localRowDirty}
+            sx={{ visibility: localRowDirty ? 'visible' : 'hidden' }}
           >
             {t('common.cancel')}
           </Button>
@@ -569,7 +603,7 @@ export default function SessionQuestionGradingPanel({
   const [imageViewUrl, setImageViewUrl] = useState('');
   const [selectedStudentIds, setSelectedStudentIds] = useState({});
   const [speedGradingOpen, setSpeedGradingOpen] = useState(false);
-  const [speedGradingStartIndex, setSpeedGradingStartIndex] = useState(0);
+  const [speedGradingRowsSnapshot, setSpeedGradingRowsSnapshot] = useState([]);
   const latestGradesSessionRef = useRef(sessionId);
   const latestGradesRequestRef = useRef(0);
   const lastDraftQuestionIdRef = useRef('');
@@ -916,9 +950,10 @@ export default function SessionQuestionGradingPanel({
     return confirmingManualGrade || isDraftChangedFromMark(draft, row.mark);
   }, [draftByStudentId]);
 
-  const handleSaveRow = useCallback(async (row) => {
+  const handleSaveRow = useCallback(async (row, draftOverride = null) => {
     if (!row?.gradeId || !row?.mark || !activeQuestionId) return;
-    const draft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
+    const persistedDraft = draftByStudentId[row.studentId] || { points: '', feedback: '' };
+    const draft = draftOverride ? { ...persistedDraft, ...draftOverride } : persistedDraft;
     const parsedPoints = Number(draft.points);
     if (!Number.isFinite(parsedPoints) || parsedPoints < 0) {
       setGlobalMessage(t('grades.questionPanel.pointsInvalid'));
@@ -936,6 +971,10 @@ export default function SessionQuestionGradingPanel({
         }
       );
       applyUpdatedGrade(data?.grade);
+      setDraftByStudentId((prev) => ({
+        ...prev,
+        [row.studentId]: { points: String(parsedPoints), feedback: draft.feedback || '' },
+      }));
       setEditedStudentIds((prev) => {
         if (!prev[row.studentId]) return prev;
         return { ...prev, [row.studentId]: false };
@@ -948,7 +987,7 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setSavingByStudentId((prev) => ({ ...prev, [row.studentId]: false }));
     }
-  }, [activeQuestionId, applyUpdatedGrade, draftByStudentId]);
+  }, [activeQuestionId, applyUpdatedGrade, draftByStudentId, t]);
 
   const handleCancelRow = useCallback((row) => {
     if (!row?.studentId) return;
@@ -1191,17 +1230,44 @@ export default function SessionQuestionGradingPanel({
 
   // --- Speed-grading helpers ---
 
-  const speedGradingRows = useMemo(() => {
-    const hasSelected = sortedRows.some((row) => !!selectedStudentIds[row.studentId]);
-    if (hasSelected) {
-      return sortedRows.filter((row) => !!selectedStudentIds[row.studentId]);
-    }
-    return sortedRows;
-  }, [sortedRows, selectedStudentIds]);
-
   const handleOpenSpeedGrading = useCallback(() => {
-    setSpeedGradingStartIndex(0);
+    const hasSelected = sortedRows.some((row) => !!selectedStudentIds[row.studentId]);
+    const rowsForModal = hasSelected
+      ? sortedRows.filter((row) => !!selectedStudentIds[row.studentId])
+      : sortedRows;
+    if (rowsForModal.length === 0) return;
+
+    const snapshotRows = rowsForModal.map((row) => {
+      const draft = draftByStudentId[row.studentId] || null;
+      const draftPoints = Number(draft?.points);
+      const draftFeedback = draft?.feedback || '';
+      const pointsOverridden = !!draft
+        && !arePointValuesEqual(draft.points, row.mark?.points)
+        && hasExplicitPointsValue(draft.points)
+        && Number.isFinite(draftPoints)
+        && draftPoints >= 0;
+      const feedbackOverridden = !!draft
+        && normalizeValue(draftFeedback) !== normalizeValue(row.mark?.feedback);
+
+      return {
+        ...row,
+        mark: row.mark
+          ? {
+            ...row.mark,
+            points: pointsOverridden ? draftPoints : row.mark.points,
+            feedback: feedbackOverridden ? draftFeedback : row.mark.feedback,
+          }
+          : row.mark,
+      };
+    });
+
+    setSpeedGradingRowsSnapshot(snapshotRows);
     setSpeedGradingOpen(true);
+  }, [draftByStudentId, selectedStudentIds, sortedRows]);
+
+  const handleCloseSpeedGrading = useCallback(() => {
+    setSpeedGradingOpen(false);
+    setSpeedGradingRowsSnapshot([]);
   }, []);
 
   const handleSpeedGradingSave = useCallback(async (row, { points, feedback }) => {
@@ -1222,9 +1288,18 @@ export default function SessionQuestionGradingPanel({
         return { ...prev, [row.studentId]: false };
       });
     }
+    setSpeedGradingRowsSnapshot((prev) => prev.map((entry) => {
+      if (entry.studentId !== row.studentId) return entry;
+      return {
+        ...entry,
+        mark: entry.mark
+          ? { ...entry.mark, points, feedback, needsGrading: false }
+          : entry.mark,
+      };
+    }));
     setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
     setGlobalMessageType('success');
-  }, [activeQuestionId, applyUpdatedGrade]);
+  }, [activeQuestionId, applyUpdatedGrade, t]);
 
   if (loading) {
     return (
@@ -1690,9 +1765,9 @@ export default function SessionQuestionGradingPanel({
 
       <SpeedGradingModal
         open={speedGradingOpen}
-        onClose={() => setSpeedGradingOpen(false)}
-        rows={speedGradingRows}
-        initialIndex={speedGradingStartIndex}
+        onClose={handleCloseSpeedGrading}
+        rows={speedGradingRowsSnapshot}
+        initialIndex={0}
         activeQuestionId={activeQuestionId}
         onSaveGrade={handleSpeedGradingSave}
         formatOutOf={(mark) => t('grades.questionPanel.outOf', { value: formatPercent(mark?.outOf || 0) })}

@@ -33,8 +33,6 @@ const richContentSx = {
   },
 };
 
-const FEEDBACK_INPUT_DEBOUNCE_MS = 180;
-
 function RichContent({ html, fallback }) {
   const ref = useRef(null);
   const prepared = prepareRichTextInput(html || '', fallback || '');
@@ -88,13 +86,19 @@ export default memo(function SpeedGradingModal({
   const pointsInputRef = useRef(null);
   const touchStartRef = useRef(null);
   const initializedRef = useRef(false);
+  const pointsValueRef = useRef('');
+  const feedbackValueRef = useRef('');
 
   function loadRowDraft(idx) {
     const row = rows[idx];
     if (!row) return;
     const mark = row.mark;
-    setPoints(mark && mark.points !== null && mark.points !== undefined ? String(mark.points) : '');
-    setFeedback(mark?.feedback || '');
+    const nextPoints = mark && mark.points !== null && mark.points !== undefined ? String(mark.points) : '';
+    const nextFeedback = mark?.feedback || '';
+    pointsValueRef.current = nextPoints;
+    feedbackValueRef.current = nextFeedback;
+    setPoints(nextPoints);
+    setFeedback(nextFeedback);
   }
 
   // Initialize state when opening, and keep index in range when row count changes.
@@ -138,8 +142,8 @@ export default memo(function SpeedGradingModal({
     loadRowDraft(nextIdx);
   }
 
-  function validatePoints() {
-    const parsedPoints = Number(points);
+  function validatePoints(rawPoints = pointsValueRef.current) {
+    const parsedPoints = Number(rawPoints);
     return Number.isFinite(parsedPoints) && parsedPoints >= 0 ? parsedPoints : null;
   }
 
@@ -153,32 +157,32 @@ export default memo(function SpeedGradingModal({
 
   const handleSave = useCallback(async () => {
     if (!currentRow || saving) return;
-    const parsedPoints = validatePoints();
+    const parsedPoints = validatePoints(pointsValueRef.current);
     if (parsedPoints === null) return;
 
     setSaving(true);
     try {
-      await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedback || '' });
+      await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedbackValueRef.current || '' });
     } finally {
       setSaving(false);
     }
-  }, [currentRow, feedback, onSaveGrade, points, saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentRow, onSaveGrade, saving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSaveAndNext = useCallback(async () => {
     if (!currentRow || saving) return;
-    const parsedPoints = validatePoints();
+    const parsedPoints = validatePoints(pointsValueRef.current);
     if (parsedPoints === null) return;
 
     setSaving(true);
     try {
-      await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedback || '' });
+      await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedbackValueRef.current || '' });
       if (currentIndex < rows.length - 1) {
         navigateTo(currentIndex + 1);
       }
     } finally {
       setSaving(false);
     }
-  }, [currentIndex, currentRow, feedback, navigateTo, onSaveGrade, points, rows.length, saving]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, currentRow, navigateTo, onSaveGrade, rows.length, saving]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -331,7 +335,11 @@ export default memo(function SpeedGradingModal({
               type="number"
               value={points}
               disabled={saving}
-              onChange={(event) => setPoints(event.target.value)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                pointsValueRef.current = nextValue;
+                setPoints(nextValue);
+              }}
               sx={{ width: 120 }}
               inputProps={{ min: 0, 'aria-label': t('common.points') }}
             />
@@ -349,8 +357,12 @@ export default memo(function SpeedGradingModal({
           <StudentRichTextEditor
             value={feedback}
             disabled={saving}
-            onChangeDebounceMs={FEEDBACK_INPUT_DEBOUNCE_MS}
-            onChange={({ html }) => setFeedback(html || '')}
+            onChangeDebounceMs={0}
+            onChange={({ html }) => {
+              const nextValue = html || '';
+              feedbackValueRef.current = nextValue;
+              setFeedback(nextValue);
+            }}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={t('grades.coursePanel.feedback')}
             showMathHint
