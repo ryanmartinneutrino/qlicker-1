@@ -166,6 +166,9 @@ export default memo(function SpeedGradingModal({
       if (currentIndex < rows.length - 1) {
         navigateTo(currentIndex + 1);
       }
+    } catch {
+      // Error feedback is handled by the parent onSaveGrade callback;
+      // swallow here so we don't navigate away from the failed row.
     } finally {
       setSaving(false);
     }
