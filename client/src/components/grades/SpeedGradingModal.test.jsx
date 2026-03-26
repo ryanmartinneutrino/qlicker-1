@@ -196,6 +196,11 @@ describe('SpeedGradingModal', () => {
         expect.objectContaining({ points: 4, feedback: '<p>Nice</p>' })
       );
     });
+
+    await waitFor(() => {
+      expect(screen.getByText('Alan Turing')).toBeInTheDocument();
+      expect(screen.getByText('3 of 3')).toBeInTheDocument();
+    });
   });
 
   it('preserves points when only feedback is changed before saving', async () => {

@@ -19,18 +19,45 @@ vi.mock('../questions/RichTextEditor', () => ({
     onChange,
     ariaLabel,
     disabled,
+    onBlur,
   }) => (
-    <textarea
-      aria-label={ariaLabel}
+    <FeedbackTextarea
       value={value}
+      onChange={onChange}
+      ariaLabel={ariaLabel}
       disabled={disabled}
-      onChange={(event) => {
-        const nextValue = event.target.value;
-        onChange?.({ html: nextValue, plainText: nextValue });
-      }}
+      onBlur={onBlur}
     />
   ),
 }));
+
+function FeedbackTextarea({
+  value,
+  onChange,
+  ariaLabel,
+  disabled,
+  onBlur,
+}) {
+  const [localValue, setLocalValue] = React.useState(value || '');
+
+  React.useEffect(() => {
+    setLocalValue(value || '');
+  }, [value]);
+
+  return (
+    <textarea
+      aria-label={ariaLabel}
+      value={localValue}
+      disabled={disabled}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        setLocalValue(nextValue);
+        onChange?.({ html: nextValue, plainText: nextValue });
+      }}
+      onBlur={onBlur}
+    />
+  );
+}
 
 function buildGradesPayload() {
   return {
