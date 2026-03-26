@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SessionQuestionGradingPanel, { buildResponseSummary } from './SessionQuestionGradingPanel';
 import apiClient from '../../api/client';
@@ -13,54 +13,23 @@ vi.mock('../../api/client', () => ({
   },
 }));
 
-vi.mock('../questions/StudentRichTextEditor', () => ({
+vi.mock('../questions/RichTextEditor', () => ({
   default: ({
     value,
     onChange,
-    onChangeDebounceMs = 0,
     ariaLabel,
     disabled,
-  }) => {
-    const [draftValue, setDraftValue] = React.useState(value);
-    const timeoutRef = React.useRef(null);
-
-    React.useEffect(() => {
-      setDraftValue(value);
-    }, [value]);
-
-    React.useEffect(() => () => {
-      if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    }, []);
-
-    const handleChange = (event) => {
-      const nextValue = event.target.value;
-      setDraftValue(nextValue);
-      if (onChangeDebounceMs > 0) {
-        if (timeoutRef.current) {
-          window.clearTimeout(timeoutRef.current);
-        }
-        timeoutRef.current = window.setTimeout(() => {
-          timeoutRef.current = null;
-          onChange?.({ html: nextValue, plainText: nextValue });
-        }, onChangeDebounceMs);
-        return;
-      }
-      onChange?.({ html: nextValue, plainText: nextValue });
-    };
-
-    return (
-      <textarea
-        aria-label={ariaLabel}
-        value={draftValue}
-        disabled={disabled}
-        onChange={handleChange}
-      />
-    );
-  },
-  MathPreview: () => null,
+  }) => (
+    <textarea
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        onChange?.({ html: nextValue, plainText: nextValue });
+      }}
+    />
+  ),
 }));
 
 function buildGradesPayload() {
@@ -230,7 +199,7 @@ describe('SessionQuestionGradingPanel', () => {
     });
   });
 
-  it('updates feedback drafts after the editor debounce while typing in the grading table', async () => {
+  it('updates feedback drafts while typing in the grading table', async () => {
     apiClient.get.mockResolvedValueOnce({
       data: {
         grades: [
@@ -272,8 +241,8 @@ describe('SessionQuestionGradingPanel', () => {
     await screen.findByText('Ada Lovelace');
 
     const feedbackInput = screen.getByLabelText(/feedback — ada lovelace/i);
-    const saveButtons = screen.getAllByRole('button', { name: /^save$/i });
-    const rowSaveButton = saveButtons[1];
+    const row = screen.getByText('Ada Lovelace').closest('tr');
+    const rowSaveButton = within(row).getByRole('button', { name: /^save$/i });
 
     expect(rowSaveButton).toBeDisabled();
 
@@ -282,6 +251,72 @@ describe('SessionQuestionGradingPanel', () => {
     await waitFor(() => {
       expect(rowSaveButton).not.toBeDisabled();
     });
+  });
+
+  it('preserves an in-progress feedback draft when grading rows refresh', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        grades: [
+          {
+            _id: 'grade-1',
+            userId: 'student-a',
+            marks: [{ questionId: 'q-manual', points: 3, outOf: 5, needsGrading: false, feedback: '' }],
+          },
+        ],
+      },
+    });
+
+    const session = { _id: 'session-1', quiz: false, practiceQuiz: false };
+    const questions = [
+      {
+        _id: 'q-manual',
+        type: 2,
+        content: '<p>Explain your reasoning</p>',
+        plainText: 'Explain your reasoning',
+        sessionOptions: { points: 5 },
+      },
+    ];
+    const initialStudentResults = [
+      {
+        studentId: 'student-a',
+        firstname: 'Ada',
+        lastname: 'Lovelace',
+        email: 'ada@example.edu',
+        inSession: true,
+        questionResults: [{ questionId: 'q-manual', responses: [{ attempt: 1, answer: 'Because it works.' }] }],
+      },
+    ];
+
+    const { rerender } = render(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={session}
+        questions={questions}
+        studentResults={initialStudentResults}
+      />
+    );
+
+    await screen.findByText('Ada Lovelace');
+
+    const feedbackInput = screen.getByLabelText(/feedback — ada lovelace/i);
+    fireEvent.change(feedbackInput, { target: { value: 'Typing draft feedback' } });
+
+    await waitFor(() => {
+      const row = screen.getByText('Ada Lovelace').closest('tr');
+      const rowSaveButton = within(row).getByRole('button', { name: /^save$/i });
+      expect(rowSaveButton).not.toBeDisabled();
+    });
+
+    rerender(
+      <SessionQuestionGradingPanel
+        sessionId="session-1"
+        session={{ ...session }}
+        questions={[{ ...questions[0] }]}
+        studentResults={[{ ...initialStudentResults[0], questionResults: [...initialStudentResults[0].questionResults] }]}
+      />
+    );
+
+    expect(screen.getByLabelText(/feedback — ada lovelace/i)).toHaveValue('Typing draft feedback');
   });
 
   it('locks grading controls until the session has ended', async () => {

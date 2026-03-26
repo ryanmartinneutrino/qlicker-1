@@ -35,11 +35,10 @@ import {
   normalizeQuestionType,
 } from '../questions/constants';
 import { prepareRichTextInput, renderKatexInElement } from '../questions/richTextUtils';
-import StudentRichTextEditor, { MathPreview } from '../questions/StudentRichTextEditor';
+import RichTextEditor from '../questions/RichTextEditor';
 import { getLatestResponse } from '../../utils/responses';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const FEEDBACK_INPUT_DEBOUNCE_MS = 180;
 
 const COMPACT_CHIP_SX = {
   borderRadius: 1.4,
@@ -71,12 +70,6 @@ function normalizeComparableText(value) {
   return stripHtml(value).toLowerCase();
 }
 
-function hasMathSyntax(value) {
-  const text = normalizeValue(value);
-  if (!text) return false;
-  return /\\\(|\\\[|\$\$/.test(text);
-}
-
 function formatPercent(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return '0';
@@ -85,6 +78,28 @@ function formatPercent(value) {
 
 function hasExplicitPointsValue(value) {
   return value !== '' && value !== null && value !== undefined;
+}
+
+function arePointValuesEqual(draftValue, markValue) {
+  const draftHasPoints = hasExplicitPointsValue(draftValue);
+  const markHasPoints = hasExplicitPointsValue(markValue);
+  if (draftHasPoints !== markHasPoints) return false;
+  if (!draftHasPoints) return true;
+
+  const draftNumeric = Number(draftValue);
+  const markNumeric = Number(markValue);
+  if (Number.isFinite(draftNumeric) && Number.isFinite(markNumeric)) {
+    return Math.abs(draftNumeric - markNumeric) <= 0.0001;
+  }
+
+  return normalizeValue(draftValue) === normalizeValue(markValue);
+}
+
+function isDraftChangedFromMark(draft, mark) {
+  if (!draft) return false;
+  const feedbackChanged = normalizeValue(draft.feedback) !== normalizeValue(mark?.feedback);
+  const pointsChanged = !arePointValuesEqual(draft.points, mark?.points);
+  return feedbackChanged || pointsChanged;
 }
 
 function formatDisplayName(student, fallback = 'Unknown Student') {
@@ -479,21 +494,18 @@ const GradingTableRow = memo(function GradingTableRow({
       </TableCell>
       <TableCell>
         <Box sx={{ minWidth: 170 }}>
-          <StudentRichTextEditor
+          <RichTextEditor
             value={draft.feedback}
             disabled={rowDisabled || saving}
-            onChangeDebounceMs={FEEDBACK_INPUT_DEBOUNCE_MS}
             onChange={({ html }) => {
               const value = html || '';
               onUpdateDraft((current) => ({ ...current, feedback: value }));
             }}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
-            showMathHint={false}
+            minHeight={30}
+            compact
           />
-          {rowDirty && hasMathSyntax(draft.feedback) && (
-            <MathPreview html={draft.feedback} debounceMs={220} showLabel={false} />
-          )}
         </Box>
       </TableCell>
       <TableCell align="right">
@@ -506,16 +518,15 @@ const GradingTableRow = memo(function GradingTableRow({
           >
             {t('common.save')}
           </Button>
-          {rowDirty && (
-            <Button
-              size="small"
-              variant="text"
-              onClick={onCancel}
-              disabled={rowDisabled || saving}
-            >
-              {t('common.cancel')}
-            </Button>
-          )}
+          <Button
+            size="small"
+            variant="text"
+            onClick={onCancel}
+            disabled={rowDisabled || saving || !rowDirty}
+            sx={{ visibility: rowDirty ? 'visible' : 'hidden' }}
+          >
+            {t('common.cancel')}
+          </Button>
         </Box>
       </TableCell>
     </TableRow>
@@ -544,6 +555,7 @@ export default function SessionQuestionGradingPanel({
   const [showNeedsGradingOnly, setShowNeedsGradingOnly] = useState(false);
   const [showResponsesOnly, setShowResponsesOnly] = useState(false);
   const [draftByStudentId, setDraftByStudentId] = useState({});
+  const [editedStudentIds, setEditedStudentIds] = useState({});
   const [savingByStudentId, setSavingByStudentId] = useState({});
   const [bulkPoints, setBulkPoints] = useState('');
   const [bulkFeedback, setBulkFeedback] = useState('');
@@ -560,12 +572,14 @@ export default function SessionQuestionGradingPanel({
   const [speedGradingStartIndex, setSpeedGradingStartIndex] = useState(0);
   const latestGradesSessionRef = useRef(sessionId);
   const latestGradesRequestRef = useRef(0);
+  const lastDraftQuestionIdRef = useRef('');
 
   useEffect(() => {
     latestGradesSessionRef.current = sessionId;
     latestGradesRequestRef.current += 1;
     setGradesByStudentId({});
     setDraftByStudentId({});
+    setEditedStudentIds({});
     setSavingByStudentId({});
     setSelectedStudentIds({});
   }, [sessionId]);
@@ -739,18 +753,38 @@ export default function SessionQuestionGradingPanel({
   }, [activeQuestion, gradesByStudentId, isQuizSession, studentResults]);
 
   useEffect(() => {
-    const nextDrafts = {};
-    allRows.forEach((row) => {
-      nextDrafts[row.studentId] = {
-        points: row.mark ? String(row.mark.points ?? 0) : '',
-        feedback: normalizeValue(row.mark?.feedback),
-      };
+    const questionId = String(activeQuestionId || '');
+    const questionChanged = lastDraftQuestionIdRef.current !== questionId;
+    lastDraftQuestionIdRef.current = questionId;
+
+    setDraftByStudentId((previousDrafts) => {
+      const nextDrafts = {};
+      allRows.forEach((row) => {
+        const serverDraft = {
+          points: row.mark ? String(row.mark.points ?? 0) : '',
+          feedback: normalizeValue(row.mark?.feedback),
+        };
+
+        if (questionChanged) {
+          nextDrafts[row.studentId] = serverDraft;
+          return;
+        }
+
+        const existingDraft = previousDrafts[row.studentId];
+        const shouldPreserveExistingDraft = !!existingDraft
+          && !!editedStudentIds[row.studentId]
+          && isDraftChangedFromMark(existingDraft, row.mark)
+          && !savingByStudentId[row.studentId];
+        nextDrafts[row.studentId] = shouldPreserveExistingDraft ? existingDraft : serverDraft;
+      });
+
+      return nextDrafts;
     });
-    setDraftByStudentId(nextDrafts);
-  }, [allRows]);
+  }, [activeQuestionId, allRows, editedStudentIds, savingByStudentId]);
 
   useEffect(() => {
     setSelectedStudentIds({});
+    setEditedStudentIds({});
   }, [activeQuestionId]);
 
   useEffect(() => {
@@ -863,6 +897,7 @@ export default function SessionQuestionGradingPanel({
       const next = typeof updater === 'function' ? updater(current) : updater;
       return { ...prev, [studentId]: next };
     });
+    setEditedStudentIds((prev) => ({ ...prev, [studentId]: true }));
   }, []);
 
   const isRowDirty = useCallback((row) => {
@@ -870,20 +905,12 @@ export default function SessionQuestionGradingPanel({
     const draftHasPoints = hasExplicitPointsValue(draft.points);
     const markHasPoints = hasExplicitPointsValue(row.mark?.points);
     const draftPoints = draftHasPoints ? Number(draft.points) : null;
-    const markPoints = markHasPoints ? Number(row.mark?.points) : null;
     const confirmingManualGrade = !!row?.rowNeedsGrading
       && draftHasPoints
       && Number.isFinite(draftPoints)
       && draftPoints >= 0;
-    const pointsPresenceChanged = draftHasPoints !== markHasPoints;
-    const pointsChanged = pointsPresenceChanged || (draftHasPoints
-      && (
-        !Number.isFinite(draftPoints)
-        || !Number.isFinite(markPoints)
-        || Math.abs(draftPoints - markPoints) > 0.0001
-      ));
-    const feedbackChanged = normalizeValue(draft.feedback) !== normalizeValue(row.mark?.feedback);
-    return confirmingManualGrade || pointsChanged || feedbackChanged;
+    if (draftHasPoints !== markHasPoints) return true;
+    return confirmingManualGrade || isDraftChangedFromMark(draft, row.mark);
   }, [draftByStudentId]);
 
   const handleSaveRow = useCallback(async (row) => {
@@ -906,6 +933,7 @@ export default function SessionQuestionGradingPanel({
         }
       );
       applyUpdatedGrade(data?.grade);
+      setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
       setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
       setGlobalMessageType('success');
     } catch (err) {
@@ -925,6 +953,7 @@ export default function SessionQuestionGradingPanel({
         feedback: normalizeValue(row.mark?.feedback),
       },
     }));
+    setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
   }, []);
 
   const handleBulkApplyPoints = useCallback(async () => {
@@ -1179,6 +1208,7 @@ export default function SessionQuestionGradingPanel({
         ...prev,
         [row.studentId]: { points: String(points), feedback },
       }));
+      setEditedStudentIds((prev) => ({ ...prev, [row.studentId]: false }));
     }
     setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
     setGlobalMessageType('success');
