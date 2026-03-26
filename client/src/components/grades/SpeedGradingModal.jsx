@@ -155,19 +155,6 @@ export default memo(function SpeedGradingModal({
     navigateTo(currentIndex + 1);
   }, [currentIndex, rows.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSave = useCallback(async () => {
-    if (!currentRow || saving) return;
-    const parsedPoints = validatePoints(pointsValueRef.current);
-    if (parsedPoints === null) return;
-
-    setSaving(true);
-    try {
-      await onSaveGrade(currentRow, { points: parsedPoints, feedback: feedbackValueRef.current || '' });
-    } finally {
-      setSaving(false);
-    }
-  }, [currentRow, onSaveGrade, saving]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleSaveAndNext = useCallback(async () => {
     if (!currentRow || saving) return;
     const parsedPoints = validatePoints(pointsValueRef.current);
@@ -392,7 +379,7 @@ export default memo(function SpeedGradingModal({
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button
-            onClick={handleSave}
+            onClick={handleSaveAndNext}
             disabled={saving}
             variant="contained"
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}

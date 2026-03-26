@@ -404,32 +404,40 @@ const GradingTableRow = memo(function GradingTableRow({
 }) {
   const rowNeedsGrading = !!row.rowNeedsGrading;
   const [pointsValue, setPointsValue] = useState(draft.points);
-  const [feedbackValue, setFeedbackValue] = useState(draft.feedback);
+  const feedbackValueRef = useRef(draft.feedback || '');
+  const [feedbackDirty, setFeedbackDirty] = useState(false);
 
   useEffect(() => {
     setPointsValue(draft.points);
   }, [draft.points, row.studentId]);
 
   useEffect(() => {
-    setFeedbackValue(draft.feedback);
+    feedbackValueRef.current = draft.feedback || '';
+    setFeedbackDirty(false);
   }, [draft.feedback, row.studentId]);
 
   const pointsChanged = !arePointValuesEqual(pointsValue, row.mark?.points);
-  const feedbackChanged = normalizeValue(feedbackValue) !== normalizeValue(row.mark?.feedback);
+  const feedbackChanged = normalizeValue(feedbackValueRef.current) !== normalizeValue(row.mark?.feedback);
   const numericPoints = Number(pointsValue);
   const confirmingManualGrade = rowNeedsGrading
     && hasExplicitPointsValue(pointsValue)
     && Number.isFinite(numericPoints)
     && numericPoints >= 0;
-  const localRowDirty = rowDirty || pointsChanged || feedbackChanged || confirmingManualGrade;
+  const localRowDirty = rowDirty || pointsChanged || feedbackChanged || feedbackDirty || confirmingManualGrade;
 
-  const syncDraftToParent = useCallback((nextPoints = pointsValue, nextFeedback = feedbackValue) => {
+  const syncDraftToParent = useCallback((nextPoints = pointsValue, nextFeedback = feedbackValueRef.current) => {
+    if (
+      arePointValuesEqual(nextPoints, draft.points)
+      && normalizeValue(nextFeedback) === normalizeValue(draft.feedback)
+    ) {
+      return;
+    }
     onUpdateDraft(row.studentId, (current) => ({
       ...current,
       points: nextPoints,
       feedback: nextFeedback,
     }));
-  }, [feedbackValue, onUpdateDraft, pointsValue, row.studentId]);
+  }, [draft.feedback, draft.points, onUpdateDraft, pointsValue, row.studentId]);
 
   return (
     <TableRow
@@ -492,7 +500,7 @@ const GradingTableRow = memo(function GradingTableRow({
             onChange={(event) => {
               setPointsValue(event.target.value);
             }}
-            onBlur={() => syncDraftToParent(pointsValue, feedbackValue)}
+            onBlur={() => syncDraftToParent(pointsValue, feedbackValueRef.current)}
             sx={{ width: 82 }}
             inputProps={{ min: 0 }}
           />
@@ -522,12 +530,15 @@ const GradingTableRow = memo(function GradingTableRow({
       <TableCell>
         <Box sx={{ minWidth: 170 }}>
           <RichTextEditor
-            value={feedbackValue}
+            value={draft.feedback}
             disabled={rowDisabled || saving}
             onChange={({ html }) => {
-              setFeedbackValue(html || '');
+              const nextFeedback = html || '';
+              feedbackValueRef.current = nextFeedback;
+              const changedFromServer = normalizeValue(nextFeedback) !== normalizeValue(row.mark?.feedback);
+              setFeedbackDirty((previous) => (previous === changedFromServer ? previous : changedFromServer));
             }}
-            onBlur={() => syncDraftToParent(pointsValue, feedbackValue)}
+            onBlur={() => syncDraftToParent(pointsValue, feedbackValueRef.current)}
             placeholder={t('grades.questionPanel.addFeedback')}
             ariaLabel={`${t('grades.coursePanel.feedback')} — ${row.displayName}`}
             minHeight={30}
@@ -541,8 +552,9 @@ const GradingTableRow = memo(function GradingTableRow({
             size="small"
             variant="outlined"
             onClick={() => {
-              syncDraftToParent(pointsValue, feedbackValue);
-              onSave(row, { points: pointsValue, feedback: feedbackValue });
+              const nextFeedback = feedbackValueRef.current;
+              syncDraftToParent(pointsValue, nextFeedback);
+              onSave(row, { points: pointsValue, feedback: nextFeedback });
             }}
             disabled={rowDisabled || saving || !localRowDirty}
           >
@@ -553,7 +565,8 @@ const GradingTableRow = memo(function GradingTableRow({
             variant="text"
             onClick={() => {
               setPointsValue(row.mark ? String(row.mark.points ?? 0) : '');
-              setFeedbackValue(normalizeValue(row.mark?.feedback));
+              feedbackValueRef.current = normalizeValue(row.mark?.feedback);
+              setFeedbackDirty(false);
               onCancel(row);
             }}
             disabled={rowDisabled || saving || !localRowDirty}
