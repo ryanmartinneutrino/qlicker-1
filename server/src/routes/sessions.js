@@ -1462,6 +1462,18 @@ function notifyJoinCodeChanged(app, course, session) {
   });
 }
 
+async function seedSessionGradesIfNeeded(session, course, { visibleToStudents = null } = {}) {
+  if (!session || session.status !== 'done') return null;
+  const gradingResult = await recalculateSessionGrades({
+    sessionId: session._id,
+    sessionDoc: session,
+    courseDoc: course,
+    missingOnly: true,
+    visibleToStudents: visibleToStudents ?? session.reviewable,
+  });
+  return gradingResult.summary;
+}
+
 export default async function sessionRoutes(app) {
   const { authenticate } = app;
 
@@ -2051,16 +2063,12 @@ export default async function sessionRoutes(app) {
       let grading = null;
       const makingReviewable = updates.reviewable === true && !session.reviewable;
       const removingReviewable = updates.reviewable === false && session.reviewable;
+      const markingDone = updates.status === 'done' && session.status !== 'done';
 
-      if (!isStudentOwner && makingReviewable) {
-        const gradingResult = await recalculateSessionGrades({
-          sessionId: updated._id,
-          sessionDoc: updated,
-          courseDoc: course,
-          missingOnly: true,
-          visibleToStudents: true,
+      if (!isStudentOwner && (makingReviewable || markingDone)) {
+        grading = await seedSessionGradesIfNeeded(updated, course, {
+          visibleToStudents: makingReviewable ? true : updated.reviewable,
         });
-        grading = gradingResult.summary;
       } else if (!isStudentOwner && removingReviewable) {
         await setSessionGradesVisibility({
           sessionId: updated._id,
@@ -2291,16 +2299,10 @@ export default async function sessionRoutes(app) {
       );
 
       let grading = null;
-      if (makingReviewable) {
-        const gradingResult = await recalculateSessionGrades({
-          sessionId: updated._id,
-          sessionDoc: updated,
-          courseDoc: course,
-          missingOnly: true,
-          visibleToStudents: true,
-        });
-        grading = gradingResult.summary;
-      } else if (request.body?.reviewable === false && session.reviewable) {
+      grading = await seedSessionGradesIfNeeded(updated, course, {
+        visibleToStudents: updated.reviewable,
+      });
+      if (request.body?.reviewable === false && session.reviewable) {
         await setSessionGradesVisibility({
           sessionId: updated._id,
           visibleToStudents: false,

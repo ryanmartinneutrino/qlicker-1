@@ -62,6 +62,8 @@ The course workspace combines:
 - course settings
 - the course question library
 
+The session and quiz lists now keep search, status filters, page size, and pagination inside a collapsible **Session tools** area so the list itself can stay compact.
+
 ### Recommended setup order
 
 1. Confirm the title, code, section, and semester.
@@ -154,6 +156,9 @@ From the session editor you can:
 ### Session list navigation
 
 - The course page shows the first batch of sessions quickly, then loads the remaining session cards in the background.
+- Open **Session tools** when you need search, status filtering, or pagination controls; collapse it again when you want more room for the cards.
+- Session cards can show a **Needs grading** chip when manual work remains.
+- Professor session cards also show the number of joined students when the session has participation data.
 - Clicking the main body of a session card opens the session editor while the session is still draft, upcoming, or live.
 - Clicking the main body of an ended session card opens the review page instead, so grading and post-session analysis are one tap away.
 - Live session cards now include a **Review Live Session Results** button for both interactive sessions and quizzes.
@@ -222,7 +227,11 @@ Use the grading workflows to:
 - edit feedback and point values
 - export course grades to CSV
 
+Important grading rule: the grading interface is intentionally locked while a session is live. End the session first. Grade items are created when the session reaches **Ended**, and making the session reviewable later only controls whether students can see those grades.
+
 From the session-review grading tab you can also change how many points a question is worth. Qlicker warns before proceeding because that action triggers a full session grade recalculation. Any marks that were manually assigned stay preserved.
+
+When you open a question from the grade table, the detail dialog lets you edit the manual mark directly from that question view.
 
 Short-answer questions typically require manual grading, while many objective question types can be autograded.
 

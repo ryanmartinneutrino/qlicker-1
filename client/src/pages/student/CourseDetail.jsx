@@ -20,6 +20,8 @@ import {
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
 } from '@mui/icons-material';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
 import SessionListCard from '../../components/common/SessionListCard';
@@ -121,6 +123,7 @@ export default function StudentCourseDetail() {
   const [sessionPageSizes, setSessionPageSizes] = useState({});
   const [sessionSearchTerms, setSessionSearchTerms] = useState({});
   const [sessionStatusFilters, setSessionStatusFilters] = useState({});
+  const [sessionControlsExpanded, setSessionControlsExpanded] = useState({});
   const [tab, setTab] = useState(() => parseCourseTab(searchParams.get('tab')));
   const sessionFetchVersionRef = useRef(0);
   const sessionsFullyLoadedRef = useRef(false);
@@ -445,6 +448,7 @@ export default function StudentCourseDetail() {
     listTabIndex,
     controlsVisible,
     controlsDisabled,
+    controlsExpanded,
     searchTerm,
     statusFilter,
     pageSize,
@@ -454,85 +458,95 @@ export default function StudentCourseDetail() {
     if (!controlsVisible) return null;
     return (
       <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-        <Stack spacing={1.25}>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
-            <TextField
-              size="small"
-              label={t('common.search')}
-              placeholder={t('student.course.searchSessionsPlaceholder', { defaultValue: 'Search by session name' })}
-              value={searchTerm}
-              onChange={(event) => {
-                setSessionSearchTerms((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
-                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-              }}
-              disabled={controlsDisabled}
-              sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 260 } }}
-            />
-            <TextField
-              select
-              size="small"
-              label={t('common.status')}
-              value={statusFilter}
-              onChange={(event) => {
-                setSessionStatusFilters((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
-                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-              }}
-              disabled={controlsDisabled}
-              sx={{ minWidth: { xs: '100%', sm: 170 } }}
-            >
-              {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
-                <MenuItem key={`status-filter-${listTabIndex}-${option.value}`} value={option.value}>
-                  {t(option.labelKey, { defaultValue: option.defaultLabel })}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label={t('common.rowsPerPage', { defaultValue: 'Rows per page' })}
-              value={String(pageSize)}
-              onChange={(event) => {
-                const nextPageSize = Number(event.target.value);
-                const safePageSize = SESSION_PAGE_SIZE_OPTIONS.includes(nextPageSize) ? nextPageSize : SESSION_PAGE_SIZE;
-                setSessionPageSizes((prev) => ({ ...prev, [listTabIndex]: safePageSize }));
-                setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
-              }}
-              disabled={controlsDisabled}
-              sx={{ minWidth: { xs: '100%', sm: 152 } }}
-            >
-              {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
-                <MenuItem key={`page-size-${listTabIndex}-${option}`} value={String(option)}>
-                  {option}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              {t('common.paginationSummary', {
-                page: safePage,
-                pages: totalPages,
-                defaultValue: `Page ${safePage} of ${totalPages}`,
-              })}
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Button
+        <Button
+          color="inherit"
+          onClick={() => setSessionControlsExpanded((prev) => ({ ...prev, [listTabIndex]: !controlsExpanded }))}
+          endIcon={controlsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          sx={{ px: 0, py: 0, minWidth: 0, textTransform: 'none', fontWeight: 700 }}
+        >
+          {t('common.sessionTools', { defaultValue: 'Session tools' })}
+        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {t('common.paginationSummary', {
+            page: safePage,
+            pages: totalPages,
+            defaultValue: `Page ${safePage} of ${totalPages}`,
+          })}
+        </Typography>
+        {controlsExpanded && (
+          <Stack spacing={1.25} sx={{ mt: 1.25 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { sm: 'center' } }}>
+              <TextField
                 size="small"
-                disabled={controlsDisabled || safePage <= 1}
-                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
-              >
-                {t('common.previous')}
-              </Button>
-              <Button
+                label={t('common.search')}
+                placeholder={t('student.course.searchSessionsPlaceholder', { defaultValue: 'Search by session name' })}
+                value={searchTerm}
+                onChange={(event) => {
+                  setSessionSearchTerms((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
+                  setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+                }}
+                disabled={controlsDisabled}
+                sx={{ flexGrow: 1, minWidth: { xs: '100%', sm: 240 } }}
+              />
+              <TextField
+                select
                 size="small"
-                disabled={controlsDisabled || safePage >= totalPages}
-                onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+                label={t('common.status')}
+                value={statusFilter}
+                onChange={(event) => {
+                  setSessionStatusFilters((prev) => ({ ...prev, [listTabIndex]: event.target.value }));
+                  setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+                }}
+                disabled={controlsDisabled}
+                sx={{ minWidth: { xs: '100%', sm: 150 } }}
               >
-                {t('common.next')}
-              </Button>
+                {SESSION_STATUS_FILTER_OPTIONS.map((option) => (
+                  <MenuItem key={`status-filter-${listTabIndex}-${option.value}`} value={option.value}>
+                    {t(option.labelKey, { defaultValue: option.defaultLabel })}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                size="small"
+                label={t('common.rowsPerPage', { defaultValue: 'Rows per page' })}
+                value={String(pageSize)}
+                onChange={(event) => {
+                  const nextPageSize = Number(event.target.value);
+                  const safePageSize = SESSION_PAGE_SIZE_OPTIONS.includes(nextPageSize) ? nextPageSize : SESSION_PAGE_SIZE;
+                  setSessionPageSizes((prev) => ({ ...prev, [listTabIndex]: safePageSize }));
+                  setSessionPages((prev) => ({ ...prev, [listTabIndex]: 1 }));
+                }}
+                disabled={controlsDisabled}
+                sx={{ minWidth: { xs: '100%', sm: 136 } }}
+              >
+                {SESSION_PAGE_SIZE_OPTIONS.map((option) => (
+                  <MenuItem key={`page-size-${listTabIndex}-${option}`} value={String(option)}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </TextField>
             </Stack>
-          </Box>
-        </Stack>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  size="small"
+                  disabled={controlsDisabled || safePage <= 1}
+                  onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage - 1 }))}
+                >
+                  {t('common.previous')}
+                </Button>
+                <Button
+                  size="small"
+                  disabled={controlsDisabled || safePage >= totalPages}
+                  onClick={() => setSessionPages((prev) => ({ ...prev, [listTabIndex]: safePage + 1 }))}
+                >
+                  {t('common.next')}
+                </Button>
+              </Stack>
+            </Box>
+          </Stack>
+        )}
       </Paper>
     );
   };
@@ -579,8 +593,9 @@ export default function StudentCourseDetail() {
     const listStillHydrating = sessionCountsArePartial;
     if (sessionsLoading && sessions.length === 0) return <CircularProgress size={24} />;
 
-    const controlsVisible = totalItemCount > SESSION_PAGE_SIZE;
+    const controlsVisible = totalItemCount > 0;
     const controlsDisabled = listStillHydrating;
+    const controlsExpanded = controlsVisible ? !!sessionControlsExpanded[listTabIndex] : false;
     const searchTerm = controlsVisible ? String(sessionSearchTerms[listTabIndex] || '') : '';
     const normalizedSearchTerm = controlsDisabled ? '' : normalizeSessionSearchValue(searchTerm);
     const statusFilter = controlsVisible
@@ -616,6 +631,7 @@ export default function StudentCourseDetail() {
           listTabIndex,
           controlsVisible,
           controlsDisabled,
+          controlsExpanded,
           searchTerm,
           statusFilter,
           pageSize,

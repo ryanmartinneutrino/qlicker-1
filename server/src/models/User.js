@@ -123,6 +123,8 @@ const UserSchema = new mongoose.Schema(
     // Explicit exception used when institution-wide SSO is enabled.
     // Admin accounts are always treated as allowed regardless of this flag.
     allowEmailLogin: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false },
+    disabledAt: { type: Date, default: null },
     lastAuthProvider: { type: String, default: '' },
     refreshTokenVersion: { type: Number, default: 0 },
     failedLoginAttempts: { type: Number, default: 0 },

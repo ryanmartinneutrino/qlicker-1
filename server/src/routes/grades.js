@@ -68,6 +68,23 @@ function isCourseMember(course, user) {
     || (course.students || []).includes(user.userId);
 }
 
+function getGradeIdentityFilter(grade) {
+  return {
+    sessionId: String(grade?.sessionId || ''),
+    courseId: String(grade?.courseId || ''),
+    userId: String(grade?.userId || ''),
+  };
+}
+
+function ensureSessionEndedForGrading(session, reply) {
+  if (session?.status === 'done') return true;
+  reply.code(409).send({
+    error: 'Conflict',
+    message: 'Session must be in Ended state before grades can be edited or recalculated',
+  });
+  return false;
+}
+
 function notifyFeedbackUpdatedForUser(app, userId, course, sessionId) {
   const normalizedUserId = normalizeAnswerValue(userId);
   if (!normalizedUserId || !course || !sessionId) return;
@@ -183,6 +200,10 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
+      }
+
       const missingOnly = !!request.body?.missingOnly;
       const result = await recalculateSessionGrades({
         sessionId: session._id,
@@ -220,6 +241,16 @@ export default async function gradeRoutes(app) {
 
       if (!instructorView && !session.reviewable) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session is not reviewable' });
+      }
+
+      if (instructorView && session.status === 'done') {
+        await recalculateSessionGrades({
+          sessionId: session._id,
+          sessionDoc: session,
+          courseDoc: course,
+          missingOnly: true,
+          visibleToStudents: session.reviewable,
+        });
       }
 
       const gradeQuery = {
@@ -297,6 +328,14 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const session = await Session.findById(grade.sessionId).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
+      }
+
       const questionId = String(request.params.questionId);
       const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark })) : [];
       const markIndex = marks.findIndex((mark) => String(mark.questionId) === questionId);
@@ -348,8 +387,8 @@ export default async function gradeRoutes(app) {
       }
       recomputeGradeAggregates(nextGrade);
 
-      await Grade.updateOne(
-        { _id: grade._id },
+      await Grade.updateMany(
+        getGradeIdentityFilter(grade),
         {
           $set: {
             marks: nextGrade.marks,
@@ -366,7 +405,7 @@ export default async function gradeRoutes(app) {
         }
       );
 
-      const updated = await Grade.findById(grade._id).lean();
+      const updated = await Grade.findOne(getGradeIdentityFilter(grade)).lean();
       if (feedbackStateChanged) {
         notifyFeedbackUpdatedForUser(app, grade.userId, course, grade.sessionId);
       }
@@ -394,6 +433,9 @@ export default async function gradeRoutes(app) {
       let session = await Session.findById(grade.sessionId).lean();
       if (!session) {
         return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
       }
       const msNormalization = await ensureSessionMsScoringMethod(session);
       session = msNormalization.session || session;
@@ -451,8 +493,8 @@ export default async function gradeRoutes(app) {
       };
       recomputeGradeAggregates(nextGrade);
 
-      await Grade.updateOne(
-        { _id: grade._id },
+      await Grade.updateMany(
+        getGradeIdentityFilter(grade),
         {
           $set: {
             marks: nextGrade.marks,
@@ -469,7 +511,7 @@ export default async function gradeRoutes(app) {
         }
       );
 
-      const updated = await Grade.findById(grade._id).lean();
+      const updated = await Grade.findOne(getGradeIdentityFilter(grade)).lean();
       return { grade: updated };
     }
   );
@@ -495,9 +537,17 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const session = await Session.findById(grade.sessionId).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
+      }
+
       const value = toFiniteNumber(request.body.value, 0);
-      await Grade.updateOne(
-        { _id: grade._id },
+      await Grade.updateMany(
+        getGradeIdentityFilter(grade),
         {
           $set: {
             value,
@@ -506,7 +556,7 @@ export default async function gradeRoutes(app) {
         }
       );
 
-      const updated = await Grade.findById(grade._id).lean();
+      const updated = await Grade.findOne(getGradeIdentityFilter(grade)).lean();
       return { grade: updated };
     }
   );
@@ -529,14 +579,22 @@ export default async function gradeRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      const session = await Session.findById(grade.sessionId).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
+      }
+
       const nextGrade = {
         ...grade,
         automatic: true,
       };
       recomputeGradeAggregates(nextGrade);
 
-      await Grade.updateOne(
-        { _id: grade._id },
+      await Grade.updateMany(
+        getGradeIdentityFilter(grade),
         {
           $set: {
             automatic: true,
@@ -545,7 +603,7 @@ export default async function gradeRoutes(app) {
         }
       );
 
-      const updated = await Grade.findById(grade._id).lean();
+      const updated = await Grade.findOne(getGradeIdentityFilter(grade)).lean();
       return { grade: updated };
     }
   );

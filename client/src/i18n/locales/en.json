@@ -24,6 +24,7 @@
     "next": "Next",
     "previous": "Previous",
     "paginationSummary": "Page {{page}} of {{pages}}",
+    "sessionTools": "Session tools",
     "required": "required",
     "actions": "Actions",
     "status": "Status",
@@ -247,6 +248,9 @@
       "userPropertiesHelp": "Toggle additional account permissions for this user.",
       "userPropertiesUpdated": "User properties updated",
       "failedUpdateUserProperties": "Failed to update user properties",
+      "userDisabled": "User disabled",
+      "userRestored": "User restored",
+      "failedToggleDisabled": "Failed to update the account status",
       "passwordReset": "Password reset",
       "failedResetPassword": "Failed to reset password",
       "resetPassword": "Reset password",
@@ -266,6 +270,13 @@
       "allowEmailLoginAdminAlwaysEnabled": "Admin accounts always retain email login access.",
       "allowEmailLoginNotNeeded": "Email login approval only applies to accounts that were created through SSO.",
       "ssoCreatedAccount": "Created through SSO",
+      "active": "Active",
+      "disabled": "Disabled",
+      "disableUser": "Disable user",
+      "restoreUser": "Restore user",
+      "disableLogin": "Disable login",
+      "disableLoginHelp": "Disable sign-in for this account while keeping its existing records available for future restoration.",
+      "cannotDisableOwnAccount": "You cannot disable your own account.",
       "emailLoginDisabled": "Email login disabled",
       "sessionActivity": "Session activity",
       "loggedInNow": "Logged in now",
@@ -506,6 +517,10 @@
       "courseNotFound": "Course not found",
       "questionCount": "{{count}} question",
       "questionCount_other": "{{count}} questions",
+      "joinedCount": "{{count}} student joined",
+      "joinedCount_other": "{{count}} students joined",
+      "needsGrading": "Needs grading",
+      "needsGradingOnly": "Needs grading only",
       "video": "Video",
       "failedLoadCourses": "Failed to load courses",
       "failedLoadSessionsForCopy": "Failed to load sessions for copying",
@@ -1379,6 +1394,7 @@
       "gradesRecalculated": "Grades recalculated.",
       "failedRecalculate": "Failed to re-calculate grades.",
       "failedLoadGrades": "Failed to load grades for this session.",
+      "gradingLockedUntilEnded": "This grading interface is locked while the session is live. End the session before grading; grade items are created when the session reaches Ended.",
       "noAnswer": "(no answer)",
       "noCorrectOption": "No correct option configured.",
       "manualGradingRequired": "Manual grading required.",
@@ -1656,6 +1672,7 @@
           "subtitle": "Once global settings are correct, the Users and Courses tabs become your daily support tools.",
           "bullets": [
             "Search users by name or email, change roles, verify email addresses, create accounts, reset local passwords, and open per-user properties when local email login or professor promotion rules must change.",
+            "Disable a user when you need to block sign-in without erasing the account history, then restore the same account later if access should return.",
             "When institution-wide SSO is enabled, non-admin users need the per-account allow-email-login exception before local email sign-in and password-reset email become available.",
             "Review courses to confirm the correct instructors, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
             "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view."
@@ -1753,6 +1770,7 @@
           "bullets": [
             "Session review lets you inspect results, response data, grading state, and student summaries once the activity is over.",
             "Grades show participation, automatic marks, and manual-grading needs. Recalculate grades when scoring rules change or when you want automatic results rebuilt.",
+            "The grading tab stays locked until the session is Ended. Ending the session seeds grade items; making the session reviewable later only controls student visibility.",
             "Students receive a notification when you publish new feedback, so use short, actionable comments that tell them what to revisit.",
             "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
           ],
@@ -1785,6 +1803,7 @@
           "bullets": [
             "Enter the enrollment code exactly as your instructor provides it. Once enrolled, the course appears on your dashboard.",
             "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly.",
+            "Session lists keep search, filters, and pagination inside a collapsible Session tools area so you can expand controls only when you need them.",
             "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong.",
             "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account."
           ],
@@ -1801,7 +1820,8 @@
             "Interactive sessions usually happen live. You may need a passcode, and your instructor decides when responses open, close, or show statistics.",
             "Quizzes have a defined time window and normally expect you to answer the whole set before final submission. Your work saves while you move between questions.",
             "Practice sessions are for self-study and can feel more flexible because they are designed to help you rehearse instead of keeping pace with a live class.",
-            "Slides can appear between questions. They are content pages, so read them carefully before moving on."
+            "Slides can appear between questions. They are content pages, so read them carefully before moving on.",
+            "If your instructor reveals statistics for a word cloud or histogram, the view should update automatically without a refresh."
           ]
         },
         {
