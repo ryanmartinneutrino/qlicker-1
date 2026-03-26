@@ -9,22 +9,18 @@ This repository contains the **migration** from the original MeteorJS implementa
 ```
 ├── REQUIREMENTS_FOR_MIGRATION_FASTIFY.md   # Master requirements (human-maintained)
 ├── MIGRATION.md                            # Migration plan, status, and progress
-├── agents/                                 # Detailed agent task files
-│   ├── AGENT_1_FOUNDATION.md
-│   ├── AGENT_2_AUTH.md
-│   ├── AGENT_3_COURSES.md
-│   ├── AGENT_4_SESSIONS.md
-│   ├── AGENT_5_RESPONSES.md
-│   ├── AGENT_6_GRADING.md
-│   ├── AGENT_7_FRONTEND.md
-│   └── AGENT_8_TESTING.md
+├── MIGRATION_COMPLETED.md                  # Completed work archive
+├── CODING_STANDARDS.md                     # Coding conventions and API patterns
+├── LEGACY_DB.md                            # Legacy MongoDB database schema
 ├── meteorjs_version/                       # Original MeteorJS app (reference)
 ├── server/                                 # Fastify backend
 ├── client/                                 # React frontend (Vite)
 ├── ssoserver/                              # Isolated local SimpleSAMLphp IdP for SSO smoke tests
 ├── load-testing/                           # k6 load testing scenario + seed script
+├── production_setup/                       # Self-contained production deployment package
 ├── scripts/                                # Setup and utility scripts
-├── docker-compose.yml                      # Docker orchestration
+├── docs/                                   # Developer and user documentation
+├── docker-compose.yml                      # Docker orchestration (development)
 └── .env.example                            # Environment variable template
 ```
 
@@ -516,8 +512,9 @@ The per-user preference is stored in `User.locale` and also cached in `localStor
 - [Production Deployment Guide](production_setup/README.md) — **Complete guide for deploying Qlicker in production**
 - [Coding Standards](CODING_STANDARDS.md) — **Read before making any changes.** APIs, DB patterns, i18n, performance, security, and shared utilities
 - [Requirements](REQUIREMENTS_FOR_MIGRATION_FASTIFY.md) — Master requirements for the migration
-- [Migration Plan](MIGRATION.md) — Detailed migration plan, progress, and agent assignments
-- [Agent Task Files](agents/) — Detailed sub-task plans for each parallel agent
+- [Migration Plan](MIGRATION.md) — Migration plan, status, and remaining work
+- [Completed Work](MIGRATION_COMPLETED.md) — Archive of completed phases, bug fixes, and PR history
+- [Legacy DB](LEGACY_DB.md) — Legacy MongoDB database schema and compatibility details
 
 ## License
 
