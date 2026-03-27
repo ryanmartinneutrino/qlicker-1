@@ -16,7 +16,7 @@
  */
 
 import mongoose from 'mongoose';
-import { hash } from '@node-rs/argon2';
+import { hash, Algorithm, Version } from '@node-rs/argon2';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,6 +41,8 @@ function meteorId() {
 /** Hash a password using the same argon2 settings the server uses */
 async function hashPassword(pw) {
   return hash(pw, {
+    algorithm: Algorithm.Argon2id,
+    version: Version.V0x13,
     memoryCost: 19456,
     timeCost: 2,
     outputLen: 32,
@@ -71,7 +73,15 @@ const userSchema = new mongoose.Schema(
       roles: [String],
       profileImage: { type: String, default: '' },
     },
+    allowEmailLogin: { type: Boolean, default: false },
+    disabled: { type: Boolean, default: false },
+    lastAuthProvider: { type: String, default: '' },
+    refreshTokenVersion: { type: Number, default: 0 },
+    failedLoginAttempts: { type: Number, default: 0 },
+    loginLockedUntil: { type: Date, default: null },
     createdAt: { type: Date, default: Date.now },
+    lastLogin: { type: Date, default: null },
+    lastLoginIp: { type: String, default: '' },
   },
   { collection: 'users', versionKey: false },
 );
@@ -109,10 +119,22 @@ const sessionSchema = new mongoose.Schema(
     questions: [String],
     currentQuestion: { type: String, default: '' },
     joined: [String],
+    joinRecords: [
+      {
+        _id: false,
+        userId: String,
+        joinedAt: { type: Date, default: Date.now },
+        joinedWithCode: { type: Boolean, default: false },
+      },
+    ],
     submittedQuiz: [String],
+    hasResponses: { type: Boolean, default: false },
+    questionResponseCounts: { type: Map, of: Number, default: {} },
     joinCodeEnabled: { type: Boolean, default: false },
     joinCodeActive: { type: Boolean, default: false },
     currentJoinCode: { type: String, default: '' },
+    joinCodeInterval: { type: Number, default: 10 },
+    joinCodeExpiresAt: { type: Date, default: null },
     date: { type: Date, default: Date.now },
     createdAt: { type: Date, default: Date.now },
   },
@@ -128,6 +150,7 @@ const questionSchema = new mongoose.Schema(
     courseId: { type: String, default: '' },
     sessionId: { type: String, default: '' },
     creator: String,
+    owner: { type: String, default: '' },
     options: [
       {
         _id: false,
@@ -158,6 +181,10 @@ const questionSchema = new mongoose.Schema(
       maxAttempts: { type: Number, default: 1 },
       attempts: { type: Array, default: [] },
     },
+    sessionProperties: {
+      lastAttemptNumber: { type: Number, default: 0 },
+      lastAttemptResponseCount: { type: Number, default: 0 },
+    },
     createdAt: { type: Date, default: Date.now },
   },
   { collection: 'questions', versionKey: false },
@@ -183,7 +210,7 @@ const QUESTIONS = [
     ],
   },
   {
-    type: 1, // MS
+    type: 3, // MS
     content: '<p>Select all prime numbers.</p>',
     plainText: 'Select all prime numbers.',
     options: [
@@ -195,7 +222,7 @@ const QUESTIONS = [
     ],
   },
   {
-    type: 0, // TF (MC with 2 options)
+    type: 1, // TF
     content: '<p>True or False: Water boils at 100 °C at sea level.</p>',
     plainText: 'True or False: Water boils at 100 °C at sea level.',
     options: [
@@ -212,7 +239,7 @@ const QUESTIONS = [
     solution_plainText: 'Au',
   },
   {
-    type: 3, // NU
+    type: 4, // NU
     content: '<p>What is the value of π rounded to two decimal places?</p>',
     plainText: 'What is the value of π rounded to two decimal places?',
     options: [],
@@ -272,6 +299,9 @@ async function seed(numStudents) {
     emails: [{ address: 'loadtest-admin@example.com', verified: true }],
     services: { password: { hash: passwordHash } },
     profile: { firstname: 'LT', lastname: 'Admin', roles: ['admin'] },
+    allowEmailLogin: true,
+    lastAuthProvider: 'password',
+    lastLogin: new Date(),
   });
 
   // --- Professor ---
@@ -279,6 +309,9 @@ async function seed(numStudents) {
     emails: [{ address: 'loadtest-prof@example.com', verified: true }],
     services: { password: { hash: passwordHash } },
     profile: { firstname: 'LT', lastname: 'Professor', roles: ['professor'] },
+    allowEmailLogin: true,
+    lastAuthProvider: 'password',
+    lastLogin: new Date(),
   });
 
   // --- Students (bulk) ---
@@ -293,6 +326,9 @@ async function seed(numStudents) {
         lastname: `LT${String(i).padStart(4, '0')}`,
         roles: ['student'],
       },
+      allowEmailLogin: true,
+      lastAuthProvider: 'password',
+      lastLogin: new Date(),
     });
   }
   await User.insertMany(studentDocs);
@@ -310,6 +346,11 @@ async function seed(numStudents) {
     instructors: [professor._id],
     students: studentIds,
     enrollmentCode,
+    tags: [{
+      value: LOAD_TEST_TAG,
+      label: 'Load Test',
+      className: 'load-test-tag',
+    }],
   });
 
   // --- Questions ---
@@ -318,7 +359,9 @@ async function seed(numStudents) {
     const q = await Question.create({
       ...qDef,
       creator: professor._id,
+      owner: professor._id,
       courseId: course._id,
+      sessionId: '',
       tags: [{
         value: LOAD_TEST_TAG,
         label: 'Load Test',
@@ -332,6 +375,10 @@ async function seed(numStudents) {
         maxAttempts: 1,
         attempts: [],
       },
+      sessionProperties: {
+        lastAttemptNumber: 0,
+        lastAttemptResponseCount: 0,
+      },
     });
     questionIds.push(q._id);
   }
@@ -344,10 +391,20 @@ async function seed(numStudents) {
     creator: professor._id,
     status: 'hidden',
     questions: questionIds,
+    tags: [{
+      value: LOAD_TEST_TAG,
+      label: 'Load Test',
+      className: 'load-test-tag',
+    }],
+    hasResponses: false,
   });
 
   // Add session to course
   await Course.findByIdAndUpdate(course._id, { $push: { sessions: session._id } });
+  await Question.updateMany(
+    { _id: { $in: questionIds } },
+    { $set: { sessionId: session._id } },
+  );
 
   // Build student credentials list for the k6 scenario
   const students = studentDocs.map((s, i) => ({

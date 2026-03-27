@@ -339,14 +339,20 @@ Typical flow:
 
 ```bash
 cd load-testing
-npm install
-MONGO_URL=mongodb://localhost:27017/qlicker node seed.mjs --students 250
-k6 run --env BASE_URL=http://localhost:3001 scenarios/live-session.js
-MONGO_URL=mongodb://localhost:27017/qlicker node seed.mjs --clean
+./setup.sh
+./run.sh --prepare
+./run.sh
+./run.sh --restore
+./run.sh --clean
 ```
 
-For high-concurrency runs from a single host, set
-`DISABLE_RATE_LIMITS=true` on the server process.
+`setup.sh` now supports `dev` or `prod` targets and both `docker` and `native`
+runtime modes. It asks for the `.env` file for the running stack, derives the
+MongoDB and API/WebSocket connection info, and builds the local seed runner.
+
+For native targets, `./run.sh --prepare` updates the target `.env` with
+`DISABLE_RATE_LIMITS=true`; restart the server after that change so the load
+test runs without Fastify rate limits.
 
 ## Production Deployment
 
