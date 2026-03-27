@@ -1284,34 +1284,44 @@ export default function SessionQuestionGradingPanel({
   }, []);
 
   const handleSpeedGradingSave = useCallback(async (row, { points, feedback }) => {
-    if (!row?.gradeId || !row?.mark || !activeQuestionId) return;
-    const { data } = await apiClient.patch(
-      `/grades/${row.gradeId}/marks/${activeQuestionId}`,
-      { points, feedback }
-    );
-    applyUpdatedGrade(data?.grade);
-    // Also update the local draft to keep the table in sync
-    if (row.studentId) {
-      setDraftByStudentId((prev) => ({
-        ...prev,
-        [row.studentId]: { points: String(points), feedback },
-      }));
-      setEditedStudentIds((prev) => {
-        if (!prev[row.studentId]) return prev;
-        return { ...prev, [row.studentId]: false };
-      });
+    if (!row?.gradeId || !row?.mark || !activeQuestionId) {
+      setGlobalMessage(t('grades.questionPanel.noGradeItem'));
+      setGlobalMessageType('warning');
+      throw new Error('Missing grade data');
     }
-    setSpeedGradingRowsSnapshot((prev) => prev.map((entry) => {
-      if (entry.studentId !== row.studentId) return entry;
-      return {
-        ...entry,
-        mark: entry.mark
-          ? { ...entry.mark, points, feedback, needsGrading: false }
-          : entry.mark,
-      };
-    }));
-    setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
-    setGlobalMessageType('success');
+    try {
+      const { data } = await apiClient.patch(
+        `/grades/${row.gradeId}/marks/${activeQuestionId}`,
+        { points, feedback }
+      );
+      applyUpdatedGrade(data?.grade);
+      // Also update the local draft to keep the table in sync
+      if (row.studentId) {
+        setDraftByStudentId((prev) => ({
+          ...prev,
+          [row.studentId]: { points: String(points), feedback },
+        }));
+        setEditedStudentIds((prev) => {
+          if (!prev[row.studentId]) return prev;
+          return { ...prev, [row.studentId]: false };
+        });
+      }
+      setSpeedGradingRowsSnapshot((prev) => prev.map((entry) => {
+        if (entry.studentId !== row.studentId) return entry;
+        return {
+          ...entry,
+          mark: entry.mark
+            ? { ...entry.mark, points, feedback, needsGrading: false }
+            : entry.mark,
+        };
+      }));
+      setGlobalMessage(t('grades.questionPanel.savedGrade', { name: row.displayName }));
+      setGlobalMessageType('success');
+    } catch (err) {
+      setGlobalMessage(err.response?.data?.message || t('grades.questionPanel.failedSaveGrade', { name: row.displayName }));
+      setGlobalMessageType('error');
+      throw err;
+    }
   }, [activeQuestionId, applyUpdatedGrade, t]);
 
   if (loading) {

@@ -240,13 +240,18 @@ export default function RichTextEditor({
         emitEditorChange(transactionEditor);
       },
     },
-    [ariaDescribedBy, disabled, editorAriaLabel, placeholder, t]
+    [ariaDescribedBy, editorAriaLabel, placeholder, t]
   );
 
   useEffect(() => {
     if (!editor) return;
     if (disabled !== !editor.isEditable) {
       editor.setEditable(!disabled);
+    }
+    // Keep aria-disabled in sync without recreating the editor.
+    const dom = editor.view?.dom;
+    if (dom) {
+      dom.setAttribute('aria-disabled', disabled ? 'true' : 'false');
     }
   }, [disabled, editor]);
 
