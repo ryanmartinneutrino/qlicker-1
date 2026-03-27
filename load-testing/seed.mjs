@@ -26,6 +26,57 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = process.env.STATE_DIR || __dirname;
 const STATE_PATH = path.join(STATE_DIR, 'state.json');
 
+function parseIntEnv(value, fallback, minValue = 0) {
+  const parsed = parseInt(value || '', 10);
+  if (!Number.isFinite(parsed) || parsed < minValue) return fallback;
+  return parsed;
+}
+
+const MONGO_CONNECT_RETRIES = parseIntEnv(process.env.MONGO_CONNECT_RETRIES, 6, 1);
+const MONGO_CONNECT_RETRY_DELAY_MS = parseIntEnv(process.env.MONGO_CONNECT_RETRY_DELAY_MS, 2000, 250);
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function connectWithRetry(mongoUrl) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MONGO_CONNECT_RETRIES; attempt += 1) {
+    try {
+      if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect().catch(() => {});
+      }
+      await mongoose.connect(mongoUrl, {
+        autoIndex: false,
+        maxPoolSize: 4,
+        minPoolSize: 0,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+      });
+      if (attempt > 1) {
+        console.log(`MongoDB connection recovered on attempt ${attempt}.`);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MONGO_CONNECT_RETRIES) {
+        break;
+      }
+
+      const delayMs = Math.min(MONGO_CONNECT_RETRY_DELAY_MS * attempt, 10000);
+      console.warn(
+        `MongoDB connection attempt ${attempt}/${MONGO_CONNECT_RETRIES} failed: ${error?.message || error}. Retrying in ${delayMs}ms …`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
+}
+
 /* ---------- helpers ---------------------------------------------------- */
 
 /** Generate a 17-char random alphanumeric ID (Meteor-compatible) */
@@ -263,7 +314,7 @@ async function main() {
 
   const mongoUrl = process.env.MONGO_URL || 'mongodb://localhost:27017/qlicker';
   console.log(`Connecting to ${mongoUrl} …`);
-  await mongoose.connect(mongoUrl);
+  await connectWithRetry(mongoUrl);
 
   if (cleanOnly) {
     console.log('Cleaning load-test data …');

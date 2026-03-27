@@ -449,6 +449,9 @@ echo "  Change this only if using an external/managed MongoDB instance."
 DEFAULT_MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/qlicker}"
 read -r -p "MONGO_URI [$DEFAULT_MONGO_URI]: " MONGO_URI_INPUT
 MONGO_URI="${MONGO_URI_INPUT:-$DEFAULT_MONGO_URI}"
+DEFAULT_MONGO_CACHE_GB="${MONGO_WIREDTIGER_CACHE_SIZE_GB:-0.25}"
+read -r -p "Mongo WiredTiger cache size in GB [$DEFAULT_MONGO_CACHE_GB]: " MONGO_CACHE_INPUT
+MONGO_WIREDTIGER_CACHE_SIZE_GB="${MONGO_CACHE_INPUT:-$DEFAULT_MONGO_CACHE_GB}"
 
 # ---- Redis ------------------------------------------------------------------
 echo ""
@@ -492,6 +495,7 @@ JWT_REFRESH_SECRET=$JWT_REFRESH_SECRET
 
 # Database
 MONGO_URI=$MONGO_URI
+MONGO_WIREDTIGER_CACHE_SIZE_GB=$MONGO_WIREDTIGER_CACHE_SIZE_GB
 
 # Email
 MAIL_URL=$MAIL_URL

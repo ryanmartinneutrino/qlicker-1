@@ -17,12 +17,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="$SCRIPT_DIR/.env"
 DEFAULT_SEED_IMAGE="qlicker-load-testing-seed:local"
+COMMON_SH="$SCRIPT_DIR/common.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 ask()   { echo -en "${CYAN}$1${NC}"; }
+
+# shellcheck disable=SC1091
+source "$COMMON_SH"
 
 NON_INTERACTIVE=false
 if [[ "${1:-}" == "--non-interactive" ]]; then
@@ -33,29 +37,6 @@ existing_val() {
   if [[ -f "$ENV_FILE" ]]; then
     grep -E "^${1}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- | sed 's/^"//;s/"$//'
   fi
-}
-
-env_val() {
-  local file_path="$1"
-  local key="$2"
-  if [[ -f "$file_path" ]]; then
-    grep -E "^${key}=" "$file_path" 2>/dev/null | head -1 | cut -d= -f2- | sed 's/^"//;s/"$//'
-  fi
-}
-
-resolve_abs_path() {
-  local input_path="$1"
-  if [[ -z "$input_path" ]]; then
-    return 1
-  fi
-  if [[ "$input_path" = /* ]]; then
-    printf '%s\n' "$input_path"
-    return 0
-  fi
-  (
-    cd "$(dirname "$input_path")" 2>/dev/null && \
-    printf '%s/%s\n' "$(pwd)" "$(basename "$input_path")"
-  )
 }
 
 default_env_file_guess() {
@@ -90,108 +71,6 @@ prompt_choice() {
   done
 }
 
-stack_compose_ps() {
-  local stack_dir="$1"
-  local env_path="$2"
-  local compose_file="$3"
-  docker compose \
-    --project-directory "$stack_dir" \
-    --env-file "$env_path" \
-    -f "$compose_file" \
-    ps -q mongo 2>/dev/null | head -1
-}
-
-detect_docker_network() {
-  local stack_dir="$1"
-  local env_path="$2"
-  local compose_file="$3"
-  local container_id=""
-
-  if [[ ! -f "$compose_file" ]]; then
-    return 0
-  fi
-
-  container_id="$(stack_compose_ps "$stack_dir" "$env_path" "$compose_file" || true)"
-  if [[ -n "$container_id" ]]; then
-    docker inspect "$container_id" \
-      --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' 2>/dev/null || true
-  fi
-}
-
-resolve_base_url() {
-  local target_env="$1"
-  local env_path="$2"
-  local root_url=""
-  local domain=""
-  local api_url=""
-  local api_port=""
-  local port=""
-
-  root_url="$(env_val "$env_path" ROOT_URL)"
-  domain="$(env_val "$env_path" DOMAIN)"
-  api_url="$(env_val "$env_path" VITE_API_URL)"
-  api_port="$(env_val "$env_path" API_PORT)"
-  port="$(env_val "$env_path" PORT)"
-
-  if [[ "$target_env" == "dev" ]]; then
-    if [[ -n "$api_url" ]]; then
-      printf '%s\n' "$api_url"
-      return 0
-    fi
-    if [[ -n "$api_port" ]]; then
-      printf 'http://localhost:%s\n' "$api_port"
-      return 0
-    fi
-    if [[ -n "$port" ]]; then
-      printf 'http://localhost:%s\n' "$port"
-      return 0
-    fi
-    if [[ -n "$root_url" ]]; then
-      printf '%s\n' "$root_url"
-      return 0
-    fi
-    return 1
-  fi
-
-  if [[ -n "$root_url" ]]; then
-    printf '%s\n' "$root_url"
-    return 0
-  fi
-  if [[ -n "$domain" ]]; then
-    printf 'https://%s\n' "$domain"
-    return 0
-  fi
-  if [[ -n "$api_port" ]]; then
-    printf 'http://localhost:%s\n' "$api_port"
-    return 0
-  fi
-  return 1
-}
-
-resolve_mongo_url() {
-  local env_path="$1"
-  local mongo_uri=""
-  local mongo_url=""
-  local mongo_port=""
-
-  mongo_uri="$(env_val "$env_path" MONGO_URI)"
-  mongo_url="$(env_val "$env_path" MONGO_URL)"
-  mongo_port="$(env_val "$env_path" MONGO_PORT)"
-
-  if [[ -n "$mongo_uri" ]]; then
-    printf '%s\n' "$mongo_uri"
-    return 0
-  fi
-  if [[ -n "$mongo_url" ]]; then
-    printf '%s\n' "$mongo_url"
-    return 0
-  fi
-  if [[ -n "$mongo_port" ]]; then
-    printf 'mongodb://localhost:%s/qlicker\n' "$mongo_port"
-    return 0
-  fi
-  return 1
-}
 
 if ! command -v docker >/dev/null 2>&1; then
   error "Docker is required for the load-test seed and k6 runners."
