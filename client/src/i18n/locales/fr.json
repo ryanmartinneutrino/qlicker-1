@@ -59,7 +59,8 @@
     "deleteUser": "Supprimer l'utilisateur",
     "deleteSession": "Supprimer la session",
     "option": "Option {{letter}}",
-    "ta": "AC"
+    "ta": "AC",
+    "redirecting": "Redirection…"
   },
   "autoSave": {
     "errorNotSaved": "Les modifications n'ont pas pu être enregistrées. Votre dernière modification n'a pas été enregistrée.",
