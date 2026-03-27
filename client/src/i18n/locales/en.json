@@ -58,7 +58,8 @@
     "verifyEmail": "Verify email",
     "deleteUser": "Delete user",
     "deleteSession": "Delete session",
-    "option": "Option {{letter}}"
+    "option": "Option {{letter}}",
+    "ta": "TA"
   },
   "autoSave": {
     "errorNotSaved": "Changes could not be saved. Your last change was not recorded.",

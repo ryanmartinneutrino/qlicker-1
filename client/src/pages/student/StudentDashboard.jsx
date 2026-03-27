@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 import apiClient, { getAccessToken } from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
@@ -35,7 +36,9 @@ function isInactiveCourseEnrollError(error) {
 export default function StudentDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [courses, setCourses] = useState([]);
+  const [taCourses, setTaCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -63,12 +66,26 @@ export default function StudentDashboard() {
     }
   }, [t]);
 
+  const fetchTaCourses = useCallback(async () => {
+    if (!user?.hasInstructorCourses) {
+      setTaCourses([]);
+      return;
+    }
+    try {
+      const res = await apiClient.get('/courses', { params: { view: 'instructor' } });
+      setTaCourses(res.data.courses || []);
+    } catch {
+      setTaCourses([]);
+    }
+  }, [user?.hasInstructorCourses]);
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       await Promise.all([
         fetchCourses(),
+        fetchTaCourses(),
         fetchLiveSessions(),
       ]);
       if (!cancelled) {
@@ -79,7 +96,7 @@ export default function StudentDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [fetchCourses, fetchLiveSessions]);
+  }, [fetchCourses, fetchTaCourses, fetchLiveSessions]);
 
   useEffect(() => {
     let ws = null;
@@ -94,7 +111,7 @@ export default function StudentDashboard() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refreshLiveSessions, 10000);
+      pollingTimer = setInterval(refreshLiveSessions, 6000);
     };
 
     const stopPolling = () => {
@@ -179,7 +196,7 @@ export default function StudentDashboard() {
       await apiClient.post('/courses/enroll', { enrollmentCode: enrollCode.trim() });
       setEnrollOpen(false);
       setEnrollCode('');
-      await Promise.all([fetchCourses(), fetchLiveSessions()]);
+      await Promise.all([fetchCourses(), fetchTaCourses(), fetchLiveSessions()]);
       setMsg({ severity: 'success', text: t('student.dashboard.enrollSuccess') });
     } catch (err) {
       if (isInactiveCourseEnrollError(err)) {
@@ -197,7 +214,19 @@ export default function StudentDashboard() {
     }
   };
 
-  const sortedCourses = [...courses].sort((a, b) => {
+  // Build a set of TA course IDs for quick lookup and merge TA-only courses
+  const taCourseIds = useMemo(
+    () => new Set(taCourses.map((c) => String(c._id))),
+    [taCourses],
+  );
+  const mergedCourses = useMemo(() => {
+    const studentIds = new Set(courses.map((c) => String(c._id)));
+    // Student courses first, then TA-only courses (not already in student list)
+    const taOnly = taCourses.filter((c) => !studentIds.has(String(c._id)));
+    return [...courses, ...taOnly];
+  }, [courses, taCourses]);
+
+  const sortedCourses = [...mergedCourses].sort((a, b) => {
     const aActive = a.inactive ? 1 : 0;
     const bActive = b.inactive ? 1 : 0;
     if (aActive !== bActive) return aActive - bActive;
@@ -206,8 +235,8 @@ export default function StudentDashboard() {
     return bTime - aTime;
   });
   const courseById = useMemo(
-    () => new Map(courses.map((course) => [String(course._id), course])),
-    [courses]
+    () => new Map(mergedCourses.map((course) => [String(course._id), course])),
+    [mergedCourses]
   );
   const visibleLiveSessions = useMemo(
     () => sortStudentSessions(liveSessions).filter((session) => !isSubmittedLiveQuiz(session)),
@@ -266,7 +295,7 @@ export default function StudentDashboard() {
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : courses.length === 0 ? (
+      ) : mergedCourses.length === 0 ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <SchoolIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">{t('student.dashboard.noCoursesYet')}</Typography>
@@ -285,32 +314,43 @@ export default function StudentDashboard() {
             gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
           }}
         >
-          {sortedCourses.map((course) => (
-            <Box key={course._id}>
-              <Card
-                variant="outlined"
-                sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                onClick={() => navigate(`/student/course/${course._id}`)}
-              >
-                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
-                    {buildCourseTitle(course, 'short')}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {course.semester}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {buildCourseTitle(course, 'medium')}
-                  </Typography>
-                  {course.section && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {t('student.dashboard.section', { section: course.section })}
+          {sortedCourses.map((course) => {
+            const isTa = taCourseIds.has(String(course._id));
+            const coursePath = isTa
+              ? `/manage/course/${course._id}`
+              : `/student/course/${course._id}`;
+            return (
+              <Box key={course._id}>
+                <Card
+                  variant="outlined"
+                  sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                  onClick={() => navigate(coursePath)}
+                >
+                  <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1 }} noWrap>
+                        {buildCourseTitle(course, 'short')}
+                      </Typography>
+                      {isTa && (
+                        <Chip label={t('common.ta')} size="small" color="info" />
+                      )}
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {course.semester}
                     </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Box>
-          ))}
+                    <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {buildCourseTitle(course, 'medium')}
+                    </Typography>
+                    {course.section && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {t('student.dashboard.section', { section: course.section })}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Box>
+            );
+          })}
         </Box>
       )}
 

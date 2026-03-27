@@ -1559,7 +1559,16 @@ export default function CourseDetail() {
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={`${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Unknown'}
+                      primary={
+                        <>
+                          {`${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Unknown'}
+                          {(inst.profile?.roles || []).includes('student') && (
+                            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 0.5 }}>
+                              ({t('common.ta')})
+                            </Typography>
+                          )}
+                        </>
+                      }
                       secondary={inst.emails?.[0]?.address || inst.email || ''}
                     />
                     <ListItemSecondaryAction>
