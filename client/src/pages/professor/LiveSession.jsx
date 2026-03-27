@@ -33,6 +33,7 @@ import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
+import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -357,7 +358,12 @@ function LiveSessionContent() {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width:768px)');
   const { t } = useTranslation();
-  const { lastEvent, registerRefreshHandler } = useLiveSessionWebSocket();
+  const { lastEvent, registerRefreshHandler, transport } = useLiveSessionWebSocket();
+  const {
+    recordEventReceipt,
+    recordLiveFetch,
+    scheduleUiSyncMeasurement,
+  } = useLiveSessionTelemetry({ sessionId, role: 'professor', transport });
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -383,32 +389,52 @@ function LiveSessionContent() {
   // Data fetching
   // --------------------------------------------------
 
-  const fetchLive = useCallback(async () => {
+  const fetchLive = useCallback(async (syncContext = null) => {
+    const startedAtMs = Date.now();
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
         params: { includeStudentNames: true },
       });
+      const fetchMeasurement = recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setLiveData(data);
+      scheduleUiSyncMeasurement({
+        fetchStartedAtMs: fetchMeasurement?.startedAtMs || startedAtMs,
+        emittedAtMs: syncContext?.emittedAtMs,
+        receivedAtMs: syncContext?.receivedAtMs,
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setError(null);
 
       if (data?.session?.status === 'done') {
         navigate(`/manage/course/${courseId}`, { replace: true });
       }
     } catch (err) {
+      recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: false,
+        transportOverride: syncContext?.transport,
+      });
       setError(err.response?.data?.message || t('professor.liveSession.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
-  }, [sessionId, navigate, courseId]);
+  }, [courseId, navigate, recordLiveFetch, scheduleUiSyncMeasurement, sessionId, t]);
 
   // Throttled re-fetch: batches rapid response-added events into at most one
   // re-fetch per 2-second window, dramatically reducing DB load during live sessions.
   const fetchThrottleRef = useRef(null);
-  const scheduleFetchLive = useCallback(() => {
+  const scheduleFetchLive = useCallback((syncContext = null) => {
     if (fetchThrottleRef.current) return;
     fetchThrottleRef.current = setTimeout(() => {
       fetchThrottleRef.current = null;
-      fetchLive();
+      fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
 
@@ -418,6 +444,11 @@ function LiveSessionContent() {
   useEffect(() => {
     if (!lastEvent) return;
 
+    const syncContext = recordEventReceipt({
+      emittedAt: lastEvent?.data?.emittedAt,
+      receivedAtMs: lastEvent?.receivedAtMs,
+      success: true,
+    });
     const { event, data } = lastEvent;
     switch (event) {
       case 'session:response-added':
@@ -432,44 +463,94 @@ function LiveSessionContent() {
             },
           };
         });
-        scheduleFetchLive();
+        scheduleFetchLive(syncContext);
         break;
       case 'session:participant-joined':
         setLiveData((prev) => applyParticipantJoined(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:question-changed':
       case 'session:metadata-changed':
-        fetchLive();
+        fetchLive(syncContext);
         break;
       case 'session:question-updated':
         setLiveData((prev) => applyCurrentQuestionUpdate(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:attempt-changed':
         setLiveData((prev) => applyAttemptChanged(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:join-code-changed':
         setLiveData((prev) => applyJoinCodeChanged(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:word-cloud-updated':
         setLiveData((prev) => prev ? { ...prev, wordCloudData: data.wordCloudData } : prev);
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:histogram-updated':
         setLiveData((prev) => prev ? { ...prev, histogramData: data.histogramData } : prev);
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:status-changed':
         if (data.status === 'done') {
           navigate(`/manage/course/${courseId}`, { replace: true });
           return;
         }
-        fetchLive();
+        fetchLive(syncContext);
         break;
       default:
         break;
     }
-  }, [courseId, fetchLive, lastEvent, navigate, scheduleFetchLive]);
+  }, [
+    courseId,
+    fetchLive,
+    lastEvent,
+    navigate,
+    recordEventReceipt,
+    scheduleFetchLive,
+    scheduleUiSyncMeasurement,
+  ]);
 
   useEffect(() => () => {
     if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);

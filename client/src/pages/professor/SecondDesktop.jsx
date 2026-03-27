@@ -15,6 +15,7 @@ import { prepareRichTextInput, renderKatexInElement } from '../../components/que
 import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
+import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -222,34 +223,60 @@ export default function PresentationWindow() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [liveTransport, setLiveTransport] = useState('unknown');
+  const {
+    recordEventReceipt,
+    recordLiveFetch,
+    scheduleUiSyncMeasurement,
+  } = useLiveSessionTelemetry({ sessionId, role: 'presentation', transport: liveTransport });
 
   // ---- Data fetching ----
 
-  const fetchLive = useCallback(async () => {
+  const fetchLive = useCallback(async (syncContext = null) => {
+    const startedAtMs = Date.now();
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
         params: { view: 'presentation' },
       });
+      const fetchMeasurement = recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setLiveData(data);
+      scheduleUiSyncMeasurement({
+        fetchStartedAtMs: fetchMeasurement?.startedAtMs || startedAtMs,
+        emittedAtMs: syncContext?.emittedAtMs,
+        receivedAtMs: syncContext?.receivedAtMs,
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setError(null);
       if (data?.session?.status === 'done') {
         setSessionEnded(true);
       }
     } catch (err) {
+      recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: false,
+        transportOverride: syncContext?.transport,
+      });
       setError(err.response?.data?.message || t('professor.secondDesktop.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [recordLiveFetch, scheduleUiSyncMeasurement, sessionId, t]);
 
   // Throttled re-fetch: batches rapid response-added events into at most one
   // re-fetch per 2-second window, dramatically reducing DB load during live sessions.
   const fetchThrottleRef = useRef(null);
-  const scheduleFetchLive = useCallback(() => {
+  const scheduleFetchLive = useCallback((syncContext = null) => {
     if (fetchThrottleRef.current) return;
     fetchThrottleRef.current = setTimeout(() => {
       fetchThrottleRef.current = null;
-      fetchLive();
+      fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
 
@@ -272,6 +299,7 @@ export default function PresentationWindow() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
+      setLiveTransport('polling');
       pollingTimer = setInterval(refresh, 3000);
     };
 
@@ -284,7 +312,10 @@ export default function PresentationWindow() {
     const connect = () => {
       if (closed) return;
       const latestToken = getAccessToken();
-      if (!latestToken) return;
+      if (!latestToken) {
+        setLiveTransport('unknown');
+        return;
+      }
       try {
         ws = new WebSocket(buildWebsocketUrl(latestToken));
       } catch {
@@ -293,7 +324,10 @@ export default function PresentationWindow() {
         return;
       }
 
-      ws.onopen = () => { stopPolling(); };
+      ws.onopen = () => {
+        stopPolling();
+        setLiveTransport('websocket');
+      };
 
       ws.onmessage = (event) => {
         try {
@@ -301,6 +335,11 @@ export default function PresentationWindow() {
           const evt = message?.event;
           const d = message?.data;
           if (!evt || String(d?.sessionId || '') !== String(sessionId)) return;
+          const syncContext = recordEventReceipt({
+            emittedAt: d?.emittedAt,
+            success: true,
+            transportOverride: 'websocket',
+          });
 
           switch (evt) {
             case 'session:response-added':
@@ -315,35 +354,71 @@ export default function PresentationWindow() {
                   },
                 };
               });
-              scheduleFetchLive();
+              scheduleFetchLive(syncContext);
               break;
             case 'session:question-changed':
-              fetchLive();
+              fetchLive(syncContext);
               break;
             case 'session:question-updated':
               setLiveData((prev) => applyCurrentQuestionUpdate(prev, d));
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:attempt-changed':
               setLiveData((prev) => applyAttemptChanged(prev, d));
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:join-code-changed':
               setLiveData((prev) => applyJoinCodeChanged(prev, d));
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:visibility-changed':
               setLiveData((prev) => applyVisibilityChanged(prev, d));
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:word-cloud-updated':
               setLiveData((prev) => prev ? { ...prev, wordCloudData: d.wordCloudData } : prev);
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:histogram-updated':
               setLiveData((prev) => prev ? { ...prev, histogramData: d.histogramData } : prev);
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
+              });
               break;
             case 'session:status-changed':
               if (d.status === 'done') { setSessionEnded(true); }
-              fetchLive();
+              fetchLive(syncContext);
               break;
             case 'session:metadata-changed':
-              fetchLive();
+              fetchLive(syncContext);
               break;
             default:
               break;
@@ -386,7 +461,7 @@ export default function PresentationWindow() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchLive, scheduleFetchLive, sessionId]);
+  }, [fetchLive, recordEventReceipt, scheduleFetchLive, scheduleUiSyncMeasurement, sessionId]);
 
   // ---- Derived state ----
 

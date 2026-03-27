@@ -99,6 +99,47 @@ function normalizeComparableText(answer) {
     .toLowerCase();
 }
 
+function isTrueFalseOptions(options = []) {
+  if (!Array.isArray(options) || options.length !== 2) return false;
+  const labels = options.map((option) => normalizeComparableText(
+    option?.answer || option?.plainText || option?.content || ''
+  ).toUpperCase());
+  return labels.includes('TRUE') && labels.includes('FALSE');
+}
+
+function countCorrectOptions(options = []) {
+  return (Array.isArray(options) ? options : []).filter(
+    (option) => parseBooleanLike(option?.correct) || parseBooleanLike(option?.isCorrect)
+  ).length;
+}
+
+export function normalizeQuestionType(question = {}) {
+  const rawType = Number(question?.type);
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  if (rawType === QUESTION_TYPES.MULTIPLE_CHOICE) return QUESTION_TYPES.MULTIPLE_CHOICE;
+  if (rawType === QUESTION_TYPES.TRUE_FALSE) return QUESTION_TYPES.TRUE_FALSE;
+  if (rawType === QUESTION_TYPES.SHORT_ANSWER) return QUESTION_TYPES.SHORT_ANSWER;
+  if (rawType === QUESTION_TYPES.MULTI_SELECT) return QUESTION_TYPES.MULTI_SELECT;
+  if (rawType === QUESTION_TYPES.SLIDE) return QUESTION_TYPES.SLIDE;
+  if (rawType === QUESTION_TYPES.NUMERICAL) {
+    // Guard for malformed restored rows: numerical type with multiple options.
+    if (options.length > 1) {
+      if (isTrueFalseOptions(options)) return QUESTION_TYPES.TRUE_FALSE;
+      return countCorrectOptions(options) > 1
+        ? QUESTION_TYPES.MULTI_SELECT
+        : QUESTION_TYPES.MULTIPLE_CHOICE;
+    }
+    return QUESTION_TYPES.NUMERICAL;
+  }
+
+  // Compatibility for any docs or restored rows written with a 1..5 enum.
+  if (rawType === 5) return QUESTION_TYPES.NUMERICAL;
+
+  // Fall back to short answer for unknown legacy rows.
+  return QUESTION_TYPES.SHORT_ANSWER;
+}
+
 function getResponseTimestamp(response) {
   const updated = response?.updatedAt ? new Date(response.updatedAt).getTime() : Number.NaN;
   if (Number.isFinite(updated)) return updated;
@@ -250,7 +291,7 @@ function buildQuestionWithNormalizedOptions(question) {
 }
 
 function getQuestionType(question) {
-  return Number(question?.type);
+  return normalizeQuestionType(question);
 }
 
 export function isSlideQuestionType(type) {

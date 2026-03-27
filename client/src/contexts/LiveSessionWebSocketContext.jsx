@@ -75,8 +75,15 @@ export function LiveSessionWebSocketProvider({ sessionId, children }) {
           const data = message?.data;
           if (!evt || String(data?.sessionId || '') !== String(sessionId)) return;
 
+          const receivedAtMs = Date.now();
           eventIdRef.current += 1;
-          setLastEvent({ id: eventIdRef.current, event: evt, data });
+          setLastEvent({
+            id: eventIdRef.current,
+            event: evt,
+            data,
+            receivedAtMs,
+            receivedAt: new Date(receivedAtMs).toISOString(),
+          });
         } catch {
           // Ignore malformed websocket payloads.
         }

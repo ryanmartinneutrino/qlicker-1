@@ -148,6 +148,7 @@ That adds up to a little over 5 minutes before iterations begin completing.
 k6 reports custom `Trend` metrics in milliseconds.
 
 - `p(95)<3000` means 95% of samples finished in under 3000 ms, or 3 seconds
+- `p(99)<3000` means 99% of samples finished in under 3 seconds
 - `p(95)<5000` would mean 95% finished in under 5 seconds
 - `rate==1` means a `Rate` metric must be 100%
 - `rate==0` means no failures at all
@@ -160,12 +161,13 @@ The current acceptance bar is intentionally strict for classroom use:
 - `login_success`, `join_success`, `respond_success`, `live_refresh_success`,
   `event_sync_success`, `ws_connect_success`, `professor_action_success`, and
   `session_completion` must all be `100%`
-- `login_duration`, `join_duration`, `respond_duration`,
-  `live_refresh_duration`, and `event_sync_duration` must all have
+- `login_duration`, `join_duration`, and `respond_duration` must have
   `p(95)<3000`
+- `live_refresh_duration` and `event_sync_duration` must have `p(99)<3000`
 
 This means the pass/fail summary is checking both correctness and a classroom
-freshness target of "normally under 3 seconds" for the key interactive paths.
+freshness target of "essentially everyone stays under 3 seconds" for the
+key live-sync paths.
 
 ## How To Read A Finished Run
 
@@ -200,13 +202,36 @@ For live-session correctness, the most important lines are:
 For "do student screens stay fresh enough?", focus on:
 
 - `live_refresh_duration`: time to fetch `/sessions/:id/live`
-- `event_sync_duration`: time from receiving a relevant websocket event to
-  completing the follow-up live refresh and validating the new state
+- `event_sync_duration`: time from the server-emitted websocket event
+  (`emittedAt`) to completing the follow-up live refresh and validating the new
+  state; if `emittedAt` is unavailable, it falls back to receive-to-refresh time
 
-If these stay under 3 seconds at `p(95)`, most students should see updates
-within the target window. If you need a stricter "essentially everyone stays
-under 3 seconds" guarantee, add a `p(99)` threshold and consider instrumenting
-client-side "event received -> DOM updated" timing as a separate metric.
+If these stay under 3 seconds at `p(99)`, the load-test contract is saying the
+tail of the class still stayed within the sync target.
+
+## Browser Telemetry
+
+The live student page, professor control page, and presentation window now send
+batched browser-side telemetry to the app during real sessions:
+
+- `live_fetch_request_ms`: `/sessions/:id/live` request time in the browser
+- `live_fetch_apply_ms`: time from starting a live refresh to the updated UI
+  being painted
+- `ws_event_delivery_ms`: time from the server emitting a websocket event to the
+  browser receiving it
+- `ws_event_to_dom_ms`: time from the browser receiving a websocket event to the
+  updated UI being painted
+- `server_emit_to_dom_ms`: end-to-end time from server emit to painted UI
+
+Instructors can inspect the aggregated summary at:
+
+- `GET /api/v1/sessions/:id/live-telemetry`
+
+That summary includes separate rollups for `student`, `professor`, and
+`presentation` views, plus approximate `p50`, `p95`, and `p99` values. For the
+real interface experience, `server_emit_to_dom_ms` is the most important line.
+That is the closest measurement to "the professor changed something, and the
+student screen visibly caught up."
 
 ## Interpreting Slow Runs
 
