@@ -129,6 +129,11 @@ It will prompt for:
 | Storage type | `local`, `s3`, or `azure` | `local` |
 | Backup retention | Days to keep backups | `30` |
 
+Mongo tuning variables such as `MONGO_MAX_POOL_SIZE`,
+`MONGO_SERVER_SELECTION_TIMEOUT_MS`, and retry settings are also carried
+through from the existing `.env` or `.env.example` and written to the generated
+`.env`, even though setup does not prompt for each of them individually.
+
 ### Configuration Inheritance
 
 The setup script loads defaults from existing configuration files in priority order:
