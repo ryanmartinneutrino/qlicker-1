@@ -325,7 +325,7 @@ export default function StudentCourseDetail() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refreshSessions, 4000);
+      pollingTimer = setInterval(refreshSessions, 15000);
     };
 
     const stopPolling = () => {
@@ -428,7 +428,48 @@ export default function StudentCourseDetail() {
     }
   };
 
+  // Determine if user is an instructor (or admin) for this course — must redirect to professor view
+  const userIsInstructorForCourse = course && (
+    (course.instructors || []).some((inst) => String(inst?._id || inst) === String(user?._id))
+    || (user?.profile?.roles || []).includes('admin')
+  );
+
+  useEffect(() => {
+    if (!userIsInstructorForCourse) return;
+    navigate(`/manage/course/${id}`, { replace: true });
+  }, [userIsInstructorForCourse, id, navigate]);
+
+  // Compute tab indices before early returns to satisfy the Rules of Hooks
+  const studentPracticeEnabled = !!course?.allowStudentQuestions;
+  const courseHasVideo = videoEnabled && !!(
+    (course?.videoChatOptions && course.videoChatOptions.urlId) ||
+    (course?.groupCategories || []).some((cat) => cat.catVideoChatOptions && cat.catVideoChatOptions.urlId)
+  );
+
+  let nextTabIndex = 0;
+  const lecturesTabIndex = nextTabIndex++;
+  const quizzesTabIndex = nextTabIndex++;
+  const practiceTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
+  const questionLibraryTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
+  const gradesTabIndex = nextTabIndex++;
+  const videoTabIndex = courseHasVideo ? nextTabIndex++ : -1;
+  const settingsTabIndex = nextTabIndex++;
+
+  useEffect(() => {
+    if (!course) return;
+    if (tab <= settingsTabIndex) return;
+    setTab(settingsTabIndex);
+    const nextParams = new URLSearchParams(searchParams);
+    if (settingsTabIndex === lecturesTabIndex) {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', String(settingsTabIndex));
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
+
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  if (userIsInstructorForCourse) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortStudentSessions(sessions);
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
@@ -440,7 +481,6 @@ export default function StudentCourseDetail() {
   const practiceSessionCount = Number(sessionTypeCounts.practice) || practiceSessions.length;
   const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
-  const studentPracticeEnabled = !!course?.allowStudentQuestions;
 
   const renderSessionListControls = ({
     listTabIndex,
@@ -727,34 +767,6 @@ export default function StudentCourseDetail() {
       </>
     );
   };
-
-  // Determine if video is available for this course based on course data
-  const courseHasVideo = videoEnabled && !!(
-    (course?.videoChatOptions && course.videoChatOptions.urlId) ||
-    (course?.groupCategories || []).some((cat) => cat.catVideoChatOptions && cat.catVideoChatOptions.urlId)
-  );
-
-  let nextTabIndex = 0;
-  const lecturesTabIndex = nextTabIndex++;
-  const quizzesTabIndex = nextTabIndex++;
-  const practiceTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
-  const questionLibraryTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
-  const gradesTabIndex = nextTabIndex++;
-  const videoTabIndex = courseHasVideo ? nextTabIndex++ : -1;
-  const settingsTabIndex = nextTabIndex++;
-
-  useEffect(() => {
-    if (!course) return;
-    if (tab <= settingsTabIndex) return;
-    setTab(settingsTabIndex);
-    const nextParams = new URLSearchParams(searchParams);
-    if (settingsTabIndex === lecturesTabIndex) {
-      nextParams.delete('tab');
-    } else {
-      nextParams.set('tab', String(settingsTabIndex));
-    }
-    setSearchParams(nextParams, { replace: true });
-  }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
 
   const deletePracticeSession = async (sessionId) => {
     if (!window.confirm(t('student.course.deletePracticeSessionConfirm', { defaultValue: 'Delete this practice session?' }))) {
