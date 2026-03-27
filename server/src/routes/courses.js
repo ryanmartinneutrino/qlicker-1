@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import { normalizeTags } from '../services/questionImportExport.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
+import { invalidateAccessCache } from '../utils/userAccess.js';
 
 function generateEnrollmentCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -573,6 +574,8 @@ export default async function courseRoutes(app) {
         $pull: { students: newInstructorId },
       });
 
+      invalidateAccessCache(newInstructorId);
+
       await User.findByIdAndUpdate(newInstructorId, {
         $addToSet: { 'profile.courses': course._id },
       });
@@ -608,6 +611,8 @@ export default async function courseRoutes(app) {
       await Course.findByIdAndUpdate(course._id, {
         $pull: { instructors: instructorId },
       });
+
+      invalidateAccessCache(instructorId);
 
       await User.findByIdAndUpdate(instructorId, {
         $pull: { 'profile.courses': course._id },

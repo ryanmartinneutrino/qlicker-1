@@ -565,6 +565,7 @@ export default function CourseDetail() {
   // Poll for updates every 15 seconds (reactive student/instructor list)
   useEffect(() => {
     pollingRef.current = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       fetchCourse();
     }, 15000);
     return () => clearInterval(pollingRef.current);

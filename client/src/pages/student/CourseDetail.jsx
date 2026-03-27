@@ -325,7 +325,7 @@ export default function StudentCourseDetail() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refreshSessions, 4000);
+      pollingTimer = setInterval(refreshSessions, 15000);
     };
 
     const stopPolling = () => {
@@ -428,6 +428,17 @@ export default function StudentCourseDetail() {
     }
   };
 
+  // Redirect instructors/admins to the professor view of this course
+  const shouldRedirectToInstructorView = course && (
+    (course.instructors || []).some((inst) => String(inst?._id || inst) === String(user?._id))
+    || (user?.profile?.roles || []).includes('admin')
+  );
+
+  useEffect(() => {
+    if (!shouldRedirectToInstructorView) return;
+    navigate(`/manage/course/${id}`, { replace: true });
+  }, [shouldRedirectToInstructorView, id, navigate]);
+
   const studentPracticeEnabled = !!course?.allowStudentQuestions;
 
   // Determine if video is available for this course based on course data
@@ -459,6 +470,7 @@ export default function StudentCourseDetail() {
   }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  if (shouldRedirectToInstructorView) return <Box sx={{ p: 3 }}><CircularProgress aria-label={t('common.redirecting', { defaultValue: 'Redirecting…' })} /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortStudentSessions(sessions);
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);

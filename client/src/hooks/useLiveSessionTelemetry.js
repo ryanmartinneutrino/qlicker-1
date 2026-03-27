@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import apiClient from '../api/client';
 
-const FLUSH_INTERVAL_MS = 5000;
+const FLUSH_INTERVAL_MS = 30000;
 const MAX_BATCH_SIZE = 20;
 const MAX_QUEUE_SIZE = 200;
 const ALLOWED_TRANSPORTS = new Set(['websocket', 'polling', 'direct', 'unknown']);

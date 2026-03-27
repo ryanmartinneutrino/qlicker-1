@@ -94,7 +94,7 @@ export default function StudentDashboard() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refreshLiveSessions, 6000);
+      pollingTimer = setInterval(refreshLiveSessions, 10000);
     };
 
     const stopPolling = () => {
