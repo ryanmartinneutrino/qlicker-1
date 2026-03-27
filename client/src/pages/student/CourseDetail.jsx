@@ -440,9 +440,7 @@ export default function StudentCourseDetail() {
   const practiceSessionCount = Number(sessionTypeCounts.practice) || practiceSessions.length;
   const headerTitle = buildCourseTitle(course, 'long');
   const headerSection = String(course.section || '').trim();
-  const practiceTabIndex = 2;
-  const questionLibraryTabIndex = 3;
-  const gradesTabIndex = 4;
+  const studentPracticeEnabled = !!course?.allowStudentQuestions;
 
   const renderSessionListControls = ({
     listTabIndex,
@@ -464,7 +462,7 @@ export default function StudentCourseDetail() {
           endIcon={controlsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
           sx={{ px: 0, py: 0, minWidth: 0, textTransform: 'none', fontWeight: 700 }}
         >
-          {t('common.sessionTools', { defaultValue: 'Session tools' })}
+          {t('common.searchSessions', { defaultValue: 'Search sessions' })}
         </Button>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           {t('common.paginationSummary', {
@@ -638,7 +636,7 @@ export default function StudentCourseDetail() {
           safePage,
           totalPages,
         })}
-        {listStillHydrating && (
+        {listStillHydrating && pageItems.length === 0 && (
           <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               <CircularProgress size={16} />
@@ -736,8 +734,27 @@ export default function StudentCourseDetail() {
     (course?.groupCategories || []).some((cat) => cat.catVideoChatOptions && cat.catVideoChatOptions.urlId)
   );
 
-  const videoTabIndex = courseHasVideo ? 5 : -1;
-  const settingsTabIndex = courseHasVideo ? 6 : 5;
+  let nextTabIndex = 0;
+  const lecturesTabIndex = nextTabIndex++;
+  const quizzesTabIndex = nextTabIndex++;
+  const practiceTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
+  const questionLibraryTabIndex = studentPracticeEnabled ? nextTabIndex++ : -1;
+  const gradesTabIndex = nextTabIndex++;
+  const videoTabIndex = courseHasVideo ? nextTabIndex++ : -1;
+  const settingsTabIndex = nextTabIndex++;
+
+  useEffect(() => {
+    if (!course) return;
+    if (tab <= settingsTabIndex) return;
+    setTab(settingsTabIndex);
+    const nextParams = new URLSearchParams(searchParams);
+    if (settingsTabIndex === lecturesTabIndex) {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', String(settingsTabIndex));
+    }
+    setSearchParams(nextParams, { replace: true });
+  }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
 
   const deletePracticeSession = async (sessionId) => {
     if (!window.confirm(t('student.course.deletePracticeSessionConfirm', { defaultValue: 'Delete this practice session?' }))) {
@@ -774,7 +791,7 @@ export default function StudentCourseDetail() {
         onChange={(nextTab) => {
           setTab(nextTab);
           const nextParams = new URLSearchParams(searchParams);
-          if (nextTab === 0) {
+          if (nextTab === lecturesTabIndex) {
             nextParams.delete('tab');
           } else {
             nextParams.set('tab', String(nextTab));
@@ -785,11 +802,13 @@ export default function StudentCourseDetail() {
         dropdownLabel={t('common.view')}
         dropdownSx={{ mb: 1.5 }}
         tabs={[
-          { value: 0, label: `${t('student.course.lectures')} (${interactiveSessionCount})` },
-          { value: 1, label: `${t('student.course.quizzes')} (${quizSessionCount})` },
-          { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessionCount})` },
-          { value: 3, label: t('questionLibrary.title', { defaultValue: 'Question Library' }) },
-          { value: 4, label: t('student.course.grades') },
+          { value: lecturesTabIndex, label: `${t('student.course.lectures')} (${interactiveSessionCount})` },
+          { value: quizzesTabIndex, label: `${t('student.course.quizzes')} (${quizSessionCount})` },
+          ...(studentPracticeEnabled ? [
+            { value: practiceTabIndex, label: `${t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })} (${practiceSessionCount})` },
+            { value: questionLibraryTabIndex, label: t('questionLibrary.title', { defaultValue: 'Question Library' }) },
+          ] : []),
+          { value: gradesTabIndex, label: t('student.course.grades') },
           ...(courseHasVideo ? [{ value: videoTabIndex, label: t('student.course.video') }] : []),
           { value: settingsTabIndex, label: t('student.course.settings') },
         ]}
@@ -799,17 +818,18 @@ export default function StudentCourseDetail() {
         }}
       />
 
-      <TabPanel value={tab} index={0}>
+      <TabPanel value={tab} index={lecturesTabIndex}>
         <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.lectures')}</Typography>
-        {renderSessionList(interactiveSessions, t('student.course.noLectures'), 0, interactiveSessionCount)}
+        {renderSessionList(interactiveSessions, t('student.course.noLectures'), lecturesTabIndex, interactiveSessionCount)}
       </TabPanel>
 
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={quizzesTabIndex}>
         <Typography variant="h6" sx={{ mb: 2 }}>{t('student.course.quizzes')}</Typography>
-        {renderSessionList(quizSessions, t('student.course.noQuizzes'), 1, quizSessionCount)}
+        {renderSessionList(quizSessions, t('student.course.noQuizzes'), quizzesTabIndex, quizSessionCount)}
       </TabPanel>
 
-      <TabPanel value={tab} index={practiceTabIndex}>
+      {studentPracticeEnabled && (
+        <TabPanel value={tab} index={practiceTabIndex}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 2 }}>
           <Typography variant="h6">{t('student.course.practiceSessions', { defaultValue: 'Practice Sessions' })}</Typography>
           <Button variant="contained" onClick={() => navigate(`/student/course/${id}/practice-sessions/new`)}>
@@ -861,7 +881,7 @@ export default function StudentCourseDetail() {
                 safePage,
                 totalPages,
               })}
-              {listStillHydrating && (
+              {listStillHydrating && pageItems.length === 0 && (
                 <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
                     <CircularProgress size={16} />
@@ -950,19 +970,22 @@ export default function StudentCourseDetail() {
             </>
           );
         })()}
-      </TabPanel>
+        </TabPanel>
+      )}
 
-      <TabPanel value={tab} index={questionLibraryTabIndex}>
-        <Suspense fallback={<Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>}>
-          <QuestionLibraryPanel
-            courseId={id}
-            currentCourse={course}
-            availableSessions={sortedSessions}
-            allowQuestionCreate
-            permissionMode="student"
-          />
-        </Suspense>
-      </TabPanel>
+      {studentPracticeEnabled && (
+        <TabPanel value={tab} index={questionLibraryTabIndex}>
+          <Suspense fallback={<Box sx={{ py: 4, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>}>
+            <QuestionLibraryPanel
+              courseId={id}
+              currentCourse={course}
+              availableSessions={sortedSessions}
+              allowQuestionCreate
+              permissionMode="student"
+            />
+          </Suspense>
+        </TabPanel>
+      )}
 
       <TabPanel value={tab} index={gradesTabIndex}>
         <Typography variant="h6" sx={{ mb: 1.5 }}>{t('student.course.grades')}</Typography>

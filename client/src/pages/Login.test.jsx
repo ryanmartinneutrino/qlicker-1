@@ -146,4 +146,31 @@ describe('Login', () => {
 
     expect(screen.getByText('When SSO is enabled, password reset is limited to approved email-login accounts.')).toBeInTheDocument();
   });
+
+  it('sends mixed-role instructor accounts to the professor dashboard', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: false,
+      },
+    });
+    loginMock.mockResolvedValue({
+      profile: { roles: ['student'] },
+      hasInstructorCourses: true,
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Email/i }), { target: { value: 'mix@example.com' } });
+    fireEvent.change(document.getElementById('login-password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }));
+
+    await waitFor(() => {
+      expect(loginMock).toHaveBeenCalledWith('mix@example.com', 'password123');
+      expect(navigateMock).toHaveBeenCalledWith('/manage', { replace: true });
+    });
+  });
 });

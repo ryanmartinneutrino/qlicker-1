@@ -12,6 +12,7 @@ import { emailRegex } from '../utils/email.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email.js';
 import { normalizeCertificatePem } from '../utils/certificate.js';
 import { buildRefreshSessionEntry, getRequestIp, normalizeIpAddress } from '../utils/sessionAudit.js';
+import { getUserAccessFlags } from '../utils/userAccess.js';
 
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -30,12 +31,13 @@ function getAttr(profile, key) {
   return val || '';
 }
 
-function sanitizeUser(user, settings = {}) {
+async function sanitizeUser(user, settings = {}) {
   const obj = user?.toObject ? user.toObject() : { ...user };
   obj.isSSOUser = !!user?.services?.sso?.id;
   obj.isSSOCreatedUser = !!user?.ssoCreated;
   obj.allowEmailLogin = canUseEmailLogin(user, settings);
   obj.lastAuthProvider = user?.lastAuthProvider || '';
+  Object.assign(obj, await getUserAccessFlags(user));
   delete obj.services;
   return obj;
 }
@@ -579,7 +581,7 @@ export default async function authRoutes(app) {
 
     setRefreshTokenCookie(reply, app, refreshToken, refreshTokenMaxAgeSeconds);
 
-    return reply.code(201).send({ token, user: sanitizeUser(user, settings) });
+    return reply.code(201).send({ token, user: await sanitizeUser(user, settings) });
   });
 
   // POST /login
@@ -665,7 +667,7 @@ export default async function authRoutes(app) {
 
     setRefreshTokenCookie(reply, app, refreshToken, refreshTokenMaxAgeSeconds);
 
-    return { token, user: sanitizeUser(user, settings) };
+    return { token, user: await sanitizeUser(user, settings) };
   });
 
   // POST /logout

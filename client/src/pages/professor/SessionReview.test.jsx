@@ -57,6 +57,8 @@ describe('SessionReview', () => {
                 firstname: 'Ada',
                 lastname: 'Lovelace',
                 email: 'ada@example.edu',
+                profileImage: 'https://example.edu/ada-full.png',
+                profileThumbnail: 'https://example.edu/ada-thumb.png',
                 inSession: true,
                 participation: 100,
                 questionResults: [
@@ -99,6 +101,8 @@ describe('SessionReview', () => {
               {
                 _id: 'grade-1',
                 userId: 'student-1',
+                value: 87.5,
+                participation: 100,
                 marks: [
                   {
                     questionId: 'q-1',
@@ -129,6 +133,8 @@ describe('SessionReview', () => {
 
     expect(await screen.findByText('B (4)')).toBeInTheDocument();
     expect(screen.queryByText(/attempt 2/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Grade')).toBeInTheDocument();
+    expect(screen.getByText('87.5%')).toBeInTheDocument();
 
     const csvExport = buildSessionResultsCsv({
       csvQuestionAttempts: [
@@ -173,5 +179,17 @@ describe('SessionReview', () => {
     expect(csvExport.filename).toBe('Midterm_review_results.csv');
     expect(csvExport.csvContent).toContain('Q1 Response,Q1 Points');
     expect(csvExport.csvContent).toContain('ada@example.edu,100%,B,4');
+  });
+
+  it('opens the student avatar image from the students tab', async () => {
+    renderSessionReview();
+
+    await screen.findByText('Midterm review');
+    fireEvent.click(screen.getByRole('tab', { name: /students/i }));
+    await screen.findByText('Ada Lovelace');
+
+    fireEvent.click(screen.getByRole('button', { name: /ada lovelace/i }));
+
+    expect(await screen.findByRole('img', { name: 'Ada Lovelace' })).toBeInTheDocument();
   });
 });

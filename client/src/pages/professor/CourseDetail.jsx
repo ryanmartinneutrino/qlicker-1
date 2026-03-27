@@ -9,6 +9,7 @@ import {
 import {
   ContentCopy as CopyIcon, Delete as DeleteIcon,
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
+  InfoOutlined as InfoOutlinedIcon,
   PlayArrow as LaunchIcon,
   RateReview as ReviewIcon,
   ExpandMore as ExpandMoreIcon,
@@ -1101,7 +1102,7 @@ export default function CourseDetail() {
               endIcon={controlsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
               sx={{ px: 0, py: 0, minWidth: 0, textTransform: 'none', fontWeight: 700 }}
             >
-              {t('common.sessionTools', { defaultValue: 'Session tools' })}
+              {t('common.searchSessions', { defaultValue: 'Search sessions' })}
             </Button>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               {t('common.paginationSummary', {
@@ -1201,7 +1202,7 @@ export default function CourseDetail() {
             )}
           </Paper>
         )}
-        {listStillHydrating && (
+        {listStillHydrating && pageItems.length === 0 && (
           <Paper variant="outlined" sx={{ p: 1.25, mb: hasNoLoadedItems ? 0 : 1.5 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
               <CircularProgress size={16} />
@@ -1628,7 +1629,16 @@ export default function CourseDetail() {
                 onChange={handleToggleAllowStudentQuestions}
               />
             }
-            label={t('professor.course.allowStudentQuestions')}
+            label={(
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Typography variant="body2">
+                  {t('professor.course.allowStudentQuestions')}
+                </Typography>
+                <Tooltip title={t('professor.course.allowStudentQuestionsHelp')}>
+                  <InfoOutlinedIcon fontSize="small" color="action" />
+                </Tooltip>
+              </Box>
+            )}
           />
           <TextField
             select

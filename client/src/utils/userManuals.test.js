@@ -13,6 +13,7 @@ describe('userManuals helpers', () => {
     expect(getPreferredManualRole(['student'])).toBe('student');
     expect(getPreferredManualRole(['professor', 'student'])).toBe('professor');
     expect(getPreferredManualRole(['admin', 'professor', 'student'])).toBe('admin');
+    expect(getPreferredManualRole(['student'], true)).toBe('professor');
     expect(getPreferredManualRole()).toBe('student');
   });
 
@@ -25,6 +26,7 @@ describe('userManuals helpers', () => {
   it('checks manual access by role', () => {
     expect(canAccessManualRole(['student'], 'student')).toBe(true);
     expect(canAccessManualRole(['student'], 'professor')).toBe(false);
+    expect(canAccessManualRole(['student'], 'professor', true)).toBe(true);
     expect(canAccessManualRole(['professor'], 'student')).toBe(true);
     expect(canAccessManualRole(['professor'], 'admin')).toBe(false);
     expect(canAccessManualRole(['admin'], 'admin')).toBe(true);
@@ -36,6 +38,7 @@ describe('userManuals helpers', () => {
   it('lists the manual roles available to each kind of user', () => {
     expect(getAvailableManualRoles(['student'])).toEqual(['student']);
     expect(getAvailableManualRoles(['professor'])).toEqual(['professor', 'student']);
+    expect(getAvailableManualRoles(['student'], true)).toEqual(['professor', 'student']);
     expect(getAvailableManualRoles(['admin'])).toEqual(USER_MANUAL_ROLES);
     expect(getAvailableManualRoles(['admin', 'professor'])).toEqual(USER_MANUAL_ROLES);
   });
@@ -43,6 +46,7 @@ describe('userManuals helpers', () => {
   it('returns the correct dashboard path for each role combination', () => {
     expect(getManualDashboardPath(['student'])).toBe('/student');
     expect(getManualDashboardPath(['professor'])).toBe('/manage');
+    expect(getManualDashboardPath(['student'], true)).toBe('/manage');
     expect(getManualDashboardPath(['admin'])).toBe('/admin');
     expect(getManualDashboardPath(['professor', 'student'])).toBe('/manage');
     expect(getManualDashboardPath(['admin', 'professor', 'student'])).toBe('/admin');

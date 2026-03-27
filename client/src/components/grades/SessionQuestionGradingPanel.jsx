@@ -13,6 +13,7 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   Paper,
   Table,
   TableBody,
@@ -25,7 +26,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Refresh as RefreshIcon, Speed as SpeedIcon } from '@mui/icons-material';
+import { Check as CheckIcon, Close as CloseIcon, Refresh as RefreshIcon, Speed as SpeedIcon } from '@mui/icons-material';
 import apiClient from '../../api/client';
 import SpeedGradingModal from './SpeedGradingModal';
 import {
@@ -424,6 +425,20 @@ const GradingTableRow = memo(function GradingTableRow({
     && Number.isFinite(numericPoints)
     && numericPoints >= 0;
   const localRowDirty = rowDirty || pointsChanged || feedbackChanged || feedbackDirty || confirmingManualGrade;
+  const rowStateSx = rowNeedsGrading
+    ? {
+      bgcolor: 'error.50',
+      '&:hover': { bgcolor: 'error.100' },
+    }
+    : rowDisabled
+      ? {
+        bgcolor: 'action.disabledBackground',
+        '&:hover': { bgcolor: 'action.disabledBackground' },
+      }
+      : {
+        bgcolor: 'success.50',
+        '&:hover': { bgcolor: 'success.100' },
+      };
 
   const syncDraftToParent = useCallback((nextPoints = pointsValue, nextFeedback = feedbackValueRef.current) => {
     if (
@@ -443,7 +458,7 @@ const GradingTableRow = memo(function GradingTableRow({
     <TableRow
       hover
       selected={selected}
-      sx={rowNeedsGrading ? { bgcolor: 'error.50' } : undefined}
+      sx={rowStateSx}
     >
       <TableCell padding="checkbox">
         <Checkbox
@@ -477,7 +492,7 @@ const GradingTableRow = memo(function GradingTableRow({
         </Box>
       </TableCell>
       <TableCell>
-        <Box sx={{ maxWidth: 260 }}>
+        <Box sx={{ maxWidth: 210 }}>
           {row.responseSummary.richHtml ? (
             <RichContent html={row.responseSummary.richHtml} />
           ) : (
@@ -491,7 +506,7 @@ const GradingTableRow = memo(function GradingTableRow({
         ) : null}
       </TableCell>
       <TableCell>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
           <TextField
             size="small"
             type="number"
@@ -547,33 +562,43 @@ const GradingTableRow = memo(function GradingTableRow({
         </Box>
       </TableCell>
       <TableCell align="right">
-        <Box sx={{ display: 'flex', gap: 0.35, flexDirection: 'column', alignItems: 'flex-end' }}>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => {
-              const nextFeedback = feedbackValueRef.current;
-              syncDraftToParent(pointsValue, nextFeedback);
-              onSave(row, { points: pointsValue, feedback: nextFeedback });
-            }}
-            disabled={rowDisabled || saving || !localRowDirty}
-          >
-            {t('common.save')}
-          </Button>
-          <Button
-            size="small"
-            variant="text"
-            onClick={() => {
-              setPointsValue(row.mark ? String(row.mark.points ?? 0) : '');
-              feedbackValueRef.current = normalizeValue(row.mark?.feedback);
-              setFeedbackDirty(false);
-              onCancel(row);
-            }}
-            disabled={rowDisabled || saving || !localRowDirty}
-            sx={{ visibility: localRowDirty ? 'visible' : 'hidden' }}
-          >
-            {t('common.cancel')}
-          </Button>
+        <Box sx={{ display: 'flex', gap: 0.25, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <Tooltip title={t('common.save')}>
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={() => {
+                  const nextFeedback = feedbackValueRef.current;
+                  syncDraftToParent(pointsValue, nextFeedback);
+                  onSave(row, { points: pointsValue, feedback: nextFeedback });
+                }}
+                disabled={rowDisabled || saving || !localRowDirty}
+                aria-label={t('common.save')}
+              >
+                <CheckIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title={t('common.cancel')}>
+            <span>
+              <IconButton
+                size="small"
+                color="default"
+                onClick={() => {
+                  setPointsValue(row.mark ? String(row.mark.points ?? 0) : '');
+                  feedbackValueRef.current = normalizeValue(row.mark?.feedback);
+                  setFeedbackDirty(false);
+                  onCancel(row);
+                }}
+                disabled={rowDisabled || saving || !localRowDirty}
+                aria-label={t('common.cancel')}
+                sx={{ visibility: localRowDirty ? 'visible' : 'hidden' }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Box>
       </TableCell>
     </TableRow>
@@ -1647,15 +1672,15 @@ export default function SessionQuestionGradingPanel({
           aria-label={t('grades.questionPanel.questionGradingTable')}
           sx={{
             '& .MuiTableCell-root': {
-              px: 0.75,
-              py: 0.6,
+              px: 0.55,
+              py: 0.45,
               verticalAlign: 'top',
             },
           }}
         >
           <TableHead>
             <TableRow>
-              <TableCell padding="checkbox" sx={{ width: 52 }}>
+              <TableCell padding="checkbox" sx={{ width: 46 }}>
                 <Checkbox
                   size="small"
                   checked={allFilteredSelected}
@@ -1667,7 +1692,7 @@ export default function SessionQuestionGradingPanel({
                   }}
                 />
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 170 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>
                 <TableSortLabel
                   active={tableSort.field === 'student'}
                   direction={tableSort.field === 'student' ? tableSort.direction : 'asc'}
@@ -1676,7 +1701,7 @@ export default function SessionQuestionGradingPanel({
                   {t('grades.coursePanel.student')}
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 190 }}>
                 <TableSortLabel
                   active={tableSort.field === 'response'}
                   direction={tableSort.field === 'response' ? tableSort.direction : 'asc'}
@@ -1685,7 +1710,7 @@ export default function SessionQuestionGradingPanel({
                   {t('grades.questionPanel.response')}
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 150 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 132 }}>
                 <TableSortLabel
                   active={tableSort.field === 'mark'}
                   direction={tableSort.field === 'mark' ? tableSort.direction : 'desc'}
@@ -1694,7 +1719,7 @@ export default function SessionQuestionGradingPanel({
                   {t('grades.questionPanel.mark')}
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 220 }}>
+              <TableCell sx={{ fontWeight: 700, minWidth: 180 }}>
                 <TableSortLabel
                   active={tableSort.field === 'feedback'}
                   direction={tableSort.field === 'feedback' ? tableSort.direction : 'asc'}
@@ -1703,7 +1728,7 @@ export default function SessionQuestionGradingPanel({
                   {t('grades.coursePanel.feedback')}
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ fontWeight: 700, minWidth: 96 }} align="right">{t('grades.questionPanel.action')}</TableCell>
+              <TableCell sx={{ fontWeight: 700, minWidth: 80 }} align="right">{t('grades.questionPanel.action')}</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

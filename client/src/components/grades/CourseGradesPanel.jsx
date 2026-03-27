@@ -47,6 +47,13 @@ import {
 } from '../questions/constants';
 import { getLatestResponse } from '../../utils/responses';
 
+const COMPACT_CHIP_SX = {
+  borderRadius: 1.4,
+  '& .MuiChip-label': {
+    px: 1.15,
+  },
+};
+
 function normalizeAnswerValue(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -305,6 +312,19 @@ function formatAnswerValue(question, answer) {
   }
 
   return normalizeAnswerValue(answer) || '—';
+}
+
+const QUESTION_TYPE_ABBREVIATIONS = {
+  [QUESTION_TYPES.MULTIPLE_CHOICE]: 'MC',
+  [QUESTION_TYPES.TRUE_FALSE]: 'TF',
+  [QUESTION_TYPES.SHORT_ANSWER]: 'SA',
+  [QUESTION_TYPES.MULTI_SELECT]: 'MS',
+  [QUESTION_TYPES.NUMERICAL]: 'NU',
+};
+
+function getQuestionTypeAbbreviation(questionOrType) {
+  const rawType = Number(questionOrType?.type ?? questionOrType?.questionType ?? questionOrType?.sessionQuestionType ?? questionOrType);
+  return QUESTION_TYPE_ABBREVIATIONS[rawType] || '';
 }
 
 function buildConflictQuestionLabel(conflict, t) {
@@ -632,35 +652,52 @@ function GradeDetailDialog({
             <TableBody>
               {(workingGrade.marks || []).map((mark, index) => {
                 const markCanAutoGrade = isMarkAutoGradeable(mark, autoGradeableQuestionIdSet);
+                const questionTypeAbbrev = getQuestionTypeAbbreviation(mark);
+                const rowNeedsGrading = !!mark.needsGrading;
                 return (
-                  <TableRow key={`${mark.questionId}-${index}`}>
+                  <TableRow
+                    key={`${mark.questionId}-${index}`}
+                    sx={{
+                      bgcolor: rowNeedsGrading ? 'error.50' : 'success.50',
+                      '&:hover': { bgcolor: rowNeedsGrading ? 'error.100' : 'success.100' },
+                    }}
+                  >
                     <TableCell>
-                      <Button
-                        size="small"
-                        variant="text"
-                        onClick={() => onOpenMarkDetail?.({
-                          grade: workingGrade,
-                          student,
-                          sessionName,
-                          mark,
-                          questionNumber: index + 1,
-                        })}
-                        sx={{ px: 0, textTransform: 'none' }}
-                      >
-                        {t('grades.coursePanel.questionShort', { index: index + 1 })}
-                      </Button>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => onOpenMarkDetail?.({
+                            grade: workingGrade,
+                            student,
+                            sessionName,
+                            mark,
+                            questionNumber: index + 1,
+                          })}
+                          sx={{ px: 0, minWidth: 0, textTransform: 'none' }}
+                        >
+                          {t('grades.coursePanel.questionShort', { index: index + 1 })}
+                        </Button>
+                        {questionTypeAbbrev ? (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={rowNeedsGrading ? 'error' : 'success'}
+                            label={questionTypeAbbrev}
+                            sx={COMPACT_CHIP_SX}
+                          />
+                        ) : null}
+                      </Box>
                     </TableCell>
                     <TableCell>{formatPercent(mark.points)} / {formatPercent(mark.outOf)}</TableCell>
                     <TableCell>{mark.attempt || 0}</TableCell>
                     <TableCell>
-                      {mark.needsGrading ? (
+                      {rowNeedsGrading ? (
                         <Chip size="small" color="error" label={t('grades.coursePanel.needsGrading')} />
                       ) : !markCanAutoGrade ? (
-                        <Chip size="small" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
+                        <Chip size="small" color="success" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
                       ) : (
-                        <Typography variant="caption" color="text.secondary">
-                          {t('grades.coursePanel.graded')}
-                        </Typography>
+                        <Chip size="small" color="success" variant="outlined" label={t('grades.coursePanel.graded')} />
                       )}
                     </TableCell>
                     <TableCell>

@@ -204,6 +204,47 @@ describe('POST /api/v1/auth/login', () => {
     expect(typeof body.token).toBe('string');
   });
 
+  it('includes hasInstructorCourses in the login response for mixed-role accounts', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const owner = await createTestUser({ email: 'owner-login@example.com', roles: ['professor'] });
+    const ownerToken = await getAuthToken(app, owner);
+    const courseRes = await authenticatedRequest(app, 'POST', '/api/v1/courses', {
+      token: ownerToken,
+      payload: {
+        name: 'Login Course',
+        deptCode: 'CS',
+        courseNumber: '201',
+        section: '001',
+        semester: 'Fall 2026',
+      },
+    });
+    expect(courseRes.statusCode).toBe(201);
+    const course = courseRes.json().course;
+
+    const mixed = await createTestUser({ email: 'mixed-login@example.com', password: 'password123', roles: ['student'] });
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: ownerToken,
+      payload: { userId: mixed._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'mixed-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.user.hasInstructorCourses).toBe(true);
+    expect(body.user.profile.roles).toContain('student');
+    expect(body.user.profile.roles).not.toContain('professor');
+  });
+
   it('rejects wrong password', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     await createTestUser({ email: 'wrong@example.com', password: 'password123' });

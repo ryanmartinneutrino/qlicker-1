@@ -38,11 +38,17 @@ Related manuals:
 
 1. Open **Review** for a session.
 2. Switch to the **Grading** tab.
-3. If the session is still live, end it first. The grading tab stays locked until the session reaches **Ended**.
+3. If the session is still live and interactive, you can still open review to watch results, but the grading tab stays locked until the session reaches **Ended**.
 4. If needed, change the point value for a question and confirm the recalculation warning.
 5. Recalculate and review any conflicts or warnings.
 6. Resolve manual-vs-auto conflicts by accepting auto marks per row or in bulk when appropriate.
 7. Return to the student summary view to confirm the grading state makes sense overall.
+
+Useful cues in the current review UI:
+
+- the Results tab shows the student's actual session grade before participation
+- clicking a student avatar in the Students tab opens the larger profile photo
+- question rows opened from the course grade table now show the question number plus type, such as `Q4 · SA`
 
 ## Reviewability and student visibility
 
@@ -71,6 +77,8 @@ Tooltip text in the Session Editor explains each formula in the app.
 - If recalculation disagrees with an existing manual mark, the manual mark is not overwritten automatically.
 - A conflict dialog lists these differences and allows you to apply automatic values explicitly.
 - When a student has multiple attempts on a question, grading uses that student's latest attempt for that question.
+- A submitted short-answer response that is blank still counts for participation, but it is automatically scored `0` and does not remain flagged for manual grading.
+- Duplicate `{ userId, courseId, sessionId }` grade identities are now blocked in the backend. If you are cleaning up older data, run the documented `scripts/dedupe-grades.js` maintenance script first.
 - Students receive notifications when new feedback is published, so concise and actionable comments are better than long notes.
 
 ## Student expectations
@@ -79,5 +87,5 @@ Students should expect the following:
 
 - they only see their own grades
 - they only see sessions that are reviewable and visible to students
-- short-answer feedback may arrive later because manual grading takes time
+- short-answer feedback may arrive later because manual grading takes time, but blank submitted answers do not wait for grading
 - a session that disappears from the visible grade list is often no longer reviewable

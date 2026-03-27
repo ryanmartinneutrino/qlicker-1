@@ -9,6 +9,7 @@
 #   ./manage-user.sh change-password --email user@example.com [--password newpwd]
 #   ./manage-user.sh create --email user@example.com --firstname John --lastname Doe [--role student|professor|admin] [--password pass123]
 #   ./manage-user.sh promote --email user@example.com --role professor|admin
+#   ./manage-user.sh set-email-login --email user@example.com --allow-email-login true|false
 #   ./manage-user.sh list
 #   ./manage-user.sh --help
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -35,6 +36,7 @@ Commands:
   change-password  Change a user's password
   create           Create a new user account
   promote          Change a user's role
+  set-email-login  Enable or disable local email login for one account
   list             List all users (email, name, role)
 
 Options:
@@ -43,11 +45,15 @@ Options:
   --firstname NAME     First name (required for create)
   --lastname NAME      Last name (required for create)
   --role ROLE          Role: student, professor, or admin (default: student)
+  --allow-email-login true|false  Explicitly allow or block email login
+  --enable-email-login           Shortcut for --allow-email-login true
+  --disable-email-login          Shortcut for --allow-email-login false
 
 Examples:
   ./manage-user.sh change-password --email admin@example.com --password newSecure123
   ./manage-user.sh create --email prof@university.edu --firstname Jane --lastname Smith --role professor
   ./manage-user.sh promote --email user@example.com --role admin
+  ./manage-user.sh set-email-login --email sso.user@example.com --disable-email-login
   ./manage-user.sh list
 EOF
 }
@@ -145,11 +151,13 @@ PASSWORD=""
 FIRSTNAME=""
 LASTNAME=""
 ROLE="student"
+ALLOW_EMAIL_LOGIN=""
 EMAIL_SET=false
 PASSWORD_SET=false
 FIRSTNAME_SET=false
 LASTNAME_SET=false
 ROLE_SET=false
+ALLOW_EMAIL_LOGIN_SET=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -198,6 +206,33 @@ while [ $# -gt 0 ]; do
       ROLE_SET=true
       shift 2
       ;;
+    --allow-email-login)
+      if [ $# -lt 2 ] || [[ "$2" == --* ]]; then
+        error "Missing value for --allow-email-login"
+        exit 1
+      fi
+      case "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" in
+        true|false)
+          ALLOW_EMAIL_LOGIN="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+          ALLOW_EMAIL_LOGIN_SET=true
+          ;;
+        *)
+          error "--allow-email-login must be true or false"
+          exit 1
+          ;;
+      esac
+      shift 2
+      ;;
+    --enable-email-login)
+      ALLOW_EMAIL_LOGIN="true"
+      ALLOW_EMAIL_LOGIN_SET=true
+      shift
+      ;;
+    --disable-email-login)
+      ALLOW_EMAIL_LOGIN="false"
+      ALLOW_EMAIL_LOGIN_SET=true
+      shift
+      ;;
     *) error "Unknown argument: $1"; usage; exit 1 ;;
   esac
 done
@@ -210,7 +245,7 @@ case "$COMMAND" in
     if ! validate_email "$EMAIL"; then
       error "Invalid email format: $EMAIL"; exit 1
     fi
-    if [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ROLE_SET" = true ]; then
+    if [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ROLE_SET" = true ] || [ "$ALLOW_EMAIL_LOGIN_SET" = true ]; then
       error "change-password only accepts --email and optional --password"
       exit 1
     fi
@@ -395,7 +430,7 @@ case "$COMMAND" in
     if ! validate_role "$ROLE"; then
       error "Role must be student, professor, or admin"; exit 1
     fi
-    if [ "$PASSWORD_SET" = true ] || [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ]; then
+    if [ "$PASSWORD_SET" = true ] || [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ALLOW_EMAIL_LOGIN_SET" = true ]; then
       error "promote only accepts --email and --role"
       exit 1
     fi
@@ -449,8 +484,79 @@ case "$COMMAND" in
     -e MANAGE_USER_ROLE="$ROLE"
     ;;
 
+  set-email-login)
+    if [ "$EMAIL_SET" = false ]; then
+      error "--email is required"; exit 1
+    fi
+    if [ "$ALLOW_EMAIL_LOGIN_SET" = false ]; then
+      error "--allow-email-login, --enable-email-login, or --disable-email-login is required"
+      exit 1
+    fi
+    if ! validate_email "$EMAIL"; then
+      error "Invalid email format: $EMAIL"; exit 1
+    fi
+    if [ "$PASSWORD_SET" = true ] || [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ROLE_SET" = true ]; then
+      error "set-email-login only accepts --email and an email-login flag"
+      exit 1
+    fi
+
+    run_in_container "
+      import mongoose from 'mongoose';
+      const uri = process.env.MONGO_URI || 'mongodb://mongo:27017/qlicker';
+      const email = String(process.env.MANAGE_USER_EMAIL || '').toLowerCase().trim();
+      const allowEmailLogin = String(process.env.MANAGE_USER_ALLOW_EMAIL_LOGIN || '').toLowerCase() === 'true';
+      const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+      const connectWithRetry = async () => {
+        let lastError = null;
+        for (let attempt = 1; attempt <= 6; attempt += 1) {
+          try {
+            if (mongoose.connection.readyState !== 0) {
+              await mongoose.disconnect().catch(() => {});
+            }
+            await mongoose.connect(uri, {
+              autoIndex: false,
+              maxPoolSize: 4,
+              minPoolSize: 0,
+              serverSelectionTimeoutMS: 10000,
+              socketTimeoutMS: 45000,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 6) break;
+            const delayMs = Math.min(2000 * attempt, 10000);
+            console.warn('Mongo connection attempt ' + attempt + '/6 failed: ' + (error?.message || error) + '. Retrying in ' + delayMs + 'ms ...');
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        throw lastError;
+      };
+      await connectWithRetry();
+      try {
+        const col = mongoose.connection.collection('users');
+        const user = await col.findOne({ 'emails.address': new RegExp('^' + escapeRegex(email) + '\$', 'i') });
+        if (!user) {
+          console.error('User not found: ' + email);
+          process.exit(1);
+        }
+        const isAdmin = Array.isArray(user.profile?.roles) && user.profile.roles.includes('admin');
+        const nextAllowEmailLogin = isAdmin ? true : allowEmailLogin;
+        const update = { \$set: { allowEmailLogin: nextAllowEmailLogin } };
+        if (!nextAllowEmailLogin || isAdmin) {
+          update.\$unset = { 'services.resetPassword': '' };
+        }
+        await col.updateOne({ _id: user._id }, update);
+        console.log('Updated allowEmailLogin for ' + email + ': ' + nextAllowEmailLogin);
+      } finally {
+        await mongoose.disconnect();
+      }
+    " \
+    -e MANAGE_USER_EMAIL="$EMAIL" \
+    -e MANAGE_USER_ALLOW_EMAIL_LOGIN="$ALLOW_EMAIL_LOGIN"
+    ;;
+
   list)
-    if [ "$EMAIL_SET" = true ] || [ "$PASSWORD_SET" = true ] || [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ROLE_SET" = true ]; then
+    if [ "$EMAIL_SET" = true ] || [ "$PASSWORD_SET" = true ] || [ "$FIRSTNAME_SET" = true ] || [ "$LASTNAME_SET" = true ] || [ "$ROLE_SET" = true ] || [ "$ALLOW_EMAIL_LOGIN_SET" = true ]; then
       error "list does not accept options"
       exit 1
     fi

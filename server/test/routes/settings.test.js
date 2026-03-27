@@ -63,6 +63,40 @@ describe('PATCH /api/v1/settings', () => {
     expect(stored.SSO_enabled).toBe(true);
     expect(stored.storageType).toBe('legacy-storage');
   });
+
+  it('persists backup scheduling settings', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const admin = await createTestUser({
+      email: 'admin-backup-settings@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'PATCH', '/api/v1/settings', {
+      token,
+      payload: {
+        backupEnabled: true,
+        backupTimeLocal: '03:15',
+        backupRetentionDaily: 9,
+        backupRetentionWeekly: 5,
+        backupRetentionMonthly: 14,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.backupEnabled).toBe(true);
+    expect(body.backupTimeLocal).toBe('03:15');
+    expect(body.backupRetentionDaily).toBe(9);
+    expect(body.backupRetentionWeekly).toBe(5);
+    expect(body.backupRetentionMonthly).toBe(14);
+
+    const stored = await Settings.collection.findOne({ _id: 'settings' });
+    expect(stored.backupEnabled).toBe(true);
+    expect(stored.backupTimeLocal).toBe('03:15');
+    expect(stored.backupRetentionMonthly).toBe(14);
+  });
 });
 
 describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
@@ -176,5 +210,38 @@ describe('GET /api/v1/settings/public', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().maxImageWidth).toBe(1920);
     expect(res.json().avatarThumbnailSize).toBe(512);
+  });
+
+  it('normalizes backup defaults when values are missing or invalid', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.collection.updateOne(
+      { _id: 'settings' },
+      {
+        $set: {
+          backupEnabled: true,
+          backupTimeLocal: '25:99',
+          backupRetentionDaily: -1,
+          backupRetentionWeekly: 'not-a-number',
+          backupRetentionMonthly: null,
+        },
+      },
+      { upsert: true }
+    );
+
+    const admin = await createTestUser({
+      email: 'admin-backup-defaults@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/settings', { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.backupEnabled).toBe(true);
+    expect(body.backupTimeLocal).toBe('02:00');
+    expect(body.backupRetentionDaily).toBe(7);
+    expect(body.backupRetentionWeekly).toBe(4);
+    expect(body.backupRetentionMonthly).toBe(12);
   });
 });

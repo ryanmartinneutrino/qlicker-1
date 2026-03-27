@@ -390,6 +390,16 @@ function sanitizeExportedSession(session, orderedQuestions = []) {
   };
 }
 
+const liveSessionsQuerySchema = {
+  querystring: {
+    type: 'object',
+    properties: {
+      view: { type: 'string', enum: ['student', 'instructor', 'all'] },
+    },
+    additionalProperties: false,
+  },
+};
+
 function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
   const isPracticeQuiz = !!sourceSession?.practiceQuiz;
   const isQuiz = isPracticeQuiz || !!sourceSession?.quiz;
@@ -1107,8 +1117,70 @@ function getAttemptStatsEntry(question, attemptNumber) {
   ) || null;
 }
 
-function getQuestionAttemptStats(question, attemptNumber) {
-  return materializeAttemptStatsEntry(getAttemptStatsEntry(question, attemptNumber));
+function isCanonicalAttemptStatsEntry(question, entry, responseCount) {
+  if (!entry) return false;
+
+  const expectedCount = Number(responseCount || 0);
+  if (Number(entry.total || 0) !== expectedCount) return false;
+
+  const type = normalizeQuestionType(question);
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  if ([0, 1, 3].includes(type) && options.length > 0) {
+    return entry.type === 'distribution'
+      && Array.isArray(entry.distribution)
+      && entry.distribution.length === options.length;
+  }
+
+  if (type === 2) {
+    return entry.type === 'shortAnswer'
+      && Array.isArray(entry.answers)
+      && entry.answers.length === expectedCount;
+  }
+
+  if (type === 4) {
+    return entry.type === 'numerical'
+      && Array.isArray(entry.answers)
+      && entry.answers.length === expectedCount;
+  }
+
+  return entry.type !== 'unknown' || expectedCount === 0;
+}
+
+async function loadCanonicalAttemptStatsEntries(question, attemptNumber = null) {
+  if (!question) return [];
+
+  if (attemptNumber == null) {
+    return getAttemptStatsEntries(question)
+      .map((entry) => materializeAttemptStatsEntry(entry))
+      .filter(Boolean);
+  }
+
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  const cachedEntry = getAttemptStatsEntry(question, normalizedAttemptNumber);
+  const responseCount = await Response.countDocuments({
+    questionId: question._id,
+    attempt: normalizedAttemptNumber,
+  });
+
+  if (isCanonicalAttemptStatsEntry(question, cachedEntry, responseCount)) {
+    const materialized = materializeAttemptStatsEntry(cachedEntry);
+    return materialized ? [materialized] : [];
+  }
+
+  const responses = responseCount > 0
+    ? await Response.find({
+      questionId: question._id,
+      attempt: normalizedAttemptNumber,
+    }).lean()
+    : [];
+  const rebuilt = buildResponseStats(question, responses, normalizedAttemptNumber);
+  return rebuilt ? [rebuilt] : [];
+}
+
+async function getQuestionAttemptStats(question, attemptNumber) {
+  const entries = await loadCanonicalAttemptStatsEntries(question, attemptNumber);
+  return entries[0] || null;
 }
 
 function getAttemptStatsEntries(question, attemptNumber = null) {
@@ -1121,8 +1193,9 @@ function getAttemptStatsEntries(question, attemptNumber = null) {
   return entry ? [entry] : [];
 }
 
-function collectShortAnswerTextsFromAttemptStats(question, attemptNumber = null) {
-  return getAttemptStatsEntries(question, attemptNumber).flatMap((entry) => (
+async function collectShortAnswerTextsFromAttemptStats(question, attemptNumber = null) {
+  const entries = await loadCanonicalAttemptStatsEntries(question, attemptNumber);
+  return entries.flatMap((entry) => (
     Array.isArray(entry?.answers) ? entry.answers : []
   )).map((answerEntry) => {
     if (answerEntry?.answerWysiwyg && typeof answerEntry.answerWysiwyg === 'string') {
@@ -1133,9 +1206,10 @@ function collectShortAnswerTextsFromAttemptStats(question, attemptNumber = null)
   }).filter(Boolean);
 }
 
-function collectNumericalValuesFromAttemptStats(question, attemptNumber = null) {
+async function collectNumericalValuesFromAttemptStats(question, attemptNumber = null) {
   const values = [];
-  getAttemptStatsEntries(question, attemptNumber).forEach((entry) => {
+  const entries = await loadCanonicalAttemptStatsEntries(question, attemptNumber);
+  entries.forEach((entry) => {
     if (Array.isArray(entry?.values) && entry.values.length > 0) {
       entry.values.forEach((value) => {
         const numeric = Number(value);
@@ -1270,9 +1344,58 @@ async function ensureQuestionAttemptStatsEntry(question, attemptNumber) {
   );
 }
 
+async function upsertQuestionAttemptStatsEntry(questionId, attemptNumber, entry) {
+  if (!questionId || !entry) return;
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+
+  const replaceResult = await Question.updateOne(
+    {
+      _id: questionId,
+      'sessionOptions.attemptStats.number': normalizedAttemptNumber,
+    },
+    {
+      $set: { 'sessionOptions.attemptStats.$': entry },
+    }
+  );
+
+  const modifiedCount = Number(
+    replaceResult?.modifiedCount ?? replaceResult?.nModified ?? 0
+  );
+  if (modifiedCount > 0) return;
+
+  await Question.updateOne(
+    {
+      _id: questionId,
+      'sessionOptions.attemptStats.number': { $ne: normalizedAttemptNumber },
+    },
+    {
+      $push: { 'sessionOptions.attemptStats': entry },
+    }
+  );
+}
+
 async function appendResponseToQuestionAttemptStats(question, attemptNumber, response) {
   const normalizedAttemptNumber = Number(attemptNumber) || 1;
   if (!question?._id || !response) return;
+
+  const responseCount = await Response.countDocuments({
+    questionId: question._id,
+    attempt: normalizedAttemptNumber,
+  });
+  const cachedEntry = getAttemptStatsEntry(question, normalizedAttemptNumber);
+  const expectedPreviousCount = Math.max(0, responseCount - 1);
+
+  if (!isCanonicalAttemptStatsEntry(question, cachedEntry, expectedPreviousCount)) {
+    const responses = responseCount > 0
+      ? await Response.find({
+        questionId: question._id,
+        attempt: normalizedAttemptNumber,
+      }).lean()
+      : [];
+    const rebuilt = buildAttemptStatsEntry(question, normalizedAttemptNumber, responses);
+    await upsertQuestionAttemptStatsEntry(question._id, normalizedAttemptNumber, rebuilt);
+    return;
+  }
 
   await ensureQuestionAttemptStatsEntry(question, normalizedAttemptNumber);
 
@@ -1892,6 +2015,9 @@ export default async function sessionRoutes(app) {
       if (isStudentPracticeCreation && !isPracticeQuiz) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Students can only create practice sessions' });
       }
+      if (isStudentPracticeCreation && !course.allowStudentQuestions) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student practice is disabled for this course' });
+      }
       if (hasDisallowedTags(tags || [], allowedTagValues)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Sessions can only use the course topics' });
       }
@@ -1936,22 +2062,27 @@ export default async function sessionRoutes(app) {
     '/sessions/live',
     {
       preHandler: authenticate,
+      schema: liveSessionsQuerySchema,
       rateLimit: { max: 120, timeWindow: '1 minute' },
     },
     async (request, reply) => {
       const roles = request.user.roles || [];
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
-      const isInstructorView = isAdmin || roles.includes('professor');
+      const resolvedView = request.query.view || (roles.includes('professor') || isAdmin ? 'instructor' : 'student');
+      const isInstructorView = resolvedView !== 'student';
+      const isAllView = resolvedView === 'all';
+
+      if (isAllView && !isAdmin) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
 
       const courseFilter = {};
-      if (!isAdmin) {
-        if (roles.includes('professor')) {
-          courseFilter.instructors = userId;
-        } else {
-          courseFilter.students = userId;
-          courseFilter.inactive = { $ne: true };
-        }
+      if (resolvedView === 'instructor') {
+        courseFilter.instructors = userId;
+      } else if (resolvedView === 'student') {
+        courseFilter.students = userId;
+        courseFilter.inactive = { $ne: true };
       }
 
       const courses = await Course.find(courseFilter)
@@ -1980,7 +2111,9 @@ export default async function sessionRoutes(app) {
         ],
       };
 
-      if (isInstructorView) {
+      if (isAllView) {
+        // Admin view sees all running sessions across all accessible courses.
+      } else if (isInstructorView) {
         // Instructors never see student-created sessions
         sessionFilter.studentCreated = { $ne: true };
       } else {
@@ -2054,7 +2187,8 @@ export default async function sessionRoutes(app) {
       const liveSessions = normalizedSessions
         .filter((session) => session.status === 'running')
         .filter((session) => (
-          isInstructorView
+          isAllView
+            || isInstructorView
             || (
               !session.studentCreated
               && (
@@ -2353,6 +2487,9 @@ export default async function sessionRoutes(app) {
       if (!isInstructor && !isStudentOwner) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
+      if (isStudentOwner && session.practiceQuiz && !course.allowStudentQuestions) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student practice is disabled for this course' });
+      }
 
       const allowed = isStudentOwner
         ? ['name', 'description']
@@ -2511,6 +2648,9 @@ export default async function sessionRoutes(app) {
 
       if (!isStudentOwnedSession(session, request.user) || !session.practiceQuiz) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      if (!course.allowStudentQuestions) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student practice is disabled for this course' });
       }
 
       const questionIds = [...new Set((request.body.questionIds || []).map((questionId) => String(questionId)).filter(Boolean))];
@@ -3933,10 +4073,6 @@ export default async function sessionRoutes(app) {
       const questionId = currentQuestion?._id;
 
       if (questionId && currentItemCollectsResponses) {
-        const cachedResponseStats = currentAttempt
-          ? getQuestionAttemptStats(currentQuestion, currentAttempt.number)
-          : null;
-
         if (isInstrOrAdmin) {
           // Prof still needs individual responses for live review, but can reuse
           // cached aggregate stats instead of rebuilding them on every refresh.
@@ -3944,7 +4080,13 @@ export default async function sessionRoutes(app) {
             questionId,
             attempt: currentAttempt.number,
           }).lean();
-          responseStats = cachedResponseStats || buildResponseStats(currentQuestion, responses, currentAttempt.number);
+          const cachedResponseStats = currentAttempt
+            ? getAttemptStatsEntry(currentQuestion, currentAttempt.number)
+            : null;
+          responseStats = cachedResponseStats
+            && isCanonicalAttemptStatsEntry(currentQuestion, cachedResponseStats, responses.length)
+            ? materializeAttemptStatsEntry(cachedResponseStats)
+            : buildResponseStats(currentQuestion, responses, currentAttempt.number);
 
           const includeNamesInPayload = includeStudentNames
             && ['shortAnswer', 'numerical'].includes(responseStats?.type);
@@ -3993,26 +4135,14 @@ export default async function sessionRoutes(app) {
           );
         } else if (isJoined && !questionHidden) {
           if (showStats) {
-            if (cachedResponseStats) {
-              responseStats = formatStudentLiveResponseStats(cachedResponseStats);
-              studentResponse = await Response.findOne({
-                questionId,
-                studentUserId: userId,
-                attempt: currentAttempt.number,
-              }).lean();
-            } else {
-              // Fallback for legacy questions that do not yet have cached attempt stats.
-              const responses = await Response.find({
-                questionId,
-                attempt: currentAttempt.number,
-              }).lean();
-              responseStats = formatStudentLiveResponseStats(
-                buildResponseStats(currentQuestion, responses, currentAttempt.number)
-              );
-              studentResponse = responses.find(
-                (r) => String(getResponseStudentId(r)) === String(userId)
-              ) || null;
-            }
+            responseStats = formatStudentLiveResponseStats(
+              await getQuestionAttemptStats(currentQuestion, currentAttempt.number)
+            );
+            studentResponse = await Response.findOne({
+              questionId,
+              studentUserId: userId,
+              attempt: currentAttempt.number,
+            }).lean();
           } else {
             // Only need student's own response
             studentResponse = await Response.findOne({
@@ -4533,20 +4663,7 @@ export default async function sessionRoutes(app) {
 
       const attempts = question.sessionOptions?.attempts || [];
       const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
-      const texts = collectShortAnswerTextsFromAttemptStats(question, currentAttempt.number);
-      if (texts.length === 0) {
-        const responses = await Response.find({
-          questionId,
-          attempt: currentAttempt.number,
-        }).lean();
-        responses.forEach((response) => {
-          if (response.answerWysiwyg && typeof response.answerWysiwyg === 'string') {
-            texts.push(response.answerWysiwyg);
-          } else if (typeof response.answer === 'string') {
-            texts.push(response.answer);
-          }
-        });
-      }
+      const texts = await collectShortAnswerTextsFromAttemptStats(question, currentAttempt.number);
 
       const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
       const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
@@ -4684,17 +4801,7 @@ export default async function sessionRoutes(app) {
 
       const attempts = question.sessionOptions?.attempts || [];
       const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
-      const values = collectNumericalValuesFromAttemptStats(question, currentAttempt.number);
-      if (values.length === 0) {
-        const responses = await Response.find({
-          questionId,
-          attempt: currentAttempt.number,
-        }).lean();
-        responses.forEach((response) => {
-          const numeric = Number(response.answer);
-          if (!Number.isNaN(numeric)) values.push(numeric);
-        });
-      }
+      const values = await collectNumericalValuesFromAttemptStats(question, currentAttempt.number);
 
       const histOpts = {};
       if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;

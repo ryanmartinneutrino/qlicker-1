@@ -24,6 +24,7 @@
     "next": "Suivant",
     "previous": "Précédent",
     "paginationSummary": "Page {{page}} sur {{pages}}",
+    "searchSessions": "Rechercher des séances",
     "sessionTools": "Outils des séances",
     "required": "obligatoire",
     "actions": "Actions",
@@ -189,6 +190,7 @@
     "title": "Tableau de bord administrateur",
     "tabs": {
       "settings": "Paramètres",
+      "backup": "Sauvegarde",
       "users": "Utilisateurs",
       "courses": "Cours",
       "storage": "Stockage",
@@ -291,10 +293,44 @@
       "ipUnavailable": "Indisponible",
       "unknownTime": "Heure inconnue",
       "never": "Jamais",
+      "studentCourses": "Cours comme étudiant",
+      "taCourses": "Cours comme auxiliaire",
+      "instructorCourses": "Cours comme enseignant",
+      "noStudentCourses": "Aucune inscription étudiante trouvée.",
+      "noTaCourses": "Aucune affectation comme auxiliaire trouvée.",
+      "noInstructorCourses": "Aucune affectation enseignante trouvée.",
       "cannotChangeOwnRole": "Vous ne pouvez pas changer votre propre rôle",
       "confirmDeleteMessage": "Êtes-vous sûr de vouloir supprimer <strong>{{name}}</strong> ({{email}}) ?",
       "viewProfileImageAria": "Voir l'image de profil de {{name}}",
       "noProfileImageAria": "{{name}} n'a pas d'image de profil"
+    },
+    "backup": {
+      "help": "Configurez les sauvegardes MongoDB planifiées pendant que l'application reste en ligne. Le gestionnaire de sauvegarde écrit des archives compressées dans ./backups et enregistre ici l'état de la dernière exécution.",
+      "storagePathLabel": "Emplacement des sauvegardes",
+      "storagePathValue": "Les archives sont écrites à côté de docker-compose.yml dans ./backups sur l'hôte.",
+      "recoveryGuide": "Ouvrir le guide de récupération",
+      "enabled": "Activer les sauvegardes planifiées",
+      "timeLocal": "Heure de sauvegarde (locale)",
+      "timeLocalHelp": "Les vérifications quotidiennes, hebdomadaires et mensuelles utilisent l'heure locale configurée. Les sauvegardes hebdomadaires s'exécutent le dimanche et les sauvegardes mensuelles le premier jour du mois.",
+      "dailyRetention": "Sauvegardes quotidiennes à conserver",
+      "weeklyRetention": "Sauvegardes hebdomadaires à conserver",
+      "monthlyRetention": "Sauvegardes mensuelles à conserver",
+      "lastRun": "Dernière exécution",
+      "lastRunAt": "Dernière exécution : {{value}}",
+      "lastRunFile": "Archive : {{value}}",
+      "lastRunFileEmpty": "Archive : aucune pour l'instant",
+      "lastRunMessageEmpty": "Aucun message de sauvegarde enregistré pour l'instant.",
+      "noRunsYet": "Aucune sauvegarde exécutée pour l'instant.",
+      "statusIdle": "Inactive",
+      "statusRunning": "En cours",
+      "statusSuccess": "Réussie",
+      "statusFailed": "Échouée",
+      "type": {
+        "daily": "Quotidienne",
+        "weekly": "Hebdomadaire",
+        "monthly": "Mensuelle",
+        "manual": "Manuelle"
+      }
     },
     "storage": {
       "storageType": "Type de stockage",
@@ -352,6 +388,7 @@
     },
     "failedLoadSettings": "Échec du chargement des paramètres",
     "failedSaveSettings": "Échec de la sauvegarde des paramètres.",
+    "failedSaveBackupSettings": "Échec de l'enregistrement des paramètres de sauvegarde.",
     "failedSaveStorageSettings": "Échec de la sauvegarde des paramètres de stockage.",
     "failedSaveSSOSettings": "Échec de la sauvegarde des paramètres SSO.",
     "video": {
@@ -449,7 +486,8 @@
       "copy": "Copier",
       "regenerate": "Régénérer",
       "requireVerifiedEnroll": "Exiger un courriel vérifié pour l'inscription",
-      "allowStudentQuestions": "Permettre aux étudiants de soumettre des questions",
+      "allowStudentQuestions": "Permettre aux étudiants d'accéder aux questions de pratique",
+      "allowStudentQuestionsHelp": "Lorsque cette option est activée, les étudiants peuvent ouvrir la bibliothèque de questions du cours, créer des séances de pratique et copier des questions de pratique. Ils peuvent quand même réviser les séances terminées même si cette option est désactivée.",
       "topics": "Sujets du cours",
       "topicsPlaceholder": "Ajouter un sujet du cours",
       "topicsHelp": "Les étudiants ne peuvent utiliser que ces sujets du cours sur leurs propres questions.",
@@ -770,6 +808,7 @@
       "students": "Étudiants",
       "name": "Nom",
       "email": "Courriel",
+      "grade": "Note",
       "participation": "Participation",
       "noQuestions": "Cette séance n'a pas de questions.",
       "noResults": "Aucun résultat d'étudiant disponible.",
@@ -903,6 +942,7 @@
       "noQuizzes": "Aucun questionnaire disponible.",
       "noPracticeSessions": "Aucune séance de pratique pour l’instant.",
       "newPracticeSession": "Nouvelle séance de pratique",
+      "practiceDisabled": "La pratique étudiante est désactivée pour ce cours.",
       "editPracticeSession": "Modifier la séance de pratique",
       "practiceSessionName": "Nom de la séance de pratique",
       "practiceNameRequired": "Le nom de la séance de pratique est requis.",
@@ -1612,10 +1652,10 @@
     "admin": {
       "title": "Guide d'utilisation administrateur",
       "intro": "Utilisez ce guide pour configurer Qlicker pour votre établissement ou aider les professeurs et les étudiants.",
-      "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage, la durée de session par défaut de 2 heures et les réglages vidéo avant de quitter un onglet.",
+      "summary": "Le tableau de bord administrateur enregistre après une courte pause; vérifiez donc attentivement les valeurs sensibles comme les certificats SSO, les identifiants de stockage, la politique de sauvegarde, la durée de session par défaut de 2 heures pour les nouvelles sessions émises et les réglages vidéo avant de quitter un onglet.",
       "quickStart": [
         "Confirmez les valeurs par défaut de l'établissement dans Paramètres avant le début d'une nouvelle session.",
-        "Configurez le stockage, le SSO et la vidéo dans l'interface administrateur avant l'arrivée des utilisateurs si votre déploiement dépend de services partagés.",
+        "Configurez la sauvegarde, le stockage, le SSO et la vidéo dans l'interface administrateur avant l'arrivée des utilisateurs si votre déploiement dépend de services partagés.",
         "Utilisez les onglets Utilisateurs et Cours pour vérifier que les rôles, les inscriptions et les cours actifs correspondent à la réalité."
       ],
       "sections": [
@@ -1624,9 +1664,10 @@
           "subtitle": "La plupart des problèmes d'administration viennent d'un petit écart entre le format attendu et l'environnement réel.",
           "bullets": [
             "Exécutez le serveur, le client et la base de données avec les variables d'environnement du déploiement que vous comptez réellement supporter avant de tester les flux administrateurs.",
-            "Les domaines de courriel autorisés forment une liste séparée par des virgules; l'expiration connexion/session est un nombre entier de minutes; la langue, la date et l'heure deviennent des valeurs par défaut globales.",
+            "Les domaines de courriel autorisés forment une liste séparée par des virgules; l'expiration connexion/session est un nombre entier de minutes pour les nouvelles sessions d'accès et de rafraîchissement; la langue, la date et l'heure deviennent des valeurs par défaut globales.",
             "Les valeurs SSO sont des champs de texte brut pour les URL, les identifiants d'entité et les noms d'attributs. Les certificats et les clés doivent être collés exactement comme le fournisseur les donne.",
-            "Les formulaires de stockage attendent les champs propres au fournisseur affichés dans l'interface; confirmez toujours la configuration par un téléversement d'image."
+            "Les formulaires de stockage attendent les champs propres au fournisseur affichés dans l'interface; confirmez toujours la configuration par un téléversement d'image.",
+            "Utilisez l'onglet Sauvegarde pour confirmer l'heure planifiée, les valeurs par défaut de rétention 7 quotidiennes / 4 hebdomadaires / 12 mensuelles et l'état de la dernière exécution avant de compter sur le système pour la récupération."
           ],
           "note": "Lorsqu'une personne signale un problème d'interface, comparez ce guide avec le guide professeur ou étudiant afin que votre réponse corresponde au flux actuel.",
           "screenshot": {
@@ -1674,7 +1715,8 @@
             "Recherchez les utilisateurs par nom ou par courriel, changez les rôles, vérifiez les adresses, créez des comptes, réinitialisez les mots de passe locaux et ouvrez les propriétés d'un utilisateur lorsque les règles de connexion locale ou de promotion doivent changer.",
             "Désactivez un utilisateur lorsque vous devez bloquer sa connexion sans effacer l'historique du compte, puis rétablissez ce même compte plus tard si l'accès doit revenir.",
             "Lorsque le SSO institutionnel est activé, les utilisateurs non administrateurs ont besoin de l'exception de connexion par courriel avant que la connexion locale et le courriel de réinitialisation deviennent disponibles.",
-            "Révisez les cours pour confirmer les responsables, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
+            "Révisez les cours et les détails utilisateur pour confirmer les appartenances étudiantes, TA et enseignantes, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
+            "Les utilisateurs au rôle global étudiant qui enseignent un cours apparaissent comme TA dans l'interface administrateur, mais il s'agit seulement d'un libellé d'affichage et non d'un nouveau rôle stocké.",
             "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
           ],
           "warning": "Les changements de rôle et les approbations de connexion SSO prennent effet immédiatement; confirmez donc la demande avant l'enregistrement."
@@ -1696,8 +1738,8 @@
           "subtitle": "Une configuration de cours propre fait gagner du temps lorsque vous copiez ou recherchez plus tard.",
           "bullets": [
             "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite si vous avez besoin d'un format personnalisé ou hérité.",
-            "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'autorisation des questions étudiantes.",
-            "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible.",
+            "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'accès des étudiants aux questions de pratique, à la bibliothèque du cours et aux séances de pratique.",
+            "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible lorsque l'accès à la pratique est activé.",
             "Chaque cours possède un code d'inscription que les étudiants saisissent depuis leur tableau de bord pour rejoindre ce cours précis. Partagez le code actuel avec votre classe et modifiez-le dans les réglages du cours si vous devez empêcher la réutilisation d'un ancien code."
           ],
           "note": "Si vous enseignez des cours semblables à chaque session, gardez une convention de nommage stable afin que le matériel copié reste facile à repérer.",
@@ -1761,16 +1803,19 @@
             "Les séances interactives servent à l'enseignement en direct : vous contrôlez la navigation, les fenêtres de réponse, les statistiques, la révélation des réponses, les essais et la fenêtre de présentation.",
             "Les quiz sont des fenêtres planifiées pendant lesquelles les étudiants répondent à leur rythme. Utilisez les heures de début, de fin et les prolongations pour les accommodements.",
             "Les quiz de pratique conviennent bien à l'étude personnelle ou au renforcement facultatif.",
-            "Si une séance dépend des codes d'accès, des groupes ou des statistiques visibles, confirmez ces réglages avant que les étudiants commencent à se joindre."
+            "Si une séance dépend des codes d'accès, des groupes ou des statistiques visibles, confirmez ces réglages avant que les étudiants commencent à se joindre.",
+            "Les listes de séances gardent la recherche, les filtres et la pagination dans Rechercher des séances. Lorsqu'une séance interactive est en direct, l'ouverture de sa carte rejoint directement les contrôles en direct; les cartes de quiz en direct ouvrent encore l'éditeur."
           ]
         },
         {
           "title": "Réviser les résultats, corriger de façon cohérente et communiquer la rétroaction",
           "subtitle": "Après la participation des étudiants, Qlicker offre plusieurs façons d'inspecter les résultats et d'agir.",
           "bullets": [
-            "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants une fois l'activité terminée.",
+            "La révision de séance vous permet d'inspecter les résultats, les données de réponse, l'état de correction et les résumés étudiants. Les séances interactives en direct peuvent être révisées pendant qu'elles roulent, mais la correction reste verrouillée jusqu'à la fin.",
             "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
             "L'onglet de correction reste verrouillé tant que la séance n'est pas Terminée. Terminer la séance crée les éléments de note; la rendre révisable plus tard ne fait que contrôler la visibilité étudiante.",
+            "L'onglet Résultats affiche maintenant la note réelle de chaque étudiant avant la participation, et cliquer sur l'avatar d'un étudiant dans l'onglet Étudiants ouvre la photo en grand.",
+            "Les dialogues de détail des notes identifient maintenant chaque ligne par numéro et type, par exemple Q1 · MC ou Q2 · SA, et mettent en évidence les lignes qui demandent encore une correction.",
             "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables.",
             "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],
@@ -1801,9 +1846,9 @@
           "title": "S'inscrire à un cours et apprendre les onglets du cours",
           "subtitle": "La plupart des tâches étudiantes commencent sur le tableau de bord du cours.",
           "bullets": [
-            "Entrez le code d'inscription exactement comme votre enseignant vous le donne. Une fois inscrit, le cours apparaît sur votre tableau de bord.",
-            "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux.",
-            "Les listes de séances gardent la recherche, les filtres et la pagination dans une zone d'outils de séance repliable afin que vous n'ouvriez les contrôles que lorsque nécessaire.",
+            "Entrez le code d'inscription exactement comme votre enseignant vous le donne. Si le cours est inactif, l'inscription est refusée et vous devrez réessayer après son activation.",
+            "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux. Dans les cours où l'accès à la pratique est désactivé, les onglets de pratique et de bibliothèque restent cachés.",
+            "Les listes de séances gardent la recherche, les filtres et la pagination dans une zone Rechercher des séances repliable afin que vous n'ouvriez les contrôles que lorsque nécessaire.",
             "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais.",
             "En général, vous n'avez besoin du code d'inscription qu'une seule fois par cours. Une fois accepté, le cours reste sur votre tableau de bord jusqu'à ce que vous en soyez retiré ou qu'il soit archivé pour votre compte."
           ],
@@ -1853,6 +1898,7 @@
           "title": "Utiliser la bibliothèque de questions pour créer des séances de pratique",
           "subtitle": "L'accès à la bibliothèque dépend de ce que votre enseignant a rendu visible aux étudiants.",
           "bullets": [
+            "Si votre cours ne permet pas l'accès aux questions de pratique, les onglets de bibliothèque et de séances de pratique restent cachés jusqu'à ce que l'enseignant les active.",
             "Recherchez dans la bibliothèque le matériel accessible sur le sujet que vous voulez retravailler.",
             "Créez des séances de pratique à partir des questions de bibliothèque afin de vous exercer à votre rythme et de revoir immédiatement les résultats.",
             "Si une question contient des maths, des images ou une solution travaillée, laissez ces éléments visibles pendant la pratique pour apprendre à partir de l'exemple complet."

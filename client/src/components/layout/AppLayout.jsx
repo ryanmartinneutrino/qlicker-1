@@ -19,7 +19,7 @@ export default function AppLayout() {
   const mainContentRef = useRef(null);
   const roles = user?.profile?.roles || [];
   const isAdmin = roles.includes('admin');
-  const manualPath = getManualPath(getPreferredManualRole(roles));
+  const manualPath = getManualPath(getPreferredManualRole(roles, user?.hasInstructorCourses));
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
@@ -58,7 +58,7 @@ export default function AppLayout() {
 
   const getDashboardPath = () => {
     if (roles.includes('admin')) return '/admin';
-    if (roles.includes('professor')) return '/manage';
+    if (roles.includes('professor') || user?.hasInstructorCourses) return '/manage';
     return '/student';
   };
 

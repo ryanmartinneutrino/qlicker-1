@@ -44,6 +44,7 @@ function buildGradesPayload() {
             marks: [
               {
                 questionId: 'q-mc',
+                questionType: 0,
                 points: 1,
                 outOf: 1,
                 automatic: true,
@@ -53,6 +54,7 @@ function buildGradesPayload() {
               },
               {
                 questionId: 'q-sa',
+                questionType: 2,
                 points: 0,
                 outOf: 1,
                 automatic: true,
@@ -89,6 +91,7 @@ describe('CourseGradesPanel', () => {
           marks: [
             {
               questionId: 'q-mc',
+              questionType: 0,
               points: 1,
               outOf: 1,
               automatic: true,
@@ -98,6 +101,7 @@ describe('CourseGradesPanel', () => {
             },
             {
               questionId: 'q-sa',
+              questionType: 2,
               points: 0.5,
               outOf: 1,
               automatic: false,
@@ -217,6 +221,8 @@ describe('CourseGradesPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
+    expect(screen.getByText('MC')).toBeInTheDocument();
+    expect(screen.getByText('SA')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /q2/i }));
     const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });

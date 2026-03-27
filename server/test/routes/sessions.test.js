@@ -26,18 +26,38 @@ afterEach(async () => {
 
 // Helper to create a course via the API
 async function createCourseAsProf(profToken, overrides = {}) {
+  const {
+    allowStudentQuestions,
+    inactive,
+    requireVerified,
+    quizTimeFormat,
+    tags,
+    ...apiOverrides
+  } = overrides;
   const payload = {
     name: 'Test Course',
     deptCode: 'CS',
     courseNumber: '101',
     section: '001',
     semester: 'Fall 2025',
-    ...overrides,
+    ...apiOverrides,
   };
   const res = await authenticatedRequest(app, 'POST', '/api/v1/courses', {
     token: profToken,
     payload,
   });
+  if (res.statusCode === 201) {
+    const courseId = res.json().course?._id;
+    const postCreateUpdates = {};
+    if (allowStudentQuestions !== undefined) postCreateUpdates.allowStudentQuestions = allowStudentQuestions;
+    if (inactive !== undefined) postCreateUpdates.inactive = inactive;
+    if (requireVerified !== undefined) postCreateUpdates.requireVerified = requireVerified;
+    if (quizTimeFormat !== undefined) postCreateUpdates.quizTimeFormat = quizTimeFormat;
+    if (tags !== undefined) postCreateUpdates.tags = tags;
+    if (courseId && Object.keys(postCreateUpdates).length > 0) {
+      await Course.findByIdAndUpdate(courseId, { $set: postCreateUpdates });
+    }
+  }
   return res;
 }
 
@@ -55,10 +75,10 @@ async function createSessionInCourse(token, courseId, overrides = {}) {
 }
 
 // Helper to set up a prof + course + enrolled student
-async function setupCourseWithStudent() {
+async function setupCourseWithStudent(courseOverrides = {}) {
   const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
   const profToken = await getAuthToken(app, prof);
-  const createRes = await createCourseAsProf(profToken);
+  const createRes = await createCourseAsProf(profToken, courseOverrides);
   const course = createRes.json().course;
 
   const student = await createTestUser({ email: 'student@example.com', roles: ['student'] });
@@ -131,7 +151,7 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
 
   it('student can create a practice session that tracks ownership', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { course, student, studentToken } = await setupCourseWithStudent();
+    const { course, student, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
 
     const res = await createSessionInCourse(studentToken, course._id, {
       name: 'My Practice Session',
@@ -143,6 +163,19 @@ describe('POST /api/v1/courses/:courseId/sessions', () => {
     expect(res.json().session.quiz).toBe(true);
     expect(res.json().session.studentCreated).toBe(true);
     expect(res.json().session.creator).toBe(student._id.toString());
+  });
+
+  it('blocks student practice session creation when student questions are disabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { course, studentToken } = await setupCourseWithStudent();
+
+    const res = await createSessionInCourse(studentToken, course._id, {
+      name: 'Blocked Practice Session',
+      practiceQuiz: true,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toMatch(/student practice is disabled/i);
   });
 
   it('session is added to course sessions array', async (ctx) => {
@@ -226,7 +259,7 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
 
   it('student does not see hidden sessions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
 
     await createSessionInCourse(profToken, course._id, { name: 'Hidden Session' });
     const sess2Res = await createSessionInCourse(profToken, course._id, { name: 'Visible Session' });
@@ -248,7 +281,7 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
 
   it('student only sees their own practice sessions in the session list', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { course, studentToken } = await setupCourseWithStudent();
+    const { course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
     const otherStudent = await createTestUser({ email: 'other-student-practice@example.com', roles: ['student'] });
     const otherStudentToken = await getAuthToken(app, otherStudent);
     const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
@@ -580,7 +613,7 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
 
   it('returns per-type session counts for paginated professor and student session lists', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
 
     const interactiveARes = await createSessionInCourse(profToken, course._id, { name: 'Interactive A' });
     const interactiveBRes = await createSessionInCourse(profToken, course._id, { name: 'Interactive B' });
@@ -655,7 +688,7 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
 describe('GET /api/v1/sessions/live', () => {
   it('student sees running interactive sessions and active unsubmitted quizzes, but not submitted live quizzes', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
     const now = Date.now();
 
     const liveSessionRes = await createSessionInCourse(profToken, course._id, { name: 'Live Poll' });
@@ -715,7 +748,7 @@ describe('GET /api/v1/sessions/live', () => {
       { $set: { status: 'running' } }
     );
 
-    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live', {
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live?view=student', {
       token: studentToken,
     });
 
@@ -734,7 +767,7 @@ describe('GET /api/v1/sessions/live', () => {
 
   it('instructor does not see student-created practice sessions in live sessions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
 
     const instructorSessionRes = await createSessionInCourse(profToken, course._id, { name: 'Instructor Live Poll' });
     const instructorSession = instructorSessionRes.json().session;
@@ -753,7 +786,7 @@ describe('GET /api/v1/sessions/live', () => {
       { $set: { status: 'running' } }
     );
 
-    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live', {
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live?view=instructor', {
       token: profToken,
     });
 
@@ -761,6 +794,40 @@ describe('GET /api/v1/sessions/live', () => {
     const sessionIds = (res.json().liveSessions || []).map((row) => String(row._id));
     expect(sessionIds).toContain(String(instructorSession._id));
     expect(sessionIds).not.toContain(String(studentPracticeSession._id));
+  });
+
+  it('admin all-view includes student-created live sessions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
+
+    const instructorSessionRes = await createSessionInCourse(profToken, course._id, { name: 'Instructor Live Poll' });
+    const instructorSession = instructorSessionRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${instructorSession._id}`, {
+      token: profToken,
+      payload: { status: 'running' },
+    });
+
+    const studentPracticeRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Student Practice Session',
+      practiceQuiz: true,
+    });
+    const studentPracticeSession = studentPracticeRes.json().session;
+    await Session.updateOne(
+      { _id: studentPracticeSession._id },
+      { $set: { status: 'running' } }
+    );
+
+    const admin = await createTestUser({ email: 'admin-live@example.com', roles: ['admin'] });
+    const adminToken = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live?view=all', {
+      token: adminToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const sessionIds = (res.json().liveSessions || []).map((row) => String(row._id));
+    expect(sessionIds).toContain(String(instructorSession._id));
+    expect(sessionIds).toContain(String(studentPracticeSession._id));
   });
 });
 
@@ -812,7 +879,7 @@ describe('GET /api/v1/sessions/:id', () => {
 
   it('student cannot see hidden session', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
     const sessRes = await createSessionInCourse(profToken, course._id);
     const session = sessRes.json().session;
 
@@ -1288,6 +1355,9 @@ describe('GET /api/v1/sessions/:id/live', () => {
       token: profToken,
       payload: { hidden: false, stats: true },
     });
+
+    const liveSession = await Session.findById(session._id).lean();
+    const liveQuestionId = liveSession.currentQuestion || question._id;
 
     await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
       token: studentToken,
@@ -2258,6 +2328,36 @@ describe('Student quiz routes', () => {
     expect(lockRes.statusCode).toBe(200);
   });
 
+  it('blocks practice question edits when the course disables student questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'practice-edit-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: true } });
+    const student = await createTestUser({ email: 'practice-edit-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessionRes = await createSessionInCourse(studentToken, course._id, {
+      name: 'Editable Practice Session',
+      practiceQuiz: true,
+    });
+    expect(sessionRes.statusCode).toBe(201);
+    const practiceSession = sessionRes.json().session;
+
+    await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: false } });
+
+    const editRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${practiceSession._id}/practice-questions`, {
+      token: studentToken,
+      payload: { questionIds: [] },
+    });
+    expect(editRes.statusCode).toBe(403);
+    expect(editRes.json().message).toMatch(/student practice is disabled/i);
+  });
+
   it('quiz access route allows active extension students while rejecting students outside the active window', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent();
@@ -2899,7 +2999,7 @@ describe('GET /api/v1/sessions/:id/results', () => {
 
   it('rejects instructor results access for student-created practice sessions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
-    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });
 
     const studentPracticeRes = await createSessionInCourse(studentToken, course._id, {
       name: 'Student Practice Session',
@@ -4230,6 +4330,277 @@ describe('Histogram in /sessions/:id/live', () => {
     expect(body.responseStats.answers.length).toBe(1);
     // Student identifiers should not be exposed
     expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+  });
+
+  it.each([
+    {
+      label: 'multiple choice',
+      type: 0,
+      questionPayload: {
+        content: '<p>Choose one.</p>',
+        plainText: 'Choose one.',
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+        ],
+      },
+      firstAnswer: 0,
+      secondAnswer: 1,
+      thirdAnswer: 1,
+      assertStats: (stats) => {
+        expect(stats.type).toBe('distribution');
+        expect(stats.total).toBe(3);
+        expect(stats.distribution.map((entry) => entry.count)).toEqual([1, 2]);
+      },
+    },
+    {
+      label: 'true/false',
+      type: 1,
+      questionPayload: {
+        content: '<p>True or false?</p>',
+        plainText: 'True or false?',
+        options: [
+          { content: 'True', correct: true },
+          { content: 'False', correct: false },
+        ],
+      },
+      firstAnswer: 0,
+      secondAnswer: 1,
+      thirdAnswer: 1,
+      assertStats: (stats) => {
+        expect(stats.type).toBe('distribution');
+        expect(stats.total).toBe(3);
+        expect(stats.distribution.map((entry) => entry.count)).toEqual([1, 2]);
+      },
+    },
+    {
+      label: 'multi-select',
+      type: 3,
+      questionPayload: {
+        content: '<p>Select all that apply.</p>',
+        plainText: 'Select all that apply.',
+        options: [
+          { content: 'A', correct: true },
+          { content: 'B', correct: false },
+          { content: 'C', correct: true },
+        ],
+      },
+      firstAnswer: [0, 1],
+      secondAnswer: [1, 2],
+      thirdAnswer: [0, 2],
+      assertStats: (stats) => {
+        expect(stats.type).toBe('distribution');
+        expect(stats.total).toBe(3);
+        expect(stats.distribution.map((entry) => entry.count)).toEqual([2, 2, 2]);
+      },
+    },
+    {
+      label: 'short answer',
+      type: 2,
+      questionPayload: {
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+      },
+      firstAnswer: 'First response',
+      secondAnswer: 'Legacy cached response',
+      thirdAnswer: 'Newest response',
+      assertStats: (stats) => {
+        expect(stats.type).toBe('shortAnswer');
+        expect(stats.total).toBe(3);
+        expect(stats.answers.map((entry) => entry.answer)).toEqual([
+          'First response',
+          'Legacy cached response',
+          'Newest response',
+        ]);
+      },
+    },
+    {
+      label: 'numerical',
+      type: 4,
+      questionPayload: {
+        content: '<p>Value?</p>',
+        plainText: 'Value?',
+      },
+      firstAnswer: '10',
+      secondAnswer: '20',
+      thirdAnswer: '30',
+      assertStats: (stats) => {
+        expect(stats.type).toBe('numerical');
+        expect(stats.total).toBe(3);
+        expect(stats.values).toEqual([10, 20, 30]);
+        if (stats.sum !== undefined) expect(stats.sum).toBe(60);
+        expect(stats.min).toBe(10);
+        expect(stats.max).toBe(30);
+      },
+    },
+  ])('rebuilds stale live stats from canonical responses for $label questions', async ({
+    type,
+    questionPayload,
+    firstAnswer,
+    secondAnswer,
+    thirdAnswer,
+    assertStats,
+  }) => {
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const studentTwo = await createTestUser({
+      email: `live-stats-${type}-two@example.com`,
+      roles: ['student'],
+    });
+    const studentTwoToken = await getAuthToken(app, studentTwo);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentTwoToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const studentThree = await createTestUser({
+      email: `live-stats-${type}-three@example.com`,
+      roles: ['student'],
+    });
+    const studentThreeToken = await getAuthToken(app, studentThree);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentThreeToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type,
+        sessionId: session._id,
+        courseId: course._id,
+        ...questionPayload,
+      },
+    });
+    const question = qRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+
+    const liveSession = await Session.findById(session._id).lean();
+    const liveQuestionId = liveSession.currentQuestion || question._id;
+
+    const joinedTokens = [studentToken, studentTwoToken, studentThreeToken];
+    for (const token of joinedTokens) {
+      // eslint-disable-next-line no-await-in-loop
+      await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+        token,
+        payload: {},
+      });
+    }
+
+    const firstRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: firstAnswer },
+    });
+    expect(firstRes.statusCode).toBe(201);
+
+    const secondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentTwoToken,
+      payload: { answer: secondAnswer },
+    });
+    expect(secondRes.statusCode).toBe(201);
+
+    const numericFirstAnswer = Number(firstAnswer);
+    const firstAttemptStats = (() => {
+      if ([0, 1, 3].includes(type)) {
+        return {
+          number: 1,
+          type: 'distribution',
+          total: 1,
+          distribution: (questionPayload.options || []).map((option, index) => {
+            const selected = Array.isArray(firstAnswer)
+              ? firstAnswer.includes(index)
+              : Number(firstAnswer) === index;
+            return {
+              index,
+              answer: option.content || option.plainText || option.answer || '',
+              correct: !!option.correct,
+              count: selected ? 1 : 0,
+            };
+          }),
+        };
+      }
+
+      if (type === 2) {
+        return {
+          number: 1,
+          type: 'shortAnswer',
+          total: 1,
+          answers: [
+            {
+              studentUserId: studentToken,
+              answer: firstAnswer,
+              answerWysiwyg: '',
+            },
+          ],
+        };
+      }
+
+      return {
+        number: 1,
+        type: 'numerical',
+        total: 1,
+        answers: [
+          {
+            studentUserId: studentToken,
+            answer: firstAnswer,
+          },
+        ],
+        values: Number.isFinite(numericFirstAnswer) ? [numericFirstAnswer] : [],
+        sum: Number.isFinite(numericFirstAnswer) ? numericFirstAnswer : 0,
+        sumSquares: Number.isFinite(numericFirstAnswer) ? numericFirstAnswer * numericFirstAnswer : 0,
+        min: Number.isFinite(numericFirstAnswer) ? numericFirstAnswer : null,
+        max: Number.isFinite(numericFirstAnswer) ? numericFirstAnswer : null,
+      };
+    })();
+
+    await Question.findByIdAndUpdate(liveQuestionId, {
+      $set: {
+        'sessionOptions.attemptStats': [firstAttemptStats],
+        'sessionProperties.lastAttemptNumber': 1,
+        'sessionProperties.lastAttemptResponseCount': 1,
+      },
+    });
+
+    const thirdRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentThreeToken,
+      payload: { answer: thirdAnswer },
+    });
+    expect(thirdRes.statusCode).toBe(201);
+
+    const responseCount = await Response.countDocuments({
+      questionId: liveQuestionId,
+      attempt: 1,
+    });
+    expect(responseCount).toBe(3);
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    const body = liveRes.json();
+    assertStats(body.responseStats);
+
+    const persistedQuestion = await Question.findById(liveQuestionId).lean();
+    const persistedStats = persistedQuestion.sessionOptions.attemptStats[0];
+    assertStats({
+      ...persistedStats,
+      values: persistedStats.values || [],
+      distribution: persistedStats.distribution || [],
+      answers: persistedStats.answers || [],
+    });
   });
 
   it('histogramData is stripped from student question payload', async (ctx) => {

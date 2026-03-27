@@ -35,6 +35,11 @@ function buildUserEmailLookup(identifier = '') {
   };
 }
 
+function isProfessorOrAdminUser(user = {}) {
+  const roles = user.roles || [];
+  return roles.includes('professor') || roles.includes('admin');
+}
+
 const createCourseSchema = {
   body: {
     type: 'object',
@@ -45,6 +50,22 @@ const createCourseSchema = {
       courseNumber: { type: 'string', minLength: 1 },
       section: { type: 'string', minLength: 1 },
       semester: { type: 'string', minLength: 1 },
+      inactive: { type: 'boolean' },
+      requireVerified: { type: 'boolean' },
+      allowStudentQuestions: { type: 'boolean' },
+      quizTimeFormat: { type: 'string', enum: ['inherit', '24h', '12h'] },
+      tags: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            label: { type: 'string' },
+            className: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
     },
   },
 };
@@ -86,6 +107,7 @@ const listCoursesSchema = {
       search: { type: 'string' },
       page: { type: 'integer', minimum: 1 },
       limit: { type: 'integer', minimum: 1, maximum: 500 },
+      view: { type: 'string', enum: ['student', 'instructor', 'all'] },
     },
     additionalProperties: false,
   },
@@ -102,7 +124,18 @@ export default async function courseRoutes(app) {
       schema: createCourseSchema,
     },
     async (request, reply) => {
-      const { name, deptCode, courseNumber, section, semester } = request.body;
+      const {
+        name,
+        deptCode,
+        courseNumber,
+        section,
+        semester,
+        inactive,
+        requireVerified,
+        allowStudentQuestions,
+        quizTimeFormat,
+        tags,
+      } = request.body;
       const userId = request.user.userId;
       const roles = request.user.roles || [];
       const addCreatorAsInstructor = roles.includes('professor') || !roles.includes('admin');
@@ -115,6 +148,11 @@ export default async function courseRoutes(app) {
         courseNumber,
         section,
         semester,
+        inactive: inactive === undefined ? undefined : !!inactive,
+        requireVerified: requireVerified === undefined ? undefined : !!requireVerified,
+        allowStudentQuestions: allowStudentQuestions === undefined ? undefined : !!allowStudentQuestions,
+        quizTimeFormat: quizTimeFormat === undefined ? undefined : quizTimeFormat,
+        tags: tags === undefined ? undefined : normalizeTags(tags),
         owner: userId,
         enrollmentCode,
         instructors: addCreatorAsInstructor ? [userId] : [],
@@ -135,22 +173,25 @@ export default async function courseRoutes(app) {
     '/',
     { preHandler: authenticate, schema: listCoursesSchema },
     async (request, reply) => {
-      const { search, page: pageParam, limit: limitParam } = request.query;
+      const { search, page: pageParam, limit: limitParam, view } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
       const limit = Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
 
       const roles = request.user.roles || [];
       const userId = request.user.userId;
       const isAdmin = roles.includes('admin');
+      const resolvedView = view || (isAdmin ? 'all' : (roles.includes('professor') ? 'instructor' : 'student'));
 
       const filter = {};
-      if (!isAdmin) {
-        if (roles.includes('professor')) {
-          filter.instructors = userId;
-        } else {
-          filter.students = userId;
-          filter.inactive = { $ne: true };
+      if (resolvedView === 'all') {
+        if (!isAdmin) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
         }
+      } else if (resolvedView === 'instructor') {
+        filter.instructors = userId;
+      } else {
+        filter.students = userId;
+        filter.inactive = { $ne: true };
       }
 
       if (search) {
@@ -197,8 +238,8 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      const isInstructor = course.instructors.includes(userId);
-      const isStudent = course.students.includes(userId);
+      const isInstructor = (course.instructors || []).includes(userId);
+      const isStudent = (course.students || []).includes(userId);
 
       if (!isAdmin && !isInstructor && !isStudent) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Not enrolled in this course' });
@@ -265,7 +306,7 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isAdmin && !course.instructors.includes(userId)) {
+      if (!isAdmin && !(course.instructors || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -343,6 +384,7 @@ export default async function courseRoutes(app) {
     async (request, reply) => {
       const { enrollmentCode } = request.body;
       const userId = request.user.userId;
+      const roles = request.user.roles || [];
 
       const course = await Course.findOne({ enrollmentCode }).lean();
       if (!course) {
@@ -366,11 +408,15 @@ export default async function courseRoutes(app) {
         }
       }
 
-      if (course.instructors.includes(userId)) {
-        return reply.code(409).send({ error: 'Conflict', message: "Professors can't enroll as students in their own courses" });
+      if (roles.includes('professor') || roles.includes('admin')) {
+        return reply.code(403).send({ error: 'Forbidden', message: "Professors and admins can't enroll as students" });
       }
 
-      if (course.students.includes(userId)) {
+      if ((course.instructors || []).includes(userId)) {
+        return reply.code(409).send({ error: 'Conflict', message: 'Already enrolled as an instructor in this course' });
+      }
+
+      if ((course.students || []).includes(userId)) {
         return reply.code(409).send({ error: 'Conflict', message: 'Already enrolled in this course' });
       }
 
@@ -402,8 +448,8 @@ export default async function courseRoutes(app) {
       }
 
       // Allow: admin, instructor, or the student removing themselves
-      const isSelfUnenroll = studentId === userId && course.students.includes(userId);
-      if (!isAdmin && !course.instructors.includes(userId) && !isSelfUnenroll) {
+      const isSelfUnenroll = studentId === userId && (course.students || []).includes(userId);
+      if (!isAdmin && !(course.instructors || []).includes(userId) && !isSelfUnenroll) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -444,7 +490,7 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isAdmin && !course.instructors.includes(userId)) {
+      if (!isAdmin && !(course.instructors || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -454,7 +500,17 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found with that email' });
       }
 
-      if (course.students.includes(student._id)) {
+      const studentRoles = student.profile?.roles || [];
+      if (studentRoles.includes('professor') || studentRoles.includes('admin')) {
+        return reply.code(403).send({ error: 'Forbidden', message: "Professors and admins can't enroll as students" });
+      }
+
+      const studentId = String(student._id);
+      if ((course.instructors || []).includes(studentId)) {
+        return reply.code(409).send({ error: 'Conflict', message: 'Instructor already assigned to this course' });
+      }
+
+      if ((course.students || []).includes(studentId)) {
         return reply.code(409).send({ error: 'Conflict', message: 'Student already enrolled' });
       }
 
@@ -514,6 +570,7 @@ export default async function courseRoutes(app) {
 
       await Course.findByIdAndUpdate(course._id, {
         $addToSet: { instructors: newInstructorId },
+        $pull: { students: newInstructorId },
       });
 
       await User.findByIdAndUpdate(newInstructorId, {
@@ -544,7 +601,7 @@ export default async function courseRoutes(app) {
 
       const { instructorId } = request.params;
 
-      if (course.instructors.length <= 1 && course.instructors.includes(instructorId)) {
+      if ((course.instructors || []).length <= 1 && (course.instructors || []).includes(instructorId)) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Cannot remove the last instructor from a course' });
       }
 
@@ -574,7 +631,7 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isAdmin && !course.instructors.includes(userId)) {
+      if (!isAdmin && !(course.instructors || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -614,7 +671,7 @@ export default async function courseRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
       }
 
-      if (!isAdmin && !course.instructors.includes(userId)) {
+      if (!isAdmin && !(course.instructors || []).includes(userId)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 

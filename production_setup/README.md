@@ -127,7 +127,7 @@ It will prompt for:
 | Mongo cache size | WiredTiger cache in GB | `0.25` |
 | REDIS_URL | Redis connection URL | `redis://redis:6379` |
 | Storage type | `local`, `s3`, or `azure` | `local` |
-| Backup retention | Days to keep backups | `30` |
+| Backup policy | Controlled in Admin -> Backup | `02:00` local, keep `7` daily / `4` weekly / `12` monthly |
 
 Mongo tuning variables such as `MONGO_MAX_POOL_SIZE`,
 `MONGO_SERVER_SELECTION_TIMEOUT_MS`, and retry settings are also carried
@@ -435,6 +435,16 @@ The `manage-user.sh` script provides CLI access to common user operations:
 ./manage-user.sh promote --email user@example.com --role admin
 ```
 
+### Toggle Local Email Login for One User
+
+```bash
+# Allow local email/password login for one SSO-managed account
+./manage-user.sh set-email-login --email user@example.com --enable-email-login
+
+# Remove that exception again
+./manage-user.sh set-email-login --email user@example.com --disable-email-login
+```
+
 ### List Users
 
 ```bash
@@ -449,16 +459,17 @@ The `manage-user.sh` script provides CLI access to common user operations:
 They use the Docker volume mapping in `docker-compose.yml`:
 - host: `./backups/`
 - mongo container: `/backups/`
+- the backup manager container also mounts the same directory to write live dumps
 
 ### How `backup.sh` Works
 
 When you run `./backup.sh`, the script:
-1. Loads `production_setup/.env` and reads `BACKUP_RETENTION_DAYS` (default `30`)
+1. Loads `production_setup/.env` for Docker access and backup-manager runtime settings
 2. Verifies the `mongo` container is running
-3. Runs `mongodump` inside MongoDB to `/backups/qlicker_backup_<timestamp>`
-4. Compresses that dump to `backups/qlicker_backup_<timestamp>.tar.gz`
+3. Runs `mongodump` against the live database into `/backups/qlicker_backup_<timestamp>_<label>`
+4. Compresses that dump to `backups/qlicker_backup_<timestamp>_<label>.tar.gz`
 5. Deletes the uncompressed dump directory
-6. Prunes `.tar.gz` backups older than `BACKUP_RETENTION_DAYS`
+6. Prunes `.tar.gz` backups by label using the retention counts stored in Admin -> Backup
 
 ### Create a Backup
 
@@ -468,7 +479,7 @@ When you run `./backup.sh`, the script:
 
 Creates a timestamped, compressed backup in `./backups/`:
 ```
-backups/qlicker_backup_20260321_020000.tar.gz
+backups/qlicker_backup_20260321_020000_daily.tar.gz
 ```
 
 ### Automatic Backups (Cron)
@@ -484,7 +495,31 @@ Add to your server's crontab:
 
 ### Backup Retention
 
-Old backups are automatically pruned based on `BACKUP_RETENTION_DAYS` in `.env` (default: 30 days).
+Backup retention is configured in the Admin Dashboard's **Backup** tab. By default, Qlicker keeps:
+
+- the latest backup for each of the last **7 days**
+- the latest backup for each of the last **4 weeks**
+- the latest backup for each of the last **12 months**
+
+Archives are clearly labeled by tier:
+
+```text
+qlicker_backup_20260321_020000_daily.tar.gz
+qlicker_backup_20260323_020000_weekly.tar.gz
+qlicker_backup_20260401_020000_monthly.tar.gz
+```
+
+### Backup Manager Service
+
+The `backup-manager` service in `docker-compose.yml` checks the configured backup time once per minute, runs daily backups every day, weekly backups on Sundays, and monthly backups on the first day of the month. It updates the latest run metadata in MongoDB so the Admin Dashboard can show the current state.
+
+Use the Admin Dashboard's **Backup** tab to:
+
+- enable or disable the scheduled backup job
+- choose the local backup time
+- change daily, weekly, and monthly retention counts
+- confirm the last run time, status message, and archive filename
+- jump directly to the recovery guidance from the UI
 
 ### How `restore.sh` Works
 
@@ -504,10 +539,50 @@ When you run `./restore.sh`, the script:
 ./restore.sh
 
 # Specific backup file
-./restore.sh backups/qlicker_backup_20260321_020000.tar.gz
+./restore.sh backups/qlicker_backup_20260321_020000_daily.tar.gz
 ```
 
 ⚠️ **Warning:** Restore will drop the current database. The script requires you to type `yes` to confirm.
+
+### Complete Recovery Workflow
+
+Use this sequence when recovering a deployment after host failure, data corruption, or an operator mistake:
+
+1. Copy the `production_setup/` directory and your most recent `backups/qlicker_backup_*.tar.gz` archive onto the replacement host.
+2. Run `./setup.sh` if the host is new so `.env`, TLS, and Docker settings exist again.
+3. Start MongoDB and Redis if they are not already running:
+   ```bash
+   docker compose up -d mongo redis
+   ```
+4. Stop the public app containers so users are not writing new data during restore:
+   ```bash
+   docker compose stop nginx server client
+   ```
+5. Restore the selected archive:
+   ```bash
+   ./restore.sh backups/qlicker_backup_20260321_020000_daily.tar.gz
+   ```
+6. Start the full stack again:
+   ```bash
+   docker compose up -d
+   ```
+7. Verify recovery by checking `docker compose ps`, signing in as an admin, opening **Admin -> Backup**, and confirming recent courses, sessions, and user data look correct.
+
+If you also rely on local uploaded files, restore the `uploads/` directory from the same recovery point before reopening the system to users.
+
+### Duplicate Grade Cleanup
+
+The backend now blocks duplicate grade identities for the same `{ userId, courseId, sessionId }`, but older databases may still contain legacy duplicates. The maintenance script lives at the repo root.
+
+```bash
+# Dry run
+node scripts/dedupe-grades.js --mongo-uri mongodb://localhost:27017/qlicker
+
+# Apply deletions after reviewing the report
+node scripts/dedupe-grades.js --apply --mongo-uri mongodb://localhost:27017/qlicker
+```
+
+Run it from a checkout of the same Qlicker revision that matches the deployment. Use `--skip-index` only if you intentionally do not want the script to recreate the unique grade index afterward.
 
 ---
 
@@ -610,7 +685,8 @@ production_setup/
 | `MAIL_URL` | Recommended | — | SMTP connection string |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
 | `API_PORT` | No | `3001` | Internal API port |
-| `BACKUP_RETENTION_DAYS` | No | `30` | Days to keep backups |
+| `BACKUP_CHECK_INTERVAL_SECONDS` | No | `60` | Backup manager polling interval |
+| `TZ` | No | `UTC` | Timezone used by the backup manager container |
 
 Storage backend selection and cloud credentials are **not** read from environment variables at runtime anymore. The app boots with local storage by default; after the first admin signs in, configure **Admin -> Storage** to keep using local storage or switch to S3/Azure. The database `Settings` document is the source of truth.
 

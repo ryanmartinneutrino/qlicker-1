@@ -6,7 +6,9 @@ export default function RequireRole({ role, children, allowAdmin = true }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const roles = user?.profile?.roles || [];
-  const hasRole = roles.includes(role);
+  const hasRole = role === 'professor'
+    ? roles.includes('professor') || !!user?.hasInstructorCourses
+    : roles.includes(role);
   const hasAdmin = roles.includes('admin');
 
   if (!hasRole && !(allowAdmin && hasAdmin)) {

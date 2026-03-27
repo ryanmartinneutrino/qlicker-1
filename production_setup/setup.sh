@@ -472,11 +472,10 @@ echo ""
 info "Storage backend defaults to local on first boot."
 echo "  Switch to S3 or Azure later from Admin -> Storage after signing in."
 
-# ---- Backup retention -------------------------------------------------------
+# ---- Backup manager ---------------------------------------------------------
 echo ""
-DEFAULT_RETENTION="${BACKUP_RETENTION_DAYS:-30}"
-read -r -p "Backup retention (days) [$DEFAULT_RETENTION]: " RETENTION_INPUT
-BACKUP_RETENTION_DAYS="${RETENTION_INPUT:-$DEFAULT_RETENTION}"
+BACKUP_CHECK_INTERVAL_SECONDS="${BACKUP_CHECK_INTERVAL_SECONDS:-60}"
+TZ="${TZ:-UTC}"
 
 # ---- Write .env file --------------------------------------------------------
 echo ""
@@ -519,7 +518,8 @@ REDIS_URL=$REDIS_URL
 API_PORT=3001
 NODE_ENV=production
 ROOT_URL=https://$DOMAIN
-BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
+BACKUP_CHECK_INTERVAL_SECONDS=$BACKUP_CHECK_INTERVAL_SECONDS
+TZ=$TZ
 EOF
 
 info ".env written to $ENV_FILE"

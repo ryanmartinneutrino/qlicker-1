@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Avatar, Collapse,
+  Box, Typography, Button, Paper, Alert, CircularProgress, Chip, Collapse,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TableSortLabel, LinearProgress, TextField, Autocomplete,
 } from '@mui/material';
@@ -27,6 +27,7 @@ import SessionQuestionGradingPanel from '../../components/grades/SessionQuestion
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import StudentIdentity from '../../components/common/StudentIdentity';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { getLatestResponse } from '../../utils/responses';
@@ -160,16 +161,6 @@ function formatJoinedAt(value) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(parsed);
-}
-
-function buildStudentInitials(student) {
-  const first = normalizeAnswerValue(student?.firstname);
-  const last = normalizeAnswerValue(student?.lastname);
-  if (first || last) {
-    return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
-  }
-  const email = normalizeAnswerValue(student?.email);
-  return email ? email.charAt(0).toUpperCase() : '?';
 }
 
 function buildStudentDisplayName(student, fallbackName) {
@@ -999,7 +990,7 @@ export default function SessionReview() {
   }
 
   return (
-    <Box sx={{ p: 2.5, maxWidth: 1000 }}>
+    <Box sx={{ p: 2.5, maxWidth: 1120 }}>
       {/* Header */}
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
@@ -1341,11 +1332,16 @@ export default function SessionReview() {
           <Alert severity="info">{t('professor.sessionReview.noResults')}</Alert>
         ) : (
           <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label={t('professor.sessionReview.studentResults')}>
+            <Table
+              size="small"
+              aria-label={t('professor.sessionReview.studentResults')}
+              sx={{ '& .MuiTableCell-root': { px: 0.65, py: 0.5 } }}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.name')}</TableCell>
                   <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.email')}</TableCell>
+                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">{t('professor.sessionReview.grade')}</TableCell>
                   <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">{t('professor.sessionReview.participation')}</TableCell>
                   {questions.map((_, i) => (
                     <TableCell key={i} component="th" scope="col" sx={{ fontWeight: 700 }} align="center">
@@ -1358,9 +1354,18 @@ export default function SessionReview() {
                 {studentResults.map((student) => (
                   <TableRow key={student.studentId}>
                     <TableCell component="th" scope="row">
-                      {student.lastname}, {student.firstname}
+                      <StudentIdentity
+                        student={student}
+                        showEmail={false}
+                        avatarSize={30}
+                        nameVariant="body2"
+                        nameWeight={600}
+                      />
                     </TableCell>
                     <TableCell>{student.email}</TableCell>
+                    <TableCell align="center">
+                      {formatPercent(gradesByStudentId[String(student.studentId)]?.value)}
+                    </TableCell>
                     <TableCell align="center">
                       {formatParticipation(student.participation)}
                     </TableCell>
@@ -1423,7 +1428,11 @@ export default function SessionReview() {
               sx={{ mb: 1.5, maxWidth: 420 }}
             />
             <TableContainer component={Paper} variant="outlined">
-              <Table size="small" aria-label={t('professor.sessionReview.sessionStudentList')}>
+              <Table
+                size="small"
+                aria-label={t('professor.sessionReview.sessionStudentList')}
+                sx={{ '& .MuiTableCell-root': { px: 0.65, py: 0.5 } }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
@@ -1486,12 +1495,13 @@ export default function SessionReview() {
                   {sortedStudentsTabRows.map((student) => (
                     <TableRow key={student.studentId}>
                       <TableCell component="th" scope="row">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar src={student.avatarSrc} sx={{ width: 30, height: 30 }}>
-                            {buildStudentInitials(student)}
-                          </Avatar>
-                          <Typography variant="body2">{student.displayName}</Typography>
-                        </Box>
+                        <StudentIdentity
+                          student={student}
+                          showEmail={false}
+                          avatarSize={30}
+                          nameVariant="body2"
+                          nameWeight={600}
+                        />
                       </TableCell>
                       <TableCell>{student.email || '—'}</TableCell>
                       <TableCell align="center">

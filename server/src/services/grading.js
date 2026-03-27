@@ -415,6 +415,12 @@ function responseHasContent(response) {
   return true;
 }
 
+function responseCountsForParticipation(question, response) {
+  if (!response) return false;
+  if (getQuestionType(question) === QUESTION_TYPES.SHORT_ANSWER) return true;
+  return responseHasContent(response);
+}
+
 function getResponseStudentId(response) {
   return normalizeAnswerValue(response?.studentUserId || response?.userId || response?.studentId);
 }
@@ -898,8 +904,9 @@ export async function recalculateSessionGrades({
       ].filter(Boolean));
 
       const hasResponse = responseHasContent(response);
-      if (hasResponse) numAnsweredTotal += 1;
-      if (hasResponse && outOf > 0) numAnswered += 1;
+      const participationResponse = responseCountsForParticipation(question, response);
+      if (participationResponse) numAnsweredTotal += 1;
+      if (participationResponse && outOf > 0) numAnswered += 1;
 
       const existingMark = existingMarksByQuestionId.get(questionId);
       const feedback = normalizeAnswerValue(existingMark?.feedback);
@@ -935,17 +942,17 @@ export async function recalculateSessionGrades({
             calculatedPoints: roundToThousandths(autoPoints),
           });
         }
-      } else if (!autoGradeable && hasResponse && outOf > 0) {
-        markPoints = toFiniteNumber(existingMark?.points, 0);
-        markNeedsGrading = true;
+      } else if (!autoGradeable && participationResponse && outOf > 0) {
+        markPoints = hasResponse ? toFiniteNumber(existingMark?.points, 0) : 0;
+        markNeedsGrading = hasResponse;
       }
 
       if (markNeedsGrading) needsGrading = true;
 
       marks.push({
         questionId,
-        responseId: hasResponse ? String(response?._id || '') : '',
-        attempt: hasResponse ? toFiniteNumber(response?.attempt, 1) : 0,
+        responseId: participationResponse ? String(response?._id || '') : '',
+        attempt: participationResponse ? toFiniteNumber(response?.attempt, 1) : 0,
         points: roundToThousandths(markPoints),
         outOf: roundToThousandths(outOf),
         automatic: automaticMark,

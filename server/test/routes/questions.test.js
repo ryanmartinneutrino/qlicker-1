@@ -25,18 +25,38 @@ afterEach(async () => {
 
 // Helper to create a course via the API
 async function createCourseAsProf(profToken, overrides = {}) {
+  const {
+    allowStudentQuestions,
+    inactive,
+    requireVerified,
+    quizTimeFormat,
+    tags,
+    ...apiOverrides
+  } = overrides;
   const payload = {
     name: 'Test Course',
     deptCode: 'CS',
     courseNumber: '101',
     section: '001',
     semester: 'Fall 2025',
-    ...overrides,
+    ...apiOverrides,
   };
   const res = await authenticatedRequest(app, 'POST', '/api/v1/courses', {
     token: profToken,
     payload,
   });
+  if (res.statusCode === 201) {
+    const courseId = res.json().course?._id;
+    const postCreateUpdates = {};
+    if (allowStudentQuestions !== undefined) postCreateUpdates.allowStudentQuestions = allowStudentQuestions;
+    if (inactive !== undefined) postCreateUpdates.inactive = inactive;
+    if (requireVerified !== undefined) postCreateUpdates.requireVerified = requireVerified;
+    if (quizTimeFormat !== undefined) postCreateUpdates.quizTimeFormat = quizTimeFormat;
+    if (tags !== undefined) postCreateUpdates.tags = tags;
+    if (courseId && Object.keys(postCreateUpdates).length > 0) {
+      await Course.findByIdAndUpdate(courseId, { $set: postCreateUpdates });
+    }
+  }
   return res;
 }
 
@@ -155,7 +175,7 @@ describe('POST /api/v1/questions', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'student-questions-prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
-    const course = (await createCourseAsProf(profToken)).json().course;
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
     await Course.findByIdAndUpdate(course._id, { $set: { allowStudentQuestions: true } });
     const student = await createTestUser({ email: 'student-enabled@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
@@ -179,6 +199,34 @@ describe('POST /api/v1/questions', () => {
     expect(res.json().question.public).toBe(false);
     expect(res.json().question.studentCreated).toBe(true);
     expect(res.json().question.sessionId).toBe('');
+  });
+
+  it('student-only instructor can create instructor-managed questions without student-practice access', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'mixed-create-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
+    const mixedUser = await createTestUser({ email: 'mixed-create-student@example.com', roles: ['student'] });
+    const mixedToken = await getAuthToken(app, mixedUser);
+
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: profToken,
+      payload: { userId: mixedUser._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: mixedToken,
+      payload: {
+        type: 2,
+        courseId: course._id,
+        content: 'Instructor-managed question',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().question.studentCreated).toBe(false);
+    expect(res.json().question.approved).toBe(true);
   });
 
   it('creates question with sessionId and courseId', async (ctx) => {
@@ -271,7 +319,7 @@ describe('GET /api/v1/questions/:id', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'private-prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
-    const course = (await createCourseAsProf(profToken)).json().course;
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
     const student = await createTestUser({ email: 'private-student@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
     const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
@@ -298,7 +346,7 @@ describe('GET /api/v1/questions/:id', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'public-prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
-    const course = (await createCourseAsProf(profToken)).json().course;
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
     const student = await createTestUser({ email: 'public-student@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
     const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
@@ -1023,6 +1071,34 @@ describe('POST /api/v1/questions/:id/copy', () => {
     expect(body.question.publicOnQlickerForStudents).toBe(true);
     expect(body.question.sessionOptions).toBeUndefined();
   });
+
+  it('student-only instructor keeps instructor copy behavior in instructor courses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'mixed-copy-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const sourceQuestion = (await createQuestionAsProf(profToken, {
+      courseId: course._id,
+      content: 'Instructor source question',
+      public: true,
+    })).json().question;
+
+    const mixedUser = await createTestUser({ email: 'mixed-copy-student@example.com', roles: ['student'] });
+    const mixedToken = await getAuthToken(app, mixedUser);
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: profToken,
+      payload: { userId: mixedUser._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const copyRes = await authenticatedRequest(app, 'POST', `/api/v1/questions/${sourceQuestion._id}/copy`, {
+      token: mixedToken,
+    });
+
+    expect(copyRes.statusCode).toBe(201);
+    expect(copyRes.json().question.studentCreated).toBe(false);
+    expect(copyRes.json().question.approved).toBe(true);
+  });
 });
 
 // ---------- GET /api/v1/courses/:courseId/questions ----------
@@ -1322,7 +1398,7 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'strip-prof@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
-    const course = (await createCourseAsProf(profToken)).json().course;
+    const course = (await createCourseAsProf(profToken, { allowStudentQuestions: true })).json().course;
 
     const student = await createTestUser({ email: 'strip-student@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
@@ -1414,6 +1490,29 @@ describe('GET /api/v1/courses/:courseId/questions', () => {
     expect(res.json().tags).toEqual([
       { value: 'algebra', label: 'Algebra' },
     ]);
+  });
+
+  it('blocks student library access when student questions are disabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'blocked-library-prof@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken)).json().course;
+    const student = await createTestUser({ email: 'blocked-library-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    const questionsRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/questions`, {
+      token: studentToken,
+    });
+    expect(questionsRes.statusCode).toBe(403);
+
+    const tagsRes = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/question-tags?q=alg`, {
+      token: studentToken,
+    });
+    expect(tagsRes.statusCode).toBe(403);
   });
 });
 

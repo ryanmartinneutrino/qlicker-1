@@ -215,6 +215,40 @@ describe('Grading routes', () => {
     expect(markRes.json().message).toContain('Ended');
   });
 
+  it('lets instructors load the grade review while a session is still running', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'grading-review-load',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Running review session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'running',
+        reviewable: true,
+        questions: [question._id],
+        joined: [students[0]._id],
+      },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/grades`, {
+      token: profToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().instructorView).toBe(true);
+    expect(Array.isArray(res.json().grades)).toBe(true);
+  });
+
   it('backfills a missing session msScoringMethod to the default during grade recalculation', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
@@ -238,6 +272,70 @@ describe('Grading routes', () => {
 
     const persistedSession = await Session.findById(session._id).lean();
     expect(persistedSession.msScoringMethod).toBe('right-minus-wrong');
+  });
+
+  it('counts blank short-answer responses for participation without requiring grading', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'blank-sa',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Blank SA session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: true,
+        joined: [students[0]._id],
+        questions: [question._id],
+      },
+    });
+
+    const response = await Response.create({
+      attempt: 1,
+      questionId: question._id,
+      studentUserId: students[0]._id,
+      answer: '',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const recalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+
+    expect(recalc.statusCode).toBe(200);
+    expect(recalc.json().summary.needsGradingMarks).toBe(0);
+
+    const grade = await Grade.findOne({
+      sessionId: session._id,
+      courseId: course._id,
+      userId: students[0]._id,
+    }).lean();
+
+    expect(grade.participation).toBe(100);
+    expect(grade.numAnswered).toBe(1);
+    expect(grade.numAnsweredTotal).toBe(1);
+    expect(grade.needsGrading).toBe(false);
+    expect(grade.marks[0]?.responseId).toBe(String(response._id));
+    expect(grade.marks[0]?.attempt).toBe(1);
+    expect(grade.marks[0]?.points).toBe(0);
+    expect(grade.marks[0]?.needsGrading).toBe(false);
+
+    const sessionGrades = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/grades`, {
+      token: profToken,
+    });
+    expect(sessionGrades.statusCode).toBe(200);
+    expect(sessionGrades.json().grades[0].marks[0].needsGrading).toBe(false);
   });
 
   it('tracks feedbackUpdatedAt on marks when instructor feedback changes', async (ctx) => {

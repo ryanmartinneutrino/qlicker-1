@@ -38,7 +38,7 @@ export default function SSOCallback() {
     if (!user) return;
     const roles = user.profile?.roles || [];
     if (roles.includes('admin')) navigate('/admin', { replace: true });
-    else if (roles.includes('professor')) navigate('/manage', { replace: true });
+    else if (roles.includes('professor') || user.hasInstructorCourses) navigate('/manage', { replace: true });
     else navigate('/student', { replace: true });
   }, [user, navigate]);
 

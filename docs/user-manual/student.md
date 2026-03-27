@@ -40,6 +40,7 @@ From the dashboard you can:
 ### Enrollment tips
 
 - Enter the course code exactly as your instructor provided it.
+- If the course is inactive, enrollment is rejected immediately. You will need to try again after the instructor or admin activates the course.
 - If your institution requires verified email or SSO, finish that setup before assuming the code is wrong.
 - After you join successfully, the course stays on your dashboard until you are removed or the course is archived for your account.
 
@@ -58,8 +59,10 @@ On the course page you will typically see:
 - **Grades** for your own course and session results
 - **Video chat** when your course has Jitsi enabled
 
+If the instructor turns off **Allow students access to practice questions**, the **Practice sessions** and **Question library** tabs are hidden for that course. You can still review finished sessions and their released answers.
+
 If a course has many sessions, the page shows the first batch of session cards quickly and continues loading the remaining session lists in the background.
-Search, status, page-size, and pagination controls now live inside a collapsible **Session tools** area so the session cards remain easier to scan.
+Search, status, page-size, and pagination controls now live inside a collapsible **Search sessions** area so the session cards remain easier to scan.
 
 ### How to choose the right tab
 
@@ -154,6 +157,8 @@ Use them when you want to:
 ### Question library expectations
 
 Student access to the library depends on what instructors have made visible.
+
+If your course hides practice-question access entirely, you will not see the library or practice-session tabs at all.
 
 The student library may include:
 

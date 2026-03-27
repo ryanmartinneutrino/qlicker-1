@@ -11,6 +11,10 @@ describe('professorSessions utils', () => {
       .toBe('/manage/course/course-1/session/session-1/review?returnTab=1');
     expect(getProfessorSessionPrimaryPath({ _id: 'session-2', status: 'visible' }, 'course-1', 0))
       .toBe('/manage/course/course-1/session/session-2?returnTab=0');
+    expect(getProfessorSessionPrimaryPath({ _id: 'session-3', status: 'running' }, 'course-1', 2))
+      .toBe('/manage/course/course-1/session/session-3/live?returnTab=2');
+    expect(getProfessorSessionPrimaryPath({ _id: 'session-4', status: 'running', quiz: true }, 'course-1', 3))
+      .toBe('/manage/course/course-1/session/session-4?returnTab=3');
   });
 
   it('shows the live review action for any running session', () => {
