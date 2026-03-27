@@ -124,6 +124,7 @@ It will prompt for:
 | JWT secrets | Auto-generated cryptographic secrets | (generated) |
 | MAIL_URL | SMTP connection string | (none) |
 | MONGO_URI | MongoDB connection URI | `mongodb://mongo:27017/qlicker` |
+| Mongo cache size | WiredTiger cache in GB | `0.25` |
 | REDIS_URL | Redis connection URL | `redis://redis:6379` |
 | Storage type | `local`, `s3`, or `azure` | `local` |
 | Backup retention | Days to keep backups | `30` |
@@ -594,6 +595,13 @@ production_setup/
 | `JWT_SECRET` | Yes | — | JWT signing secret (32-byte hex) |
 | `JWT_REFRESH_SECRET` | Yes | — | JWT refresh token secret (32-byte hex) |
 | `MONGO_URI` | No | `mongodb://mongo:27017/qlicker` | MongoDB connection URI |
+| `MONGO_WIREDTIGER_CACHE_SIZE_GB` | No | `0.25` | MongoDB WiredTiger cache size in GB |
+| `MONGO_MAX_POOL_SIZE` | No | `25` | Per-server MongoDB connection pool ceiling |
+| `MONGO_MIN_POOL_SIZE` | No | `0` | Per-server MongoDB minimum pool size |
+| `MONGO_SERVER_SELECTION_TIMEOUT_MS` | No | `10000` | MongoDB server selection timeout |
+| `MONGO_SOCKET_TIMEOUT_MS` | No | `45000` | MongoDB socket timeout |
+| `MONGO_CONNECT_RETRIES` | No | `6` | MongoDB connect retry attempts |
+| `MONGO_CONNECT_RETRY_DELAY_MS` | No | `2000` | Base retry delay for MongoDB connects |
 | `MAIL_URL` | Recommended | — | SMTP connection string |
 | `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
 | `API_PORT` | No | `3001` | Internal API port |
@@ -702,7 +710,8 @@ rm backups/qlicker_backup_2026*.tar.gz
 For high-traffic deployments:
 
 1. **Increase server replicas** in `.env`
-2. **Increase MongoDB cache**: edit `docker-compose.yml` → `wiredTigerCacheSizeGB`
-3. **Increase Redis memory**: edit `docker-compose.yml` → `maxmemory`
-4. **Enable swap** on the host to handle memory spikes
-5. **Use an SSD** for MongoDB data volume
+2. **Tune MongoDB cache** with `MONGO_WIREDTIGER_CACHE_SIZE_GB`
+3. **Keep Mongo connection pools conservative** with `MONGO_MAX_POOL_SIZE`
+4. **Increase Redis memory**: edit `docker-compose.yml` → `maxmemory`
+5. **Enable swap** on the host to handle memory spikes
+6. **Use an SSD** for MongoDB data volume

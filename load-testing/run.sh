@@ -19,11 +19,15 @@ RESULTS_DIR="$SCRIPT_DIR/results"
 STATE_DIR="$SCRIPT_DIR/state"
 K6_IMAGE="${K6_IMAGE:-grafana/k6:latest}"
 DEFAULT_SEED_IMAGE="qlicker-load-testing-seed:local"
+COMMON_SH="$SCRIPT_DIR/common.sh"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
+# shellcheck disable=SC1091
+source "$COMMON_SH"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   error ".env not found. Run ./setup.sh first."
@@ -103,6 +107,45 @@ rewrite_localhost_for_docker() {
   printf '%s\n' "$value"
 }
 
+refresh_docker_network() {
+  if [[ "$TARGET_RUNTIME" != "docker" ]]; then
+    return 0
+  fi
+  if [[ -z "$STACK_DIR" || -z "$TARGET_ENV_FILE" || -z "$TARGET_COMPOSE_FILE" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$TARGET_ENV_FILE" || ! -f "$TARGET_COMPOSE_FILE" ]]; then
+    return 0
+  fi
+
+  local detected_network=""
+  detected_network="$(detect_docker_network "$STACK_DIR" "$TARGET_ENV_FILE" "$TARGET_COMPOSE_FILE" || true)"
+  if [[ -z "$detected_network" ]]; then
+    return 0
+  fi
+
+  if [[ "$QLICKER_NETWORK" != "$detected_network" ]]; then
+    if [[ -n "$QLICKER_NETWORK" ]]; then
+      warn "Using detected Docker network '$detected_network' instead of '$QLICKER_NETWORK'."
+    else
+      info "Detected Docker network: $detected_network"
+    fi
+    QLICKER_NETWORK="$detected_network"
+  fi
+}
+
+current_mongo_url() {
+  local runtime_mongo_url="$MONGO_URL"
+  if [[ -n "$TARGET_ENV_FILE" && -f "$TARGET_ENV_FILE" ]]; then
+    local resolved_runtime_mongo_url=""
+    resolved_runtime_mongo_url="$(resolve_mongo_url "$TARGET_ENV_FILE" || true)"
+    if [[ -n "$resolved_runtime_mongo_url" ]]; then
+      runtime_mongo_url="$resolved_runtime_mongo_url"
+    fi
+  fi
+  printf '%s\n' "$runtime_mongo_url"
+}
+
 stack_compose() {
   docker compose \
     --project-directory "$STACK_DIR" \
@@ -129,6 +172,7 @@ set_boolean_env_var() {
 }
 
 check_network_if_needed() {
+  refresh_docker_network
   if [[ -n "$QLICKER_NETWORK" ]]; then
     if ! docker network inspect "$QLICKER_NETWORK" >/dev/null 2>&1; then
       error "Docker network '$QLICKER_NETWORK' not found."
@@ -139,7 +183,8 @@ check_network_if_needed() {
 }
 
 seed_runner() {
-  local seed_mongo_url="$MONGO_URL"
+  local seed_mongo_url
+  seed_mongo_url="$(current_mongo_url)"
   if is_local_address "$seed_mongo_url"; then
     seed_mongo_url="$(rewrite_localhost_for_docker "$seed_mongo_url")"
   fi
@@ -149,10 +194,19 @@ seed_runner() {
     network_args=(--network "$QLICKER_NETWORK")
   fi
 
+  local -a seed_env=()
+  local pass_through_key=""
+  for pass_through_key in MONGO_CONNECT_RETRIES MONGO_CONNECT_RETRY_DELAY_MS; do
+    if [[ -n "${!pass_through_key:-}" ]]; then
+      seed_env+=(-e "$pass_through_key=${!pass_through_key}")
+    fi
+  done
+
   docker run --rm \
     "${network_args[@]}" \
     --add-host=host.docker.internal:host-gateway \
     -e MONGO_URL="$seed_mongo_url" \
+    "${seed_env[@]}" \
     -e STATE_DIR=/state \
     -v "$STATE_DIR:/state" \
     "$SEED_IMAGE" \
@@ -285,6 +339,7 @@ do_seed() {
 }
 
 do_test() {
+  check_network_if_needed
   if [[ ! -f "$STATE_DIR/state.json" ]]; then
     error "state/state.json not found. Run seeding first: ./run.sh --seed-only"
     exit 1

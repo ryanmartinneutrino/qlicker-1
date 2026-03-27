@@ -249,6 +249,22 @@ Different metrics point to different bottlenecks:
 - The runners use Docker even for native dev targets. Localhost-based URLs are
   rewritten to `host.docker.internal` so the containers can reach the host
   stack.
+- `run.sh` re-checks the target `.env` and Docker network at execution time, so
+  `--clean` is less likely to use a stale Mongo hostname after the stack has
+  moved or been restarted.
+- The seed / cleanup runner retries MongoDB connections with a small pool, which
+  helps after a heavy test when Mongo is still draining or briefly recovering.
 - Production Docker targets still support rate-limit disabling at both the
   Fastify and nginx layers.
 - Results are written to `load-testing/results/`.
+
+## Troubleshooting
+
+- If `--clean` reports `MongoNetworkError: connection ... closed` right after a
+  large test, wait a few seconds and rerun it once. The runner now retries
+  automatically, but the underlying issue is usually a stack that is still
+  recovering from burst load.
+- If the running app itself starts failing until Docker is restarted, the
+  deployment is likely under-provisioned. On smaller Docker hosts, lower
+  `MONGO_WIREDTIGER_CACHE_SIZE_GB` and keep `MONGO_MAX_POOL_SIZE` conservative
+  so MongoDB is not pushed into an unhealthy state during live-session bursts.

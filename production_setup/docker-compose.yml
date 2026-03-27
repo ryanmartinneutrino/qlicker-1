@@ -22,8 +22,8 @@ services:
     volumes:
       - mongo-data:/data/db
       - ./backups:/backups
-    # Optimize for production: WiredTiger cache = 1 GB (adjust for your RAM)
-    command: ["mongod", "--wiredTigerCacheSizeGB", "1"]
+    # Keep the cache conservative by default so smaller deployments survive burst load.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "${MONGO_WIREDTIGER_CACHE_SIZE_GB:-0.25}"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
       interval: 30s
@@ -60,6 +60,12 @@ services:
     environment:
       - PORT=${API_PORT:-3001}
       - MONGO_URI=${MONGO_URI:-mongodb://mongo:27017/qlicker}
+      - MONGO_MAX_POOL_SIZE=${MONGO_MAX_POOL_SIZE:-25}
+      - MONGO_MIN_POOL_SIZE=${MONGO_MIN_POOL_SIZE:-0}
+      - MONGO_SERVER_SELECTION_TIMEOUT_MS=${MONGO_SERVER_SELECTION_TIMEOUT_MS:-10000}
+      - MONGO_SOCKET_TIMEOUT_MS=${MONGO_SOCKET_TIMEOUT_MS:-45000}
+      - MONGO_CONNECT_RETRIES=${MONGO_CONNECT_RETRIES:-6}
+      - MONGO_CONNECT_RETRY_DELAY_MS=${MONGO_CONNECT_RETRY_DELAY_MS:-2000}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?JWT_REFRESH_SECRET must be set}
       - ROOT_URL=${ROOT_URL:-https://localhost}

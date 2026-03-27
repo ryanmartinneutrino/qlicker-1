@@ -232,7 +232,32 @@ case "$COMMAND" in
       const email = String(process.env.MANAGE_USER_EMAIL || '').toLowerCase().trim();
       const password = String(process.env.MANAGE_USER_PASSWORD || '');
       const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      await mongoose.connect(uri);
+      const connectWithRetry = async () => {
+        let lastError = null;
+        for (let attempt = 1; attempt <= 6; attempt += 1) {
+          try {
+            if (mongoose.connection.readyState !== 0) {
+              await mongoose.disconnect().catch(() => {});
+            }
+            await mongoose.connect(uri, {
+              autoIndex: false,
+              maxPoolSize: 4,
+              minPoolSize: 0,
+              serverSelectionTimeoutMS: 10000,
+              socketTimeoutMS: 45000,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 6) break;
+            const delayMs = Math.min(2000 * attempt, 10000);
+            console.warn('Mongo connection attempt ' + attempt + '/6 failed: ' + (error?.message || error) + '. Retrying in ' + delayMs + 'ms ...');
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        throw lastError;
+      };
+      await connectWithRetry();
       try {
         const col = mongoose.connection.collection('users');
         const user = await col.findOne({ 'emails.address': new RegExp('^' + escapeRegex(email) + '\$', 'i') });
@@ -286,7 +311,32 @@ case "$COMMAND" in
       const lastname = String(process.env.MANAGE_USER_LASTNAME || '').trim();
       const role = String(process.env.MANAGE_USER_ROLE || 'student');
       const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      await mongoose.connect(uri);
+      const connectWithRetry = async () => {
+        let lastError = null;
+        for (let attempt = 1; attempt <= 6; attempt += 1) {
+          try {
+            if (mongoose.connection.readyState !== 0) {
+              await mongoose.disconnect().catch(() => {});
+            }
+            await mongoose.connect(uri, {
+              autoIndex: false,
+              maxPoolSize: 4,
+              minPoolSize: 0,
+              serverSelectionTimeoutMS: 10000,
+              socketTimeoutMS: 45000,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 6) break;
+            const delayMs = Math.min(2000 * attempt, 10000);
+            console.warn('Mongo connection attempt ' + attempt + '/6 failed: ' + (error?.message || error) + '. Retrying in ' + delayMs + 'ms ...');
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        throw lastError;
+      };
+      await connectWithRetry();
       try {
         const col = mongoose.connection.collection('users');
         const existing = await col.findOne({ 'emails.address': new RegExp('^' + escapeRegex(email) + '\$', 'i') });
@@ -356,7 +406,32 @@ case "$COMMAND" in
       const email = String(process.env.MANAGE_USER_EMAIL || '').toLowerCase().trim();
       const role = String(process.env.MANAGE_USER_ROLE || '');
       const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
-      await mongoose.connect(uri);
+      const connectWithRetry = async () => {
+        let lastError = null;
+        for (let attempt = 1; attempt <= 6; attempt += 1) {
+          try {
+            if (mongoose.connection.readyState !== 0) {
+              await mongoose.disconnect().catch(() => {});
+            }
+            await mongoose.connect(uri, {
+              autoIndex: false,
+              maxPoolSize: 4,
+              minPoolSize: 0,
+              serverSelectionTimeoutMS: 10000,
+              socketTimeoutMS: 45000,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 6) break;
+            const delayMs = Math.min(2000 * attempt, 10000);
+            console.warn('Mongo connection attempt ' + attempt + '/6 failed: ' + (error?.message || error) + '. Retrying in ' + delayMs + 'ms ...');
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        throw lastError;
+      };
+      await connectWithRetry();
       try {
         const col = mongoose.connection.collection('users');
         const user = await col.findOne({ 'emails.address': new RegExp('^' + escapeRegex(email) + '\$', 'i') });
@@ -382,7 +457,32 @@ case "$COMMAND" in
     run_in_container "
       import mongoose from 'mongoose';
       const uri = process.env.MONGO_URI || 'mongodb://mongo:27017/qlicker';
-      await mongoose.connect(uri);
+      const connectWithRetry = async () => {
+        let lastError = null;
+        for (let attempt = 1; attempt <= 6; attempt += 1) {
+          try {
+            if (mongoose.connection.readyState !== 0) {
+              await mongoose.disconnect().catch(() => {});
+            }
+            await mongoose.connect(uri, {
+              autoIndex: false,
+              maxPoolSize: 4,
+              minPoolSize: 0,
+              serverSelectionTimeoutMS: 10000,
+              socketTimeoutMS: 45000,
+            });
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt >= 6) break;
+            const delayMs = Math.min(2000 * attempt, 10000);
+            console.warn('Mongo connection attempt ' + attempt + '/6 failed: ' + (error?.message || error) + '. Retrying in ' + delayMs + 'ms ...');
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        throw lastError;
+      };
+      await connectWithRetry();
       try {
         const users = await mongoose.connection
           .collection('users')

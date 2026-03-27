@@ -1,7 +1,7 @@
 services:
   mongo:
     image: mongo:7
-    command: ["mongod", "--port", "${MONGO_PORT:?Set MONGO_PORT in .env}"]
+    command: ["mongod", "--port", "${MONGO_PORT:?Set MONGO_PORT in .env}", "--wiredTigerCacheSizeGB", "${MONGO_WIREDTIGER_CACHE_SIZE_GB:-0.25}"]
     ports:
       - "${MONGO_PORT:?Set MONGO_PORT in .env}:${MONGO_PORT:?Set MONGO_PORT in .env}"
     volumes:
@@ -22,6 +22,12 @@ services:
     environment:
       - PORT=${API_PORT:?Set API_PORT in .env}
       - MONGO_URI=mongodb://mongo:${MONGO_PORT:?Set MONGO_PORT in .env}/qlicker
+      - MONGO_MAX_POOL_SIZE=${MONGO_MAX_POOL_SIZE:-25}
+      - MONGO_MIN_POOL_SIZE=${MONGO_MIN_POOL_SIZE:-0}
+      - MONGO_SERVER_SELECTION_TIMEOUT_MS=${MONGO_SERVER_SELECTION_TIMEOUT_MS:-10000}
+      - MONGO_SOCKET_TIMEOUT_MS=${MONGO_SOCKET_TIMEOUT_MS:-45000}
+      - MONGO_CONNECT_RETRIES=${MONGO_CONNECT_RETRIES:-6}
+      - MONGO_CONNECT_RETRY_DELAY_MS=${MONGO_CONNECT_RETRY_DELAY_MS:-2000}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - ROOT_URL=${ROOT_URL:-http://localhost:3000}
