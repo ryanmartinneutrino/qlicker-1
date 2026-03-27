@@ -428,16 +428,16 @@ export default function StudentCourseDetail() {
     }
   };
 
-  // Determine if user is an instructor (or admin) for this course — must redirect to professor view
-  const userIsInstructorForCourse = course && (
+  // Determine if user should see the instructor view for this course (instructor or admin)
+  const shouldRedirectToInstructorView = course && (
     (course.instructors || []).some((inst) => String(inst?._id || inst) === String(user?._id))
     || (user?.profile?.roles || []).includes('admin')
   );
 
   useEffect(() => {
-    if (!userIsInstructorForCourse) return;
+    if (!shouldRedirectToInstructorView) return;
     navigate(`/manage/course/${id}`, { replace: true });
-  }, [userIsInstructorForCourse, id, navigate]);
+  }, [shouldRedirectToInstructorView, id, navigate]);
 
   // Compute tab indices before early returns to satisfy the Rules of Hooks
   const studentPracticeEnabled = !!course?.allowStudentQuestions;
@@ -469,7 +469,7 @@ export default function StudentCourseDetail() {
   }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
-  if (userIsInstructorForCourse) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  if (shouldRedirectToInstructorView) return <Box sx={{ p: 3 }}><CircularProgress aria-label={t('common.redirecting', { defaultValue: 'Redirecting…' })} /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortStudentSessions(sessions);
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
