@@ -56,6 +56,9 @@ production_setup/certs/
 production_setup/backups/
 production_setup/legacydb/
 
-# Load testing generated state (contains credentials)
+# Load testing generated state (contains credentials) and results
 load-testing/state.json
+load-testing/state/
+load-testing/results/
 load-testing/node_modules/
+load-testing/.env

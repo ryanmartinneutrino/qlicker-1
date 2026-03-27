@@ -1,0 +1,19 @@
+# Dockerfile for the load-testing seed script.
+# Runs seed.mjs inside a container so that Node.js does NOT need to be
+# installed on the host.
+#
+# Build:  docker compose build seed
+# Run:    docker compose run --rm seed --students 250
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --production
+
+COPY seed.mjs ./
+
+# Write state.json to /state (mapped to host volume)
+ENV STATE_DIR=/state
+
+ENTRYPOINT ["node", "seed.mjs"]

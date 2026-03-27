@@ -23,7 +23,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STATE_PATH = path.join(__dirname, 'state.json');
+const STATE_DIR = process.env.STATE_DIR || __dirname;
+const STATE_PATH = path.join(STATE_DIR, 'state.json');
 
 /* ---------- helpers ---------------------------------------------------- */
 
