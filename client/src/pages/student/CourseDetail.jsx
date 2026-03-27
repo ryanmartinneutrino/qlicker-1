@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
@@ -325,7 +325,7 @@ export default function StudentCourseDetail() {
 
     const startPolling = () => {
       if (pollingTimer || closed) return;
-      pollingTimer = setInterval(refreshSessions, 4000);
+      pollingTimer = setInterval(refreshSessions, 15000);
     };
 
     const stopPolling = () => {
@@ -428,6 +428,21 @@ export default function StudentCourseDetail() {
     }
   };
 
+  // Redirect instructors/admins to the professor view of this course
+  const shouldRedirectToInstructorView = useMemo(() => {
+    if (!course) return false;
+    const userId = String(user?._id || '');
+    const isInstructor = (course.instructors || []).some(
+      (inst) => String(inst?._id || inst) === userId,
+    );
+    return isInstructor || (user?.profile?.roles || []).includes('admin');
+  }, [course, user?._id, user?.profile?.roles]);
+
+  useEffect(() => {
+    if (!shouldRedirectToInstructorView) return;
+    navigate(`/manage/course/${id}`, { replace: true });
+  }, [shouldRedirectToInstructorView, id, navigate]);
+
   const studentPracticeEnabled = !!course?.allowStudentQuestions;
 
   // Determine if video is available for this course based on course data
@@ -459,6 +474,7 @@ export default function StudentCourseDetail() {
   }, [course, lecturesTabIndex, searchParams, setSearchParams, settingsTabIndex, tab]);
 
   if (loading) return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  if (shouldRedirectToInstructorView) return <Box sx={{ p: 3 }}><CircularProgress aria-label={t('common.redirecting')} /></Box>;
   if (!course) return <Box sx={{ p: 3 }}><Alert severity="error">{t('student.course.courseNotFound')}</Alert></Box>;
   const sortedSessions = sortStudentSessions(sessions);
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
