@@ -473,7 +473,13 @@ const GradingTableRow = memo(function GradingTableRow({
       <TableCell>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', minWidth: 0 }}>
           <Avatar
+            alt={row.displayName}
             src={row.student?.profileThumbnail || row.student?.profileImage || ''}
+            slotProps={{
+              img: {
+                alt: row.displayName,
+              },
+            }}
             sx={{
               width: 30,
               height: 30,

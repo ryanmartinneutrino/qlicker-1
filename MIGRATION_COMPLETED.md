@@ -275,7 +275,7 @@ Session review option rendering fix, CSV per-attempt export, Students tab, LiveS
 - Question approval workflow
 
 ### ✅ Phase 8 Completed Items
-- Full E2E test suite with Playwright (9 baseline flows plus 2 SSO smoke flows)
+- Full E2E test suite with Playwright (12 baseline flows plus 2 SSO smoke flows)
 - Load testing with k6 (see `load-testing/`)
 - Production Docker Compose with Nginx load balancer
 - Backup and restore scripts

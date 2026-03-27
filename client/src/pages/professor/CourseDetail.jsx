@@ -1542,7 +1542,13 @@ export default function CourseDetail() {
                   <ListItem>
                     <ListItemAvatar>
                       <Avatar
+                        alt={`${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Instructor avatar'}
                         src={inst.profile?.profileImage || inst.profile?.profileThumbnail || ''}
+                        slotProps={{
+                          img: {
+                            alt: `${inst.profile?.firstname || ''} ${inst.profile?.lastname || ''}`.trim() || 'Instructor avatar',
+                          },
+                        }}
                         sx={{ width: 36, height: 36, cursor: (inst.profile?.profileImage) ? 'pointer' : 'default' }}
                         onClick={() => {
                           if (inst.profile?.profileImage) setImageViewUrl(inst.profile.profileImage);

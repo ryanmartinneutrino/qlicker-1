@@ -93,6 +93,7 @@ describe('PracticeSessionEditor', () => {
               courseNumber: '101',
               section: '001',
               semester: 'Fall 2026',
+              allowStudentQuestions: true,
               tags: [{ value: 'algebra', label: 'algebra' }],
             },
           },

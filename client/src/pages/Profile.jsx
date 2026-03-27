@@ -705,7 +705,13 @@ export default function Profile() {
             }}
           >
             <Avatar
+              alt={emailAddress || t('profile.openPhotoEditor')}
               src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
+              slotProps={{
+                img: {
+                  alt: emailAddress || t('profile.openPhotoEditor'),
+                },
+              }}
               sx={{ width: 80, height: 80, fontSize: 32 }}
             >
               {initials}

@@ -113,11 +113,21 @@ export default function SessionSelectorDialog({
             {filteredSessions.map((session) => {
               const sessionId = String(session._id);
               const checked = selectedIdSet.has(sessionId);
+              const sessionName = session.name || t('grades.coursePanel.untitledSession', { defaultValue: 'Untitled session' });
               return (
                 <ListItemButton key={sessionId} onClick={() => toggleSession(sessionId)}>
-                  <Checkbox size="small" checked={checked} />
+                  <Checkbox
+                    size="small"
+                    checked={checked}
+                    inputProps={{
+                      'aria-label': t('grades.coursePanel.toggleSessionSelection', {
+                        session: sessionName,
+                        defaultValue: `Toggle selection for ${sessionName}`,
+                      }),
+                    }}
+                  />
                   <ListItemText
-                    primary={session.name || t('grades.coursePanel.untitledSession', { defaultValue: 'Untitled session' })}
+                    primary={sessionName}
                     secondary={typeof getSessionSecondaryText === 'function'
                       ? getSessionSecondaryText(session)
                       : (session.status ? t('grades.coursePanel.sessionStatus', {

@@ -2015,11 +2015,20 @@ export default function CourseGradesPanel({
                 const sessionId = String(session._id);
                 const checked = validSessionPickerSelection.includes(sessionId);
                 const ungradedCount = Number(session.marksNeedingGrading || 0);
+                const sessionName = session.name || t('grades.coursePanel.untitledSession');
                 return (
                   <ListItemButton key={sessionId} onClick={() => toggleSessionPickerSession(sessionId)}>
-                    <Checkbox size="small" checked={checked} />
+                    <Checkbox
+                      size="small"
+                      checked={checked}
+                      inputProps={{
+                        'aria-label': t('grades.coursePanel.toggleSessionSelection', {
+                          session: sessionName,
+                        }),
+                      }}
+                    />
                     <ListItemText
-                      primary={session.name || t('grades.coursePanel.untitledSession')}
+                      primary={sessionName}
                       secondary={session.status ? t('grades.coursePanel.sessionStatus', { status: session.status }) : undefined}
                     />
                     {ungradedCount > 0 && (

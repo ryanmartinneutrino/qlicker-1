@@ -73,6 +73,7 @@ function buildGradesPayload() {
 async function openInstructorGradeTable() {
   fireEvent.click(screen.getByRole('button', { name: 'Show Grade Table' }));
   const dialog = await screen.findByRole('dialog', { name: /select sessions for grade table/i });
+  expect(within(dialog).getByRole('checkbox', { name: 'Toggle selection for Week 1' })).toBeInTheDocument();
   fireEvent.click(within(dialog).getByText('Week 1'));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Show Table' }));
   await waitForElementToBeRemoved(dialog);

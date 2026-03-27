@@ -66,7 +66,13 @@ export default function StudentIdentity({
         }}
       >
         <Avatar
+          alt={displayName}
           src={avatarSrc}
+          slotProps={{
+            img: {
+              alt: displayName,
+            },
+          }}
           sx={{
             width: avatarSize,
             height: avatarSize,

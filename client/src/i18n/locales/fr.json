@@ -1371,6 +1371,7 @@
       "ungradedCount": "{{count}} non noté(s)",
       "needsGradingCount": "À évaluer ({{count}})",
       "selectAll": "Tout sélectionner ({{count}})",
+      "toggleSessionSelection": "Basculer la sélection pour {{session}}",
       "sessionStatus": "Statut : {{status}}",
       "showTable": "Afficher le tableau",
       "selectSessionsTable": "Sélectionner des séances pour le tableau des notes",
