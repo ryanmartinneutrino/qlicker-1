@@ -1,326 +1,135 @@
 # Qlicker Load Testing Suite
 
-Automated load-test infrastructure that simulates a realistic interactive
-classroom session with up to 500+ concurrent students.  **Everything runs in
-Docker** — no Node.js or k6 installation required on the host.
+Automated load testing for Qlicker live sessions. The suite seeds dedicated
+load-test users/courses/sessions and runs a k6 scenario that follows the real
+interactive classroom flow:
 
-## Overview
+- one professor launches and drives the session
+- hundreds of students authenticate, join, keep WebSockets open, refresh live
+  state on deltas, and submit responses
+- question changes, attempt changes, stats visibility, answer reveals, and
+  short-answer / numerical stat refreshes are all exercised
 
-| Step | Actor | What happens |
-|------|-------|------|
-| 1 | `setup.sh` | One-time configuration — discovers the production stack, creates `.env`, builds the seed image |
-| 2 | `run.sh --prepare` | Disables server + nginx rate limits on the production stack |
-| 3 | `run.sh` (or `run.sh --students N`) | Seeds N students into MongoDB, then runs the k6 scenario |
-| 4 | k6 professor (1 VU) | Logs in → starts session → drives 5 questions through show / answer / stats / correct |
-| 5 | k6 students (N VUs) | Log in → join session → open WebSocket → answer each question |
-| 6 | `run.sh --restore` | Re-enables rate limits on the production stack |
-| 7 | `run.sh --clean` | Removes all seed data from the database |
+The seed and k6 runners still run in Docker, but the target Qlicker stack can
+now be:
 
-The five questions cover every response-collecting question type:
-
-| # | Type | Label |
-|---|------|-------|
-| 1 | Multiple Choice | MC |
-| 2 | Multiple Select | MS |
-| 3 | True / False | TF (MC with 2 options) |
-| 4 | Short Answer | SA |
-| 5 | Numerical | NU |
-
-## Prerequisites
-
-| Requirement | Notes |
-|-------------|-------|
-| **Docker** + **Docker Compose** | Only software needed on the host |
-| **Running Qlicker production stack** | The `production_setup/` Docker Compose stack with a valid domain and TLS |
-
-That's it.  The load-testing stack uses Docker to run both the Node.js seeder
-and Grafana k6 — nothing else needs to be installed.
+- `prod` + `docker`
+- `dev` + `docker`
+- `dev` + `native`
 
 ## Quick Start
 
 ```bash
 cd load-testing
 
-# 1. One-time setup (interactive)
+# 1. One-time interactive setup
 ./setup.sh
 
-# 2. Prepare the production stack (disable rate limits)
+# 2. Disable rate limits on the running stack
 ./run.sh --prepare
 
-# 3. Run the load test (seeds + tests, default: 500 students)
+# 3. Run the load test
 ./run.sh
 
 # 4. Restore rate limits when finished
 ./run.sh --restore
 
-# 5. Clean up seed data from the database
+# 5. Remove load-test fixtures
 ./run.sh --clean
 ```
 
-### Custom student count
+If the target stack is running natively, `--prepare` and `--restore` update the
+target `.env` and tell you to restart the server so the change takes effect.
 
-```bash
-# 250 students
-./run.sh --students 250
+## What `setup.sh` Does
 
-# Or set a default in .env
-#   NUM_STUDENTS=250
-# then just: ./run.sh
-```
+`./setup.sh` asks for:
 
-## Setup Details
+- target environment: `dev` or `prod`
+- runtime: `docker` or `native`
+- path to the `.env` file for the stack that is currently running
+- number of students to simulate
 
-### `./setup.sh`
+It then:
 
-The setup script interactively discovers your production stack and creates a
-`.env` file for the load-testing Docker Compose stack.
+- derives the MongoDB connection string used by the seed/cleanup runner
+- derives the target base URL used by k6
+- detects the Docker network when the stack is containerized
+- writes `load-testing/.env`
+- builds the local seed image (`qlicker-load-testing-seed:local` by default)
 
-It will ask for:
+### URL Resolution
 
-| Prompt | Description |
-|--------|-------------|
-| **Production stack directory** | Absolute path to `production_setup/` (can be anywhere on the system) |
-| **Docker network** | Auto-detected from the running production MongoDB container |
-| **Base URL** | The HTTPS URL of the Qlicker instance (e.g. `https://qlicker.example.com`) |
-| **Number of students** | Default number of simulated students (can be overridden per-run) |
+- `prod`: prefers `ROOT_URL`, then falls back to `https://$DOMAIN`
+- `dev`: prefers `VITE_API_URL`, then `API_PORT`, then `PORT`
 
-If a `.env` already exists, its values are offered as defaults so you can
-re-run setup without re-entering everything.
+For dev, the base URL normally points at the API/WebSocket server origin, not
+an external domain.
 
-### Generated `.env`
-
-```env
-QLICKER_STACK_DIR=/opt/qlicker              # path to production_setup/
-QLICKER_NETWORK=production_setup_default     # Docker network name
-MONGO_URL=mongodb://mongo:27017/qlicker      # internal MongoDB URI
-BASE_URL=https://qlicker.example.com         # target URL for k6
-NUM_STUDENTS=500                             # default student count
-```
-
-## Run Commands
+## Run Modes
 
 | Command | Description |
 |---------|-------------|
-| `./run.sh` | Full run: seed database + run k6 test |
-| `./run.sh --students N` | Full run with custom student count |
-| `./run.sh --seed-only` | Seed the database without running k6 |
-| `./run.sh --test-only` | Run k6 without re-seeding (requires existing `state/state.json`) |
-| `./run.sh --clean` | Remove all load-test data from the database |
-| `./run.sh --prepare` | Disable rate limits on the production stack |
-| `./run.sh --restore` | Re-enable rate limits on the production stack |
+| `./run.sh` | Seed + run the load test |
+| `./run.sh --students N` | Override the configured student count |
+| `./run.sh --seed-only` | Seed without running k6 |
+| `./run.sh --test-only` | Run k6 with the existing `state/state.json` |
+| `./run.sh --clean` | Delete load-test fixtures and `state/state.json` |
+| `./run.sh --prepare` | Disable rate limits on the running stack |
+| `./run.sh --restore` | Re-enable rate limits on the running stack |
 
-### Rate Limit Handling
+## Why the Seed Data Matters
 
-Load testing from a single host triggers rate limits at two levels:
+The seed script now matches the current auth/session schema more closely than
+before. In particular, load-test users are created with `allowEmailLogin=true`,
+so they can authenticate even when institution-wide SSO is enabled and local
+email login is normally blocked for non-admin accounts.
 
-1. **Server-side** (`@fastify/rate-limit`): `--prepare` sets
-   `DISABLE_RATE_LIMITS=true` in the production `.env` and recreates the server
-   containers.
+## Scenario Coverage
 
-2. **Nginx-side** (`limit_req`): `--prepare` uses `sed` inside the running
-   nginx container to comment out the `limit_req` directives, then reloads
-   nginx.  This is a temporary change — `--restore` restarts nginx, which
-   re-renders the original template.
+The k6 scenario is no longer just a rough login-and-post loop. It now tracks
+the real live-session update path used by the browser:
 
-Always run `--restore` after testing to re-enable both layers of rate limiting.
+1. Professor logs in and starts the session.
+2. Students log in and fetch `/sessions/:id/live`.
+3. Students join the running session.
+4. Students open `/ws?token=...`.
+5. On `session:*` deltas, students re-fetch `/sessions/:id/live` the same way
+   the app does to stay current.
+6. Students submit responses only when the current attempt is open and visible.
+7. The professor closes responses, shows stats, generates short-answer word
+   clouds and numerical histograms, reveals correct answers, and advances to the
+   next question.
+8. The session ends and connected clients observe the final state transition.
 
-## Understanding the Results
+## Metrics
 
-k6 prints a summary at the end of each run.  The full output is also saved to
-`results/k6-<timestamp>.log`.
+The scenario tracks and thresholds these key signals:
 
-### Key Metrics
+- `login_success`
+- `join_success`
+- `respond_success`
+- `live_refresh_success`
+- `event_sync_success`
+- `ws_connect_success`
+- `session_completion`
+- `login_duration`
+- `join_duration`
+- `respond_duration`
+- `live_refresh_duration`
+- `event_sync_duration`
 
-| Metric | Type | What it means |
-|--------|------|---------------|
-| `login_duration` | Trend | Time for each student to authenticate (p95 target: < 5 s) |
-| `join_duration` | Trend | Time for each student to join the session (p95 target: < 3 s) |
-| `respond_duration` | Trend | Time to submit a response (p95 target: < 3 s) |
-| `ws_event_latency` | Trend | Time for WebSocket events to arrive (p95 target: < 5 s) |
-| `login_success` | Rate | Fraction of logins that succeeded (target: > 95 %) |
-| `join_success` | Rate | Fraction of joins that succeeded (target: > 95 %) |
-| `respond_success` | Rate | Fraction of responses accepted (target: > 90 %) |
-| `ws_connections` | Counter | Total WebSocket connections established |
-| `ws_errors` | Counter | Total WebSocket errors (target: 0) |
-| `http_req_duration` | Trend | Overall HTTP latency (built-in k6 metric) |
+Additional counters include:
 
-### Thresholds
+- `ws_connections`
+- `ws_errors`
+- `response_added_refreshes`
 
-The scenario defines automatic pass/fail thresholds:
+## Notes
 
-```
-login_success:    rate > 95 %
-join_success:     rate > 95 %
-respond_success:  rate > 90 %
-login_duration:   p95 < 5 s
-join_duration:    p95 < 3 s
-respond_duration: p95 < 3 s
-ws_event_latency: p95 < 5 s
-```
-
-If any threshold is breached, k6 exits with a non-zero code and the run script
-reports **FAILED**.
-
-### Interpreting Results
-
-- **All thresholds pass** — the stack handles the load within targets.
-- **`login_duration` p95 is high** — the server is slow to hash/verify
-  passwords.  Consider increasing server replicas.
-- **`respond_success` is low** — responses are being rejected.  Check server
-  logs for errors.  Likely cause: rate limiting still active, or MongoDB
-  connection pool exhaustion.
-- **`ws_errors` is high** — WebSocket connections are failing.  Check nginx
-  WebSocket config, file descriptor limits, and Redis connectivity.
-- **`ws_event_latency` is high** — real-time broadcasts are slow.  Redis
-  pub/sub may be a bottleneck, or server replicas are overloaded.
-
-## Session Flow Timeline
-
-```
- ┌─────────────────────────────────────────────────────────────┐
- │  START SESSION                                              │
- │  ├── Wait 5 s for students to join                          │
- │  │                                                          │
- │  │  ┌── Question 1 (MC) ──────────────────────────┐         │
- │  │  │  Show question + open attempt                │         │
- │  │  │  Wait ANSWER_WINDOW_S (30 s)                 │         │
- │  │  │  Show stats                                  │         │
- │  │  │  Wait STATS_PAUSE_S  (15 s)                  │         │
- │  │  │  Show correct                                │         │
- │  │  │  Wait CORRECT_PAUSE_S (15 s)                 │         │
- │  │  └──────────────────────────────────────────────┘         │
- │  │                                                          │
- │  │  ┌── Question 2 (MS) ──────────────────────────┐         │
- │  │  │  …same timing…                               │         │
- │  │  └──────────────────────────────────────────────┘         │
- │  │                                                          │
- │  │  ┌── Questions 3–5 (TF, SA, NU) ──┐                      │
- │  │  │  …                               │                     │
- │  │  └──────────────────────────────────┘                     │
- │  │                                                          │
- │  └── END SESSION                                            │
- └─────────────────────────────────────────────────────────────┘
-```
-
-Total session duration ≈ 5 s + 5 × (30 + 15 + 15) s = **5 min 5 s** (defaults).
-
-## Architecture
-
-```
-                                ┌──────────────────┐
-                                │  Host machine     │
-  ┌─────────────────────────────┤                  │
-  │                             │                  │
-  │  ┌───── Load Testing  ─────┐│                  │
-  │  │  seed container ────────┼┼── Docker ───┐    │
-  │  │       (Node.js)         ││  network    │    │
-  │  │                         ││             ▼    │
-  │  │  k6 container ──────────┼┼───────┐  MongoDB │
-  │  │   (--network host)      ││       │         │
-  │  └─────────────────────────┘│       │         │
-  │                             │       │         │
-  │  ┌── Production Stack ─────┐│       │         │
-  │  │                         ││       │         │
-  │  │  nginx :443  ◄──────────┼┼───────┘         │
-  │  │    ↓                    ││                  │
-  │  │  server ×N              ││                  │
-  │  │    ↓                    ││                  │
-  │  │  MongoDB + Redis        ││                  │
-  │  └─────────────────────────┘│                  │
-  └─────────────────────────────┘                  │
-                                └──────────────────┘
-```
-
-- The **seed container** connects to the production Docker network to reach
-  MongoDB directly.
-- The **k6 container** uses `--network host` to reach the nginx front-end via
-  the domain name, exactly as a real browser would.
-- Results are written to `./results/` on the host via bind mount.
-
-## Troubleshooting
-
-### "Session not found" or "Not a member of course"
-
-The seed container and the Qlicker server must use the **same MongoDB
-instance**.  Verify that `MONGO_URL` in `.env` matches the production
-stack's `MONGO_URI`.
-
-### Login rate-limiting (429 errors)
-
-Rate limits must be disabled at **both** the server and nginx levels.
-Run `./run.sh --prepare` before testing.  If you still see 429s:
-
-- Check that server replicas restarted:
-  `docker compose -f /path/to/production_setup/docker-compose.yml ps`
-- Check nginx config: `docker compose exec nginx cat /etc/nginx/conf.d/default.conf`
-  — `limit_req` lines should be commented out.
-
-### WebSocket connection failures
-
-- Ensure `/ws` is proxied with WebSocket upgrade headers in the nginx config.
-- For multi-replica setups, Redis must be configured (`REDIS_URL`) for
-  cross-instance WebSocket broadcasting.
-- Check that the domain resolves from the host machine.
-
-### Not enough file descriptors
-
-Each student VU opens one WebSocket + HTTP connections.  For 500+ VUs:
-
-```bash
-ulimit -n 4096   # raise before running k6 (inside the container this is usually fine)
-```
-
-### Seed container cannot reach MongoDB
-
-- Ensure the production stack is running: `docker compose ps` in the
-  production directory.
-- Verify the network name: `docker network ls | grep default`
-- Re-run `./setup.sh` to re-detect the network.
-
-### k6 cannot reach the domain
-
-- The k6 container uses `--network host`.  Verify the domain resolves from the
-  host: `curl -I https://your-domain.com`
-- For self-signed certificates, the run script passes
-  `--insecure-skip-tls-verify` to k6.
-
-## File Structure
-
-```
-load-testing/
-├── README.md                   ← This file
-├── Dockerfile.seed             ← Docker image for the Node.js seed script
-├── docker-compose.yml          ← Load testing stack (seed + k6)
-├── setup.sh                    ← Interactive one-time setup
-├── run.sh                      ← Run / clean / prepare / restore
-├── package.json                ← Node.js deps for the seed image
-├── package-lock.json           ← Locked deps
-├── seed.mjs                    ← Database seeding / cleanup script
-├── scenarios/
-│   └── live-session.js         ← k6 scenario: professor + students
-├── state/                      ← Generated: state.json (git-ignored)
-│   └── state.json
-└── results/                    ← Generated: k6 output logs (git-ignored)
-    └── k6-20240101-120000.log
-```
-
-## Configuration Reference
-
-### Seed Script Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--students N` | 500 | Number of student accounts to create |
-| `--clean` | — | Remove all load-test data from the database |
-
-### k6 Environment Variables
-
-These are set automatically by `run.sh` but can be overridden:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BASE_URL` | from `.env` | Qlicker server base URL |
-| `STATE_FILE` | `/state/state.json` | Path to the seed state file (inside container) |
-| `ANSWER_WINDOW_S` | `30` | Seconds students have to answer each question |
-| `STATS_PAUSE_S` | `15` | Seconds to display stats before showing the correct answer |
-| `CORRECT_PAUSE_S` | `15` | Seconds to display the correct answer before moving on |
+- The runners use Docker even for native dev targets. Localhost-based URLs are
+  rewritten to `host.docker.internal` so the containers can reach the host
+  stack.
+- Production Docker targets still support rate-limit disabling at both the
+  Fastify and nginx layers.
+- Results are written to `load-testing/results/`.

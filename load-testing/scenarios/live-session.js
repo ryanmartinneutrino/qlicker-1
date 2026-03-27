@@ -1,77 +1,58 @@
 /**
- * live-session.js – k6 load-test scenario for an interactive Qlicker session.
+ * live-session.js — k6 load test for a realistic Qlicker interactive session.
  *
- * Simulates a professor running a 5-question live session with 250-500 students.
- * Each virtual user (VU) represents a student who:
- *   1. Logs in  →  obtains a JWT
- *   2. Opens a WebSocket connection for real-time events
- *   3. Joins the session
- *   4. Waits for each question to be shown (via WebSocket)
- *   5. Submits an answer
- *   6. Observes stats / correct-answer broadcasts
+ * The professor drives a five-question live session through the same REST
+ * endpoints the real UI uses. Students:
+ *   • log in with seeded accounts
+ *   • fetch /sessions/:id/live
+ *   • join the running session
+ *   • keep a WebSocket open for live deltas
+ *   • re-fetch /live when the app would refresh its state
+ *   • submit responses for each open attempt
  *
- * A separate "professor" scenario (1 VU) drives the session:
- *   1. Logs in
- *   2. Starts the session
- *   3. For each question: show → open attempt → wait → close attempt →
- *      show stats → wait → show correct → wait → navigate to next question
- *   4. Ends the session
- *
- * ──────────────────────────────────────────────────────────────────
- * Prerequisites:
- *   1. Run `node seed.mjs` to populate the database.
- *   2. Ensure the Qlicker server is running and reachable.
- *
- * Usage:
- *   k6 run --env BASE_URL=http://localhost:3001 scenarios/live-session.js
- *
- * Tunables (via -e / --env):
- *   BASE_URL           Server base URL             (default: http://localhost:3001)
- *   STATE_FILE         Path to state.json          (default: ../state.json relative to CWD)
- *   ANSWER_WINDOW_S    Seconds students have to answer (default: 30)
- *   STATS_PAUSE_S      Pause after showing stats   (default: 15)
- *   CORRECT_PAUSE_S    Pause after showing correct  (default: 15)
- * ──────────────────────────────────────────────────────────────────
+ * This exercises both the real-time transport and the "device stays in sync"
+ * path the browser actually uses during class.
  */
 
 import http from 'k6/http';
 import ws from 'k6/ws';
-import { check, sleep, group } from 'k6';
-import { Counter, Trend, Rate } from 'k6/metrics';
+import { check, group, sleep } from 'k6';
+import { Counter, Rate, Trend } from 'k6/metrics';
 import { SharedArray } from 'k6/data';
 import exec from 'k6/execution';
-
-/* ── Configuration ──────────────────────────────────────────────── */
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3001';
 const API = `${BASE_URL}/api/v1`;
 const WS_URL = BASE_URL.replace(/^http/, 'ws') + '/ws';
-
 const STATE_FILE = __ENV.STATE_FILE || '../state.json';
+
 const ANSWER_WINDOW_S = parseInt(__ENV.ANSWER_WINDOW_S || '30', 10);
 const STATS_PAUSE_S = parseInt(__ENV.STATS_PAUSE_S || '15', 10);
 const CORRECT_PAUSE_S = parseInt(__ENV.CORRECT_PAUSE_S || '15', 10);
-const EMPTY_JSON_BODY = JSON.stringify({});
+const JOIN_GRACE_S = parseInt(__ENV.JOIN_GRACE_S || '5', 10);
+const RESPONSE_ADDED_REFRESH_MS = parseInt(__ENV.RESPONSE_ADDED_REFRESH_MS || '2000', 10);
 
-// Load seed state (shared across VUs – read once)
 const state = JSON.parse(open(STATE_FILE));
-
-// Pre-load student array for VU assignment
 const students = new SharedArray('students', () => state.students);
-
-/* ── Custom metrics ─────────────────────────────────────────────── */
 
 const loginDuration = new Trend('login_duration', true);
 const joinDuration = new Trend('join_duration', true);
 const respondDuration = new Trend('respond_duration', true);
-const wsEventLatency = new Trend('ws_event_latency', true);
+const liveRefreshDuration = new Trend('live_refresh_duration', true);
+const eventSyncDuration = new Trend('event_sync_duration', true);
+
 const wsConnections = new Counter('ws_connections');
 const wsErrors = new Counter('ws_errors');
+const responseAddedRefreshes = new Counter('response_added_refreshes');
+
 const loginSuccess = new Rate('login_success');
 const joinSuccess = new Rate('join_success');
 const respondSuccess = new Rate('respond_success');
-
-/* ── k6 options ─────────────────────────────────────────────────── */
+const liveRefreshSuccess = new Rate('live_refresh_success');
+const eventSyncSuccess = new Rate('event_sync_success');
+const wsConnectSuccess = new Rate('ws_connect_success');
+const professorActionSuccess = new Rate('professor_action_success');
+const sessionCompletion = new Rate('session_completion');
 
 export const options = {
   scenarios: {
@@ -88,206 +69,356 @@ export const options = {
       iterations: 1,
       exec: 'studentFlow',
       maxDuration: '20m',
-      startTime: '3s', // give the professor a head-start
+      startTime: '3s',
     },
   },
   thresholds: {
     login_success: ['rate>0.95'],
     join_success: ['rate>0.95'],
     respond_success: ['rate>0.90'],
+    live_refresh_success: ['rate>0.95'],
+    event_sync_success: ['rate>0.90'],
+    ws_connect_success: ['rate>0.95'],
+    professor_action_success: ['rate>0.99'],
+    session_completion: ['rate>0.90'],
     login_duration: ['p(95)<5000'],
     join_duration: ['p(95)<3000'],
     respond_duration: ['p(95)<3000'],
-    ws_event_latency: ['p(95)<5000'],
+    live_refresh_duration: ['p(95)<5000'],
+    event_sync_duration: ['p(95)<5000'],
   },
 };
 
-/* ── Helpers ─────────────────────────────────────────────────────── */
-
 function apiHeaders(token) {
-  const h = {
+  const headers = {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
   };
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  return h;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 function login(email, password) {
-  const res = http.post(
+  return http.post(
     `${API}/auth/login`,
     JSON.stringify({ email, password }),
     { headers: apiHeaders(), tags: { name: 'login' } },
   );
+}
+
+function jsonRequest(method, path, token, payload, tagName) {
+  const body = payload === undefined ? null : JSON.stringify(payload);
+  const res = http.request(method, `${API}${path}`, body, {
+    headers: apiHeaders(token),
+    tags: { name: tagName },
+  });
   return res;
 }
 
-function generateAnswer(question) {
-  switch (question.label) {
-    case 'MC':
-    case 'TF':
-      // Pick a random option index
-      return String(Math.floor(Math.random() * question.optionCount));
-    case 'MS':
-      // Pick 1-3 random options as comma-separated indices
-      {
-        const picks = new Set();
-        const count = Math.floor(Math.random() * 3) + 1;
-        while (picks.size < count && picks.size < question.optionCount) {
-          picks.add(Math.floor(Math.random() * question.optionCount));
-        }
-        return JSON.stringify([...picks].sort());
-      }
-    case 'SA':
-      return 'Au';
-    case 'NU':
-      // Answer near the correct value ± some noise
-      return String((3.14 + (Math.random() - 0.5) * 0.1).toFixed(2));
-    default:
-      return '0';
+function fetchLive(token, reason = 'live_refresh') {
+  const start = Date.now();
+  const res = http.get(`${API}/sessions/${state.session.id}/live`, {
+    headers: apiHeaders(token),
+    tags: { name: reason },
+  });
+  liveRefreshDuration.add(Date.now() - start);
+
+  const ok = res.status === 200;
+  liveRefreshSuccess.add(ok);
+  if (!ok) {
+    return { ok: false, data: null, res };
   }
+
+  return { ok: true, data: res.json(), res };
 }
 
-/* ── Professor flow ─────────────────────────────────────────────── */
+function validateLiveState(data, expectation = {}) {
+  if (!data) return false;
+
+  if (expectation.status !== undefined && String(data?.session?.status || '') !== String(expectation.status)) {
+    return false;
+  }
+  if (expectation.isJoined !== undefined && Boolean(data?.isJoined) !== Boolean(expectation.isJoined)) {
+    return false;
+  }
+  if (expectation.questionNumber !== undefined && Number(data?.questionNumber || 0) !== Number(expectation.questionNumber)) {
+    return false;
+  }
+  if (expectation.hidden !== undefined && Boolean(data?.questionHidden) !== Boolean(expectation.hidden)) {
+    return false;
+  }
+  if (expectation.stats !== undefined && Boolean(data?.showStats) !== Boolean(expectation.stats)) {
+    return false;
+  }
+  if (expectation.correct !== undefined && Boolean(data?.showCorrect) !== Boolean(expectation.correct)) {
+    return false;
+  }
+  if (
+    expectation.attemptNumber !== undefined
+    && Number(data?.currentAttempt?.number || 0) !== Number(expectation.attemptNumber)
+  ) {
+    return false;
+  }
+  if (
+    expectation.attemptClosed !== undefined
+    && Boolean(data?.currentAttempt?.closed) !== Boolean(expectation.attemptClosed)
+  ) {
+    return false;
+  }
+  if (expectation.requireWordCloud && !data?.wordCloudData) {
+    return false;
+  }
+  if (expectation.requireHistogram && !data?.histogramData) {
+    return false;
+  }
+
+  return true;
+}
+
+function refreshLiveAfterEvent(token, reason, expectation = {}) {
+  const syncStart = Date.now();
+  const result = fetchLive(token, `live_${reason}`);
+  const ok = result.ok && validateLiveState(result.data, expectation);
+  eventSyncDuration.add(Date.now() - syncStart);
+  eventSyncSuccess.add(ok);
+  return result.ok ? result.data : null;
+}
+
+function optionId(question, index) {
+  return String(question?.options?.[index]?._id ?? index);
+}
+
+function randomOptionIds(question, minSelections = 1) {
+  const picks = new Set();
+  const optionCount = Array.isArray(question?.options) ? question.options.length : 0;
+  const maxSelections = Math.min(optionCount, Math.max(minSelections, 3));
+  const selectionCount = Math.max(
+    minSelections,
+    Math.min(maxSelections, Math.floor(Math.random() * maxSelections) + 1),
+  );
+
+  while (picks.size < selectionCount && picks.size < optionCount) {
+    picks.add(optionId(question, Math.floor(Math.random() * optionCount)));
+  }
+
+  return [...picks].sort();
+}
+
+function buildResponsePayload(question) {
+  const type = Number(question?.type);
+  const optionCount = Array.isArray(question?.options) ? question.options.length : 0;
+
+  if ((type === 0 || type === 1) && optionCount > 0) {
+    return { answer: optionId(question, Math.floor(Math.random() * optionCount)) };
+  }
+
+  if (type === 3 && optionCount > 0) {
+    return { answer: randomOptionIds(question, 1) };
+  }
+
+  if (type === 2) {
+    return { answer: 'Au' };
+  }
+
+  if (type === 4) {
+    return { answer: String((3.14 + (Math.random() - 0.5) * 0.1).toFixed(2)) };
+  }
+
+  return { answer: '' };
+}
+
+function submitResponse(token, liveData) {
+  const question = liveData?.currentQuestion;
+  const attemptNumber = Number(liveData?.currentAttempt?.number || 0);
+  if (!question || !attemptNumber) {
+    return { ok: false, key: null };
+  }
+
+  const payload = buildResponsePayload(question);
+  const start = Date.now();
+  const res = http.post(
+    `${API}/sessions/${state.session.id}/respond`,
+    JSON.stringify(payload),
+    { headers: apiHeaders(token), tags: { name: 'respond' } },
+  );
+  respondDuration.add(Date.now() - start);
+
+  const ok = res.status === 200 || res.status === 201;
+  respondSuccess.add(ok);
+  return {
+    ok,
+    key: `${String(question._id || '')}:${attemptNumber}`,
+    response: ok ? res.json() : null,
+    res,
+  };
+}
+
+function professorRequest(method, path, token, payload, tagName, expectedStatuses = [200]) {
+  const res = jsonRequest(method, path, token, payload, tagName);
+  const ok = expectedStatuses.includes(res.status);
+  professorActionSuccess.add(ok);
+  check(res, { [`${tagName} ok`]: () => ok });
+  return res;
+}
 
 export function professorFlow() {
   const sessionId = state.session.id;
   const questions = state.questions;
-  let profToken;
+  let professorToken = null;
 
   group('professor_login', () => {
+    const start = Date.now();
     const res = login(state.professor.email, state.password);
-    check(res, { 'prof login 200': (r) => r.status === 200 });
-    const body = res.json();
-    profToken = body.token;
+    loginDuration.add(Date.now() - start);
+    const ok = res.status === 200;
+    loginSuccess.add(ok);
+    check(res, { 'professor login 200': (r) => r.status === 200 });
+    if (ok) {
+      professorToken = res.json().token;
+    }
   });
 
-  if (!profToken) {
-    console.error('Professor login failed – aborting');
+  if (!professorToken) {
     return;
   }
 
-  // Start the session
+  fetchLive(professorToken, 'professor_initial_live');
+
   group('start_session', () => {
-    const res = http.post(
-      `${API}/sessions/${sessionId}/start`,
-      EMPTY_JSON_BODY,
-      { headers: apiHeaders(profToken), tags: { name: 'start_session' } },
-    );
-    check(res, { 'session started': (r) => r.status === 200 });
+    professorRequest('POST', `/sessions/${sessionId}/start`, professorToken, {}, 'start_session');
   });
 
-  // Allow time for students to join
-  sleep(5);
+  sleep(JOIN_GRACE_S);
 
-  // Drive each question
-  for (let qi = 0; qi < questions.length; qi++) {
-    const q = questions[qi];
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
 
-    group(`question_${qi + 1}_show`, () => {
-      // Navigate to this question
-      if (qi > 0) {
-        const navRes = http.patch(
-          `${API}/sessions/${sessionId}/current`,
-          JSON.stringify({ questionId: q.id }),
-          { headers: apiHeaders(profToken), tags: { name: 'navigate_question' } },
+    group(`question_${index + 1}_open`, () => {
+      if (index > 0) {
+        professorRequest(
+          'PATCH',
+          `/sessions/${sessionId}/current`,
+          professorToken,
+          { questionId: question.id },
+          'navigate_question',
         );
-        check(navRes, { 'navigate ok': (r) => r.status === 200 });
       }
 
-      // Un-hide the question
-      const visRes = http.patch(
-        `${API}/sessions/${sessionId}/question-visibility`,
-        JSON.stringify({ hidden: false }),
-        { headers: apiHeaders(profToken), tags: { name: 'show_question' } },
+      professorRequest(
+        'PATCH',
+        `/sessions/${sessionId}/question-visibility`,
+        professorToken,
+        { hidden: false, stats: false, correct: false },
+        'show_question',
       );
-      check(visRes, { 'question shown': (r) => r.status === 200 });
 
-      // Open first attempt
-      const attemptRes = http.post(
-        `${API}/sessions/${sessionId}/new-attempt`,
-        EMPTY_JSON_BODY,
-        { headers: apiHeaders(profToken), tags: { name: 'open_attempt' } },
+      professorRequest(
+        'POST',
+        `/sessions/${sessionId}/new-attempt`,
+        professorToken,
+        {},
+        'open_attempt',
       );
-      check(attemptRes, { 'attempt opened': (r) => r.status === 200 });
     });
 
-    // Wait for students to answer
     sleep(ANSWER_WINDOW_S);
 
-    group(`question_${qi + 1}_stats`, () => {
-      // Show stats
-      const statsRes = http.patch(
-        `${API}/sessions/${sessionId}/question-visibility`,
-        JSON.stringify({ stats: true }),
-        { headers: apiHeaders(profToken), tags: { name: 'show_stats' } },
+    group(`question_${index + 1}_close`, () => {
+      professorRequest(
+        'PATCH',
+        `/sessions/${sessionId}/toggle-responses`,
+        professorToken,
+        { closed: true },
+        'close_responses',
       );
-      check(statsRes, { 'stats shown': (r) => r.status === 200 });
+    });
+
+    group(`question_${index + 1}_stats`, () => {
+      professorRequest(
+        'PATCH',
+        `/sessions/${sessionId}/question-visibility`,
+        professorToken,
+        { hidden: false, stats: true, correct: false },
+        'show_stats',
+      );
+
+      if (Number(question.type) === 2) {
+        professorRequest(
+          'POST',
+          `/sessions/${sessionId}/word-cloud`,
+          professorToken,
+          { stopWords: [] },
+          'generate_word_cloud',
+        );
+      }
+
+      if (Number(question.type) === 4) {
+        professorRequest(
+          'POST',
+          `/sessions/${sessionId}/histogram`,
+          professorToken,
+          {},
+          'generate_histogram',
+        );
+      }
     });
 
     sleep(STATS_PAUSE_S);
 
-    group(`question_${qi + 1}_correct`, () => {
-      // Show correct answer
-      const correctRes = http.patch(
-        `${API}/sessions/${sessionId}/question-visibility`,
-        JSON.stringify({ correct: true }),
-        { headers: apiHeaders(profToken), tags: { name: 'show_correct' } },
+    group(`question_${index + 1}_correct`, () => {
+      professorRequest(
+        'PATCH',
+        `/sessions/${sessionId}/question-visibility`,
+        professorToken,
+        { hidden: false, stats: true, correct: true },
+        'show_correct',
       );
-      check(correctRes, { 'correct shown': (r) => r.status === 200 });
     });
 
     sleep(CORRECT_PAUSE_S);
   }
 
-  // End session
   group('end_session', () => {
-    const res = http.post(
-      `${API}/sessions/${sessionId}/end`,
-      EMPTY_JSON_BODY,
-      { headers: apiHeaders(profToken), tags: { name: 'end_session' } },
-    );
-    check(res, { 'session ended': (r) => r.status === 200 });
+    professorRequest('POST', `/sessions/${sessionId}/end`, professorToken, {}, 'end_session');
   });
 }
 
-/* ── Student flow ───────────────────────────────────────────────── */
-
 export function studentFlow() {
-  // Map each student iteration to a deterministic credential.
-  // For per-vu-iterations this yields one unique student per VU.
   const studentIndex = exec.scenario.iterationInTest;
-  if (studentIndex < 0 || studentIndex >= students.length) return;
+  if (studentIndex < 0 || studentIndex >= students.length) {
+    return;
+  }
+
   const student = students[studentIndex];
-
   const sessionId = state.session.id;
-  const questions = state.questions;
-  let token;
+  let token = null;
+  let liveData = null;
 
-  // 1. Login
   group('student_login', () => {
     const start = Date.now();
     const res = login(student.email, state.password);
     loginDuration.add(Date.now() - start);
     const ok = res.status === 200;
     loginSuccess.add(ok);
-    if (!ok) {
-      console.warn(`Student ${student.email} login failed: ${res.status}`);
-      return;
+    if (ok) {
+      token = res.json().token;
     }
-    token = res.json().token;
   });
 
   if (!token) {
     joinSuccess.add(false);
     respondSuccess.add(false);
+    liveRefreshSuccess.add(false);
     return;
   }
 
-  // 2. Join the session (retry a few times – session may not be running yet)
+  liveData = fetchLive(token, 'student_initial_live').data;
+
   let joined = false;
   group('student_join', () => {
-    for (let attempt = 0; attempt < 10 && !joined; attempt++) {
+    for (let attempt = 0; attempt < 30 && !joined; attempt += 1) {
       const start = Date.now();
       const res = http.post(
         `${API}/sessions/${sessionId}/join`,
@@ -295,105 +426,181 @@ export function studentFlow() {
         { headers: apiHeaders(token), tags: { name: 'join_session' } },
       );
       joinDuration.add(Date.now() - start);
+
       if (res.status === 200) {
         joined = true;
-      } else {
-        // Session may not be running yet
-        sleep(1);
+        break;
       }
+
+      liveData = fetchLive(token, 'student_join_retry').data || liveData;
+      sleep(1);
     }
+
+    if (joined) {
+      liveData = refreshLiveAfterEvent(token, 'post_join', { isJoined: true, status: 'running' }) || liveData;
+      joined = Boolean(liveData?.isJoined);
+    }
+
     joinSuccess.add(joined);
-    if (!joined) {
-      console.warn(`Student ${student.email} could not join session`);
-    }
   });
+
   if (!joined) {
     respondSuccess.add(false);
+    sessionCompletion.add(false);
     return;
   }
 
-  // 3. WebSocket connection for real-time events + answering questions
   group('student_ws_session', () => {
-    const wsUrl = `${WS_URL}?token=${token}`;
-    let questionsAnswered = 0;
+    const wsUrl = `${WS_URL}?token=${encodeURIComponent(token)}`;
+    const submittedAttempts = {};
+    const scheduledAttempts = {};
+    let responseRefreshScheduled = false;
+    let sessionEnded = false;
 
-    const res = ws.connect(wsUrl, {}, (socket) => {
-      wsConnections.add(1);
+    const response = ws.connect(wsUrl, {}, (socket) => {
+      const maybeSubmitCurrentAttempt = (snapshot) => {
+        const currentQuestion = snapshot?.currentQuestion;
+        const currentAttempt = snapshot?.currentAttempt;
+        if (!currentQuestion || !currentAttempt) return;
+        if (snapshot?.questionHidden) return;
+        if (currentAttempt.closed) return;
+        if (snapshot?.studentResponse) return;
+
+        const attemptKey = `${String(currentQuestion._id || '')}:${Number(currentAttempt.number || 0)}`;
+        if (!attemptKey || submittedAttempts[attemptKey] || scheduledAttempts[attemptKey]) {
+          return;
+        }
+
+        scheduledAttempts[attemptKey] = true;
+        socket.setTimeout(() => {
+          const latest = fetchLive(token, 'pre_submit_live').data || snapshot;
+          liveData = latest;
+
+          if (
+            !latest?.currentQuestion
+            || latest?.questionHidden
+            || latest?.currentAttempt?.closed
+            || latest?.studentResponse
+          ) {
+            delete scheduledAttempts[attemptKey];
+            return;
+          }
+
+          const submitted = submitResponse(token, latest);
+          if (submitted.ok) {
+            submittedAttempts[attemptKey] = true;
+            if (submitted.response?.response) {
+              liveData = {
+                ...latest,
+                studentResponse: submitted.response.response,
+              };
+            }
+          }
+
+          delete scheduledAttempts[attemptKey];
+        }, Math.random() * 2000);
+      };
+
+      const refreshForEvent = (reason, expectation = {}) => {
+        const refreshed = refreshLiveAfterEvent(token, reason, expectation);
+        if (refreshed) {
+          liveData = refreshed;
+        }
+        maybeSubmitCurrentAttempt(liveData);
+      };
 
       socket.on('open', () => {
-        // Send periodic ping to keep alive
+        wsConnections.add(1);
+        wsConnectSuccess.add(true);
+        liveData = refreshLiveAfterEvent(token, 'ws_open', { isJoined: true }) || liveData;
+        maybeSubmitCurrentAttempt(liveData);
         socket.setInterval(() => {
           socket.send(JSON.stringify({ event: 'ping' }));
         }, 15000);
       });
 
-      socket.on('message', (data) => {
-        let msg;
+      socket.on('message', (raw) => {
+        let message;
         try {
-          msg = JSON.parse(data);
+          message = JSON.parse(raw);
         } catch {
           return;
         }
 
-        const eventReceived = Date.now();
-
-        // Track visibility changes and question navigation
-        if (
-          msg.event === 'session:question-changed' ||
-          msg.event === 'session:visibility-changed' ||
-          msg.event === 'session:attempt-changed'
-        ) {
-          wsEventLatency.add(Date.now() - eventReceived);
+        const event = message?.event;
+        const data = message?.data || {};
+        if (!event || String(data?.sessionId || '') !== String(sessionId)) {
+          return;
         }
 
-        // When a new attempt opens, the student should answer
-        if (msg.event === 'session:attempt-changed' && questionsAnswered < questions.length) {
-          const q = questions[questionsAnswered];
-          // Small random delay to spread load (0-2s)
-          const delay = Math.random() * 2;
-          socket.setTimeout(() => {
-            const answer = generateAnswer(q);
-            const start = Date.now();
-            const answerRes = http.post(
-              `${API}/sessions/${sessionId}/respond`,
-              JSON.stringify({ answer }),
-              { headers: apiHeaders(token), tags: { name: 'respond' } },
-            );
-            respondDuration.add(Date.now() - start);
-            const ok = answerRes.status === 201 || answerRes.status === 200;
-            respondSuccess.add(ok);
-            if (!ok) {
-              console.warn(
-                `Student ${student.email} respond failed (Q${questionsAnswered + 1}): ${answerRes.status} ${answerRes.body}`,
-              );
+        switch (event) {
+          case 'session:status-changed':
+            liveData = refreshLiveAfterEvent(token, 'status_changed', { status: data.status }) || liveData;
+            if (data.status === 'done') {
+              sessionEnded = true;
+              socket.close();
             }
-            questionsAnswered++;
-          }, delay * 1000);
-        }
+            break;
 
-        // When session ends, close the socket
-        if (msg.event === 'session:status-changed') {
-          const statusData = msg.data;
-          if (statusData && statusData.status === 'done') {
-            socket.close();
-          }
+          case 'session:question-changed':
+            refreshForEvent('question_changed', { questionNumber: data.questionNumber });
+            break;
+
+          case 'session:visibility-changed':
+            refreshForEvent('visibility_changed', {
+              hidden: data.hidden,
+              stats: data.stats,
+              correct: data.correct,
+            });
+            break;
+
+          case 'session:attempt-changed':
+            refreshForEvent('attempt_changed', {
+              attemptNumber: data?.currentAttempt?.number,
+              attemptClosed: data?.currentAttempt?.closed,
+            });
+            break;
+
+          case 'session:word-cloud-updated':
+            liveData = refreshLiveAfterEvent(token, 'word_cloud_updated', { requireWordCloud: true }) || liveData;
+            break;
+
+          case 'session:histogram-updated':
+            liveData = refreshLiveAfterEvent(token, 'histogram_updated', { requireHistogram: true }) || liveData;
+            break;
+
+          case 'session:response-added':
+            if (responseRefreshScheduled) break;
+            responseRefreshScheduled = true;
+            socket.setTimeout(() => {
+              responseRefreshScheduled = false;
+              responseAddedRefreshes.add(1);
+              liveData = fetchLive(token, 'response_added_live').data || liveData;
+            }, RESPONSE_ADDED_REFRESH_MS);
+            break;
+
+          default:
+            break;
         }
       });
 
-      socket.on('error', (e) => {
+      socket.on('error', (err) => {
         wsErrors.add(1);
-        console.warn(`WebSocket error for ${student.email}: ${e}`);
+        console.warn(`WebSocket error for ${student.email}: ${String(err)}`);
       });
 
-      // Timeout – close after max duration to avoid hanging
       socket.setTimeout(() => {
         socket.close();
-      }, 18 * 60 * 1000); // 18 minutes
+      }, 18 * 60 * 1000);
     });
 
-    check(res, { 'ws connected': (r) => r && r.status === 101 });
-    if (!res || res.status !== 101) {
-      respondSuccess.add(false);
+    check(response, { 'ws connected': (res) => res && res.status === 101 });
+    if (!response || response.status !== 101) {
+      wsConnectSuccess.add(false);
+      sessionCompletion.add(false);
+      return;
     }
+
+    sessionCompletion.add(sessionEnded || liveData?.session?.status === 'done');
   });
 }

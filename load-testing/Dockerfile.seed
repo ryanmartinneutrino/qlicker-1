@@ -1,9 +1,6 @@
 # Dockerfile for the load-testing seed script.
-# Runs seed.mjs inside a container so that Node.js does NOT need to be
-# installed on the host.
-#
-# Build:  docker compose build seed
-# Run:    docker compose run --rm seed --students 250
+# The setup/run helpers build and run this image directly with `docker build`
+# and `docker run`, so host Node.js is not required for seeding/cleanup.
 FROM node:20-alpine
 
 WORKDIR /app
