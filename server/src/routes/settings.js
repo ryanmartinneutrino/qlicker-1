@@ -93,6 +93,7 @@ const courseIdParamsSchema = {
 export default async function settingsRoutes(app) {
   const { authenticate, requireRole } = app;
   const settingsRateLimit = {
+    rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
       rateLimit: { max: 30, timeWindow: '1 minute' },
     },
