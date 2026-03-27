@@ -26,7 +26,9 @@ query_backup_state() {
       settings.backupTimeLocal || "02:00",
       settings.backupLastDailyRunKey || "",
       settings.backupLastWeeklyRunKey || "",
-      settings.backupLastMonthlyRunKey || ""
+      settings.backupLastMonthlyRunKey || "",
+      settings.backupManualRequestId || "",
+      settings.backupLastHandledManualRequestId || ""
     ].join("\t"));
   '
 }
@@ -57,9 +59,15 @@ should_run_monthly() {
 
 while :; do
   state="$(query_backup_state)"
-  IFS="$(printf '\t')" read -r BACKUP_ENABLED BACKUP_TIME_LOCAL LAST_DAILY_KEY LAST_WEEKLY_KEY LAST_MONTHLY_KEY <<EOF_STATE
+  IFS="$(printf '\t')" read -r BACKUP_ENABLED BACKUP_TIME_LOCAL LAST_DAILY_KEY LAST_WEEKLY_KEY LAST_MONTHLY_KEY MANUAL_REQUEST_ID LAST_HANDLED_MANUAL_REQUEST_ID <<EOF_STATE
 $state
 EOF_STATE
+
+  if [ -n "${MANUAL_REQUEST_ID:-}" ] && [ "${MANUAL_REQUEST_ID:-}" != "${LAST_HANDLED_MANUAL_REQUEST_ID:-}" ]; then
+    run_backup manual "$MANUAL_REQUEST_ID"
+    sleep "$BACKUP_CHECK_INTERVAL_SECONDS"
+    continue
+  fi
 
   if [ "$BACKUP_ENABLED" = "true" ]; then
     current_time="$(date '+%H:%M')"

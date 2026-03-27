@@ -88,6 +88,12 @@ function renderDashboard() {
   );
 }
 
+async function selectMuiOption(element, optionName) {
+  fireEvent.mouseDown(element);
+  const listbox = await screen.findByRole('listbox');
+  fireEvent.click(within(listbox).getByRole('option', { name: String(optionName) }));
+}
+
 describe('AdminDashboard', () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -95,6 +101,7 @@ describe('AdminDashboard', () => {
     apiClientMock.get.mockReset();
     apiClientMock.patch.mockReset();
     apiClientMock.post.mockReset();
+    localStorage.clear();
 
     settingsState = {
       restrictDomain: false,
@@ -168,6 +175,20 @@ describe('AdminDashboard', () => {
 
       throw new Error(`Unexpected PATCH ${url}`);
     });
+
+    apiClientMock.post.mockImplementation((url) => {
+      if (url === '/settings/backup-now') {
+        settingsState = {
+          ...settingsState,
+          backupLastRunStatus: 'running',
+          backupLastRunType: 'manual',
+          backupLastRunMessage: 'Manual backup requested.',
+        };
+        return Promise.resolve({ data: settingsState });
+      }
+
+      throw new Error(`Unexpected POST ${url}`);
+    });
   });
 
   afterEach(() => {
@@ -184,7 +205,9 @@ describe('AdminDashboard', () => {
     expect(screen.getByText(/Backup completed successfully\./i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /Enable scheduled backups/i }));
-    fireEvent.change(screen.getByLabelText(/Backup time \(local\)/i), { target: { value: '03:30' } });
+    const backupTimeField = screen.getByTestId('backup-time-field');
+    await selectMuiOption(within(backupTimeField).getByLabelText('Hour'), '03');
+    await selectMuiOption(within(backupTimeField).getByLabelText('Minute'), '30');
     fireEvent.change(screen.getByLabelText(/Daily backups to keep/i), { target: { value: '-2' } });
     fireEvent.change(screen.getByLabelText(/Weekly backups to keep/i), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText(/Monthly backups to keep/i), { target: { value: '9' } });
@@ -210,10 +233,33 @@ describe('AdminDashboard', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: /^Backup$/i }));
     expect(await screen.findByRole('checkbox', { name: /Enable scheduled backups/i })).toBeChecked();
-    expect(screen.getByLabelText(/Backup time \(local\)/i)).toHaveValue('03:30');
+    const reloadedTimeField = screen.getByTestId('backup-time-field');
+    expect(within(reloadedTimeField).getByLabelText('Hour')).toHaveTextContent('03');
+    expect(within(reloadedTimeField).getByLabelText('Minute')).toHaveTextContent('30');
     expect(screen.getByLabelText(/Daily backups to keep/i)).toHaveValue(7);
     expect(screen.getByLabelText(/Weekly backups to keep/i)).toHaveValue(5);
     expect(screen.getByLabelText(/Monthly backups to keep/i)).toHaveValue(9);
+  });
+
+  it('requests a manual backup and shows 12-hour backup controls when the app uses 12-hour time', async () => {
+    settingsState.timeFormat = '12h';
+    localStorage.setItem('qlicker_timeFormat', '12h');
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Backup$/i }));
+
+    const backupTimeField = await screen.findByTestId('backup-time-field');
+    expect(within(backupTimeField).getByLabelText('Period')).toBeInTheDocument();
+    expect(screen.getByText(/Last run at: 27-Mar-2026 7:15 AM/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Backup now/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/settings/backup-now');
+    });
+    expect(screen.getByText(/Manual backup requested\./i)).toBeInTheDocument();
+    expect(screen.getByText(/^Running$/i)).toBeInTheDocument();
   });
 
   it('disables and restores a user account from the Users tab', async () => {

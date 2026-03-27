@@ -308,6 +308,9 @@
     },
     "backup": {
       "help": "Configure scheduled live MongoDB backups. The backup manager writes compressed archives to ./backups and records the latest run state here.",
+      "runNow": "Backup now",
+      "runNowRequested": "Manual backup requested.",
+      "runNowFailed": "Failed to request a manual backup.",
       "storagePathLabel": "Backup storage path",
       "storagePathValue": "Archives are written next to docker-compose.yml in ./backups on the host.",
       "recoveryGuide": "Open recovery guide",
@@ -421,6 +424,8 @@
   "professor": {
     "dashboard": {
       "myCourses": "My Courses",
+      "taCourses": "TA Courses",
+      "studentCourses": "Student Courses",
       "searchCourses": "Search courses…",
       "createCourse": "Create Course",
       "noCoursesMatch": "No courses match your search",

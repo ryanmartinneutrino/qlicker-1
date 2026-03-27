@@ -611,6 +611,69 @@ describe('GET /api/v1/courses/:courseId/sessions', () => {
     expect(body3.pages).toBe(3);
   });
 
+  it('orders paginated sessions by session status bucket and session time instead of creation time', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-sort@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+
+    const runningRes = await createSessionInCourse(profToken, course._id, { name: 'Running Session' });
+    const hiddenRes = await createSessionInCourse(profToken, course._id, { name: 'Hidden Session' });
+    const upcomingSoonRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Upcoming Soon',
+      quiz: true,
+      quizStart: new Date('2026-04-02T12:00:00.000Z').toISOString(),
+      quizEnd: new Date('2026-04-02T13:00:00.000Z').toISOString(),
+    });
+    const upcomingLaterRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Upcoming Later',
+      quiz: true,
+      quizStart: new Date('2026-04-03T12:00:00.000Z').toISOString(),
+      quizEnd: new Date('2026-04-03T13:00:00.000Z').toISOString(),
+    });
+
+    await Promise.all([
+      authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${runningRes.json().session._id}`, {
+        token: profToken,
+        payload: { status: 'running' },
+      }),
+      authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${upcomingSoonRes.json().session._id}`, {
+        token: profToken,
+        payload: { status: 'visible' },
+      }),
+      authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${upcomingLaterRes.json().session._id}`, {
+        token: profToken,
+        payload: { status: 'visible' },
+      }),
+    ]);
+
+    await Promise.all([
+      Session.findByIdAndUpdate(runningRes.json().session._id, { $set: { createdAt: new Date('2026-03-20T08:00:00.000Z') } }),
+      Session.findByIdAndUpdate(hiddenRes.json().session._id, { $set: { createdAt: new Date('2026-03-25T08:00:00.000Z') } }),
+      Session.findByIdAndUpdate(upcomingSoonRes.json().session._id, { $set: { createdAt: new Date('2026-03-26T08:00:00.000Z') } }),
+      Session.findByIdAndUpdate(upcomingLaterRes.json().session._id, { $set: { createdAt: new Date('2026-03-24T08:00:00.000Z') } }),
+    ]);
+
+    const page1 = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=1&limit=2`, {
+      token: profToken,
+    });
+    expect(page1.statusCode).toBe(200);
+    expect(page1.json().sessions.map((session) => session.name)).toEqual([
+      'Running Session',
+      'Hidden Session',
+    ]);
+
+    const page2 = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/sessions?page=2&limit=2`, {
+      token: profToken,
+    });
+    expect(page2.statusCode).toBe(200);
+    expect(page2.json().sessions.map((session) => session.name)).toEqual([
+      'Upcoming Later',
+      'Upcoming Soon',
+    ]);
+  });
+
   it('returns per-type session counts for paginated professor and student session lists', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });

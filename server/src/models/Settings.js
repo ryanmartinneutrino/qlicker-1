@@ -97,6 +97,8 @@ const SettingsSchema = new mongoose.Schema(
     backupLastDailyRunKey: { type: String, default: '' },
     backupLastWeeklyRunKey: { type: String, default: '' },
     backupLastMonthlyRunKey: { type: String, default: '' },
+    backupManualRequestId: { type: String, default: '' },
+    backupLastHandledManualRequestId: { type: String, default: '' },
 
     // Jitsi video chat settings
     Jitsi_Enabled: { type: Boolean, default: false },

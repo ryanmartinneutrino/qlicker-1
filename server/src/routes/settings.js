@@ -11,6 +11,10 @@ async function getOrCreateSettings() {
   return settings;
 }
 
+function buildBackupRequestId() {
+  return `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const updateSettingsSchema = {
   body: {
     type: 'object',
@@ -88,7 +92,12 @@ const courseIdParamsSchema = {
 
 export default async function settingsRoutes(app) {
   const { authenticate, requireRole } = app;
+  const settingsRateLimitPreHandler = app.rateLimit({
+    max: 30,
+    timeWindow: '1 minute',
+  });
   const settingsRateLimit = {
+    rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
       rateLimit: { max: 30, timeWindow: '1 minute' },
     },
@@ -157,6 +166,51 @@ export default async function settingsRoutes(app) {
       });
     }
   });
+
+  app.post(
+    '/backup-now',
+    {
+      preHandler: [requireRole(['admin']), settingsRateLimitPreHandler],
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const requestId = buildBackupRequestId();
+
+      try {
+        let settings = await Settings.findOne().select('_id');
+        if (!settings) {
+          settings = await Settings.create({ _id: 'settings' });
+        }
+
+        const updatedSettings = await Settings.findByIdAndUpdate(
+          settings._id,
+          {
+            $set: {
+              backupManualRequestId: requestId,
+              backupLastRunStatus: 'running',
+              backupLastRunType: 'manual',
+              backupLastRunMessage: 'Manual backup requested.',
+            },
+          },
+          {
+            returnDocument: 'after',
+            runValidators: true,
+          }
+        );
+
+        return normalizeSettingsPayload(updatedSettings.toObject());
+      } catch (err) {
+        request.log.error({ err }, 'Failed to queue manual backup');
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: err.message || 'Failed to queue manual backup',
+        });
+      }
+    }
+  );
 
   // GET /public (no auth)
   app.get('/public', async (request, reply) => {
