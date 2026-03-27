@@ -59,6 +59,7 @@ describe('SessionSelectorDialog', () => {
     expect(screen.getByText('Quiz Alpha')).toBeInTheDocument();
     expect(screen.getByText('Quiz Beta')).toBeInTheDocument();
     expect(screen.queryByText('Lecture Gamma')).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Toggle selection for Quiz Alpha' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /select all \(2\)/i }));
 

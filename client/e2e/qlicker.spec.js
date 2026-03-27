@@ -287,7 +287,6 @@ test('quiz and grading flows cover student submission and instructor grade recal
 
   await patchSessionViaApi(request, professor.token, quizSession._id, {
     status: 'done',
-    reviewable: true,
   });
 
   const professorContext = await browser.newContext();
@@ -352,7 +351,6 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
 
   await patchSessionViaApi(request, professor.token, quizSession._id, {
     status: 'done',
-    reviewable: true,
   });
   const recalcGrades = await apiJson(request, 'POST', `/sessions/${quizSession._id}/grades/recalculate`, {
     token: professor.token,

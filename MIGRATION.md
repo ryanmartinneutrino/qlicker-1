@@ -131,6 +131,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Login/session lifetime defaults remain **120 minutes (2 hours)**, and the configured timeout now applies to newly issued access and refresh sessions instead of silently allowing old sessions to continue indefinitely.
 - Duplicate grade identities are now prevented in the backend, and the existing cleanup script is documented for one-time maintenance on legacy data.
 - Added component coverage for the new Admin backup flow plus shared `SessionListCard` and `StudentIdentity` UI surfaces, and expanded Playwright coverage for backup-policy saves plus disabled-account login blocking/restoration.
+- Fixed a `StudentCourseDetail` hook-order bug when dynamic tabs appear, and labeled grade/session-picker row checkboxes so the critical accessibility E2E checks pass.
 
 ---
 
@@ -140,7 +141,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 
 ### Checklist
 
-- [x] Full E2E test suite with Playwright (9 baseline + 2 SSO smoke flows)
+- [x] Full E2E test suite with Playwright (12 baseline + 2 SSO smoke flows)
 - [x] Load testing with realistic concurrent user counts (see [`load-testing/`](load-testing/))
 - [x] Production Docker Compose with Nginx load balancer (see [`production_setup/`](production_setup/))
 - [x] Backup and restore scripts (see [`production_setup/backup.sh`](production_setup/backup.sh), [`production_setup/restore.sh`](production_setup/restore.sh))

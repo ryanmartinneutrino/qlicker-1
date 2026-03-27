@@ -1371,6 +1371,7 @@
       "ungradedCount": "{{count}} ungraded",
       "needsGradingCount": "Needs grading ({{count}})",
       "selectAll": "Select all ({{count}})",
+      "toggleSessionSelection": "Toggle selection for {{session}}",
       "sessionStatus": "Status: {{status}}",
       "showTable": "Show Table",
       "selectSessionsTable": "Select sessions for grade table",
