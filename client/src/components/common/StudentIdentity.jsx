@@ -45,6 +45,14 @@ export default function StudentIdentity({
   const initials = `${firstname.charAt(0)}${lastname.charAt(0)}`.trim()
     || email.charAt(0)
     || '?';
+  const canOpenImage = !!fullImageSrc;
+
+  const handleOpenImage = (event) => {
+    event.stopPropagation();
+    if (canOpenImage) {
+      setImageViewUrl(fullImageSrc);
+    }
+  };
 
   return (
     <>
@@ -62,13 +70,18 @@ export default function StudentIdentity({
           sx={{
             width: avatarSize,
             height: avatarSize,
-            cursor: fullImageSrc ? 'pointer' : 'default',
+            cursor: canOpenImage ? 'pointer' : 'default',
             flexShrink: 0,
           }}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (fullImageSrc) {
-              setImageViewUrl(fullImageSrc);
+          role={canOpenImage ? 'button' : undefined}
+          tabIndex={canOpenImage ? 0 : undefined}
+          aria-label={canOpenImage ? displayName : undefined}
+          onClick={handleOpenImage}
+          onKeyDown={(event) => {
+            if (!canOpenImage) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleOpenImage(event);
             }
           }}
         >

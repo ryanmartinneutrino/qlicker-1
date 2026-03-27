@@ -13,11 +13,12 @@ Use this guide when configuring institution-wide settings, storage, SSO, user ro
 
 1. [Admin dashboard](#admin-dashboard)
 2. [General settings](#general-settings)
-3. [User and course support](#user-and-course-support)
-4. [Storage configuration](#storage-configuration)
-5. [SSO configuration](#sso-configuration)
-6. [Video configuration](#video-configuration)
-7. [Troubleshooting checklist](#troubleshooting-checklist)
+3. [Backup and recovery](#backup-and-recovery)
+4. [User and course support](#user-and-course-support)
+5. [Storage configuration](#storage-configuration)
+6. [SSO configuration](#sso-configuration)
+7. [Video configuration](#video-configuration)
+8. [Troubleshooting checklist](#troubleshooting-checklist)
 
 ## Quick start checklist
 
@@ -37,6 +38,7 @@ The current app exposes these major tabs:
 - **Settings** for general platform defaults
 - **Users** for role and account management
 - **Courses** for broad course lookup and support
+- **Backup** for scheduled database backup policy and recovery status
 - **Storage** for image backends
 - **SSO Configuration** for SAML settings
 - **Video** for Jitsi configuration and availability
@@ -64,8 +66,27 @@ Common settings include:
 | Allowed domains | Keep the list explicit and comma-separated |
 | Verified email | Decide this before onboarding large numbers of users |
 | Support/admin email | Use a monitored mailbox so error messages reach a real team |
-| Login/session lifetime | Default is 120 minutes (2 hours); this now controls both access tokens and the refresh-session hard expiry |
+| Login/session lifetime | Default is 120 minutes (2 hours); this now controls both access tokens and the refresh-session hard expiry for newly issued sessions |
 | Locale/date/time defaults | Pick institution-wide defaults, then let users override them when appropriate |
+
+## Backup and recovery
+
+Use the Backup tab to manage scheduled MongoDB backups without taking the app offline.
+
+By default, Qlicker keeps:
+
+- one backup for each of the last 7 days
+- one backup for each of the last 4 weeks
+- one backup for each of the last 12 months
+
+Key facts for admins:
+
+- backups are written locally to `production_setup/backups/` on the host
+- the backup manager runs `mongodump` against the live database while the app is still running
+- archive names include the timestamp and tier, for example `qlicker_backup_20260321_020000_daily.tar.gz`
+- the Backup tab shows the configured schedule, retention counts, and the last run's status, message, and filename
+
+For full disaster recovery, follow the restore workflow in [production_setup/README.md](../../production_setup/README.md), then verify the recovered system by signing in and checking the Backup tab plus a few representative courses and users.
 
 ## User and course support
 
@@ -85,8 +106,11 @@ From there you can:
 - inspect the last recorded login time and IP address when the user is not currently signed in
 - reset a user's local password
 - control whether local email login is allowed for a specific account when institution-wide SSO is enabled
+- inspect which courses a user belongs to as a student, TA, or instructor directly in the user modal
 
 Use extra care when changing roles because the effect is immediate.
+
+If a student-only account is listed in a course's instructor roster, the UI labels that membership as **TA**. That wording is only a presentation hint. It does not create a new stored role.
 
 Prefer disabling over deleting when support staff may need to restore the account later. A disabled user cannot log in, refresh tokens, or continue using an existing authenticated session, but the underlying records stay available for future restoration.
 
@@ -193,8 +217,17 @@ Check:
 - whether SSO is enabled unexpectedly
 - whether SSO metadata and certificates are current
 - whether local email login has been explicitly allowed for the affected account
-- whether the configured login/session lifetime is shorter than the user's expectation
+- whether the configured login/session lifetime for newly issued sessions is shorter than the user's expectation
 - whether the public deployment URLs match the running environment
+
+### Backups or recovery look wrong
+
+Check:
+
+- whether the Backup tab is enabled and the schedule matches the server's local timezone
+- whether the `production_setup/backups/` directory is writable and has free space
+- whether the last-run status in the Backup tab shows a recent error message
+- whether the archive name you are restoring matches the expected tier and timestamp
 
 ### Uploaded images fail
 

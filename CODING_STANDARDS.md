@@ -884,6 +884,7 @@ Keys are organized hierarchically by page/component, using dot notation:
 4. **Both files must have identical key structures** — missing keys fall back to English
 5. **Do not ship new UI with `defaultValue` only** — every new key used in code must be added to both locale files in the same PR
 6. **Update localized manuals too** — if the change affects in-app manuals, update the corresponding `manuals.*` entries in both locale files
+7. **Update the matching markdown manual too** — if the workflow changes for admins, professors, students, grading, or production operators, update the corresponding file under `docs/user-manual/`, `README.md`, or `production_setup/README.md` in the same PR
 
 ### Adding a New Language
 
@@ -1363,6 +1364,10 @@ Before submitting any PR, verify:
 - [ ] User manuals and their `en.json`/`fr.json` translations are updated whenever UI labels, workflows, or behavior change
 - [ ] All `aria-label` attributes use `t()` — no hardcoded English in accessibility labels
 - [ ] Read-only queries use `.lean()`
+- [ ] Mixed-role access checks use the shared helpers/flags (for example `hasInstructorCourses`) instead of assuming a single global role tells the whole story
+- [ ] Course practice/question-library access is enforced in both UI and API from `course.allowStudentQuestions`
+- [ ] Live response/stat caches stay additive and fall back to canonical `Response` data whenever cached aggregates may be partial or stale
+- [ ] Blank submitted short-answer responses count for participation, score `0`, and do not stay flagged for manual grading
 - [ ] No database queries inside loops — use `$in` batch queries instead
 - [ ] Array access from `.lean()` queries uses `|| []` fallback
 - [ ] Session/course-list review logic uses tracked `session.hasResponses` / `question.sessionProperties` fields instead of fresh response scans

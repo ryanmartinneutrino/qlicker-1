@@ -499,43 +499,6 @@ function isInstructorOrAdmin(course, user) {
   return roles.includes('admin') || course.instructors.includes(user.userId);
 }
 
-function getAttemptStatsEntries(question) {
-  return Array.isArray(question?.sessionOptions?.attemptStats)
-    ? question.sessionOptions.attemptStats
-    : [];
-}
-
-function collectShortAnswerTextsFromAttemptStats(question) {
-  return getAttemptStatsEntries(question).flatMap((entry) => (
-    Array.isArray(entry?.answers) ? entry.answers : []
-  )).map((answerEntry) => {
-    if (answerEntry?.answerWysiwyg && typeof answerEntry.answerWysiwyg === 'string') {
-      return answerEntry.answerWysiwyg;
-    }
-    if (typeof answerEntry?.answer === 'string') return answerEntry.answer;
-    return '';
-  }).filter(Boolean);
-}
-
-function collectNumericalValuesFromAttemptStats(question) {
-  const values = [];
-  getAttemptStatsEntries(question).forEach((entry) => {
-    if (Array.isArray(entry?.values) && entry.values.length > 0) {
-      entry.values.forEach((value) => {
-        const numeric = Number(value);
-        if (!Number.isNaN(numeric)) values.push(numeric);
-      });
-      return;
-    }
-
-    (entry?.answers || []).forEach((answerEntry) => {
-      const numeric = Number(answerEntry?.answer);
-      if (!Number.isNaN(numeric)) values.push(numeric);
-    });
-  });
-  return values;
-}
-
 async function buildQuestionLibraryDetails(questionDocs = [], courseId = '') {
   const questionIds = [...new Set(
     (questionDocs || []).map((question) => String(question?._id || '').trim()).filter(Boolean)
@@ -761,6 +724,20 @@ function isStudentAccount(user) {
   return roles.includes('student') && !roles.includes('professor') && !roles.includes('admin');
 }
 
+function shouldTreatUserAsStudentForCourse(user, course) {
+  if (!isStudentAccount(user)) return false;
+  if (!course) return true;
+  return !isInstructorOrAdmin(course, user);
+}
+
+function isStudentPracticeAccessDisabled(course, user) {
+  if (!course) return false;
+  if (!isStudentAccount(user)) return false;
+  if (!(course.students || []).includes(user.userId)) return false;
+  if (isInstructorOrAdmin(course, user)) return false;
+  return !course.allowStudentQuestions;
+}
+
 function userOwnsQuestion(question, user) {
   if (!question || !user) return false;
   const ownerId = String(question.owner || '').trim();
@@ -929,6 +906,9 @@ export default async function questionRoutes(app) {
       const isStudentMember = !isInstructor && (course.students || []).includes(request.user.userId);
       if (!isInstructor && !isStudentMember) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      if (isStudentPracticeAccessDisabled(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
       }
 
       const page = Math.max(Number(request.query.page) || 1, 1);
@@ -1111,6 +1091,9 @@ export default async function questionRoutes(app) {
       if (!isInstructor && !isStudentMember) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
+      if (isStudentPracticeAccessDisabled(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
+      }
 
       const search = String(request.query.q || '').trim().toLowerCase();
       const limit = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100);
@@ -1163,7 +1146,6 @@ export default async function questionRoutes(app) {
       const normalizedCourseId = String(courseId || '').trim();
       const normalizedSessionId = String(sessionId || '').trim();
       const roles = request.user.roles || [];
-      const isStudent = isStudentAccount(request.user);
       let course = null;
       if (normalizedCourseId) {
         course = await Course.findById(normalizedCourseId).lean();
@@ -1171,8 +1153,10 @@ export default async function questionRoutes(app) {
           return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
         }
       }
+      const canManageCourseAsInstructor = !!course && isInstructorOrAdmin(course, request.user);
+      const isStudent = shouldTreatUserAsStudentForCourse(request.user, course);
 
-      if (!isStudent && !roles.includes('professor') && !roles.includes('admin')) {
+      if (!isStudent && !canManageCourseAsInstructor && !roles.includes('professor') && !roles.includes('admin')) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -1241,6 +1225,11 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
+      const course = question.courseId ? await Course.findById(question.courseId).lean() : null;
+      if (isStudentPracticeAccessDisabled(course, request.user) && question.studentCreated && userOwnsQuestion(question, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
+      }
+
       const hasPermission = await userCanViewQuestion(question, request.user);
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
@@ -1278,9 +1267,12 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const isStudent = isStudentAccount(request.user);
       const course = question.courseId ? await Course.findById(question.courseId).lean() : null;
+      const isStudent = shouldTreatUserAsStudentForCourse(request.user, course);
       if (isStudent) {
+        if (isStudentPracticeAccessDisabled(course, request.user)) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
+        }
         if (request.body.tags !== undefined) {
           const allowedTagValues = getAllowedCourseTagValues(course);
           if (hasNewDisallowedCourseTagsForUpdate(request.body.tags, question.tags, allowedTagValues)) {
@@ -1421,12 +1413,16 @@ export default async function questionRoutes(app) {
       if (!hasPermission) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
+      const course = question.courseId ? await Course.findById(question.courseId).select('_id instructors students allowStudentQuestions').lean() : null;
+      if (shouldTreatUserAsStudentForCourse(request.user, course) && isStudentPracticeAccessDisabled(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Student questions are disabled for this course' });
+      }
 
       const copy = await createLibraryQuestionCopy({
         sourceQuestion: question,
         targetCourseId: String(question.courseId || ''),
         userId,
-        forceStudentCopy: isStudentAccount(request.user),
+        forceStudentCopy: shouldTreatUserAsStudentForCourse(request.user, course),
       });
 
       return reply.code(201).send({ question: copy.toObject() });
@@ -1449,7 +1445,8 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      if (isStudentAccount(request.user)) {
+      const course = question.courseId ? await Course.findById(question.courseId).select('_id instructors').lean() : null;
+      if (shouldTreatUserAsStudentForCourse(request.user, course)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -1488,7 +1485,8 @@ export default async function questionRoutes(app) {
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
-      if (isStudentAccount(request.user)) {
+      const course = question.courseId ? await Course.findById(question.courseId).select('_id instructors').lean() : null;
+      if (shouldTreatUserAsStudentForCourse(request.user, course)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
@@ -2199,18 +2197,15 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const texts = collectShortAnswerTextsFromAttemptStats(question);
-      if (texts.length === 0) {
-        // Fall back for legacy sessions that do not yet have cached attempt stats.
-        const responses = await Response.find({ questionId: question._id }).lean();
-        responses.forEach((response) => {
-          if (response.answerWysiwyg && typeof response.answerWysiwyg === 'string') {
-            texts.push(response.answerWysiwyg);
-          } else if (typeof response.answer === 'string') {
-            texts.push(response.answer);
-          }
-        });
-      }
+      const responses = await Response.find({ questionId: question._id }).lean();
+      const texts = [];
+      responses.forEach((response) => {
+        if (response.answerWysiwyg && typeof response.answerWysiwyg === 'string') {
+          texts.push(response.answerWysiwyg);
+        } else if (typeof response.answer === 'string') {
+          texts.push(response.answer);
+        }
+      });
 
       const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
       const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
@@ -2279,15 +2274,12 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      const values = collectNumericalValuesFromAttemptStats(question);
-      if (values.length === 0) {
-        // Fall back for legacy sessions that do not yet have cached attempt stats.
-        const responses = await Response.find({ questionId: question._id }).lean();
-        responses.forEach((response) => {
-          const numeric = Number(response.answer);
-          if (!Number.isNaN(numeric)) values.push(numeric);
-        });
-      }
+      const responses = await Response.find({ questionId: question._id }).lean();
+      const values = [];
+      responses.forEach((response) => {
+        const numeric = Number(response.answer);
+        if (!Number.isNaN(numeric)) values.push(numeric);
+      });
 
       const histOpts = {};
       if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;

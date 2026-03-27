@@ -379,16 +379,16 @@ export default function UserManual() {
   const { user } = useAuth();
   const { role: requestedRole } = useParams();
   const roles = user?.profile?.roles || [];
-  const preferredRole = getPreferredManualRole(roles);
+  const preferredRole = getPreferredManualRole(roles, user?.hasInstructorCourses);
   const manualRole = USER_MANUAL_ROLES.includes(requestedRole) ? requestedRole : preferredRole;
-  const dashboardPath = getManualDashboardPath(roles);
+  const dashboardPath = getManualDashboardPath(roles, user?.hasInstructorCourses);
 
   if (!USER_MANUAL_ROLES.includes(requestedRole || '')) {
     return <Navigate to={getManualPath(manualRole)} replace />;
   }
 
-  const availableRoles = getAvailableManualRoles(roles);
-  const canAccess = canAccessManualRole(roles, manualRole);
+  const availableRoles = getAvailableManualRoles(roles, user?.hasInstructorCourses);
+  const canAccess = canAccessManualRole(roles, manualRole, user?.hasInstructorCourses);
   const value = t(`manuals.${manualRole}`, { returnObjects: true });
   const manual = value && typeof value === 'object' ? value : {};
 

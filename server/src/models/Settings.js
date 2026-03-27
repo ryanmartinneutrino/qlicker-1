@@ -1,4 +1,10 @@
 import mongoose from 'mongoose';
+import {
+  DEFAULT_BACKUP_RETENTION_DAILY,
+  DEFAULT_BACKUP_RETENTION_MONTHLY,
+  DEFAULT_BACKUP_RETENTION_WEEKLY,
+  DEFAULT_BACKUP_TIME_LOCAL,
+} from '../utils/authPolicy.js';
 
 const SettingsSchema = new mongoose.Schema(
   {
@@ -64,6 +70,33 @@ const SettingsSchema = new mongoose.Schema(
 
     // Token expiry (minutes). Default 120 = 2 hours. Adjustable in admin panel.
     tokenExpiryMinutes: { type: Number, default: 120 },
+
+    // Backup manager settings and run metadata.
+    backupEnabled: { type: Boolean, default: false },
+    backupTimeLocal: {
+      type: String,
+      default: DEFAULT_BACKUP_TIME_LOCAL,
+      match: /^(?:[01]\d|2[0-3]):[0-5]\d$/,
+    },
+    backupRetentionDaily: { type: Number, default: DEFAULT_BACKUP_RETENTION_DAILY, min: 0 },
+    backupRetentionWeekly: { type: Number, default: DEFAULT_BACKUP_RETENTION_WEEKLY, min: 0 },
+    backupRetentionMonthly: { type: Number, default: DEFAULT_BACKUP_RETENTION_MONTHLY, min: 0 },
+    backupLastRunAt: { type: Date, default: null },
+    backupLastRunType: {
+      type: String,
+      enum: ['', 'daily', 'weekly', 'monthly', 'manual'],
+      default: '',
+    },
+    backupLastRunStatus: {
+      type: String,
+      enum: ['idle', 'running', 'success', 'failed'],
+      default: 'idle',
+    },
+    backupLastRunFilename: { type: String, default: '' },
+    backupLastRunMessage: { type: String, default: '' },
+    backupLastDailyRunKey: { type: String, default: '' },
+    backupLastWeeklyRunKey: { type: String, default: '' },
+    backupLastMonthlyRunKey: { type: String, default: '' },
 
     // Jitsi video chat settings
     Jitsi_Enabled: { type: Boolean, default: false },

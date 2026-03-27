@@ -363,9 +363,9 @@ For production deployment, see the self-contained **[`production_setup/`](produc
 - **Let's Encrypt integration** with automatic certificate renewal via Certbot
 - **Legacy database initialization** (`init-from-legacy.sh`) with question-type migration
 - **S3 privatization scripts** (`sanitize-s3.js`, `sanitize-s3.sh`) to rewrite legacy image URLs and migrate objects toward private-bucket mode
-- **Automated backups** (`backup.sh`) with retention and cron support
+- **Automated live backups** (`backup.sh` + `backup-manager.sh`) with labeled daily/weekly/monthly archives retained from Admin -> Backup
 - **Restore script** (`restore.sh`) for disaster recovery
-- **User management** (`manage-user.sh`) — create users, change passwords, promote roles
+- **User management** (`manage-user.sh`) — create users, change passwords, promote roles, and toggle per-user email-login exceptions
 - **Update script** (`update.sh`) for rolling updates with pre-update backups
 - **Detailed README** with architecture overview, scaling guidance, and troubleshooting
 
@@ -378,6 +378,12 @@ docker compose up -d
 ```
 
 See [`production_setup/README.md`](production_setup/README.md) for the complete deployment guide.
+
+### Maintenance helpers
+
+- `node scripts/dedupe-grades.js --mongo-uri <mongodb-uri>` performs a dry run to report duplicate `{ userId, courseId, sessionId }` grade identities.
+- Add `--apply` to remove older duplicates and keep the newest grade row per identity before relying on the backend duplicate-grade guard.
+- Production operators can also use `production_setup/manage-user.sh set-email-login --email user@example.com --enable-email-login` to grant a local-email sign-in exception for SSO-managed accounts.
 
 ## Image / File Storage Configuration
 

@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
+import Course from '../../src/models/Course.js';
 import Settings from '../../src/models/Settings.js';
 import User from '../../src/models/User.js';
 import { generateMeteorId } from '../../src/utils/meteorId.js';
@@ -79,6 +80,41 @@ describe('GET /api/v1/users/me', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.user.locale).toBe('fr');
+  });
+
+  it('includes hasInstructorCourses for student accounts that also instruct courses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'owner@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await authenticatedRequest(app, 'POST', '/api/v1/courses', {
+      token: profToken,
+      payload: {
+        name: 'Instructor Course',
+        deptCode: 'CS',
+        courseNumber: '401',
+        section: '001',
+        semester: 'Fall 2026',
+      },
+    });
+    expect(courseRes.statusCode).toBe(201);
+    const course = courseRes.json().course;
+
+    const student = await createTestUser({ email: 'mixed@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: profToken,
+      payload: { userId: student._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/users/me', { token: studentToken });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.hasInstructorCourses).toBe(true);
+
+    const storedCourse = await Course.findById(course._id).lean();
+    expect((storedCourse.students || []).map(String)).not.toContain(String(student._id));
+    const storedStudent = await User.findById(student._id).lean();
+    expect((storedStudent.profile.courses || []).map(String)).toContain(String(course._id));
   });
 
   it('returns empty locale for legacy users without locale field', async (ctx) => {
@@ -564,6 +600,51 @@ describe('Admin user management', () => {
     expect(new Date(body.activeSessions[0].createdAt).toISOString()).toBe(activeCreatedAt.toISOString());
     expect(new Date(body.lastLogin).toISOString()).toBe(activeCreatedAt.toISOString());
     expect(body.lastLoginIp).toBe('203.0.113.42');
+  });
+
+  it('includes role-specific course lists in the admin user payload', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-courses@example.com', roles: ['admin'] });
+    const target = await createTestUser({
+      email: 'course-user@example.com',
+      roles: ['professor', 'student'],
+    });
+    const instructorCourse = await Course.create({
+      name: 'Instructor Course',
+      deptCode: 'CS',
+      courseNumber: '201',
+      section: '001',
+      semester: 'Fall 2026',
+      owner: target._id,
+      enrollmentCode: 'INS201',
+      instructors: [target._id],
+      students: [],
+    });
+    const studentCourse = await Course.create({
+      name: 'Student Course',
+      deptCode: 'MATH',
+      courseNumber: '101',
+      section: '002',
+      semester: 'Winter 2026',
+      owner: admin._id,
+      enrollmentCode: 'STU101',
+      instructors: [admin._id],
+      students: [target._id],
+    });
+    await User.findByIdAndUpdate(target._id, {
+      $set: { 'profile.courses': [studentCourse._id, instructorCourse._id] },
+    });
+
+    const token = await getAuthToken(app, admin);
+    const res = await authenticatedRequest(app, 'GET', `/api/v1/users/${target._id}`, { token });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.studentCourses).toHaveLength(1);
+    expect(body.studentCourses[0]._id).toBe(studentCourse._id);
+    expect(body.studentCourses[0].name).toBe('Student Course');
+    expect(body.instructorCourses).toHaveLength(1);
+    expect(body.instructorCourses[0]._id).toBe(instructorCourse._id);
+    expect(body.instructorCourses[0].name).toBe('Instructor Course');
   });
 
   it('non-admin cannot list users', async (ctx) => {

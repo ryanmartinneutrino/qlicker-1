@@ -32,6 +32,29 @@ services:
       start_period: 20s
 
   # ---------------------------------------------------------------------------
+  # Backup manager — live mongodump scheduler with Mongo status updates
+  # ---------------------------------------------------------------------------
+  # Assumption: "local" backup scheduling uses the container's configured
+  # timezone. Set TZ in your deployment environment if the host timezone is not
+  # already reflected in the container runtime.
+  backup-manager:
+    image: mongo:7
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/qlicker
+      - BACKUP_DIR=/backups
+      - BACKUP_CHECK_INTERVAL_SECONDS=${BACKUP_CHECK_INTERVAL_SECONDS:-60}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ./backups:/backups
+      - ./backup.sh:/scripts/backup.sh:ro
+      - ./backup-manager.sh:/scripts/backup-manager.sh:ro
+    command: ["/bin/sh", "/scripts/backup-manager.sh"]
+
+  # ---------------------------------------------------------------------------
   # Redis — required for multi-instance WebSocket pub/sub
   # ---------------------------------------------------------------------------
   redis:

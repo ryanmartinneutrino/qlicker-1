@@ -503,7 +503,7 @@ function QuestionLibraryPanel({
       setCourses(currentCourse ? [currentCourse] : []);
       return;
     }
-    const { data } = await apiClient.get('/courses', { params: { limit: 500 } });
+    const { data } = await apiClient.get('/courses', { params: { limit: 500, view: 'instructor' } });
     const nextCourses = sortCoursesByRecent(
       (data.courses || []).filter((course) => Array.isArray(course.instructors))
     );

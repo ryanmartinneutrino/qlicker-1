@@ -1,5 +1,6 @@
 import sharp from 'sharp';
 import User from '../models/User.js';
+import Course from '../models/Course.js';
 import Image from '../models/Image.js';
 import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
@@ -14,6 +15,7 @@ import {
 } from '../utils/authPolicy.js';
 import { isSafeProfileImageUrl, isPrivateHostname } from '../utils/url.js';
 import { getLastLoginAudit } from '../utils/sessionAudit.js';
+import { getUserAccessFlags } from '../utils/userAccess.js';
 
 async function getAuthSettings() {
   return Settings.findOne().select('SSO_enabled avatarThumbnailSize').lean();
@@ -34,19 +36,80 @@ function toSanitizedUserObject(user, settings = {}) {
   return obj;
 }
 
-function sanitizeUser(user, settings = {}) {
+async function sanitizeUser(user, settings = {}) {
   const obj = toSanitizedUserObject(user, settings);
+  Object.assign(obj, await getUserAccessFlags(user));
   delete obj.services;
   return obj;
 }
 
-function sanitizeRawUser(user = {}, settings = {}) {
+async function sanitizeRawUser(user = {}, settings = {}) {
   const obj = toSanitizedUserObject(user, settings);
+  Object.assign(obj, await getUserAccessFlags(user));
   delete obj.services;
   return obj;
 }
 
-function buildAdminUserPayload(user, settings = {}) {
+function sortCoursePayloads(courses = []) {
+  return [...courses].sort((a, b) => {
+    const aKey = [
+      a?.deptCode || '',
+      a?.courseNumber || '',
+      a?.section || '',
+      a?.name || '',
+      a?.semester || '',
+    ].join(' ').toLowerCase();
+    const bKey = [
+      b?.deptCode || '',
+      b?.courseNumber || '',
+      b?.section || '',
+      b?.name || '',
+      b?.semester || '',
+    ].join(' ').toLowerCase();
+    return aKey.localeCompare(bKey);
+  });
+}
+
+async function loadAdminUserCourses(user = {}) {
+  const courseIds = Array.isArray(user?.profile?.courses)
+    ? [...new Set(user.profile.courses.map((courseId) => String(courseId)).filter(Boolean))]
+    : [];
+
+  if (courseIds.length === 0) {
+    return {
+      studentCourses: [],
+      instructorCourses: [],
+    };
+  }
+
+  const courses = await Course.find({ _id: { $in: courseIds } })
+    .select('_id name deptCode courseNumber section semester inactive instructors')
+    .lean();
+  const courseById = new Map(courses.map((course) => [String(course._id), course]));
+  const studentCourses = [];
+  const instructorCourses = [];
+
+  for (const courseId of courseIds) {
+    const course = courseById.get(courseId);
+    if (!course) continue;
+    const instructorIds = Array.isArray(course.instructors)
+      ? course.instructors.map((instructorId) => String(instructorId))
+      : [];
+    if (instructorIds.includes(String(user._id))) {
+      instructorCourses.push(course);
+    } else {
+      studentCourses.push(course);
+    }
+  }
+
+  return {
+    studentCourses: sortCoursePayloads(studentCourses),
+    instructorCourses: sortCoursePayloads(instructorCourses),
+  };
+}
+
+async function buildAdminUserPayload(user, settings = {}) {
+  const courses = await loadAdminUserCourses(user);
   const obj = toSanitizedUserObject(user, settings);
   const { lastLogin, lastLoginIp, activeSessions } = getLastLoginAudit(user);
   obj.lastLogin = lastLogin;
@@ -59,6 +122,8 @@ function buildAdminUserPayload(user, settings = {}) {
     expiresAt: session.expiresAt,
     ipAddress: session.ipAddress,
   }));
+  obj.studentCourses = courses.studentCourses;
+  obj.instructorCourses = courses.instructorCourses;
   delete obj.services;
   return obj;
 }
@@ -263,7 +328,7 @@ export default async function userRoutes(app) {
     if (!user) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return { user: sanitizeRawUser(user, settings) };
+    return { user: await sanitizeRawUser(user, settings) };
   });
 
   // PATCH /me
@@ -303,7 +368,7 @@ export default async function userRoutes(app) {
     if (!updated) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
-    return sanitizeUser(updated, settings);
+    return await sanitizeUser(updated, settings);
   });
 
   // PATCH /me/password
@@ -398,7 +463,7 @@ export default async function userRoutes(app) {
       return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
     }
     const settings = await getAuthSettings();
-    return sanitizeUser(user, settings);
+    return await sanitizeUser(user, settings);
   });
 
   // POST /me/image/thumbnail — regenerate avatar thumbnail from the stored full-size profile image
@@ -499,7 +564,7 @@ export default async function userRoutes(app) {
         user.profile.profileThumbnail = url;
         await user.save();
 
-        return sanitizeUser(user, settings);
+        return await sanitizeUser(user, settings);
       } catch (err) {
         request.log.error({ err }, 'Failed to generate profile thumbnail');
         return reply.code(400).send({
@@ -544,7 +609,7 @@ export default async function userRoutes(app) {
       ]);
 
       // Remove services from each user
-      const sanitized = users.map((u) => sanitizeRawUser(u, settings));
+      const sanitized = await Promise.all(users.map((u) => sanitizeRawUser(u, settings)));
 
       return {
         users: sanitized,
@@ -711,7 +776,7 @@ export default async function userRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'User not found' });
       }
       const settings = await getAuthSettings();
-      return sanitizeUser(user, settings);
+      return await sanitizeUser(user, settings);
     }
   );
 
@@ -731,7 +796,7 @@ export default async function userRoutes(app) {
         user.emails[0].verified = true;
         await user.save();
       }
-      return sanitizeUser(user, settings);
+      return await sanitizeUser(user, settings);
     }
   );
 
@@ -794,7 +859,7 @@ export default async function userRoutes(app) {
       });
 
       const settings = await getAuthSettings();
-      return reply.code(201).send(sanitizeUser(user, settings));
+      return reply.code(201).send(await sanitizeUser(user, settings));
     }
   );
 }

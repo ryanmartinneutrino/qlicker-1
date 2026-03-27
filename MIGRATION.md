@@ -118,6 +118,19 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Student live-session stats now refresh word clouds and histograms automatically when the server publishes updates; a manual page refresh is no longer required.
 - Admins can now disable and later restore user accounts. Disabled accounts are blocked from local login, SSO callback, token refresh, and authenticated API use.
 
+### Recent 2026-03-27 Fixes
+
+- Added a database-backed **Admin -> Backup** tab. It now controls whether scheduled backups run, what local time they run, and how many daily, weekly, and monthly archives are kept.
+- Production backups now use labeled archives stored in `production_setup/backups/` with the format `qlicker_backup_YYYYMMDD_HHmmss_<daily|weekly|monthly>.tar.gz`.
+- Added a `backup-manager` service to the production Docker Compose stack so live `mongodump` backups can run while the app stays online.
+- Live interactive-session stats are additive again for MC, TF, MS, SA, and NU questions. If legacy or partial cache data is detected, the server rebuilds canonical stats from `Response` documents before applying new deltas.
+- Blank short-answer submissions now count for participation, receive an automatic score of `0`, and no longer appear as needing manual grading.
+- Live interactive-session review now loads while a session is still running, but grading edits remain locked until the session reaches **Ended**.
+- Student-only accounts that instruct a course are now treated as instructor users for that course without granting course-creation rights. The UI labels these memberships as **TA** assignments only; no new role was added to the schema.
+- Course membership rules now block the same user from being both student and instructor in one course, block professor/admin accounts from student enrollment, and keep student practice/question-library access tied to `course.allowStudentQuestions`.
+- Login/session lifetime defaults remain **120 minutes (2 hours)**, and the configured timeout now applies to newly issued access and refresh sessions instead of silently allowing old sessions to continue indefinitely.
+- Duplicate grade identities are now prevented in the backend, and the existing cleanup script is documented for one-time maintenance on legacy data.
+
 ---
 
 ## Phase 8 — Remaining Work
@@ -209,10 +222,10 @@ docker compose up -d
 | `setup.sh --init-certs` | Obtain initial Let's Encrypt certificate via Certbot ACME challenge |
 | `init-from-legacy.sh` | Restore a legacy MeteorJS mongodump, run question-type migration, optionally sanitize S3 |
 | `sanitize-s3.js` / `sanitize-s3.sh` | Rewrite legacy S3 image references to `/uploads/<key>` (dry-run + apply) |
-| `backup.sh` | Create compressed, timestamped MongoDB backup; prune old backups per retention policy |
-| `restore.sh` | Restore database from a backup archive (interactive or specific file) |
+| `backup.sh` | Create a live MongoDB archive with a `daily`, `weekly`, `monthly`, or `manual` label and prune retained archives per the Admin Backup policy |
+| `restore.sh` | Restore MongoDB from a labeled backup archive (interactive or specific file) |
 | `update.sh` | Pull/rebuild images, create pre-update backup, rolling restart, health check |
-| `manage-user.sh` | CLI user management: `change-password`, `create`, `promote`, `list` |
+| `manage-user.sh` | CLI user management: `change-password`, `create`, `promote`, `set-email-login`, `list` |
 | `scripts/build-images.sh` *(repo root)* | Build + tag Docker images; optional `--push` to registry |
 
 ### Scaling Recommendations
@@ -229,9 +242,11 @@ MongoDB: increase `--wiredTigerCacheSizeGB` for more RAM (recommend 25–50% of 
 ### Backup Strategy
 
 - **Manual:** `./backup.sh`
-- **Automated:** cron — `0 2 * * * /opt/qlicker/backup.sh --cron`
-- **Retention:** configurable via `BACKUP_RETENTION_DAYS` (default 30)
-- **Restore:** `./restore.sh` (interactive) or `./restore.sh backups/<file>.tar.gz`
+- **Automated:** the `backup-manager` container checks the configured Admin backup time every minute and runs daily backups every day, weekly backups on Sundays, and monthly backups on the first day of the month.
+- **Defaults:** enabled at `02:00` local server time with retention of 7 daily archives, 4 weekly archives, and 12 monthly archives.
+- **Storage:** archives are written locally to `production_setup/backups/`.
+- **Restore:** `./restore.sh` (interactive) or `./restore.sh backups/qlicker_backup_<timestamp>_<label>.tar.gz`
+- **Legacy cleanup:** `node scripts/dedupe-grades.js --apply --mongo-uri <mongodb-uri>` removes duplicate grade identities before the unique backend constraint is relied upon.
 
 ---
 

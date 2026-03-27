@@ -62,13 +62,13 @@ The course workspace combines:
 - course settings
 - the course question library
 
-The session and quiz lists now keep search, status filters, page size, and pagination inside a collapsible **Session tools** area so the list itself can stay compact.
+The session and quiz lists now keep search, status filters, page size, and pagination inside a collapsible **Search sessions** area so the list itself can stay compact.
 
 ### Recommended setup order
 
 1. Confirm the title, code, section, and semester.
 2. Add course topics so questions can be tagged consistently.
-3. Review course settings such as enrollment rules, active state, and student question submission permissions.
+3. Review course settings such as enrollment rules, active state, and whether students should have access to practice questions, practice sessions, and the course question library.
 4. Share the current enrollment code with students.
 5. Add instructors or TAs before the term begins.
 
@@ -78,7 +78,7 @@ The session and quiz lists now keep search, status filters, page size, and pagin
 | --- | --- |
 | Enrollment code | Students need it to join the correct course |
 | Active state | Inactive courses confuse students and hide workflows you may expect to see |
-| Student question submission | Changes what students can contribute to the library |
+| Allow students access to practice questions | Controls whether students can see the course question library or build practice sessions |
 | Topic list | Affects tagging, search, and reuse across the course |
 | Video availability | Controls whether Jitsi/video workflows appear in the course |
 
@@ -98,6 +98,8 @@ Use it to:
 ### Instructors and TAs
 
 Use the Instructors tab to add other teaching staff. Shared teaching staff can help with course workflows, but course ownership and institution-level admin permissions still matter for some settings.
+
+If a student-only account is placed in a course's instructor list, Qlicker presents that membership as **TA** in the UI. That user can run sessions and grade in the courses they teach, but they still cannot create new courses unless their global role is professor or admin.
 
 ### Groups
 
@@ -156,10 +158,12 @@ From the session editor you can:
 ### Session list navigation
 
 - The course page shows the first batch of sessions quickly, then loads the remaining session cards in the background.
-- Open **Session tools** when you need search, status filtering, or pagination controls; collapse it again when you want more room for the cards.
+- Open **Search sessions** when you need search, status filtering, or pagination controls; collapse it again when you want more room for the cards.
 - Session cards can show a **Needs grading** chip when manual work remains.
 - Professor session cards also show the number of joined students when the session has participation data.
-- Clicking the main body of a session card opens the session editor while the session is still draft, upcoming, or live.
+- Clicking the main body of a live interactive-session card opens the live controls directly.
+- Clicking the main body of a live quiz session still opens the session editor.
+- Clicking the main body of a session card opens the session editor while the session is still draft or upcoming.
 - Clicking the main body of an ended session card opens the review page instead, so grading and post-session analysis are one tap away.
 - Live session cards now include a **Review Live Session Results** button for both interactive sessions and quizzes.
 - Draft or upcoming session cards only show a separate **Review** button after at least one question in that session has collected responses.
@@ -217,7 +221,15 @@ The review workflow helps you:
 - move into grading workflows
 - confirm that student participation matches expectations
 
+Session review also includes a few recent usability improvements:
+
+- the results tab shows the student's actual session grade before the participation column
+- clicking a student's avatar in the Students tab opens the larger profile photo
+- question entries opened from the course-grade table now show `Q1 · MC`, `Q2 · SA`, and similar type labels with visual cues for whether grading is still required
+
 Qlicker supports both automatic and manual grading.
+
+For live interactive sessions, you can open the review page while the session is still running to watch results accumulate. The grading interface stays locked until the session reaches **Ended**.
 
 Use the grading workflows to:
 

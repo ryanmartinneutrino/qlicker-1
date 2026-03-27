@@ -138,6 +138,33 @@ describe('GET /api/v1/courses', () => {
     expect(body.courses.length).toBe(1);
   });
 
+  it('student-only instructor accounts can fetch instructor courses explicitly', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-instructor-view@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken, { name: 'Instructor View Course' });
+    const course = createRes.json().course;
+
+    const student = await createTestUser({ email: 'mixed-course@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: profToken,
+      payload: { userId: student._id.toString() },
+    });
+
+    const instructorRes = await authenticatedRequest(app, 'GET', '/api/v1/courses?view=instructor', {
+      token: studentToken,
+    });
+    expect(instructorRes.statusCode).toBe(200);
+    expect(instructorRes.json().courses.map((entry) => entry._id)).toContain(course._id);
+
+    const storedCourse = await Course.findById(course._id).lean();
+    expect((storedCourse.students || []).map(String)).not.toContain(String(student._id));
+    const storedStudent = await User.findById(student._id).lean();
+    expect((storedStudent.profile.courses || []).map(String)).toContain(String(course._id));
+  });
+
   it('admin sees all courses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });
@@ -361,6 +388,22 @@ describe('POST /api/v1/courses/enroll', () => {
     const body = res.json();
     expect(body.course).toBeDefined();
     expect(body.course._id).toBe(course._id);
+  });
+
+  it('professors cannot enroll as students', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-enroll@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const createRes = await createCourseAsProf(profToken);
+    const course = createRes.json().course;
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: profToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toMatch(/can't enroll as students/i);
   });
 
   it('invalid code returns 404', async (ctx) => {

@@ -1,14 +1,14 @@
 export const USER_MANUAL_ROLES = ['admin', 'professor', 'student'];
 
-export function getPreferredManualRole(roles = []) {
+export function getPreferredManualRole(roles = [], hasInstructorCourses = false) {
   if (roles.includes('admin')) return 'admin';
-  if (roles.includes('professor')) return 'professor';
+  if (roles.includes('professor') || hasInstructorCourses) return 'professor';
   return 'student';
 }
 
-export function getManualDashboardPath(roles = []) {
+export function getManualDashboardPath(roles = [], hasInstructorCourses = false) {
   if (roles.includes('admin')) return '/admin';
-  if (roles.includes('professor')) return '/manage';
+  if (roles.includes('professor') || hasInstructorCourses) return '/manage';
   return '/student';
 }
 
@@ -16,14 +16,14 @@ export function getManualPath(role) {
   return `/manual/${role}`;
 }
 
-export function canAccessManualRole(roles = [], manualRole) {
+export function canAccessManualRole(roles = [], manualRole, hasInstructorCourses = false) {
   if (!USER_MANUAL_ROLES.includes(manualRole)) return false;
   if (roles.includes('admin')) return true;
-  if (manualRole === 'student') return roles.includes('student') || roles.includes('professor');
-  if (manualRole === 'professor') return roles.includes('professor');
+  if (manualRole === 'student') return roles.includes('student') || roles.includes('professor') || hasInstructorCourses;
+  if (manualRole === 'professor') return roles.includes('professor') || hasInstructorCourses;
   return false;
 }
 
-export function getAvailableManualRoles(roles = []) {
-  return USER_MANUAL_ROLES.filter((manualRole) => canAccessManualRole(roles, manualRole));
+export function getAvailableManualRoles(roles = [], hasInstructorCourses = false) {
+  return USER_MANUAL_ROLES.filter((manualRole) => canAccessManualRole(roles, manualRole, hasInstructorCourses));
 }

@@ -24,6 +24,7 @@
     "next": "Next",
     "previous": "Previous",
     "paginationSummary": "Page {{page}} of {{pages}}",
+    "searchSessions": "Search sessions",
     "sessionTools": "Session tools",
     "required": "required",
     "actions": "Actions",
@@ -189,6 +190,7 @@
     "title": "Admin Dashboard",
     "tabs": {
       "settings": "Settings",
+      "backup": "Backup",
       "users": "Users",
       "courses": "Courses",
       "storage": "Storage",
@@ -291,10 +293,44 @@
       "ipUnavailable": "Unavailable",
       "unknownTime": "Unknown time",
       "never": "Never",
+      "studentCourses": "Student courses",
+      "taCourses": "TA courses",
+      "instructorCourses": "Instructor courses",
+      "noStudentCourses": "No student-course enrollments found.",
+      "noTaCourses": "No TA-course assignments found.",
+      "noInstructorCourses": "No instructor-course assignments found.",
       "cannotChangeOwnRole": "You cannot change your own role",
       "confirmDeleteMessage": "Are you sure you want to delete <strong>{{name}}</strong> ({{email}})?",
       "viewProfileImageAria": "View profile image for {{name}}",
       "noProfileImageAria": "{{name}} has no profile image"
+    },
+    "backup": {
+      "help": "Configure scheduled live MongoDB backups. The backup manager writes compressed archives to ./backups and records the latest run state here.",
+      "storagePathLabel": "Backup storage path",
+      "storagePathValue": "Archives are written next to docker-compose.yml in ./backups on the host.",
+      "recoveryGuide": "Open recovery guide",
+      "enabled": "Enable scheduled backups",
+      "timeLocal": "Backup time (local)",
+      "timeLocalHelp": "Daily, weekly, and monthly checks use the configured local time. Weekly backups run on Sundays and monthly backups run on the first day of the month.",
+      "dailyRetention": "Daily backups to keep",
+      "weeklyRetention": "Weekly backups to keep",
+      "monthlyRetention": "Monthly backups to keep",
+      "lastRun": "Last run",
+      "lastRunAt": "Last run at: {{value}}",
+      "lastRunFile": "Archive: {{value}}",
+      "lastRunFileEmpty": "Archive: not available yet",
+      "lastRunMessageEmpty": "No backup run message recorded yet.",
+      "noRunsYet": "No backup runs recorded yet.",
+      "statusIdle": "Idle",
+      "statusRunning": "Running",
+      "statusSuccess": "Success",
+      "statusFailed": "Failed",
+      "type": {
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "manual": "Manual"
+      }
     },
     "storage": {
       "storageType": "Storage Type",
@@ -352,6 +388,7 @@
     },
     "failedLoadSettings": "Failed to load settings",
     "failedSaveSettings": "Failed to save settings.",
+    "failedSaveBackupSettings": "Failed to save backup settings.",
     "failedSaveStorageSettings": "Failed to save storage settings.",
     "failedSaveSSOSettings": "Failed to save SSO settings.",
     "video": {
@@ -449,7 +486,8 @@
       "copy": "Copy",
       "regenerate": "Regenerate",
       "requireVerifiedEnroll": "Require verified email to enroll",
-      "allowStudentQuestions": "Allow students to submit questions",
+      "allowStudentQuestions": "Allow students access to practice questions",
+      "allowStudentQuestionsHelp": "When enabled, students can open the course question library, create practice sessions, and copy practice questions. They can still review finished sessions even when this is off.",
       "topics": "Course topics",
       "topicsPlaceholder": "Add a course topic",
       "topicsHelp": "Students can only use these course topics on their own questions.",
@@ -770,6 +808,7 @@
       "students": "Students",
       "name": "Name",
       "email": "Email",
+      "grade": "Grade",
       "participation": "Participation",
       "noQuestions": "This session has no questions.",
       "noResults": "No student results available.",
@@ -903,6 +942,7 @@
       "noQuizzes": "No quizzes available.",
       "noPracticeSessions": "No practice sessions yet.",
       "newPracticeSession": "New practice session",
+      "practiceDisabled": "Student practice is disabled for this course.",
       "editPracticeSession": "Edit practice session",
       "practiceSessionName": "Practice session name",
       "practiceNameRequired": "Practice session name is required.",
@@ -1612,10 +1652,10 @@
     "admin": {
       "title": "Admin user manual",
       "intro": "Use this guide when configuring Qlicker for your institution or helping instructors and students.",
-      "summary": "The admin dashboard saves after short pauses, so review sensitive values like SSO certificates, storage credentials, 2-hour session defaults, and video settings carefully before leaving a tab.",
+      "summary": "The admin dashboard saves after short pauses, so review sensitive values like SSO certificates, storage credentials, backup policy, newly issued 2-hour session defaults, and video settings carefully before leaving a tab.",
       "quickStart": [
         "Confirm institution-wide defaults in Settings before a new term starts.",
-        "Configure storage, SSO, and video in the admin UI before onboarding users when your deployment depends on shared services.",
+        "Configure backup, storage, SSO, and video in the admin UI before onboarding users when your deployment depends on shared services.",
         "Use the Users and Courses tabs to verify that roles, enrollments, and active courses match reality."
       ],
       "sections": [
@@ -1624,9 +1664,10 @@
           "subtitle": "Most admin problems come from a small mismatch between expected field formats and the environment.",
           "bullets": [
             "Run the server, client, and database with the deployment environment values you actually plan to support before testing admin workflows.",
-            "Allowed email domains are a comma-separated list; login/session expiry is a whole number of minutes; locale, date format, and time format become global defaults.",
+            "Allowed email domains are a comma-separated list; login/session expiry is a whole number of minutes for newly issued access and refresh sessions; locale, date format, and time format become global defaults.",
             "SSO values are plain text fields for URLs, entity IDs, and attribute names. Certificates and keys should be pasted exactly as your identity provider supplies them.",
-            "Storage forms expect the provider-specific fields shown in the UI, and you should always confirm the setup by uploading an image afterward."
+            "Storage forms expect the provider-specific fields shown in the UI, and you should always confirm the setup by uploading an image afterward.",
+            "Use the Backup tab to confirm the scheduled backup time, the 7 daily / 4 weekly / 12 monthly retention defaults, and the latest run status before relying on the system for recovery."
           ],
           "note": "When someone reports a user-facing issue, compare this guide with the professor or student guide so the support answer matches the current workflow.",
           "screenshot": {
@@ -1674,7 +1715,8 @@
             "Search users by name or email, change roles, verify email addresses, create accounts, reset local passwords, and open per-user properties when local email login or professor promotion rules must change.",
             "Disable a user when you need to block sign-in without erasing the account history, then restore the same account later if access should return.",
             "When institution-wide SSO is enabled, non-admin users need the per-account allow-email-login exception before local email sign-in and password-reset email become available.",
-            "Review courses to confirm the correct instructors, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
+            "Review courses and user details to confirm the correct student, TA, and instructor memberships, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
+            "Student-only users who teach a course appear as TAs in the admin UI, but that is presentation-only wording rather than a new stored role.",
             "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view."
           ],
           "warning": "Role changes and SSO login approvals take effect immediately, so confirm the request before saving."
@@ -1696,8 +1738,8 @@
           "subtitle": "A clean course setup saves time when you copy or search later.",
           "bullets": [
             "The course creation dialog combines a semester season and year into one label, which you can edit later if you need a custom or legacy format.",
-            "Use course settings to manage the title, enrollment rules, quiz time display, active state, and whether students may submit questions.",
-            "Add course topics early so your own questions stay organized and students can search the library material you make visible to them.",
+            "Use course settings to manage the title, enrollment rules, quiz time display, active state, and whether students may access practice questions, the course question library, and practice sessions.",
+            "Add course topics early so your own questions stay organized and students can search the library material you make visible to them when practice-question access is enabled.",
             "Each course has an enrollment or join code that students enter from their dashboard to join that specific course. Share the current code with your class and update it in course settings if you need to stop an old code from being reused."
           ],
           "note": "If you teach similar courses each term, use the same naming convention so copied material remains easy to identify.",
@@ -1761,16 +1803,19 @@
             "Interactive sessions are for live teaching: you control navigation, response windows, statistics, answer reveals, attempts, and the presentation window.",
             "Quizzes are scheduled windows where students answer on their own timeline. Use start and end times plus extensions for accommodation workflows.",
             "Practice quizzes feel more like guided rehearsal and are well suited for self-study or optional reinforcement.",
-            "If a session depends on passcodes, groups, or visible statistics, confirm those settings before students begin joining."
+            "If a session depends on passcodes, groups, or visible statistics, confirm those settings before students begin joining.",
+            "Session lists keep search, filters, and pagination inside Search sessions. While an interactive session is live, opening its card joins the live controls directly; live quiz cards still open the editor."
           ]
         },
         {
           "title": "Review results, grade consistently, and communicate feedback",
           "subtitle": "After students participate, Qlicker gives you several ways to inspect outcomes and respond.",
           "bullets": [
-            "Session review lets you inspect results, response data, grading state, and student summaries once the activity is over.",
+            "Session review lets you inspect results, response data, grading state, and student summaries. Live interactive sessions can be reviewed while they are still running, but grading stays locked until the session ends.",
             "Grades show participation, automatic marks, and manual-grading needs. Recalculate grades when scoring rules change or when you want automatic results rebuilt.",
             "The grading tab stays locked until the session is Ended. Ending the session seeds grade items; making the session reviewable later only controls student visibility.",
+            "The results tab now shows each student's actual session grade before participation, and clicking a student's avatar in the Students tab opens the larger profile photo.",
+            "Grade detail dialogs now label question rows with both number and type, such as Q1 · MC or Q2 · SA, and visually highlight rows that still need grading.",
             "Students receive a notification when you publish new feedback, so use short, actionable comments that tell them what to revisit.",
             "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
           ],
@@ -1801,9 +1846,9 @@
           "title": "Enroll in a course and learn the course tabs",
           "subtitle": "Most student work begins from the course dashboard.",
           "bullets": [
-            "Enter the enrollment code exactly as your instructor provides it. Once enrolled, the course appears on your dashboard.",
-            "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly.",
-            "Session lists keep search, filters, and pagination inside a collapsible Session tools area so you can expand controls only when you need them.",
+            "Enter the enrollment code exactly as your instructor provides it. If the course is inactive, enrollment is rejected and you will need to try again after the course is activated.",
+            "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly. In courses where practice-question access is disabled, the practice and library tabs stay hidden.",
+            "Session lists keep search, filters, and pagination inside a collapsible Search sessions area so you can expand controls only when you need them.",
             "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong.",
             "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account."
           ],
@@ -1853,6 +1898,7 @@
           "title": "Use the question library to build practice sessions",
           "subtitle": "Library access depends on what your instructor has made visible to students.",
           "bullets": [
+            "If your course does not allow access to practice questions, the library and practice-session tabs stay hidden until the instructor enables them.",
             "Search the question library for accessible material on the topic you want to revisit.",
             "Create practice sessions from library questions so you can rehearse at your own pace and then review the results right away.",
             "If a question contains math, images, or a worked solution, keep those visible while practicing so you can learn from the full example."

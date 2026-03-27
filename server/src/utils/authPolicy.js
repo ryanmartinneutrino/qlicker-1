@@ -3,6 +3,10 @@ export const DEFAULT_MAX_IMAGE_WIDTH = 1920;
 export const DEFAULT_AVATAR_THUMBNAIL_SIZE = 512;
 export const DEFAULT_SSO_ROUTE_MODE = 'legacy';
 export const DEFAULT_SSO_CLOCK_SKEW_MS = 60 * 1000;
+export const DEFAULT_BACKUP_TIME_LOCAL = '02:00';
+export const DEFAULT_BACKUP_RETENTION_DAILY = 7;
+export const DEFAULT_BACKUP_RETENTION_WEEKLY = 4;
+export const DEFAULT_BACKUP_RETENTION_MONTHLY = 12;
 
 export const SSO_PROVIDER_ROUTES = {
   legacy: {
@@ -64,6 +68,21 @@ export function normalizeAvatarThumbnailSize(value) {
   return normalizeInteger(value, DEFAULT_AVATAR_THUMBNAIL_SIZE, { min: 64 });
 }
 
+export function normalizeBackupTimeLocal(value) {
+  const normalized = String(value || '').trim();
+  if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_BACKUP_TIME_LOCAL;
+}
+
+export function normalizeBackupRetentionCount(value, fallback) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  return normalizeInteger(value, fallback, { min: 0 });
+}
+
 export function normalizeSsoRouteMode(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'legacy' || normalized === 'api_v1') {
@@ -108,6 +127,20 @@ export function normalizeSettingsPayload(settings = {}) {
     tokenExpiryMinutes: normalizeTokenExpiryMinutes(settings?.tokenExpiryMinutes),
     maxImageWidth: normalizeMaxImageWidth(settings?.maxImageWidth),
     avatarThumbnailSize: normalizeAvatarThumbnailSize(settings?.avatarThumbnailSize),
+    backupEnabled: settings?.backupEnabled === true,
+    backupTimeLocal: normalizeBackupTimeLocal(settings?.backupTimeLocal),
+    backupRetentionDaily: normalizeBackupRetentionCount(
+      settings?.backupRetentionDaily,
+      DEFAULT_BACKUP_RETENTION_DAILY
+    ),
+    backupRetentionWeekly: normalizeBackupRetentionCount(
+      settings?.backupRetentionWeekly,
+      DEFAULT_BACKUP_RETENTION_WEEKLY
+    ),
+    backupRetentionMonthly: normalizeBackupRetentionCount(
+      settings?.backupRetentionMonthly,
+      DEFAULT_BACKUP_RETENTION_MONTHLY
+    ),
     SSO_routeMode: normalizeSsoRouteMode(settings?.SSO_routeMode),
     SSO_wantAssertionsSigned: normalizeBoolean(settings?.SSO_wantAssertionsSigned, false),
     SSO_wantAuthnResponseSigned: normalizeBoolean(settings?.SSO_wantAuthnResponseSigned, false),

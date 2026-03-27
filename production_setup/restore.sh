@@ -6,7 +6,8 @@
 #
 # Usage:
 #   ./restore.sh                                    # Interactive: pick from list
-#   ./restore.sh backups/qlicker_backup_20260101_020000.tar.gz  # Specific file
+#   ./restore.sh backups/qlicker_backup_20260101_020000_daily.tar.gz  # Specific file
+# The selector still accepts older qlicker_backup_YYYYMMDD_HHmmss.tar.gz archives.
 # =============================================================================
 set -euo pipefail
 

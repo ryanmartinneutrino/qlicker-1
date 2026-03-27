@@ -58,7 +58,7 @@ export default function Login() {
   const getDashboard = (user) => {
     const roles = user?.profile?.roles || [];
     if (roles.includes('admin')) return '/admin';
-    if (roles.includes('professor')) return '/manage';
+    if (roles.includes('professor') || user?.hasInstructorCourses) return '/manage';
     return '/student';
   };
 

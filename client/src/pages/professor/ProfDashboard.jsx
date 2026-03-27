@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   Box, Typography, Button, TextField, Card, CardContent,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
@@ -46,6 +47,7 @@ function getSuggestedSemester() {
 export default function ProfDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,8 +67,8 @@ export default function ProfDashboard() {
     setLoading(true);
     try {
       const [coursesRes, liveRes] = await Promise.all([
-        apiClient.get('/courses'),
-        apiClient.get('/sessions/live').catch(() => ({ data: { liveSessions: [] } })),
+        apiClient.get('/courses', { params: { view: 'instructor' } }),
+        apiClient.get('/sessions/live', { params: { view: 'instructor' } }).catch(() => ({ data: { liveSessions: [] } })),
       ]);
       setCourses(coursesRes.data.courses || []);
       setLiveSessions(liveRes.data.liveSessions || []);
@@ -106,6 +108,8 @@ export default function ProfDashboard() {
     setMsg({ severity: 'success', text: t('professor.dashboard.enrollmentCodeCopied') });
   };
 
+  const canCreateCourses = user?.profile?.roles?.includes('professor') || user?.profile?.roles?.includes('admin');
+
   const filtered = courses.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -132,9 +136,11 @@ export default function ProfDashboard() {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h4">{t('professor.dashboard.myCourses')}</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
-          {t('professor.dashboard.createCourse')}
-        </Button>
+        {canCreateCourses ? (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
+            {t('professor.dashboard.createCourse')}
+          </Button>
+        ) : null}
       </Box>
 
       <TextField

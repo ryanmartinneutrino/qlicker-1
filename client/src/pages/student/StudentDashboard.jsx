@@ -47,7 +47,7 @@ export default function StudentDashboard() {
 
   const fetchLiveSessions = useCallback(async () => {
     try {
-      const liveRes = await apiClient.get('/sessions/live');
+      const liveRes = await apiClient.get('/sessions/live', { params: { view: 'student' } });
       setLiveSessions(liveRes.data.liveSessions || []);
     } catch {
       setLiveSessions([]);
@@ -56,7 +56,7 @@ export default function StudentDashboard() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const coursesRes = await apiClient.get('/courses');
+      const coursesRes = await apiClient.get('/courses', { params: { view: 'student' } });
       setCourses(coursesRes.data.courses || []);
     } catch {
       setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });

@@ -140,6 +140,16 @@ export default function PracticeSessionEditor() {
       setSession(nextSession);
       setName(nextSession?.name || '');
       setSessionTags(normalizeTagValues(nextSession?.tags || []));
+      if (!nextCourse?.allowStudentQuestions) {
+        setSelectedQuestions([]);
+        setMessage({
+          severity: 'error',
+          text: t('student.course.practiceDisabled', {
+            defaultValue: 'Student practice is disabled for this course.',
+          }),
+        });
+        return;
+      }
       await loadSelectedQuestions(nextSession?.questions || []);
       setMessage(null);
     } catch (err) {
@@ -300,6 +310,16 @@ export default function PracticeSessionEditor() {
 
   if (loading) {
     return <Box sx={{ p: 3 }}><CircularProgress /></Box>;
+  }
+
+  if (course && !course.allowStudentQuestions) {
+    return (
+      <Box sx={{ p: 2.5, maxWidth: 1040, mx: 'auto' }}>
+        <Alert severity="error">
+          {t('student.course.practiceDisabled', { defaultValue: 'Student practice is disabled for this course.' })}
+        </Alert>
+      </Box>
+    );
   }
 
   return (

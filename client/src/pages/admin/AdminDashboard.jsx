@@ -81,6 +81,18 @@ const DEFAULT_SSO_SETTINGS = {
   SSO_authnContext: '',
   SSO_routeMode: 'legacy',
 };
+const DEFAULT_BACKUP_SETTINGS = {
+  backupEnabled: false,
+  backupTimeLocal: '02:00',
+  backupRetentionDaily: 7,
+  backupRetentionWeekly: 4,
+  backupRetentionMonthly: 12,
+  backupLastRunAt: null,
+  backupLastRunType: '',
+  backupLastRunStatus: 'idle',
+  backupLastRunFilename: '',
+  backupLastRunMessage: '',
+};
 const SSO_BASIC_FIELDS = [
   { key: 'SSO_enabled', labelKey: 'admin.sso.enable', type: 'checkbox' },
   { key: 'SSO_entrypoint', labelKey: 'admin.sso.entrypoint' },
@@ -98,6 +110,12 @@ const SSO_BASIC_FIELDS = [
   { key: 'SSO_privCert', labelKey: 'admin.sso.privCert', type: 'textarea' },
   { key: 'SSO_privKey', labelKey: 'admin.sso.privKey', type: 'textarea' },
 ];
+const BACKUP_STATUS_COLORS = {
+  idle: 'default',
+  running: 'info',
+  success: 'success',
+  failed: 'error',
+};
 const SSO_ADVANCED_FIELDS = [
   {
     key: 'SSO_routeMode',
@@ -179,6 +197,26 @@ function sortCoursesByTitle(courses = []) {
     if (titleCompare !== 0) return titleCompare;
     return buildCourseOptionLabel(a).localeCompare(buildCourseOptionLabel(b));
   });
+}
+
+function renderCourseListItem(course = {}, inactiveLabel = 'Inactive') {
+  return (
+    <Paper
+      key={course._id}
+      variant="outlined"
+      sx={{ p: 1.25, display: 'flex', flexDirection: 'column', gap: 0.5 }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {buildCourseTitle(course, 'long')}
+        </Typography>
+        {course.inactive ? <Chip size="small" label={inactiveLabel} variant="outlined" /> : null}
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        {buildCourseOptionLabel(course)}
+      </Typography>
+    </Paper>
+  );
 }
 
 // ── Settings Tab ────────────────────────────────────────────────────────────
@@ -360,6 +398,188 @@ function SettingsTab() {
           ))}
         </Select>
       </FormControl>
+    </Box>
+  );
+}
+
+// ── Backup Tab ─────────────────────────────────────────────────────────────
+function BackupTab() {
+  const { t } = useTranslation();
+  const [settings, setSettings] = useState(DEFAULT_BACKUP_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [saveError, setSaveError] = useState('');
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient.get('/settings').then(({ data }) => {
+      if (!mounted) return;
+      setSettings({
+        ...DEFAULT_BACKUP_SETTINGS,
+        backupEnabled: data.backupEnabled ?? false,
+        backupTimeLocal: data.backupTimeLocal ?? '02:00',
+        backupRetentionDaily: data.backupRetentionDaily ?? 7,
+        backupRetentionWeekly: data.backupRetentionWeekly ?? 4,
+        backupRetentionMonthly: data.backupRetentionMonthly ?? 12,
+        backupLastRunAt: data.backupLastRunAt ?? null,
+        backupLastRunType: data.backupLastRunType ?? '',
+        backupLastRunStatus: data.backupLastRunStatus ?? 'idle',
+        backupLastRunFilename: data.backupLastRunFilename ?? '',
+        backupLastRunMessage: data.backupLastRunMessage ?? '',
+      });
+    }).catch(() => {
+      if (mounted) {
+        setSaveStatus('error');
+        setSaveError(t('admin.failedLoadSettings'));
+      }
+    }).finally(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSaving(true);
+      setSaveStatus('saving');
+      setSaveError('');
+      try {
+        const dailyRetention = Number.parseInt(settings.backupRetentionDaily, 10);
+        const weeklyRetention = Number.parseInt(settings.backupRetentionWeekly, 10);
+        const monthlyRetention = Number.parseInt(settings.backupRetentionMonthly, 10);
+        await apiClient.patch('/settings', {
+          backupEnabled: !!settings.backupEnabled,
+          backupTimeLocal: settings.backupTimeLocal || '02:00',
+          backupRetentionDaily: Number.isFinite(dailyRetention) && dailyRetention >= 0 ? dailyRetention : 7,
+          backupRetentionWeekly: Number.isFinite(weeklyRetention) && weeklyRetention >= 0 ? weeklyRetention : 4,
+          backupRetentionMonthly: Number.isFinite(monthlyRetention) && monthlyRetention >= 0 ? monthlyRetention : 12,
+        });
+        setSaveStatus('success');
+      } catch (err) {
+        setSaveStatus('error');
+        const message = err.response?.data?.message || t('admin.failedSaveBackupSettings');
+        setSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
+      } finally {
+        setSaving(false);
+      }
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [settings, loading]);
+
+  if (loading) return <CircularProgress />;
+
+  const lastRunStatus = settings.backupLastRunStatus || 'idle';
+  const lastRunStatusLabel = {
+    idle: t('admin.backup.statusIdle'),
+    running: t('admin.backup.statusRunning'),
+    success: t('admin.backup.statusSuccess'),
+    failed: t('admin.backup.statusFailed'),
+  }[lastRunStatus] || lastRunStatus;
+
+  return (
+    <Box sx={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
+      <Alert severity="info">
+        {t('admin.backup.help')}
+      </Alert>
+      <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {t('admin.backup.storagePathLabel')}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {t('admin.backup.storagePathValue')}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            variant="outlined"
+            href="/manual/admin"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('admin.backup.recoveryGuide')}
+          </Button>
+        </Box>
+      </Paper>
+      <FormControlLabel
+        control={(
+          <Checkbox
+            checked={!!settings.backupEnabled}
+            onChange={(event) => setSettings((current) => ({ ...current, backupEnabled: event.target.checked }))}
+          />
+        )}
+        label={t('admin.backup.enabled')}
+      />
+      <TextField
+        label={t('admin.backup.timeLocal')}
+        type="time"
+        value={settings.backupTimeLocal}
+        onChange={(event) => setSettings((current) => ({ ...current, backupTimeLocal: event.target.value }))}
+        inputProps={{ step: 60 }}
+        helperText={t('admin.backup.timeLocalHelp')}
+        fullWidth
+      />
+      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' } }}>
+        <TextField
+          label={t('admin.backup.dailyRetention')}
+          type="number"
+          value={settings.backupRetentionDaily}
+          onChange={(event) => setSettings((current) => ({ ...current, backupRetentionDaily: event.target.value }))}
+          inputProps={{ min: 0 }}
+          fullWidth
+        />
+        <TextField
+          label={t('admin.backup.weeklyRetention')}
+          type="number"
+          value={settings.backupRetentionWeekly}
+          onChange={(event) => setSettings((current) => ({ ...current, backupRetentionWeekly: event.target.value }))}
+          inputProps={{ min: 0 }}
+          fullWidth
+        />
+        <TextField
+          label={t('admin.backup.monthlyRetention')}
+          type="number"
+          value={settings.backupRetentionMonthly}
+          onChange={(event) => setSettings((current) => ({ ...current, backupRetentionMonthly: event.target.value }))}
+          inputProps={{ min: 0 }}
+          fullWidth
+        />
+      </Box>
+      <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {t('admin.backup.lastRun')}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Chip size="small" label={lastRunStatusLabel} color={BACKUP_STATUS_COLORS[lastRunStatus] || 'default'} />
+          {settings.backupLastRunType ? <Chip size="small" label={t(`admin.backup.type.${settings.backupLastRunType}`)} variant="outlined" /> : null}
+        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {settings.backupLastRunAt
+            ? t('admin.backup.lastRunAt', { value: formatDisplayDateTime(settings.backupLastRunAt) })
+            : t('admin.backup.noRunsYet')}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {settings.backupLastRunFilename
+            ? t('admin.backup.lastRunFile', { value: settings.backupLastRunFilename })
+            : t('admin.backup.lastRunFileEmpty')}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {settings.backupLastRunMessage || t('admin.backup.lastRunMessageEmpty')}
+        </Typography>
+      </Paper>
     </Box>
   );
 }
@@ -602,6 +822,25 @@ function UsersTab({ currentUserId }) {
   const selectedUserIsDisabled = selectedUser?.disabled === true;
   const activeSessions = Array.isArray(selectedUser?.activeSessions) ? selectedUser.activeSessions : [];
   const hasActiveSessions = activeSessions.length > 0;
+  const studentCourses = Array.isArray(selectedUser?.studentCourses) ? selectedUser.studentCourses : [];
+  const instructorCourses = Array.isArray(selectedUser?.instructorCourses) ? selectedUser.instructorCourses : [];
+  const selectedUserRoles = selectedUser?.profile?.roles || [];
+  const renderCourseSection = (title, courses, emptyLabel) => (
+    <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+        {title}
+      </Typography>
+      {courses.length > 0 ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {courses.map((course) => renderCourseListItem(course, t('admin.courses.inactive')))}
+        </Box>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          {emptyLabel}
+        </Typography>
+      )}
+    </Paper>
+  );
 
   return (
     <Box>
@@ -935,6 +1174,20 @@ function UsersTab({ currentUserId }) {
                   </Box>
                 )}
               </Paper>
+              {(selectedUser?.profile?.roles || []).includes('student') || studentCourses.length > 0 ? (
+                renderCourseSection(
+                  t('admin.users.studentCourses'),
+                  studentCourses,
+                  t('admin.users.noStudentCourses')
+                )
+              ) : null}
+              {selectedUserRoles.includes('professor') || selectedUserRoles.includes('admin') || instructorCourses.length > 0 ? (
+                renderCourseSection(
+                  selectedUserIsStudentOnly ? t('admin.users.taCourses') : t('admin.users.instructorCourses'),
+                  instructorCourses,
+                  selectedUserIsStudentOnly ? t('admin.users.noTaCourses') : t('admin.users.noInstructorCourses')
+                )
+              ) : null}
               <FormControlLabel
                 control={(
                   <Checkbox
@@ -1354,7 +1607,7 @@ function VideoTab() {
     let mounted = true;
     Promise.all([
       apiClient.get('/settings'),
-      apiClient.get('/courses', { params: { limit: 500 } }).catch(() => ({ data: { courses: [] } })),
+      apiClient.get('/courses', { params: { limit: 500, view: 'all' } }).catch(() => ({ data: { courses: [] } })),
     ]).then(([settingsRes, coursesRes]) => {
       if (!mounted) return;
       const data = settingsRes.data;
@@ -1548,7 +1801,7 @@ function CoursesTab() {
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/courses', { params: { limit: 500 } }).then(({ data }) => {
+    apiClient.get('/courses', { params: { limit: 500, view: 'all' } }).then(({ data }) => {
       if (mounted) {
         setCourses(data.courses || []);
       }
@@ -1629,19 +1882,21 @@ export default function AdminDashboard() {
         dropdownSx={{ mb: 1.5 }}
         tabs={[
           { value: 0, label: t('admin.tabs.settings') },
-          { value: 1, label: t('admin.tabs.users') },
-          { value: 2, label: t('admin.tabs.courses') },
-          { value: 3, label: t('admin.tabs.storage') },
-          { value: 4, label: t('admin.tabs.sso') },
-          { value: 5, label: t('admin.tabs.video') },
+          { value: 1, label: t('admin.tabs.backup') },
+          { value: 2, label: t('admin.tabs.users') },
+          { value: 3, label: t('admin.tabs.courses') },
+          { value: 4, label: t('admin.tabs.storage') },
+          { value: 5, label: t('admin.tabs.sso') },
+          { value: 6, label: t('admin.tabs.video') },
         ]}
       />
       <TabPanel value={tab} index={0}><SettingsTab /></TabPanel>
-      <TabPanel value={tab} index={1}><UsersTab currentUserId={user?._id} /></TabPanel>
-      <TabPanel value={tab} index={2}><CoursesTab /></TabPanel>
-      <TabPanel value={tab} index={3}><StorageTab /></TabPanel>
-      <TabPanel value={tab} index={4}><SSOTab /></TabPanel>
-      <TabPanel value={tab} index={5}><VideoTab /></TabPanel>
+      <TabPanel value={tab} index={1}><BackupTab /></TabPanel>
+      <TabPanel value={tab} index={2}><UsersTab currentUserId={user?._id} /></TabPanel>
+      <TabPanel value={tab} index={3}><CoursesTab /></TabPanel>
+      <TabPanel value={tab} index={4}><StorageTab /></TabPanel>
+      <TabPanel value={tab} index={5}><SSOTab /></TabPanel>
+      <TabPanel value={tab} index={6}><VideoTab /></TabPanel>
     </Box>
   );
 }
