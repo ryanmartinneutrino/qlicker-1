@@ -2218,6 +2218,94 @@ export default async function sessionRoutes(app) {
     }
   );
 
+  function buildIfNullChain(expressions) {
+    return expressions.reduceRight((fallback, expression) => (
+      fallback === null ? expression : { $ifNull: [expression, fallback] }
+    ), null);
+  }
+
+  function buildSessionSortBucketExpression() {
+    return {
+      $switch: {
+        branches: [
+          { case: { $eq: ['$status', 'running'] }, then: 0 },
+          { case: { $eq: ['$status', 'hidden'] }, then: 1 },
+          { case: { $eq: ['$status', 'visible'] }, then: 2 },
+          { case: { $eq: ['$status', 'done'] }, then: 3 },
+        ],
+        default: 4,
+      },
+    };
+  }
+
+  function buildSessionSortTimeExpression() {
+    const isQuizExpression = {
+      $or: [
+        { $eq: ['$quiz', true] },
+        { $eq: ['$practiceQuiz', true] },
+      ],
+    };
+
+    return {
+      $switch: {
+        branches: [
+          {
+            case: {
+              $and: [
+                isQuizExpression,
+                { $eq: ['$status', 'visible'] },
+              ],
+            },
+            then: buildIfNullChain(['$quizStart', '$date', '$createdAt', '$quizEnd']),
+          },
+          {
+            case: {
+              $and: [
+                isQuizExpression,
+                { $eq: ['$status', 'done'] },
+              ],
+            },
+            then: buildIfNullChain(['$quizEnd', '$date', '$quizStart', '$createdAt']),
+          },
+          {
+            case: isQuizExpression,
+            then: buildIfNullChain(['$quizStart', '$date', '$createdAt', '$quizEnd']),
+          },
+        ],
+        default: buildIfNullChain(['$date', '$createdAt', '$quizStart', '$quizEnd']),
+      },
+    };
+  }
+
+  async function listCourseSessions(filter, { page, limit, usePagination }) {
+    const pipeline = [
+      { $match: filter },
+      {
+        $addFields: {
+          __sortBucket: buildSessionSortBucketExpression(),
+          __sortTime: buildSessionSortTimeExpression(),
+        },
+      },
+      { $sort: { __sortBucket: 1, __sortTime: -1, _id: 1 } },
+    ];
+
+    if (usePagination) {
+      pipeline.push(
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      );
+    }
+
+    pipeline.push({
+      $project: {
+        __sortBucket: 0,
+        __sortTime: 0,
+      },
+    });
+
+    return Session.aggregate(pipeline);
+  }
+
   // GET /courses/:courseId/sessions - List sessions for a course
   const listSessionsSchema = {
     querystring: {
@@ -2270,17 +2358,13 @@ export default async function sessionRoutes(app) {
       if (usePagination) {
         [sessionTypeCounts, sessions] = await Promise.all([
           getSessionTypeCounts(filter),
-          Session.find(filter)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .lean(),
+          listCourseSessions(filter, { page, limit, usePagination: true }),
         ]);
         total = sessionTypeCounts.total;
       } else {
         [sessionTypeCounts, sessions] = await Promise.all([
           getSessionTypeCounts(filter),
-          Session.find(filter).lean(),
+          listCourseSessions(filter, { page, limit, usePagination: false }),
         ]);
         total = sessionTypeCounts.total;
       }

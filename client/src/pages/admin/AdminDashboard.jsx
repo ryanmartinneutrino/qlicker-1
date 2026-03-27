@@ -56,6 +56,136 @@ function FieldLabel({ label, tooltip }) {
   );
 }
 
+function parseTimeLocal(value, fallback = '02:00') {
+  const normalized = String(value || fallback).trim();
+  const match = normalized.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return parseTimeLocal(fallback, '02:00');
+
+  const hours24 = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours24) || hours24 < 0 || hours24 > 23) {
+    return parseTimeLocal(fallback, '02:00');
+  }
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > 59) {
+    return parseTimeLocal(fallback, '02:00');
+  }
+
+  return { hours24, minutes };
+}
+
+function convert24HourTo12Hour(hours24) {
+  if (hours24 === 0) return { hour12: 12, period: 'am' };
+  if (hours24 === 12) return { hour12: 12, period: 'pm' };
+  if (hours24 > 12) return { hour12: hours24 - 12, period: 'pm' };
+  return { hour12: hours24, period: 'am' };
+}
+
+function convert12HourTo24Hour(hour12Value, periodValue) {
+  const hour12 = Number(hour12Value);
+  if (!Number.isInteger(hour12) || hour12 < 1 || hour12 > 12) {
+    return 0;
+  }
+  if (periodValue === 'pm') {
+    return hour12 === 12 ? 12 : hour12 + 12;
+  }
+  return hour12 === 12 ? 0 : hour12;
+}
+
+function buildTimeLocalValue(hours24, minutes) {
+  const safeHours = Math.max(0, Math.min(23, Number(hours24) || 0));
+  const safeMinutes = Math.max(0, Math.min(59, Number(minutes) || 0));
+  return `${String(safeHours).padStart(2, '0')}:${String(safeMinutes).padStart(2, '0')}`;
+}
+
+function BackupTimeField({
+  helperText,
+  label,
+  onChange,
+  use24Hour,
+  value,
+}) {
+  const { t } = useTranslation();
+  const { hours24, minutes } = parseTimeLocal(value);
+  const { hour12, period } = convert24HourTo12Hour(hours24);
+
+  return (
+    <Box data-testid="backup-time-field">
+      <Typography variant="subtitle2" sx={{ mb: 0.75 }}>
+        {label}
+      </Typography>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        {use24Hour ? (
+          <TextField
+            select
+            size="small"
+            label={t('common.hour')}
+            value={String(hours24).padStart(2, '0')}
+            onChange={(event) => onChange(buildTimeLocalValue(event.target.value, minutes))}
+            sx={{ width: 110 }}
+          >
+            {Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0')).map((option) => (
+              <MenuItem key={option} value={option}>
+                {option}
+              </MenuItem>
+            ))}
+          </TextField>
+        ) : (
+          <>
+            <TextField
+              select
+              size="small"
+              label={t('common.hour')}
+              value={String(hour12)}
+              onChange={(event) => onChange(buildTimeLocalValue(
+                convert12HourTo24Hour(event.target.value, period),
+                minutes,
+              ))}
+              sx={{ width: 110 }}
+            >
+              {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((option) => (
+                <MenuItem key={option} value={option}>
+                  {option}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              size="small"
+              label={t('common.period')}
+              value={period}
+              onChange={(event) => onChange(buildTimeLocalValue(
+                convert12HourTo24Hour(hour12, event.target.value),
+                minutes,
+              ))}
+              sx={{ width: 120 }}
+            >
+              <MenuItem value="am">{t('common.am')}</MenuItem>
+              <MenuItem value="pm">{t('common.pm')}</MenuItem>
+            </TextField>
+          </>
+        )}
+        <TextField
+          select
+          size="small"
+          label={t('common.minute')}
+          value={String(minutes).padStart(2, '0')}
+          onChange={(event) => onChange(buildTimeLocalValue(hours24, event.target.value))}
+          sx={{ width: 120 }}
+        >
+          {Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0')).map((option) => (
+            <MenuItem key={option} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+        {helperText}
+      </Typography>
+    </Box>
+  );
+}
+
 const AUTO_SAVE_DELAY_MS = 500;
 const VALID_STORAGE_TYPES = new Set(['local', 's3', 'azure']);
 const DEFAULT_SSO_SETTINGS = {
@@ -408,28 +538,32 @@ function BackupTab() {
   const [settings, setSettings] = useState(DEFAULT_BACKUP_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [timeFormat, setTimeFormat] = useState('24h');
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
   const hasLoadedRef = useRef(false);
+  const loadSettings = useCallback(async () => {
+    const { data } = await apiClient.get('/settings');
+    setTimeFormat(data.timeFormat === '12h' ? '12h' : '24h');
+    hasLoadedRef.current = false;
+    setSettings({
+      ...DEFAULT_BACKUP_SETTINGS,
+      backupEnabled: data.backupEnabled ?? false,
+      backupTimeLocal: data.backupTimeLocal ?? '02:00',
+      backupRetentionDaily: data.backupRetentionDaily ?? 7,
+      backupRetentionWeekly: data.backupRetentionWeekly ?? 4,
+      backupRetentionMonthly: data.backupRetentionMonthly ?? 12,
+      backupLastRunAt: data.backupLastRunAt ?? null,
+      backupLastRunType: data.backupLastRunType ?? '',
+      backupLastRunStatus: data.backupLastRunStatus ?? 'idle',
+      backupLastRunFilename: data.backupLastRunFilename ?? '',
+      backupLastRunMessage: data.backupLastRunMessage ?? '',
+    });
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/settings').then(({ data }) => {
-      if (!mounted) return;
-      setSettings({
-        ...DEFAULT_BACKUP_SETTINGS,
-        backupEnabled: data.backupEnabled ?? false,
-        backupTimeLocal: data.backupTimeLocal ?? '02:00',
-        backupRetentionDaily: data.backupRetentionDaily ?? 7,
-        backupRetentionWeekly: data.backupRetentionWeekly ?? 4,
-        backupRetentionMonthly: data.backupRetentionMonthly ?? 12,
-        backupLastRunAt: data.backupLastRunAt ?? null,
-        backupLastRunType: data.backupLastRunType ?? '',
-        backupLastRunStatus: data.backupLastRunStatus ?? 'idle',
-        backupLastRunFilename: data.backupLastRunFilename ?? '',
-        backupLastRunMessage: data.backupLastRunMessage ?? '',
-      });
-    }).catch(() => {
+    loadSettings().catch(() => {
       if (mounted) {
         setSaveStatus('error');
         setSaveError(t('admin.failedLoadSettings'));
@@ -442,7 +576,18 @@ function BackupTab() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadSettings, t]);
+
+  useEffect(() => {
+    if (loading) return undefined;
+    if (settings.backupLastRunStatus !== 'running') return undefined;
+
+    const timer = setInterval(() => {
+      loadSettings().catch(() => {});
+    }, 10000);
+
+    return () => clearInterval(timer);
+  }, [loadSettings, loading, settings.backupLastRunStatus]);
 
   useEffect(() => {
     if (loading) return;
@@ -489,6 +634,35 @@ function BackupTab() {
     failed: t('admin.backup.statusFailed'),
   }[lastRunStatus] || lastRunStatus;
 
+  const requestManualBackup = async () => {
+    try {
+      setSaveStatus('saving');
+      setSaveError('');
+      const { data } = await apiClient.post('/settings/backup-now');
+      if (data?.backupLastRunStatus) {
+        setSettings((current) => ({
+          ...current,
+          backupLastRunStatus: data.backupLastRunStatus,
+          backupLastRunType: data.backupLastRunType ?? current.backupLastRunType,
+          backupLastRunMessage: data.backupLastRunMessage ?? current.backupLastRunMessage,
+          backupLastRunFilename: data.backupLastRunFilename ?? current.backupLastRunFilename,
+          backupLastRunAt: data.backupLastRunAt ?? current.backupLastRunAt,
+        }));
+      } else {
+        setSettings((current) => ({
+          ...current,
+          backupLastRunStatus: 'running',
+          backupLastRunType: 'manual',
+          backupLastRunMessage: t('admin.backup.runNowRequested'),
+        }));
+      }
+      setSaveStatus('success');
+    } catch (err) {
+      setSaveStatus('error');
+      setSaveError(err.response?.data?.message || t('admin.backup.runNowFailed'));
+    }
+  };
+
   return (
     <Box sx={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
@@ -512,6 +686,14 @@ function BackupTab() {
           >
             {t('admin.backup.recoveryGuide')}
           </Button>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={requestManualBackup}
+            disabled={saving || lastRunStatus === 'running'}
+          >
+            {t('admin.backup.runNow')}
+          </Button>
         </Box>
       </Paper>
       <FormControlLabel
@@ -523,14 +705,12 @@ function BackupTab() {
         )}
         label={t('admin.backup.enabled')}
       />
-      <TextField
+      <BackupTimeField
         label={t('admin.backup.timeLocal')}
-        type="time"
         value={settings.backupTimeLocal}
-        onChange={(event) => setSettings((current) => ({ ...current, backupTimeLocal: event.target.value }))}
-        inputProps={{ step: 60 }}
+        onChange={(nextValue) => setSettings((current) => ({ ...current, backupTimeLocal: nextValue }))}
+        use24Hour={timeFormat !== '12h'}
         helperText={t('admin.backup.timeLocalHelp')}
-        fullWidth
       />
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' } }}>
         <TextField

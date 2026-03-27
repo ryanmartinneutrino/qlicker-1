@@ -20,6 +20,14 @@ export function getDateFormat() {
   }
 }
 
+export function getTimeFormat() {
+  try {
+    return localStorage.getItem('qlicker_timeFormat') || '24h';
+  } catch {
+    return '24h';
+  }
+}
+
 /**
  * Format a date value using the active locale and date-format preference.
  *
@@ -63,8 +71,16 @@ export function formatDisplayDateTime(value) {
   if (Number.isNaN(date.getTime())) return '';
 
   const datePart = formatDisplayDate(date);
+  if (getTimeFormat() === '12h') {
+    const localizedTime = new Intl.DateTimeFormat(i18n.language || 'en', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
+    return `${datePart} ${localizedTime}`;
+  }
+
   const hours = String(date.getHours()).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   return `${datePart} ${hours}:${minutes}`;
 }
-

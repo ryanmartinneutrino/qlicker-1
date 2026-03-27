@@ -99,6 +99,33 @@ describe('PATCH /api/v1/settings', () => {
   });
 });
 
+describe('POST /api/v1/settings/backup-now', () => {
+  it('queues a manual backup request for admins', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const admin = await createTestUser({
+      email: 'admin-backup-now@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/settings/backup-now', {
+      token,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.backupLastRunStatus).toBe('running');
+    expect(body.backupLastRunType).toBe('manual');
+    expect(body.backupLastRunMessage).toBe('Manual backup requested.');
+
+    const stored = await Settings.findOne({ _id: 'settings' }).lean();
+    expect(stored.backupManualRequestId).toMatch(/^manual-/);
+    expect(stored.backupLastRunStatus).toBe('running');
+    expect(stored.backupLastRunType).toBe('manual');
+  });
+});
+
 describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
   it('returns course-specific Jitsi availability for a professor', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();

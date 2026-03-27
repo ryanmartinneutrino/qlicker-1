@@ -7,7 +7,6 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
-import { useAuth } from '../../contexts/AuthContext';
 import apiClient, { getAccessToken } from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
@@ -36,7 +35,6 @@ function isInactiveCourseEnrollError(error) {
 export default function StudentDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [taCourses, setTaCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
@@ -67,17 +65,13 @@ export default function StudentDashboard() {
   }, [t]);
 
   const fetchTaCourses = useCallback(async () => {
-    if (!user?.hasInstructorCourses) {
-      setTaCourses([]);
-      return;
-    }
     try {
       const res = await apiClient.get('/courses', { params: { view: 'instructor' } });
       setTaCourses(res.data.courses || []);
     } catch {
       setTaCourses([]);
     }
-  }, [user?.hasInstructorCourses]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,33 +208,86 @@ export default function StudentDashboard() {
     }
   };
 
-  // Build a set of TA course IDs for quick lookup and merge TA-only courses
-  const taCourseIds = useMemo(
-    () => new Set(taCourses.map((c) => String(c._id))),
-    [taCourses],
-  );
-  const mergedCourses = useMemo(() => {
-    const studentIds = new Set(courses.map((c) => String(c._id)));
-    // Student courses first, then TA-only courses (not already in student list)
-    const taOnly = taCourses.filter((c) => !studentIds.has(String(c._id)));
-    return [...courses, ...taOnly];
-  }, [courses, taCourses]);
-
-  const sortedCourses = [...mergedCourses].sort((a, b) => {
+  const sortCourses = useCallback((items) => [...items].sort((a, b) => {
     const aActive = a.inactive ? 1 : 0;
     const bActive = b.inactive ? 1 : 0;
     if (aActive !== bActive) return aActive - bActive;
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return bTime - aTime;
-  });
+  }), []);
+  const taCourseIds = useMemo(
+    () => new Set(taCourses.map((course) => String(course._id))),
+    [taCourses],
+  );
+  const taOnlyCourses = useMemo(
+    () => sortCourses(taCourses),
+    [sortCourses, taCourses],
+  );
+  const studentOnlyCourses = useMemo(() => (
+    sortCourses(courses.filter((course) => !taCourseIds.has(String(course._id))))
+  ), [courses, sortCourses, taCourseIds]);
+  const hasAnyCourses = taOnlyCourses.length > 0 || studentOnlyCourses.length > 0;
   const courseById = useMemo(
-    () => new Map(mergedCourses.map((course) => [String(course._id), course])),
-    [mergedCourses]
+    () => new Map([...taOnlyCourses, ...studentOnlyCourses].map((course) => [String(course._id), course])),
+    [studentOnlyCourses, taOnlyCourses]
   );
   const visibleLiveSessions = useMemo(
     () => sortStudentSessions(liveSessions).filter((session) => !isSubmittedLiveQuiz(session)),
     [liveSessions]
+  );
+
+  const renderCourseSection = (sectionTitle, sectionCourses, { showTaChip = false } = {}) => (
+    <Box sx={{ mb: 4 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+        {sectionTitle}
+      </Typography>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 2,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
+        }}
+      >
+        {sectionCourses.map((course) => {
+          const isTa = taCourseIds.has(String(course._id));
+          const coursePath = isTa
+            ? `/manage/course/${course._id}`
+            : `/student/course/${course._id}`;
+          return (
+            <Box key={course._id}>
+              <Card
+                variant="outlined"
+                sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                onClick={() => navigate(coursePath)}
+              >
+                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1 }} noWrap>
+                      {buildCourseTitle(course, 'short')}
+                    </Typography>
+                    {showTaChip && (
+                      <Chip label={t('common.ta')} size="small" color="info" />
+                    )}
+                  </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    {course.semester}
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {buildCourseTitle(course, 'medium')}
+                  </Typography>
+                  {course.section && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {t('student.dashboard.section', { section: course.section })}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
   );
 
   return (
@@ -295,7 +342,7 @@ export default function StudentDashboard() {
 
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
-      ) : mergedCourses.length === 0 ? (
+      ) : !hasAnyCourses ? (
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <SchoolIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
           <Typography variant="h6" color="text.secondary">{t('student.dashboard.noCoursesYet')}</Typography>
@@ -307,51 +354,14 @@ export default function StudentDashboard() {
           </Button>
         </Box>
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 2,
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
-          }}
-        >
-          {sortedCourses.map((course) => {
-            const isTa = taCourseIds.has(String(course._id));
-            const coursePath = isTa
-              ? `/manage/course/${course._id}`
-              : `/student/course/${course._id}`;
-            return (
-              <Box key={course._id}>
-                <Card
-                  variant="outlined"
-                  sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                  onClick={() => navigate(coursePath)}
-                >
-                  <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1 }} noWrap>
-                        {buildCourseTitle(course, 'short')}
-                      </Typography>
-                      {isTa && (
-                        <Chip label={t('common.ta')} size="small" color="info" />
-                      )}
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {course.semester}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {buildCourseTitle(course, 'medium')}
-                    </Typography>
-                    {course.section && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                        {t('student.dashboard.section', { section: course.section })}
-                      </Typography>
-                    )}
-                  </CardContent>
-                </Card>
-              </Box>
-            );
-          })}
-        </Box>
+        <>
+          {taOnlyCourses.length > 0
+            ? renderCourseSection(t('student.dashboard.taCourses', { defaultValue: 'TA Courses' }), taOnlyCourses, { showTaChip: true })
+            : null}
+          {studentOnlyCourses.length > 0
+            ? renderCourseSection(t('student.dashboard.studentCourses', { defaultValue: 'Student Courses' }), studentOnlyCourses)
+            : null}
+        </>
       )}
 
       {/* Enroll Dialog */}

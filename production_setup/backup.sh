@@ -46,7 +46,7 @@ js_string() {
 
 usage() {
   cat <<'EOF'
-Usage: ./backup.sh [--cron] [--label daily|weekly|monthly]
+Usage: ./backup.sh [--cron] [--label daily|weekly|monthly|manual]
 EOF
 }
 
@@ -83,7 +83,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$BACKUP_LABEL" in
-  daily|weekly|monthly)
+  daily|weekly|monthly|manual)
     ;;
   *)
     error "Invalid backup label: $BACKUP_LABEL"
@@ -158,6 +158,9 @@ update_backup_status() {
         ;;
       monthly)
         set_doc="$set_doc, backupLastMonthlyRunKey: ${js_string "$BACKUP_RUN_KEY"}"
+        ;;
+      manual)
+        set_doc="$set_doc, backupLastHandledManualRequestId: ${js_string "$BACKUP_RUN_KEY"}"
         ;;
     esac
   fi

@@ -11,6 +11,10 @@ async function getOrCreateSettings() {
   return settings;
 }
 
+function buildBackupRequestId() {
+  return `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const updateSettingsSchema = {
   body: {
     type: 'object',
@@ -154,6 +158,41 @@ export default async function settingsRoutes(app) {
       return reply.code(400).send({
         error: 'Bad Request',
         message: err.message || 'Failed to update settings',
+      });
+    }
+  });
+
+  app.post('/backup-now', { preHandler: requireRole(['admin']), ...settingsRateLimit }, async (request, reply) => {
+    const requestId = buildBackupRequestId();
+
+    try {
+      let settings = await Settings.findOne().select('_id');
+      if (!settings) {
+        settings = await Settings.create({ _id: 'settings' });
+      }
+
+      const updatedSettings = await Settings.findByIdAndUpdate(
+        settings._id,
+        {
+          $set: {
+            backupManualRequestId: requestId,
+            backupLastRunStatus: 'running',
+            backupLastRunType: 'manual',
+            backupLastRunMessage: 'Manual backup requested.',
+          },
+        },
+        {
+          returnDocument: 'after',
+          runValidators: true,
+        }
+      );
+
+      return normalizeSettingsPayload(updatedSettings.toObject());
+    } catch (err) {
+      request.log.error({ err }, 'Failed to queue manual backup');
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: err.message || 'Failed to queue manual backup',
       });
     }
   });

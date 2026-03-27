@@ -308,6 +308,9 @@
     },
     "backup": {
       "help": "Configurez les sauvegardes MongoDB planifiées pendant que l'application reste en ligne. Le gestionnaire de sauvegarde écrit des archives compressées dans ./backups et enregistre ici l'état de la dernière exécution.",
+      "runNow": "Sauvegarder maintenant",
+      "runNowRequested": "Sauvegarde manuelle demandée.",
+      "runNowFailed": "Échec de la demande de sauvegarde manuelle.",
       "storagePathLabel": "Emplacement des sauvegardes",
       "storagePathValue": "Les archives sont écrites à côté de docker-compose.yml dans ./backups sur l'hôte.",
       "recoveryGuide": "Ouvrir le guide de récupération",
@@ -421,6 +424,8 @@
   "professor": {
     "dashboard": {
       "myCourses": "Mes cours",
+      "taCourses": "Cours comme auxiliaire",
+      "studentCourses": "Cours comme étudiant",
       "searchCourses": "Rechercher des cours…",
       "createCourse": "Créer un cours",
       "noCoursesMatch": "Aucun cours ne correspond à votre recherche",
