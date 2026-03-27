@@ -1,0 +1,55 @@
+# =============================================================================
+# Qlicker Load Testing — Docker Compose
+# =============================================================================
+# This stack runs the database seeder (Node.js) and the k6 load-test runner
+# entirely in Docker.  No host-level Node.js or k6 installation is required.
+#
+# Setup:  ./setup.sh          (creates .env)
+# Run:    ./run.sh             (seeds, tests, reports)
+# Clean:  ./run.sh --clean     (removes seed data)
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Seed — populates / cleans load-test fixtures in the production MongoDB
+  # ---------------------------------------------------------------------------
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile.seed
+    environment:
+      - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017/qlicker}
+    volumes:
+      - ./state:/state
+    networks:
+      - qlicker-prod
+    # Default: seed 500 students.  Override via:
+    #   docker compose run --rm seed --students 250
+    # or set NUM_STUDENTS in .env and use run.sh.
+
+  # ---------------------------------------------------------------------------
+  # k6 — Grafana k6 load-test runner
+  # ---------------------------------------------------------------------------
+  # Uses --network host so it can reach the Qlicker nginx front-end via the
+  # domain name (e.g. https://qlicker.example.com) exactly as a real browser
+  # would.  Results are written to ./results/ on the host.
+  # ---------------------------------------------------------------------------
+  k6:
+    image: grafana/k6:latest
+    network_mode: host
+    volumes:
+      - ./scenarios:/scenarios:ro
+      - ./state:/state:ro
+      - ./results:/results
+    environment:
+      - BASE_URL=${BASE_URL:-https://localhost}
+      - STATE_FILE=/state/state.json
+    working_dir: /scenarios
+
+# ---------------------------------------------------------------------------
+# External network — connects the seed container to the production MongoDB
+# ---------------------------------------------------------------------------
+networks:
+  qlicker-prod:
+    external: true
+    name: ${QLICKER_NETWORK:-production_setup_default}
