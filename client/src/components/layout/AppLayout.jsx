@@ -124,7 +124,13 @@ export default function AppLayout() {
           <Tooltip title={t('nav.openAccountMenuTooltip')} arrow>
             <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
               <Avatar
+                alt={`${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar'}
                 src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
+                slotProps={{
+                  img: {
+                    alt: `${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar',
+                  },
+                }}
                 sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
               >
                 {getInitials()}

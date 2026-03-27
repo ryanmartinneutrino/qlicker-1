@@ -917,7 +917,13 @@ function UsersTab({ currentUserId }) {
                         aria-label={u.profile?.profileImage ? t('admin.users.viewProfileImageAria', { name: getFullName(u) }) : t('admin.users.noProfileImageAria', { name: getFullName(u) })}
                       >
                         <Avatar
+                          alt={getFullName(u)}
                           src={u.profile?.profileThumbnail || u.profile?.profileImage || ''}
+                          slotProps={{
+                            img: {
+                              alt: getFullName(u),
+                            },
+                          }}
                           sx={{ width: 34, height: 34 }}
                         >
                           {getInitials(u)}

@@ -46,7 +46,7 @@ Qlicker is a classroom response system migrated from MeteorJS to a modern Fastif
 | **SSO** | @node-saml/node-saml | SAML-based SSO (verified against Microsoft Entra) |
 | **UI Framework** | Material UI v7 | Material Design components |
 | **Rich Text** | TipTap v3 | WYSIWYG editor with KaTeX math rendering |
-| **Testing** | Vitest 4 + Playwright | 374 server + 94 client unit tests, 11 E2E flows |
+| **Testing** | Vitest 4 + Playwright | 374 server + 116 client unit tests, 14 E2E flows |
 | **Containerization** | Docker + Docker Compose | Production deployment with Nginx load balancing |
 
 For the full directory structure, API routes, and coding conventions, see [CODING_STANDARDS.md](CODING_STANDARDS.md).
@@ -98,10 +98,10 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 ### Test Summary
 
 - **Server:** 374 tests across 17 test files
-- **Client:** 94 tests across 24 files
+- **Client:** 116 tests across 30 files
 - **Run:** `cd server && npx vitest run` / `cd client && npx vitest run`
 - **Build:** `cd client && npx vite build`
-- **E2E:** 9 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test`
+- **E2E:** 12 baseline Playwright flows via `./scripts/qlicker.sh e2e` or `cd client && npx playwright test`
 - **SSO Smoke:** `./ssoserver/scripts/run-smoke.sh` runs 2 SSO login/logout flows against a local SimpleSAMLphp IdP
 
 ### Key Completed Features
@@ -130,6 +130,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Course membership rules now block the same user from being both student and instructor in one course, block professor/admin accounts from student enrollment, and keep student practice/question-library access tied to `course.allowStudentQuestions`.
 - Login/session lifetime defaults remain **120 minutes (2 hours)**, and the configured timeout now applies to newly issued access and refresh sessions instead of silently allowing old sessions to continue indefinitely.
 - Duplicate grade identities are now prevented in the backend, and the existing cleanup script is documented for one-time maintenance on legacy data.
+- Added component coverage for the new Admin backup flow plus shared `SessionListCard` and `StudentIdentity` UI surfaces, and expanded Playwright coverage for backup-policy saves plus disabled-account login blocking/restoration.
 
 ---
 
@@ -152,7 +153,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - [x] Session list pagination
 - [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Security scanning and penetration testing
-- [ ] Component tests for critical UI components
+- [x] Component tests for critical UI components
 - [ ] Service unit tests for email, questionCopy, sessionCopy, questionImportExport
 - [ ] Audit logging for settings/role/grade changes
 - [ ] French translation review by native speaker (71 identical en/fr keys to verify)
@@ -329,7 +330,7 @@ cd client && npm install && npx vite build
 # Client tests (94 tests, 24 files)
 cd client && npx vitest run
 
-# E2E tests (9 Playwright flows)
+# E2E tests (12 Playwright flows)
 ./scripts/qlicker.sh e2e
 
 # SSO smoke tests (2 flows against local SimpleSAMLphp IdP)

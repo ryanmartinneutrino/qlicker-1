@@ -90,7 +90,13 @@ export default function StudentInfoModal({ open, onClose, student, courseId, onR
       <DialogContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <Avatar
+            alt={displayName}
             src={avatarSrc}
+            slotProps={{
+              img: {
+                alt: displayName,
+              },
+            }}
             sx={{ width: 64, height: 64 }}
           >
             {(firstname?.[0] || '').toUpperCase()}

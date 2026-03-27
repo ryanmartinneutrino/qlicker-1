@@ -33,7 +33,8 @@ test('profile avatar editor saves a rotated existing profile image', async ({ pa
   expect((await initialImageUploadResponse).status()).toBe(201);
   expect((await initialProfilePatchResponse).status()).toBe(200);
   await expect(page.getByRole('dialog', { name: /adjust profile photo/i })).toBeHidden();
-  const profileAvatarImage = page.locator('button[aria-label="Open profile photo editor"] img').first();
+  const profilePhotoEditorButton = page.getByRole('button', { name: /open profile photo editor/i });
+  await expect(profilePhotoEditorButton).toBeVisible();
   const { response: currentUserResponse, body: currentUserBody } = await apiJson(request, 'GET', '/users/me', {
     token: student.token,
   });
@@ -53,10 +54,14 @@ test('profile avatar editor saves a rotated existing profile image', async ({ pa
   await page.reload();
   await expect(page).toHaveURL(/\/profile$/);
 
-  const avatarSrcBeforeRotate = await profileAvatarImage.getAttribute('src');
-  expect(avatarSrcBeforeRotate).toMatch(/\/uploads\//);
+  const { response: beforeRotateUserResponse, body: beforeRotateUserBody } = await apiJson(request, 'GET', '/users/me', {
+    token: student.token,
+  });
+  expect(beforeRotateUserResponse.status(), JSON.stringify(beforeRotateUserBody)).toBe(200);
+  const profileThumbnailBeforeRotate = beforeRotateUserBody.user.profile.profileThumbnail;
+  expect(profileThumbnailBeforeRotate).toMatch(/\/uploads\//);
 
-  await page.getByRole('button', { name: /open profile photo editor/i }).click();
+  await profilePhotoEditorButton.click();
   await expect(page.getByRole('dialog', { name: /adjust profile photo/i })).toBeVisible();
   const rotateButton = page.getByRole('button', { name: /rotate image right/i });
   await rotateButton.click();
@@ -72,7 +77,11 @@ test('profile avatar editor saves a rotated existing profile image', async ({ pa
   expect((await rotatedThumbnailUploadResponse).status()).toBe(201);
   expect((await rotatedProfilePatchResponse).status()).toBe(200);
   await expect(page.getByRole('dialog', { name: /adjust profile photo/i })).toBeHidden();
-  await expect(profileAvatarImage).toHaveAttribute('src', /\/uploads\//);
-  const avatarSrcAfterRotate = await profileAvatarImage.getAttribute('src');
-  expect(avatarSrcAfterRotate).not.toBe(avatarSrcBeforeRotate);
+
+  const { response: afterRotateUserResponse, body: afterRotateUserBody } = await apiJson(request, 'GET', '/users/me', {
+    token: student.token,
+  });
+  expect(afterRotateUserResponse.status(), JSON.stringify(afterRotateUserBody)).toBe(200);
+  expect(afterRotateUserBody.user.profile.profileThumbnail).toMatch(/\/uploads\//);
+  expect(afterRotateUserBody.user.profile.profileThumbnail).not.toBe(profileThumbnailBeforeRotate);
 });

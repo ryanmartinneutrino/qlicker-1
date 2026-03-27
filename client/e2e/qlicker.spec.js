@@ -12,6 +12,7 @@ import {
   createSessionViaApi,
   enrollStudentViaApi,
   expectNoCriticalAccessibilityViolations,
+  findUserByEmailViaApi,
   loginViaUi,
   patchSessionViaApi,
   seedUsers,
@@ -20,12 +21,123 @@ import {
 const ONE_MINUTE_MS = 60_000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
+async function closeContextSafely(context) {
+  if (!context) return;
+  try {
+    await context.close();
+  } catch (error) {
+    const message = String(error?.message || error || '');
+    if (!message.includes('ENOENT')) {
+      throw error;
+    }
+  }
+}
+
 test('login flow redirects an admin user to the admin dashboard', async ({ page, request }) => {
   const { admin } = await seedUsers(request, { professor: false, student: false });
 
   await loginViaUi(page, admin.email, admin.password, /\/admin$/);
 
   await expect(page).toHaveURL(/\/admin$/);
+  await expectNoCriticalAccessibilityViolations(page);
+});
+
+test('backup settings flow lets an admin save scheduled backup preferences', async ({ page, request }) => {
+  const { admin } = await seedUsers(request, { professor: false, student: false });
+
+  await loginViaUi(page, admin.email, admin.password, /\/admin$/);
+  await page.getByRole('tab', { name: /^Backup$/i }).click();
+
+  const backupEnabledCheckbox = page.getByRole('checkbox', { name: /enable scheduled backups/i });
+  await expect(backupEnabledCheckbox).toBeVisible();
+  await expect(page.getByLabel(/backup time \(local\)/i)).toBeVisible();
+  await expect(page.getByText(/no backup runs recorded yet\./i)).toBeVisible();
+
+  await backupEnabledCheckbox.check();
+  await page.getByLabel(/backup time \(local\)/i).fill('03:45');
+  await page.getByLabel(/daily backups to keep/i).fill('5');
+  await page.getByLabel(/weekly backups to keep/i).fill('2');
+  await page.getByLabel(/monthly backups to keep/i).fill('8');
+
+  await expect.poll(async () => {
+    const { response, body } = await apiJson(request, 'GET', '/settings', { token: admin.token });
+    expect(response.status(), JSON.stringify(body)).toBe(200);
+    return {
+      backupEnabled: body.backupEnabled,
+      backupRetentionDaily: body.backupRetentionDaily,
+      backupRetentionMonthly: body.backupRetentionMonthly,
+      backupRetentionWeekly: body.backupRetentionWeekly,
+      backupTimeLocal: body.backupTimeLocal,
+    };
+  }).toEqual({
+    backupEnabled: true,
+    backupRetentionDaily: 5,
+    backupRetentionMonthly: 8,
+    backupRetentionWeekly: 2,
+    backupTimeLocal: '03:45',
+  });
+
+  await page.reload();
+  await page.getByRole('tab', { name: /^Backup$/i }).click();
+  await expect(backupEnabledCheckbox).toBeChecked();
+  await expect(page.getByLabel(/backup time \(local\)/i)).toHaveValue('03:45');
+  await expect(page.getByLabel(/daily backups to keep/i)).toHaveValue('5');
+  await expect(page.getByLabel(/weekly backups to keep/i)).toHaveValue('2');
+  await expect(page.getByLabel(/monthly backups to keep/i)).toHaveValue('8');
+  await expectNoCriticalAccessibilityViolations(page);
+});
+
+test('account disable flow blocks login until an admin restores the user', async ({ browser, page, request }) => {
+  const { admin, student } = await seedUsers(request, { professor: false });
+
+  await clearCachedAuthState(student.email);
+  await loginViaUi(page, admin.email, admin.password, /\/admin$/);
+  await page.getByRole('tab', { name: /^Users$/i }).click();
+
+  const searchField = page.getByPlaceholder(/search by name or email/i);
+  await searchField.fill(student.email);
+
+  const studentRow = page.locator('tr', { hasText: student.email }).first();
+  await expect(studentRow).toBeVisible();
+  await studentRow.getByRole('button', { name: /^Disable user$/i }).click();
+  await expect(page.getByText(/^User disabled$/i)).toBeVisible();
+
+  await expect.poll(async () => {
+    const user = await findUserByEmailViaApi(request, admin.token, student.email);
+    return user?.disabled === true;
+  }).toBe(true);
+
+  const blockedApiResponse = await apiJson(request, 'GET', '/users/me', {
+    token: student.token,
+  });
+  expect(blockedApiResponse.response.status(), JSON.stringify(blockedApiResponse.body)).toBe(403);
+  expect(blockedApiResponse.body?.code).toBe('ACCOUNT_DISABLED');
+
+  const studentContext = await browser.newContext();
+  const studentPage = await studentContext.newPage();
+  await clearCachedAuthState(student.email);
+  await studentPage.goto('/login');
+  await studentPage.getByLabel('Email').fill(student.email);
+  await studentPage.getByLabel('Password').fill(student.password);
+  await studentPage.getByRole('button', { name: /^Login$/ }).click();
+  await expect(studentPage.getByRole('alert')).toContainText(/this account has been disabled/i);
+  await expect(studentPage).toHaveURL(/\/login$/);
+  await closeContextSafely(studentContext);
+
+  await studentRow.getByRole('button', { name: /^Restore user$/i }).click();
+  await expect(page.getByText(/^User restored$/i)).toBeVisible();
+
+  await expect.poll(async () => {
+    const user = await findUserByEmailViaApi(request, admin.token, student.email);
+    return user?.disabled === true;
+  }).toBe(false);
+
+  await clearCachedAuthState(student.email);
+  const restoredStudentContext = await browser.newContext();
+  const restoredStudentPage = await restoredStudentContext.newPage();
+  await loginViaUi(restoredStudentPage, student.email, student.password, /\/student$/);
+  await expect(restoredStudentPage).toHaveURL(/\/student$/);
+  await closeContextSafely(restoredStudentContext);
   await expectNoCriticalAccessibilityViolations(page);
 });
 
@@ -120,8 +232,8 @@ test('live session flow lets a student join with a passcode and submit a respons
   await expect(studentPage.getByRole('alert').filter({ hasText: /submitted/i })).toBeVisible();
   await expectNoCriticalAccessibilityViolations(studentPage);
 
-  await professorContext.close();
-  await studentContext.close();
+  await closeContextSafely(professorContext);
+  await closeContextSafely(studentContext);
 });
 
 test('quiz and grading flows cover student submission and instructor grade recalculation', async ({ browser, request }) => {
@@ -184,14 +296,14 @@ test('quiz and grading flows cover student submission and instructor grade recal
   await professorPage.goto(`/manage/course/${course._id}`);
   await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
   await professorPage.getByRole('tab', { name: /^Quizzes/i }).click();
-  await professorPage.getByRole('button', { name: new RegExp(`Review session ${quizSession.name}`, 'i') }).click();
+  await professorPage.getByText(quizSession.name).click();
   await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}/session/${quizSession._id}/review`));
   await professorPage.getByRole('tab', { name: /^Students$/i }).click();
   await expect(professorPage.getByText(student.email)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(professorPage);
 
-  await studentContext.close();
-  await professorContext.close();
+  await closeContextSafely(studentContext);
+  await closeContextSafely(professorContext);
 });
 
 test('manual grading flow lets a professor save a mark and export grades as CSV', async ({ page, request }) => {
