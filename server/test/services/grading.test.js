@@ -6,6 +6,7 @@ import {
   MS_SCORING_METHODS,
   getSessionMsScoringMethod,
   getQuestionPoints,
+  normalizeQuestionType,
 } from '../../src/services/grading.js';
 import Session from '../../src/models/Session.js';
 
@@ -90,6 +91,37 @@ describe('grading service helpers', () => {
     expect(getQuestionPoints({ type: 6, sessionOptions: { points: 5 } })).toBe(0);
     expect(getQuestionPoints({ type: 2, sessionOptions: { points: 3 } })).toBe(3);
     expect(getQuestionPoints({ type: 0, sessionOptions: { points: 0 } })).toBe(0);
+  });
+
+  it('normalizes legacy numerical type 5 to canonical numerical', () => {
+    expect(normalizeQuestionType({ type: 5, options: [] })).toBe(4);
+  });
+
+  it('normalizes malformed restored numerical rows with options back to option-based types', () => {
+    expect(normalizeQuestionType({
+      type: 4,
+      options: [
+        { answer: 'True', correct: true },
+        { answer: 'False', correct: false },
+      ],
+    })).toBe(1);
+
+    expect(normalizeQuestionType({
+      type: 4,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: true },
+        { answer: 'C', correct: false },
+      ],
+    })).toBe(3);
+
+    expect(normalizeQuestionType({
+      type: 4,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    })).toBe(0);
   });
 
   it('does not award points for zero-point questions even with a correct answer', () => {

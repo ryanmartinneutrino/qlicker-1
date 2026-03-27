@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Grade from '../models/Grade.js';
+import LiveSessionTelemetry from '../models/LiveSessionTelemetry.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
@@ -20,10 +21,18 @@ import {
   getQuestionPoints,
   getTimestampMs,
   isQuestionAutoGradeable,
+  normalizeQuestionType,
   recalculateSessionGrades,
   summarizeGradeFeedback,
   setSessionGradesVisibility,
 } from '../services/grading.js';
+import {
+  buildLiveTelemetryUpdate,
+  LIVE_TELEMETRY_METRIC_PATHS,
+  LIVE_TELEMETRY_ROLES,
+  LIVE_TELEMETRY_TRANSPORTS,
+  summarizeLiveTelemetryDocument,
+} from '../services/liveTelemetry.js';
 import { userCanViewQuestion } from './questions.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
 import { computeHistogramData } from '../utils/histogram.js';
@@ -100,6 +109,8 @@ const updateSessionSchema = {
     additionalProperties: false,
   },
 };
+
+const liveTelemetryMetricNames = Object.keys(LIVE_TELEMETRY_METRIC_PATHS);
 
 const setCurrentQuestionSchema = {
   body: {
@@ -337,7 +348,7 @@ function generateJoinCode() {
 function getParticipationQuestionPoints(question) {
   if (isSlideQuestion(question)) return 0;
   // Meteor behavior: default to 1 point per question, except SA defaults to 0 unless explicitly set.
-  let points = Number(question?.type) === 2 ? 0 : 1;
+  let points = normalizeQuestionType(question) === 2 ? 0 : 1;
   if (question?.sessionOptions && Object.prototype.hasOwnProperty.call(question.sessionOptions, 'points')) {
     points = Number(question.sessionOptions.points) || 0;
   }
@@ -914,6 +925,7 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
   // Strip word cloud data and histogram data — students should not see it during quizzes.
   if (sanitized.sessionOptions) {
     sanitized.sessionOptions = { ...sanitized.sessionOptions };
+    delete sanitized.sessionOptions.attemptStats;
     delete sanitized.sessionOptions.wordCloudData;
     delete sanitized.sessionOptions.histogramData;
   }
@@ -921,79 +933,432 @@ function sanitizeQuizQuestionForStudent(question, { revealAnswers = false } = {}
   return sanitized;
 }
 
-// Build response stats for a question's responses (for distribution display)
-function buildResponseStats(question, responses) {
-  if (!question || !responses) return null;
-  if (isSlideQuestion(question)) return null;
-  const type = Number(question.type);
-  const options = question.options || [];
+function buildOptionIndexCounts(answer, options = []) {
+  const counts = new Map();
+  const values = Array.isArray(answer) ? answer : [answer];
 
-  // MC, TF, MS: count per option
+  values.forEach((value) => {
+    const idx = resolveOptionIndex(value, options);
+    if (idx < 0) return;
+    counts.set(idx, (counts.get(idx) || 0) + 1);
+  });
+
+  return counts;
+}
+
+function buildAttemptStatsEntry(question, attemptNumber, responses = []) {
+  if (!question) return null;
+  if (isSlideQuestion(question)) return null;
+
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  const type = normalizeQuestionType(question);
+  const options = question.options || [];
+  const entry = {
+    number: normalizedAttemptNumber,
+    type: 'unknown',
+    total: 0,
+    distribution: [],
+    answers: [],
+    values: [],
+    sum: 0,
+    sumSquares: 0,
+    min: null,
+    max: null,
+  };
+
   if ([0, 1, 3].includes(type) && options.length > 0) {
-    const distribution = options.map((opt, i) => ({
-      index: i,
-      answer: optionDisplayContent(opt, i),
+    entry.type = 'distribution';
+    entry.distribution = options.map((opt, index) => ({
+      index,
+      answer: optionDisplayContent(opt, index),
       correct: !!opt.correct,
       count: 0,
     }));
-
-    for (const r of responses) {
-      if (Array.isArray(r.answer)) {
-        // MS: answer can be array of indices, option IDs, or answer strings
-        for (const a of r.answer) {
-          const idx = resolveOptionIndex(a, options);
-          if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
-        }
-      } else {
-        const idx = resolveOptionIndex(r.answer, options);
-        if (idx >= 0 && idx < distribution.length) distribution[idx].count++;
-      }
-    }
-
-    return { type: 'distribution', distribution, total: responses.length };
+  } else if (type === 2) {
+    entry.type = 'shortAnswer';
+  } else if (type === 4) {
+    entry.type = 'numerical';
   }
 
-  // SA: list of answers with student names
+  (responses || []).forEach((response) => {
+    mergeResponseIntoAttemptStatsEntry(entry, question, response);
+  });
+
+  return entry;
+}
+
+function mergeResponseIntoAttemptStatsEntry(entry, question, response) {
+  if (!entry || !question || !response) return entry;
+
+  entry.total = Number(entry.total || 0) + 1;
+  const type = normalizeQuestionType(question);
+
+  if ([0, 1, 3].includes(type) && Array.isArray(entry.distribution)) {
+    const counts = buildOptionIndexCounts(response.answer, question.options || []);
+    counts.forEach((count, index) => {
+      if (!entry.distribution[index]) return;
+      entry.distribution[index].count = Number(entry.distribution[index].count || 0) + count;
+    });
+    return entry;
+  }
+
   if (type === 2) {
+    entry.answers = [
+      ...(Array.isArray(entry.answers) ? entry.answers : []),
+      {
+        studentUserId: getResponseStudentId(response),
+        answer: response.answer,
+        answerWysiwyg: response.answerWysiwyg || '',
+      },
+    ];
+    return entry;
+  }
+
+  if (type === 4) {
+    entry.answers = [
+      ...(Array.isArray(entry.answers) ? entry.answers : []),
+      {
+        studentUserId: getResponseStudentId(response),
+        answer: response.answer,
+      },
+    ];
+
+    const numeric = Number(response.answer);
+    if (!Number.isNaN(numeric)) {
+      entry.values = [...(Array.isArray(entry.values) ? entry.values : []), numeric];
+      entry.sum = Number(entry.sum || 0) + numeric;
+      entry.sumSquares = Number(entry.sumSquares || 0) + (numeric * numeric);
+      entry.min = entry.min == null ? numeric : Math.min(Number(entry.min), numeric);
+      entry.max = entry.max == null ? numeric : Math.max(Number(entry.max), numeric);
+    }
+  }
+
+  return entry;
+}
+
+function materializeAttemptStatsEntry(entry) {
+  if (!entry) return null;
+
+  const total = Number(entry.total || 0);
+  if (entry.type === 'distribution') {
     return {
-      type: 'shortAnswer',
-      answers: responses.map((r) => ({
-        studentUserId: getResponseStudentId(r),
-        answer: r.answer,
-        answerWysiwyg: r.answerWysiwyg,
+      type: 'distribution',
+      distribution: (entry.distribution || []).map((item) => ({
+        index: Number(item?.index) || 0,
+        answer: item?.answer || '',
+        correct: !!item?.correct,
+        count: Number(item?.count || 0),
       })),
-      total: responses.length,
+      total,
     };
   }
 
-  // Numerical: stats + individual answers
-  if (type === 4) {
-    const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
-    const mean = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-    const variance = values.length > 0 ? values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length : 0;
-    const stdev = Math.sqrt(variance);
+  if (entry.type === 'shortAnswer') {
+    return {
+      type: 'shortAnswer',
+      answers: (entry.answers || []).map((item) => ({
+        studentUserId: getResponseStudentId(item),
+        answer: item?.answer,
+        answerWysiwyg: item?.answerWysiwyg || '',
+      })),
+      total,
+    };
+  }
+
+  if (entry.type === 'numerical') {
+    const values = (entry.values || []).map((value) => Number(value)).filter((value) => !Number.isNaN(value));
+    const totalValues = total || values.length;
+    const sum = Number.isFinite(Number(entry.sum))
+      ? Number(entry.sum)
+      : values.reduce((acc, value) => acc + value, 0);
+    const sumSquares = Number.isFinite(Number(entry.sumSquares))
+      ? Number(entry.sumSquares)
+      : values.reduce((acc, value) => acc + (value * value), 0);
+    const mean = totalValues > 0 ? sum / totalValues : 0;
+    const variance = totalValues > 0 ? Math.max(0, (sumSquares / totalValues) - (mean ** 2)) : 0;
     const sorted = [...values].sort((a, b) => a - b);
     const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
-    const min = sorted.length > 0 ? sorted[0] : 0;
-    const max = sorted.length > 0 ? sorted[sorted.length - 1] : 0;
+    const min = sorted.length > 0 ? (entry.min == null ? sorted[0] : Number(entry.min)) : 0;
+    const max = sorted.length > 0 ? (entry.max == null ? sorted[sorted.length - 1] : Number(entry.max)) : 0;
 
     return {
       type: 'numerical',
       values,
-      answers: responses.map((r) => ({
-        studentUserId: getResponseStudentId(r),
-        answer: r.answer,
+      answers: (entry.answers || []).map((item) => ({
+        studentUserId: getResponseStudentId(item),
+        answer: item?.answer,
       })),
       mean: Math.round(mean * 100) / 100,
-      stdev: Math.round(stdev * 100) / 100,
+      stdev: Math.round(Math.sqrt(variance) * 100) / 100,
       median,
       min,
       max,
-      total: responses.length,
+      total: totalValues,
     };
   }
 
-  return { type: 'unknown', total: responses.length };
+  return { type: entry.type || 'unknown', total };
+}
+
+function getAttemptStatsEntry(question, attemptNumber) {
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  return (question?.sessionOptions?.attemptStats || []).find(
+    (entry) => Number(entry?.number) === normalizedAttemptNumber
+  ) || null;
+}
+
+function getQuestionAttemptStats(question, attemptNumber) {
+  return materializeAttemptStatsEntry(getAttemptStatsEntry(question, attemptNumber));
+}
+
+function getAttemptStatsEntries(question, attemptNumber = null) {
+  const entries = Array.isArray(question?.sessionOptions?.attemptStats)
+    ? question.sessionOptions.attemptStats
+    : [];
+  if (attemptNumber == null) return entries;
+
+  const entry = getAttemptStatsEntry(question, attemptNumber);
+  return entry ? [entry] : [];
+}
+
+function collectShortAnswerTextsFromAttemptStats(question, attemptNumber = null) {
+  return getAttemptStatsEntries(question, attemptNumber).flatMap((entry) => (
+    Array.isArray(entry?.answers) ? entry.answers : []
+  )).map((answerEntry) => {
+    if (answerEntry?.answerWysiwyg && typeof answerEntry.answerWysiwyg === 'string') {
+      return answerEntry.answerWysiwyg;
+    }
+    if (typeof answerEntry?.answer === 'string') return answerEntry.answer;
+    return '';
+  }).filter(Boolean);
+}
+
+function collectNumericalValuesFromAttemptStats(question, attemptNumber = null) {
+  const values = [];
+  getAttemptStatsEntries(question, attemptNumber).forEach((entry) => {
+    if (Array.isArray(entry?.values) && entry.values.length > 0) {
+      entry.values.forEach((value) => {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) values.push(numeric);
+      });
+      return;
+    }
+
+    (entry?.answers || []).forEach((answerEntry) => {
+      const numeric = Number(answerEntry?.answer);
+      if (!Number.isNaN(numeric)) values.push(numeric);
+    });
+  });
+  return values;
+}
+
+function buildClearedWordCloudData() {
+  return {
+    wordFrequencies: [],
+    visible: false,
+    generatedAt: null,
+  };
+}
+
+function buildClearedHistogramData() {
+  return {
+    bins: [],
+    overflowLow: 0,
+    overflowHigh: 0,
+    rangeMin: null,
+    rangeMax: null,
+    numBins: null,
+    visible: false,
+    generatedAt: null,
+  };
+}
+
+function buildResetGeneratedVisualizationUpdate() {
+  const clearedWordCloud = buildClearedWordCloudData();
+  const clearedHistogram = buildClearedHistogramData();
+  return {
+    'sessionOptions.wordCloudData.wordFrequencies': clearedWordCloud.wordFrequencies,
+    'sessionOptions.wordCloudData.visible': clearedWordCloud.visible,
+    'sessionOptions.wordCloudData.generatedAt': clearedWordCloud.generatedAt,
+    'sessionOptions.histogramData.bins': clearedHistogram.bins,
+    'sessionOptions.histogramData.overflowLow': clearedHistogram.overflowLow,
+    'sessionOptions.histogramData.overflowHigh': clearedHistogram.overflowHigh,
+    'sessionOptions.histogramData.rangeMin': clearedHistogram.rangeMin,
+    'sessionOptions.histogramData.rangeMax': clearedHistogram.rangeMax,
+    'sessionOptions.histogramData.numBins': clearedHistogram.numBins,
+    'sessionOptions.histogramData.visible': clearedHistogram.visible,
+    'sessionOptions.histogramData.generatedAt': clearedHistogram.generatedAt,
+  };
+}
+
+function buildResponseStats(question, responses, attemptNumber = 1) {
+  return materializeAttemptStatsEntry(buildAttemptStatsEntry(question, attemptNumber, responses));
+}
+
+function formatInstructorLiveResponseStats(responseStats, studentNameById = {}, includeStudentNames = false) {
+  if (!responseStats) return responseStats;
+
+  if (responseStats.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+    return {
+      ...responseStats,
+      answers: responseStats.answers.map((entry) => ({
+        answer: entry.answer,
+        answerWysiwyg: entry.answerWysiwyg,
+        ...(includeStudentNames
+          ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+          : {}),
+      })),
+    };
+  }
+
+  if (responseStats.type === 'numerical' && Array.isArray(responseStats.answers)) {
+    return {
+      ...responseStats,
+      answers: responseStats.answers.map((entry) => ({
+        answer: entry.answer,
+        ...(includeStudentNames
+          ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
+          : {}),
+      })),
+    };
+  }
+
+  return responseStats;
+}
+
+function formatStudentLiveResponseStats(responseStats) {
+  if (!responseStats) return responseStats;
+
+  if (responseStats.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+    return {
+      ...responseStats,
+      answers: responseStats.answers.map((entry) => ({
+        answer: entry.answer,
+        answerWysiwyg: entry.answerWysiwyg,
+      })),
+    };
+  }
+
+  if (responseStats.type === 'numerical' && Array.isArray(responseStats.answers)) {
+    return {
+      ...responseStats,
+      answers: responseStats.answers.map((entry) => ({
+        answer: entry.answer,
+      })),
+    };
+  }
+
+  return responseStats;
+}
+
+async function ensureQuestionAttemptStatsEntry(question, attemptNumber) {
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  if (!question?._id) return;
+  if (getAttemptStatsEntry(question, normalizedAttemptNumber)) return;
+
+  const entry = buildAttemptStatsEntry(question, normalizedAttemptNumber);
+  if (!entry) return;
+
+  await Question.updateOne(
+    {
+      _id: question._id,
+      'sessionOptions.attemptStats.number': { $ne: normalizedAttemptNumber },
+    },
+    {
+      $push: { 'sessionOptions.attemptStats': entry },
+    }
+  );
+}
+
+async function appendResponseToQuestionAttemptStats(question, attemptNumber, response) {
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  if (!question?._id || !response) return;
+
+  await ensureQuestionAttemptStatsEntry(question, normalizedAttemptNumber);
+
+  const filter = {
+    _id: question._id,
+    'sessionOptions.attemptStats.number': normalizedAttemptNumber,
+  };
+  const attemptArrayFilter = [{ 'attempt.number': normalizedAttemptNumber }];
+  const type = normalizeQuestionType(question);
+
+  if ([0, 1, 3].includes(type) && Array.isArray(question.options) && question.options.length > 0) {
+    const optionCounts = buildOptionIndexCounts(response.answer, question.options);
+    const update = {
+      $inc: {
+        'sessionOptions.attemptStats.$[attempt].total': 1,
+      },
+    };
+    const arrayFilters = [...attemptArrayFilter];
+    let filterIndex = 0;
+
+    optionCounts.forEach((count, index) => {
+      const filterName = `dist${filterIndex}`;
+      update.$inc[`sessionOptions.attemptStats.$[attempt].distribution.$[${filterName}].count`] = count;
+      arrayFilters.push({ [`${filterName}.index`]: index });
+      filterIndex += 1;
+    });
+
+    await Question.updateOne(filter, update, { arrayFilters });
+    return;
+  }
+
+  if (type === 2) {
+    await Question.updateOne(
+      filter,
+      {
+        $inc: {
+          'sessionOptions.attemptStats.$[attempt].total': 1,
+        },
+        $push: {
+          'sessionOptions.attemptStats.$[attempt].answers': {
+            studentUserId: getResponseStudentId(response),
+            answer: response.answer,
+            answerWysiwyg: response.answerWysiwyg || '',
+          },
+        },
+      },
+      { arrayFilters: attemptArrayFilter }
+    );
+    return;
+  }
+
+  if (type === 4) {
+    const numeric = Number(response.answer);
+    const update = {
+      $inc: {
+        'sessionOptions.attemptStats.$[attempt].total': 1,
+      },
+      $push: {
+        'sessionOptions.attemptStats.$[attempt].answers': {
+          studentUserId: getResponseStudentId(response),
+          answer: response.answer,
+        },
+      },
+    };
+
+    if (!Number.isNaN(numeric)) {
+      update.$push['sessionOptions.attemptStats.$[attempt].values'] = numeric;
+      update.$inc['sessionOptions.attemptStats.$[attempt].sum'] = numeric;
+      update.$inc['sessionOptions.attemptStats.$[attempt].sumSquares'] = numeric * numeric;
+      update.$min = { 'sessionOptions.attemptStats.$[attempt].min': numeric };
+      update.$max = { 'sessionOptions.attemptStats.$[attempt].max': numeric };
+    }
+
+    await Question.updateOne(filter, update, { arrayFilters: attemptArrayFilter });
+    return;
+  }
+
+  await Question.updateOne(
+    filter,
+    {
+      $inc: {
+        'sessionOptions.attemptStats.$[attempt].total': 1,
+      },
+    },
+    { arrayFilters: attemptArrayFilter }
+  );
 }
 
 async function loadOrderedQuestions(questionIds = []) {
@@ -1298,7 +1663,10 @@ function sendToUsersById(app, userIds, event, payload) {
   if (typeof app.wsSendToUsers !== 'function') return;
   const normalizedUserIds = [...new Set((userIds || []).map((userId) => String(userId)).filter(Boolean))];
   if (normalizedUserIds.length === 0) return;
-  app.wsSendToUsers(normalizedUserIds, event, payload);
+  app.wsSendToUsers(normalizedUserIds, event, {
+    emittedAt: payload?.emittedAt || new Date().toISOString(),
+    ...payload,
+  });
 }
 
 function sendToCourseMembers(app, course, event, payload) {
@@ -1328,11 +1696,17 @@ function sendToUser(app, userId, event, payload) {
   const normalizedUserId = String(userId || '').trim();
   if (!normalizedUserId) return;
   if (typeof app.wsSendToUser === 'function') {
-    app.wsSendToUser(normalizedUserId, event, payload);
+    app.wsSendToUser(normalizedUserId, event, {
+      emittedAt: payload?.emittedAt || new Date().toISOString(),
+      ...payload,
+    });
     return;
   }
   if (typeof app.wsSendToUsers === 'function') {
-    app.wsSendToUsers([normalizedUserId], event, payload);
+    app.wsSendToUsers([normalizedUserId], event, {
+      emittedAt: payload?.emittedAt || new Date().toISOString(),
+      ...payload,
+    });
   }
 }
 
@@ -3559,13 +3933,18 @@ export default async function sessionRoutes(app) {
       const questionId = currentQuestion?._id;
 
       if (questionId && currentItemCollectsResponses) {
+        const cachedResponseStats = currentAttempt
+          ? getQuestionAttemptStats(currentQuestion, currentAttempt.number)
+          : null;
+
         if (isInstrOrAdmin) {
-          // Prof gets all responses for current question & attempt
+          // Prof still needs individual responses for live review, but can reuse
+          // cached aggregate stats instead of rebuilding them on every refresh.
           const responses = await Response.find({
             questionId,
             attempt: currentAttempt.number,
           }).lean();
-          responseStats = buildResponseStats(currentQuestion, responses);
+          responseStats = cachedResponseStats || buildResponseStats(currentQuestion, responses, currentAttempt.number);
 
           const includeNamesInPayload = includeStudentNames
             && ['shortAnswer', 'numerical'].includes(responseStats?.type);
@@ -3607,57 +3986,32 @@ export default async function sessionRoutes(app) {
             };
           });
 
-          if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
-            responseStats = {
-              ...responseStats,
-              answers: responseStats.answers.map((entry) => ({
-                answer: entry.answer,
-                answerWysiwyg: entry.answerWysiwyg,
-                ...(includeNamesInPayload
-                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
-                  : {}),
-              })),
-            };
-          }
-          if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
-            responseStats = {
-              ...responseStats,
-              answers: responseStats.answers.map((entry) => ({
-                answer: entry.answer,
-                ...(includeNamesInPayload
-                  ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
-                  : {}),
-              })),
-            };
-          }
+          responseStats = formatInstructorLiveResponseStats(
+            responseStats,
+            studentNameById,
+            includeNamesInPayload
+          );
         } else if (isJoined && !questionHidden) {
           if (showStats) {
-            // Single query: get all responses (includes student's own)
-            const responses = await Response.find({
-              questionId,
-              attempt: currentAttempt.number,
-            }).lean();
-            responseStats = buildResponseStats(currentQuestion, responses);
-            // Extract student's response from the batch — avoids a second query
-            studentResponse = responses.find(
-              (r) => String(getResponseStudentId(r)) === String(userId)
-            ) || null;
-            if (responseStats?.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
-              responseStats = {
-                ...responseStats,
-                answers: responseStats.answers.map((entry) => ({
-                  answer: entry.answer,
-                  answerWysiwyg: entry.answerWysiwyg,
-                })),
-              };
-            }
-            if (responseStats?.type === 'numerical' && Array.isArray(responseStats.answers)) {
-              responseStats = {
-                ...responseStats,
-                answers: responseStats.answers.map((entry) => ({
-                  answer: entry.answer,
-                })),
-              };
+            if (cachedResponseStats) {
+              responseStats = formatStudentLiveResponseStats(cachedResponseStats);
+              studentResponse = await Response.findOne({
+                questionId,
+                studentUserId: userId,
+                attempt: currentAttempt.number,
+              }).lean();
+            } else {
+              // Fallback for legacy questions that do not yet have cached attempt stats.
+              const responses = await Response.find({
+                questionId,
+                attempt: currentAttempt.number,
+              }).lean();
+              responseStats = formatStudentLiveResponseStats(
+                buildResponseStats(currentQuestion, responses, currentAttempt.number)
+              );
+              studentResponse = responses.find(
+                (r) => String(getResponseStudentId(r)) === String(userId)
+              ) || null;
             }
           } else {
             // Only need student's own response
@@ -3769,7 +4123,18 @@ export default async function sessionRoutes(app) {
         result.allResponses = allResponses;
 
         if (currentQuestion) {
-          result.currentQuestion = currentQuestion;
+          const instructorQuestion = {
+            ...currentQuestion,
+            sessionOptions: currentQuestion.sessionOptions
+              ? { ...currentQuestion.sessionOptions }
+              : currentQuestion.sessionOptions,
+          };
+          if (instructorQuestion.sessionOptions) {
+            delete instructorQuestion.sessionOptions.attemptStats;
+            delete instructorQuestion.sessionOptions.wordCloudData;
+            delete instructorQuestion.sessionOptions.histogramData;
+          }
+          result.currentQuestion = instructorQuestion;
           // Include word cloud data for instructors (always)
           if (currentQuestion.sessionOptions?.wordCloudData) {
             result.wordCloudData = currentQuestion.sessionOptions.wordCloudData;
@@ -3824,6 +4189,118 @@ export default async function sessionRoutes(app) {
       }
 
       return result;
+    }
+  );
+
+  app.post(
+    '/sessions/:id/live-telemetry',
+    {
+      preHandler: authenticate,
+      schema: {
+        body: {
+          type: 'object',
+          required: ['role', 'samples'],
+          properties: {
+            role: { type: 'string', enum: LIVE_TELEMETRY_ROLES },
+            samples: {
+              type: 'array',
+              maxItems: 50,
+              items: {
+                type: 'object',
+                required: ['metric', 'durationMs'],
+                properties: {
+                  metric: { type: 'string', enum: liveTelemetryMetricNames },
+                  durationMs: { type: 'number', minimum: 0 },
+                  success: { type: 'boolean' },
+                  transport: { type: 'string', enum: LIVE_TELEMETRY_TRANSPORTS },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const role = request.body.role;
+      const isInstrOrAdmin = isInstructorOrAdmin(course, request.user);
+      if (role === 'student' && isInstrOrAdmin) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Role mismatch for telemetry submission' });
+      }
+      if (role !== 'student' && !isInstrOrAdmin) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const update = buildLiveTelemetryUpdate({
+        sessionId: session._id,
+        courseId: course._id,
+        role,
+        samples: request.body.samples,
+        updatedAt: new Date(),
+      });
+
+      if (!update) {
+        return { accepted: 0 };
+      }
+
+      await LiveSessionTelemetry.findOneAndUpdate(
+        { sessionId: String(session._id) },
+        update,
+        { upsert: true }
+      );
+
+      return {
+        accepted: Number(update?.$inc?.[`${role}.sampleCount`] || 0),
+      };
+    }
+  );
+
+  app.get(
+    '/sessions/:id/live-telemetry',
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const telemetryDoc = await LiveSessionTelemetry.findOne({ sessionId: String(session._id) }).lean();
+      const telemetry = summarizeLiveTelemetryDocument(
+        telemetryDoc || {
+          sessionId: String(session._id),
+          courseId: String(course._id),
+          updatedAt: null,
+          student: {},
+          professor: {},
+          presentation: {},
+        }
+      );
+
+      return { telemetry };
     }
   );
 
@@ -3915,6 +4392,8 @@ export default async function sessionRoutes(app) {
         submittedIpAddress: getRequestIp(request),
         createdAt: now,
       });
+
+      await appendResponseToQuestionAttemptStats(question, currentAttempt.number, response);
 
       const [updatedSession, trackedQuestion] = await Promise.all([
         incrementSessionResponseTracking(session, questionId),
@@ -4048,24 +4527,26 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      if (Number(question.type) !== 2) {
+      if (normalizeQuestionType(question) !== 2) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Word cloud is only supported for short-answer questions' });
       }
 
       const attempts = question.sessionOptions?.attempts || [];
       const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
-
-      const responses = await Response.find({
-        questionId,
-        attempt: currentAttempt.number,
-      }).lean();
-
-      // Collect text from responses — prefer WYSIWYG content, fall back to raw answer.
-      const texts = responses.map((r) => {
-        if (r.answerWysiwyg && typeof r.answerWysiwyg === 'string') return r.answerWysiwyg;
-        if (typeof r.answer === 'string') return r.answer;
-        return '';
-      }).filter(Boolean);
+      const texts = collectShortAnswerTextsFromAttemptStats(question, currentAttempt.number);
+      if (texts.length === 0) {
+        const responses = await Response.find({
+          questionId,
+          attempt: currentAttempt.number,
+        }).lean();
+        responses.forEach((response) => {
+          if (response.answerWysiwyg && typeof response.answerWysiwyg === 'string') {
+            texts.push(response.answerWysiwyg);
+          } else if (typeof response.answer === 'string') {
+            texts.push(response.answer);
+          }
+        });
+      }
 
       const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
       const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
@@ -4197,19 +4678,23 @@ export default async function sessionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      if (Number(question.type) !== 4) {
+      if (normalizeQuestionType(question) !== 4) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Histogram is only supported for numerical questions' });
       }
 
       const attempts = question.sessionOptions?.attempts || [];
       const currentAttempt = attempts.length > 0 ? attempts[attempts.length - 1] : { number: 1 };
-
-      const responses = await Response.find({
-        questionId,
-        attempt: currentAttempt.number,
-      }).lean();
-
-      const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
+      const values = collectNumericalValuesFromAttemptStats(question, currentAttempt.number);
+      if (values.length === 0) {
+        const responses = await Response.find({
+          questionId,
+          attempt: currentAttempt.number,
+        }).lean();
+        responses.forEach((response) => {
+          const numeric = Number(response.answer);
+          if (!Number.isNaN(numeric)) values.push(numeric);
+        });
+      }
 
       const histOpts = {};
       if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;
@@ -4355,13 +4840,23 @@ export default async function sessionRoutes(app) {
         : 0;
       const newAttemptNumber = previousAttemptNumber + 1;
       closedAttempts.push({ number: newAttemptNumber, closed: false });
+      const nextAttemptStats = [
+        ...((question.sessionOptions?.attemptStats || []).map((entry) => (entry.toObject ? entry.toObject() : { ...entry }))),
+      ].filter((entry) => Number(entry?.number) !== newAttemptNumber);
+      const newAttemptStatsEntry = buildAttemptStatsEntry(question, newAttemptNumber);
+      if (newAttemptStatsEntry) {
+        nextAttemptStats.push(newAttemptStatsEntry);
+      }
+      const resetGeneratedVisualizationUpdate = buildResetGeneratedVisualizationUpdate();
 
       const updatedQuestion = await Question.findByIdAndUpdate(
         questionId,
         { $set: {
           'sessionOptions.attempts': closedAttempts,
+          'sessionOptions.attemptStats': nextAttemptStats,
           'sessionOptions.stats': false,
           'sessionOptions.correct': false,
+          ...resetGeneratedVisualizationUpdate,
           'sessionProperties.lastAttemptNumber': newAttemptNumber,
           'sessionProperties.lastAttemptResponseCount': 0,
         } },
@@ -4421,11 +4916,15 @@ export default async function sessionRoutes(app) {
       const attempts = question.sessionOptions?.attempts || [];
       if (attempts.length === 0) {
         // Initialize with first attempt
+        const firstAttemptStatsEntry = buildAttemptStatsEntry(question, 1);
+        const resetGeneratedVisualizationUpdate = buildResetGeneratedVisualizationUpdate();
         const updatedQuestion = await Question.findByIdAndUpdate(
           questionId,
           {
             $set: {
               'sessionOptions.attempts': [{ number: 1, closed: request.body.closed }],
+              'sessionOptions.attemptStats': firstAttemptStatsEntry ? [firstAttemptStatsEntry] : [],
+              ...resetGeneratedVisualizationUpdate,
               'sessionProperties.lastAttemptNumber': 1,
               'sessionProperties.lastAttemptResponseCount': 0,
             },

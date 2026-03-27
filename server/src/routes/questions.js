@@ -9,7 +9,7 @@ import {
   sanitizeExportedQuestion,
   sanitizeImportedQuestion,
 } from '../services/questionImportExport.js';
-import { isQuestionResponseCollectionEnabled } from '../services/grading.js';
+import { isQuestionResponseCollectionEnabled, normalizeQuestionType } from '../services/grading.js';
 import { computeWordFrequencies } from '../utils/wordFrequency.js';
 import { computeHistogramData } from '../utils/histogram.js';
 import { buildSessionResponseTracking } from '../utils/sessionResponseTracking.js';
@@ -497,6 +497,43 @@ function multipleChoiceValidationError(type, options) {
 function isInstructorOrAdmin(course, user) {
   const roles = user.roles || [];
   return roles.includes('admin') || course.instructors.includes(user.userId);
+}
+
+function getAttemptStatsEntries(question) {
+  return Array.isArray(question?.sessionOptions?.attemptStats)
+    ? question.sessionOptions.attemptStats
+    : [];
+}
+
+function collectShortAnswerTextsFromAttemptStats(question) {
+  return getAttemptStatsEntries(question).flatMap((entry) => (
+    Array.isArray(entry?.answers) ? entry.answers : []
+  )).map((answerEntry) => {
+    if (answerEntry?.answerWysiwyg && typeof answerEntry.answerWysiwyg === 'string') {
+      return answerEntry.answerWysiwyg;
+    }
+    if (typeof answerEntry?.answer === 'string') return answerEntry.answer;
+    return '';
+  }).filter(Boolean);
+}
+
+function collectNumericalValuesFromAttemptStats(question) {
+  const values = [];
+  getAttemptStatsEntries(question).forEach((entry) => {
+    if (Array.isArray(entry?.values) && entry.values.length > 0) {
+      entry.values.forEach((value) => {
+        const numeric = Number(value);
+        if (!Number.isNaN(numeric)) values.push(numeric);
+      });
+      return;
+    }
+
+    (entry?.answers || []).forEach((answerEntry) => {
+      const numeric = Number(answerEntry?.answer);
+      if (!Number.isNaN(numeric)) values.push(numeric);
+    });
+  });
+  return values;
 }
 
 async function buildQuestionLibraryDetails(questionDocs = [], courseId = '') {
@@ -2142,7 +2179,7 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      if (Number(question.type) !== 2) {
+      if (normalizeQuestionType(question) !== 2) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Word cloud is only supported for short-answer questions' });
       }
 
@@ -2162,14 +2199,18 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      // Get all responses for this question (across all attempts, for review context)
-      const responses = await Response.find({ questionId: question._id }).lean();
-
-      const texts = responses.map((r) => {
-        if (r.answerWysiwyg && typeof r.answerWysiwyg === 'string') return r.answerWysiwyg;
-        if (typeof r.answer === 'string') return r.answer;
-        return '';
-      }).filter(Boolean);
+      const texts = collectShortAnswerTextsFromAttemptStats(question);
+      if (texts.length === 0) {
+        // Fall back for legacy sessions that do not yet have cached attempt stats.
+        const responses = await Response.find({ questionId: question._id }).lean();
+        responses.forEach((response) => {
+          if (response.answerWysiwyg && typeof response.answerWysiwyg === 'string') {
+            texts.push(response.answerWysiwyg);
+          } else if (typeof response.answer === 'string') {
+            texts.push(response.answer);
+          }
+        });
+      }
 
       const stopWords = Array.isArray(request.body?.stopWords) ? request.body.stopWords : [];
       const wordFrequencies = computeWordFrequencies(texts, stopWords, 100);
@@ -2218,7 +2259,7 @@ export default async function questionRoutes(app) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
 
-      if (Number(question.type) !== 4) {
+      if (normalizeQuestionType(question) !== 4) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Histogram is only supported for numerical questions' });
       }
 
@@ -2238,10 +2279,15 @@ export default async function questionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
-      // Get all responses for this question (across all attempts, for review context)
-      const responses = await Response.find({ questionId: question._id }).lean();
-
-      const values = responses.map((r) => Number(r.answer)).filter((v) => !Number.isNaN(v));
+      const values = collectNumericalValuesFromAttemptStats(question);
+      if (values.length === 0) {
+        // Fall back for legacy sessions that do not yet have cached attempt stats.
+        const responses = await Response.find({ questionId: question._id }).lean();
+        responses.forEach((response) => {
+          const numeric = Number(response.answer);
+          if (!Number.isNaN(numeric)) values.push(numeric);
+        });
+      }
 
       const histOpts = {};
       if (request.body?.numBins != null) histOpts.numBins = request.body.numBins;

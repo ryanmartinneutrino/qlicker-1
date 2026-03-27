@@ -1389,6 +1389,53 @@ describe('GET /api/v1/sessions/:id/live', () => {
     expect(visibleBody.currentQuestion.solution_plainText).toBe('Addition gives 4.');
   });
 
+  it('treats legacy numerical type 5 questions as numerical in live stats and histogram generation', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 5,
+      content: '<p>Legacy numerical</p>',
+      plainText: 'Legacy numerical',
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: question._id,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: '42',
+    });
+
+    const liveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: profToken,
+    });
+    expect(liveRes.statusCode).toBe(200);
+    expect(liveRes.json().responseStats?.type).toBe('numerical');
+
+    const histogramRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/histogram`, {
+      token: profToken,
+      payload: {},
+    });
+    expect(histogramRes.statusCode).toBe(200);
+    expect(histogramRes.json().histogramData?.bins?.length).toBeGreaterThan(0);
+  });
+
   it('instructor short-answer payload omits responder identifiers by default', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, student, studentToken } = await setupCourseWithStudent();
@@ -2611,6 +2658,65 @@ describe('Live session websocket delta events', () => {
       lastAttemptNumber: 2,
       lastAttemptResponseCount: 0,
     }));
+  });
+});
+
+describe('Live session telemetry', () => {
+  it('accepts batched student interface telemetry and summarizes it for instructors', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const submitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/live-telemetry`, {
+      token: studentToken,
+      payload: {
+        role: 'student',
+        samples: [
+          { metric: 'live_fetch_request_ms', durationMs: 1200, success: true, transport: 'polling' },
+          { metric: 'live_fetch_request_ms', durationMs: 2800, success: false, transport: 'websocket' },
+          { metric: 'server_emit_to_dom_ms', durationMs: 2600, success: true, transport: 'websocket' },
+        ],
+      },
+    });
+
+    expect(submitRes.statusCode).toBe(200);
+    expect(submitRes.json().accepted).toBe(3);
+
+    const summaryRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live-telemetry`, {
+      token: profToken,
+    });
+
+    expect(summaryRes.statusCode).toBe(200);
+    const telemetry = summaryRes.json().telemetry;
+    expect(telemetry.sessionId).toBe(session._id);
+    expect(telemetry.courseId).toBe(course._id);
+    expect(telemetry.student.sampleCount).toBe(3);
+    expect(telemetry.student.transportCounts.polling).toBe(1);
+    expect(telemetry.student.transportCounts.websocket).toBe(2);
+    expect(telemetry.student.metrics.live_fetch_request_ms.count).toBe(2);
+    expect(telemetry.student.metrics.live_fetch_request_ms.successRate).toBe(0.5);
+    expect(telemetry.student.metrics.live_fetch_request_ms.p99Ms).toBe(3000);
+    expect(telemetry.student.metrics.server_emit_to_dom_ms.p99Ms).toBe(3000);
+  });
+
+  it('rejects role-mismatched telemetry submissions from students', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const submitRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/live-telemetry`, {
+      token: studentToken,
+      payload: {
+        role: 'professor',
+        samples: [
+          { metric: 'live_fetch_request_ms', durationMs: 1000, success: true, transport: 'websocket' },
+        ],
+      },
+    });
+
+    expect(submitRes.statusCode).toBe(403);
   });
 });
 

@@ -23,6 +23,7 @@ import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
+import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -153,8 +154,13 @@ function LiveSessionContent() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { lastEvent, registerRefreshHandler } = useLiveSessionWebSocket();
+  const { lastEvent, registerRefreshHandler, transport } = useLiveSessionWebSocket();
   const courseBackLink = `/student/course/${courseId}`;
+  const {
+    recordEventReceipt,
+    recordLiveFetch,
+    scheduleUiSyncMeasurement,
+  } = useLiveSessionTelemetry({ sessionId, role: 'student', transport });
 
   // Core state
   const [liveData, setLiveData] = useState(null);
@@ -181,63 +187,112 @@ function LiveSessionContent() {
   // Data fetching
   // --------------------------------------------------
 
-  const fetchLive = useCallback(async () => {
+  const fetchLive = useCallback(async (syncContext = null) => {
+    const startedAtMs = Date.now();
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/live`);
+      const fetchMeasurement = recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setLiveData(data);
+      scheduleUiSyncMeasurement({
+        fetchStartedAtMs: fetchMeasurement?.startedAtMs || startedAtMs,
+        emittedAtMs: syncContext?.emittedAtMs,
+        receivedAtMs: syncContext?.receivedAtMs,
+        success: true,
+        transportOverride: syncContext?.transport,
+      });
       setError(null);
     } catch (err) {
+      recordLiveFetch({
+        startedAtMs,
+        completedAtMs: Date.now(),
+        success: false,
+        transportOverride: syncContext?.transport,
+      });
       setError(err.response?.data?.message || t('student.liveSession.failedLoadLiveSession'));
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [recordLiveFetch, scheduleUiSyncMeasurement, sessionId, t]);
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
 
   useEffect(() => registerRefreshHandler(fetchLive), [fetchLive, registerRefreshHandler]);
 
   const fetchThrottleRef = useRef(null);
-  const scheduleFetchLive = useCallback(() => {
+  const scheduleFetchLive = useCallback((syncContext = null) => {
     if (fetchThrottleRef.current) return;
     fetchThrottleRef.current = setTimeout(() => {
       fetchThrottleRef.current = null;
-      fetchLive();
+      fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
 
   useEffect(() => {
     if (!lastEvent) return;
 
+    const syncContext = recordEventReceipt({
+      emittedAt: lastEvent?.data?.emittedAt,
+      receivedAtMs: lastEvent?.receivedAtMs,
+      success: true,
+    });
     const { event, data } = lastEvent;
     switch (event) {
       // Students receive this only while joined and live stats are visible.
       case 'session:response-added':
-        scheduleFetchLive();
+        scheduleFetchLive(syncContext);
         break;
       case 'session:question-changed':
       case 'session:visibility-changed':
       case 'session:status-changed':
       case 'session:metadata-changed':
-        fetchLive();
+        fetchLive(syncContext);
         break;
       case 'session:question-updated':
         setLiveData((prev) => applyCurrentQuestionUpdate(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:attempt-changed':
         setLiveData((prev) => applyAttemptChanged(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:join-code-changed':
         setLiveData((prev) => applyJoinCodeChanged(prev, data));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
         break;
       case 'session:word-cloud-updated':
       case 'session:histogram-updated':
-        fetchLive();
+        fetchLive(syncContext);
         break;
       default:
         break;
     }
-  }, [fetchLive, lastEvent, scheduleFetchLive]);
+  }, [
+    fetchLive,
+    lastEvent,
+    recordEventReceipt,
+    scheduleFetchLive,
+    scheduleUiSyncMeasurement,
+  ]);
 
   useEffect(() => () => {
     if (fetchThrottleRef.current) clearTimeout(fetchThrottleRef.current);

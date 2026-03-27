@@ -203,6 +203,13 @@ function collectAttemptNumbersForQuestion(question, studentResults = []) {
     }
   });
 
+  (question?.sessionOptions?.attemptStats || []).forEach((attempt) => {
+    const number = Number(attempt?.number);
+    if (Number.isInteger(number) && number > 0) {
+      attemptNumbers.add(number);
+    }
+  });
+
   studentResults.forEach((student) => {
     const qr = (student?.questionResults || []).find(
       (result) => String(result?.questionId) === String(question?._id),
@@ -693,12 +700,28 @@ export default function SessionReview() {
 
   // ---- Stats data for ALL questions / attempts ----
 
+  const studentNameById = useMemo(() => {
+    const names = new Map();
+    studentResults.forEach((student) => {
+      names.set(
+        String(student?.studentId || ''),
+        buildStudentDisplayName(student, t('professor.sessionReview.unknownStudent'))
+      );
+    });
+    return names;
+  }, [studentResults, t]);
+
   const questionAttemptRows = useMemo(() => questions.flatMap((q, qi) => {
     const qType = normalizeQuestionType(q);
     const isOptionType = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
 
     const responsesByAttempt = new Map();
     const attemptNumbers = new Set(collectAttemptNumbersForQuestion(q, studentResults));
+    const attemptStatsByNumber = new Map(
+      (q?.sessionOptions?.attemptStats || [])
+        .map((attempt) => [Number(attempt?.number), attempt])
+        .filter(([number]) => Number.isInteger(number) && number > 0)
+    );
 
     studentResults.forEach((student) => {
       const qr = (student.questionResults || []).find(
@@ -721,7 +744,10 @@ export default function SessionReview() {
       });
     });
 
-    const sortedAttempts = [...attemptNumbers].sort((a, b) => a - b);
+    const sortedAttempts = [...new Set([
+      ...attemptNumbers,
+      ...attemptStatsByNumber.keys(),
+    ])].sort((a, b) => a - b);
 
     const correctIndices = (q.options || []).reduce((acc, option, idx) => {
       if (isCorrectOption(option)) acc.push(idx);
@@ -729,10 +755,16 @@ export default function SessionReview() {
     }, []);
 
     return sortedAttempts.map((attemptNumber, attemptIndex) => {
+      const cachedAttemptStats = attemptStatsByNumber.get(attemptNumber) || null;
       const attemptResponses = responsesByAttempt.get(attemptNumber) || [];
-      const distribution = isOptionType && q.options ? q.options.map(() => 0) : [];
+      const distribution = isOptionType && q.options ? q.options.map((_, optionIndex) => {
+        const cachedEntry = Array.isArray(cachedAttemptStats?.distribution)
+          ? cachedAttemptStats.distribution.find((entry) => Number(entry?.index) === optionIndex)
+          : null;
+        return Number(cachedEntry?.count || 0);
+      }) : [];
 
-      if (isOptionType && q.options) {
+      if (!cachedAttemptStats && isOptionType && q.options) {
         attemptResponses.forEach((response) => {
           const answer = response?.answer;
           if (answer === undefined || answer === null || answer === '') return;
@@ -753,21 +785,34 @@ export default function SessionReview() {
         }))
         : null;
 
-      // For SA questions, collect the answer text for display in the expandable section.
       const saResponses = qType === QUESTION_TYPES.SHORT_ANSWER
-        ? attemptResponses.map((r) => ({
-          answer: r?.answer,
-          answerWysiwyg: r?.answerWysiwyg,
-          studentName: r?.studentName || t('professor.sessionReview.unknownStudent'),
-        }))
+        ? (
+          Array.isArray(cachedAttemptStats?.answers) && cachedAttemptStats.answers.length > 0
+            ? cachedAttemptStats.answers.map((response) => ({
+              answer: response?.answer,
+              answerWysiwyg: response?.answerWysiwyg,
+              studentName: studentNameById.get(String(response?.studentUserId || '')) || t('professor.sessionReview.unknownStudent'),
+            }))
+            : attemptResponses.map((response) => ({
+              answer: response?.answer,
+              answerWysiwyg: response?.answerWysiwyg,
+              studentName: response?.studentName || t('professor.sessionReview.unknownStudent'),
+            }))
+        )
         : null;
 
-      // For NU questions, collect the answer values for display in the expandable section.
       const nuResponses = qType === QUESTION_TYPES.NUMERICAL
-        ? attemptResponses.map((r) => ({
-          answer: r?.answer,
-          studentName: r?.studentName || t('professor.sessionReview.unknownStudent'),
-        }))
+        ? (
+          Array.isArray(cachedAttemptStats?.answers) && cachedAttemptStats.answers.length > 0
+            ? cachedAttemptStats.answers.map((response) => ({
+              answer: response?.answer,
+              studentName: studentNameById.get(String(response?.studentUserId || '')) || t('professor.sessionReview.unknownStudent'),
+            }))
+            : attemptResponses.map((response) => ({
+              answer: response?.answer,
+              studentName: response?.studentName || t('professor.sessionReview.unknownStudent'),
+            }))
+        )
         : null;
 
       return {
@@ -782,12 +827,12 @@ export default function SessionReview() {
         isOptionType,
         chartData,
         correctIndices,
-        responseCount: attemptResponses.length,
+        responseCount: cachedAttemptStats ? Number(cachedAttemptStats.total || 0) : attemptResponses.length,
         saResponses,
         nuResponses,
       };
     });
-  }), [progressList, questions, studentResults, t]);
+  }), [progressList, questions, studentNameById, studentResults, t]);
 
   const csvQuestionAttempts = useMemo(() => questions.map((question, questionIndex) => ({
     question,

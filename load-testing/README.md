@@ -125,6 +125,125 @@ Additional counters include:
 - `ws_errors`
 - `response_added_refreshes`
 
+## Interpreting Progress Output
+
+While the run is active, k6 may show `0 complete` for several minutes. That is
+expected for this scenario. Each VU runs one full-class iteration:
+
+- one professor iteration lasts for the entire session
+- each student iteration lasts from login through session end
+
+The default timing profile is roughly:
+
+- `JOIN_GRACE_S=5`
+- `ANSWER_WINDOW_S=30`
+- `STATS_PAUSE_S=15`
+- `CORRECT_PAUSE_S=15`
+- 5 questions total
+
+That adds up to a little over 5 minutes before iterations begin completing.
+
+## Threshold Units and Targets
+
+k6 reports custom `Trend` metrics in milliseconds.
+
+- `p(95)<3000` means 95% of samples finished in under 3000 ms, or 3 seconds
+- `p(99)<3000` means 99% of samples finished in under 3 seconds
+- `p(95)<5000` would mean 95% finished in under 5 seconds
+- `rate==1` means a `Rate` metric must be 100%
+- `rate==0` means no failures at all
+- `count==0` means the counter must stay at zero
+
+The current acceptance bar is intentionally strict for classroom use:
+
+- `http_req_failed` must stay at `0%`
+- `ws_errors` must stay at `0`
+- `login_success`, `join_success`, `respond_success`, `live_refresh_success`,
+  `event_sync_success`, `ws_connect_success`, `professor_action_success`, and
+  `session_completion` must all be `100%`
+- `login_duration`, `join_duration`, and `respond_duration` must have
+  `p(95)<3000`
+- `live_refresh_duration` and `event_sync_duration` must have `p(99)<3000`
+
+This means the pass/fail summary is checking both correctness and a classroom
+freshness target of "essentially everyone stays under 3 seconds" for the
+key live-sync paths.
+
+## How To Read A Finished Run
+
+Read the summary in this order:
+
+1. `THRESHOLDS`
+2. `CUSTOM`
+3. `HTTP`
+4. `WEBSOCKET`
+
+What each section means:
+
+- `THRESHOLDS` is the contract. If any line fails, the run should be treated as
+  a failed acceptance test.
+- `CUSTOM` shows the metrics that map most directly to classroom behavior.
+- `HTTP` shows overall request timing across all endpoints, which is useful but
+  less specific than the custom metrics.
+- `WEBSOCKET` shows connection health and how long students stayed connected.
+
+For live-session correctness, the most important lines are:
+
+- `login_success`
+- `join_success`
+- `ws_connect_success`
+- `professor_action_success`
+- `session_completion`
+- `live_refresh_success`
+- `event_sync_success`
+- `http_req_failed`
+- `ws_errors`
+
+For "do student screens stay fresh enough?", focus on:
+
+- `live_refresh_duration`: time to fetch `/sessions/:id/live`
+- `event_sync_duration`: time from the server-emitted websocket event
+  (`emittedAt`) to completing the follow-up live refresh and validating the new
+  state; if `emittedAt` is unavailable, it falls back to receive-to-refresh time
+
+If these stay under 3 seconds at `p(99)`, the load-test contract is saying the
+tail of the class still stayed within the sync target.
+
+## Browser Telemetry
+
+The live student page, professor control page, and presentation window now send
+batched browser-side telemetry to the app during real sessions:
+
+- `live_fetch_request_ms`: `/sessions/:id/live` request time in the browser
+- `live_fetch_apply_ms`: time from starting a live refresh to the updated UI
+  being painted
+- `ws_event_delivery_ms`: time from the server emitting a websocket event to the
+  browser receiving it
+- `ws_event_to_dom_ms`: time from the browser receiving a websocket event to the
+  updated UI being painted
+- `server_emit_to_dom_ms`: end-to-end time from server emit to painted UI
+
+Instructors can inspect the aggregated summary at:
+
+- `GET /api/v1/sessions/:id/live-telemetry`
+
+That summary includes separate rollups for `student`, `professor`, and
+`presentation` views, plus approximate `p50`, `p95`, and `p99` values. For the
+real interface experience, `server_emit_to_dom_ms` is the most important line.
+That is the closest measurement to "the professor changed something, and the
+student screen visibly caught up."
+
+## Interpreting Slow Runs
+
+Different metrics point to different bottlenecks:
+
+- Slow `login_duration` with healthy in-session metrics usually means startup
+  authentication load is the bottleneck, not the live session itself.
+- Slow `live_refresh_duration` or `event_sync_duration` means students may see
+  stale screens after professor actions.
+- A healthy `p(95)` with a much larger `max` means the system is usually fast
+  enough but still has tail-latency spikes worth investigating.
+
 ## Notes
 
 - The runners use Docker even for native dev targets. Localhost-based URLs are

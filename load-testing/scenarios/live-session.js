@@ -73,19 +73,22 @@ export const options = {
     },
   },
   thresholds: {
-    login_success: ['rate>0.95'],
-    join_success: ['rate>0.95'],
-    respond_success: ['rate>0.90'],
-    live_refresh_success: ['rate>0.95'],
-    event_sync_success: ['rate>0.90'],
-    ws_connect_success: ['rate>0.95'],
-    professor_action_success: ['rate>0.99'],
-    session_completion: ['rate>0.90'],
-    login_duration: ['p(95)<5000'],
+    // k6 Trend thresholds are in milliseconds, so p(99)<3000 means 99% under 3s.
+    http_req_failed: ['rate==0'],
+    ws_errors: ['count==0'],
+    login_success: ['rate==1'],
+    join_success: ['rate==1'],
+    respond_success: ['rate==1'],
+    live_refresh_success: ['rate==1'],
+    event_sync_success: ['rate==1'],
+    ws_connect_success: ['rate==1'],
+    professor_action_success: ['rate==1'],
+    session_completion: ['rate==1'],
+    login_duration: ['p(95)<3000'],
     join_duration: ['p(95)<3000'],
     respond_duration: ['p(95)<3000'],
-    live_refresh_duration: ['p(95)<5000'],
-    event_sync_duration: ['p(95)<5000'],
+    live_refresh_duration: ['p(99)<3000'],
+    event_sync_duration: ['p(99)<3000'],
   },
 };
 
@@ -117,21 +120,69 @@ function jsonRequest(method, path, token, payload, tagName) {
   return res;
 }
 
+function parseTimestampMs(value) {
+  if (value == null || value === '') return null;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) ? timestampMs : null;
+}
+
+function isTrueFalseOptions(options = []) {
+  if (!Array.isArray(options) || options.length !== 2) return false;
+  const labels = options.map((option) => String(option?.answer || option?.plainText || option?.content || '')
+    .replace(/<[^>]*>/g, ' ')
+    .trim()
+    .toUpperCase());
+  return labels.includes('TRUE') && labels.includes('FALSE');
+}
+
+function countCorrectOptions(options = []) {
+  return (Array.isArray(options) ? options : []).filter((option) => !!option?.correct).length;
+}
+
+function normalizeQuestionType(question = {}) {
+  const rawType = Number(question?.type);
+  const options = Array.isArray(question?.options) ? question.options : [];
+
+  if ([0, 1, 2, 3, 6].includes(rawType)) return rawType;
+  if (rawType === 4) {
+    if (options.length > 1) {
+      if (isTrueFalseOptions(options)) return 1;
+      return countCorrectOptions(options) > 1 ? 3 : 0;
+    }
+    return 4;
+  }
+  if (rawType === 5) return 4;
+  return 2;
+}
+
 function fetchLive(token, reason = 'live_refresh') {
-  const start = Date.now();
+  const startedAtMs = Date.now();
   const res = http.get(`${API}/sessions/${state.session.id}/live`, {
     headers: apiHeaders(token),
     tags: { name: reason },
   });
-  liveRefreshDuration.add(Date.now() - start);
+  const completedAtMs = Date.now();
+  liveRefreshDuration.add(completedAtMs - startedAtMs);
 
   const ok = res.status === 200;
   liveRefreshSuccess.add(ok);
   if (!ok) {
-    return { ok: false, data: null, res };
+    return {
+      ok: false,
+      data: null,
+      res,
+      startedAtMs,
+      completedAtMs,
+    };
   }
 
-  return { ok: true, data: res.json(), res };
+  return {
+    ok: true,
+    data: res.json(),
+    res,
+    startedAtMs,
+    completedAtMs,
+  };
 }
 
 function validateLiveState(data, expectation = {}) {
@@ -177,11 +228,15 @@ function validateLiveState(data, expectation = {}) {
   return true;
 }
 
-function refreshLiveAfterEvent(token, reason, expectation = {}) {
-  const syncStart = Date.now();
+function refreshLiveAfterEvent(token, reason, expectation = {}, syncContext = null) {
   const result = fetchLive(token, `live_${reason}`);
   const ok = result.ok && validateLiveState(result.data, expectation);
-  eventSyncDuration.add(Date.now() - syncStart);
+  const emittedAtMs = parseTimestampMs(syncContext?.emittedAt);
+  const receivedAtMs = Number(syncContext?.receivedAtMs || result.startedAtMs || Date.now());
+  const baselineMs = emittedAtMs != null && emittedAtMs <= result.completedAtMs
+    ? emittedAtMs
+    : receivedAtMs;
+  eventSyncDuration.add(Math.max(0, result.completedAtMs - baselineMs));
   eventSyncSuccess.add(ok);
   return result.ok ? result.data : null;
 }
@@ -207,7 +262,7 @@ function randomOptionIds(question, minSelections = 1) {
 }
 
 function buildResponsePayload(question) {
-  const type = Number(question?.type);
+  const type = normalizeQuestionType(question);
   const optionCount = Array.isArray(question?.options) ? question.options.length : 0;
 
   if ((type === 0 || type === 1) && optionCount > 0) {
@@ -501,8 +556,8 @@ export function studentFlow() {
         }, Math.random() * 2000);
       };
 
-      const refreshForEvent = (reason, expectation = {}) => {
-        const refreshed = refreshLiveAfterEvent(token, reason, expectation);
+      const refreshForEvent = (reason, expectation = {}, syncContext = null) => {
+        const refreshed = refreshLiveAfterEvent(token, reason, expectation, syncContext);
         if (refreshed) {
           liveData = refreshed;
         }
@@ -520,6 +575,7 @@ export function studentFlow() {
       });
 
       socket.on('message', (raw) => {
+        const receivedAtMs = Date.now();
         let message;
         try {
           message = JSON.parse(raw);
@@ -532,10 +588,19 @@ export function studentFlow() {
         if (!event || String(data?.sessionId || '') !== String(sessionId)) {
           return;
         }
+        const syncContext = {
+          emittedAt: data?.emittedAt,
+          receivedAtMs,
+        };
 
         switch (event) {
           case 'session:status-changed':
-            liveData = refreshLiveAfterEvent(token, 'status_changed', { status: data.status }) || liveData;
+            liveData = refreshLiveAfterEvent(
+              token,
+              'status_changed',
+              { status: data.status },
+              syncContext,
+            ) || liveData;
             if (data.status === 'done') {
               sessionEnded = true;
               socket.close();
@@ -543,7 +608,7 @@ export function studentFlow() {
             break;
 
           case 'session:question-changed':
-            refreshForEvent('question_changed', { questionNumber: data.questionNumber });
+            refreshForEvent('question_changed', { questionNumber: data.questionNumber }, syncContext);
             break;
 
           case 'session:visibility-changed':
@@ -551,22 +616,32 @@ export function studentFlow() {
               hidden: data.hidden,
               stats: data.stats,
               correct: data.correct,
-            });
+            }, syncContext);
             break;
 
           case 'session:attempt-changed':
             refreshForEvent('attempt_changed', {
               attemptNumber: data?.currentAttempt?.number,
               attemptClosed: data?.currentAttempt?.closed,
-            });
+            }, syncContext);
             break;
 
           case 'session:word-cloud-updated':
-            liveData = refreshLiveAfterEvent(token, 'word_cloud_updated', { requireWordCloud: true }) || liveData;
+            liveData = refreshLiveAfterEvent(
+              token,
+              'word_cloud_updated',
+              { requireWordCloud: true },
+              syncContext,
+            ) || liveData;
             break;
 
           case 'session:histogram-updated':
-            liveData = refreshLiveAfterEvent(token, 'histogram_updated', { requireHistogram: true }) || liveData;
+            liveData = refreshLiveAfterEvent(
+              token,
+              'histogram_updated',
+              { requireHistogram: true },
+              syncContext,
+            ) || liveData;
             break;
 
           case 'session:response-added':
@@ -575,7 +650,7 @@ export function studentFlow() {
             socket.setTimeout(() => {
               responseRefreshScheduled = false;
               responseAddedRefreshes.add(1);
-              liveData = fetchLive(token, 'response_added_live').data || liveData;
+              liveData = refreshLiveAfterEvent(token, 'response_added_live', {}, syncContext) || liveData;
             }, RESPONSE_ADDED_REFRESH_MS);
             break;
 

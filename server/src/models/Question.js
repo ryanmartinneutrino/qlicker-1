@@ -70,6 +70,41 @@ const HistogramDataSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const AttemptDistributionEntrySchema = new mongoose.Schema(
+  {
+    index: { type: Number, required: true },
+    answer: { type: String, default: '' },
+    correct: { type: Boolean, default: false },
+    count: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const AttemptAnswerEntrySchema = new mongoose.Schema(
+  {
+    studentUserId: { type: String, default: '' },
+    answer: { type: mongoose.Schema.Types.Mixed },
+    answerWysiwyg: { type: String, default: '' },
+  },
+  { _id: false }
+);
+
+const AttemptStatsEntrySchema = new mongoose.Schema(
+  {
+    number: { type: Number, required: true },
+    type: { type: String, default: 'unknown' },
+    total: { type: Number, default: 0 },
+    distribution: { type: [AttemptDistributionEntrySchema], default: [] },
+    answers: { type: [AttemptAnswerEntrySchema], default: [] },
+    values: { type: [Number], default: [] },
+    sum: { type: Number, default: 0 },
+    sumSquares: { type: Number, default: 0 },
+    min: { type: Number, default: null },
+    max: { type: Number, default: null },
+  },
+  { _id: false }
+);
+
 const SessionPropertiesSchema = new mongoose.Schema(
   {
     lastAttemptNumber: { type: Number, default: 0 },
@@ -87,6 +122,7 @@ const SessionOptionsSchema = new mongoose.Schema(
     maxAttempts: { type: Number, default: 1 },
     attemptWeights: { type: [Number], default: [] },
     attempts: { type: [AttemptSchema], default: [] },
+    attemptStats: { type: [AttemptStatsEntrySchema], default: [] },
     wordCloudData: { type: WordCloudDataSchema },
     histogramData: { type: HistogramDataSchema },
   },
