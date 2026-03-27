@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
@@ -429,10 +429,14 @@ export default function StudentCourseDetail() {
   };
 
   // Redirect instructors/admins to the professor view of this course
-  const shouldRedirectToInstructorView = course && (
-    (course.instructors || []).some((inst) => String(inst?._id || inst) === String(user?._id))
-    || (user?.profile?.roles || []).includes('admin')
-  );
+  const shouldRedirectToInstructorView = useMemo(() => {
+    if (!course) return false;
+    const userId = String(user?._id || '');
+    const isInstructor = (course.instructors || []).some(
+      (inst) => String(inst?._id || inst) === userId,
+    );
+    return isInstructor || (user?.profile?.roles || []).includes('admin');
+  }, [course, user?._id, user?.profile?.roles]);
 
   useEffect(() => {
     if (!shouldRedirectToInstructorView) return;
