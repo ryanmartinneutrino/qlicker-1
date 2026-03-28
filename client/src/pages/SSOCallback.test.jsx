@@ -40,13 +40,13 @@ vi.mock('../api/client', () => ({
 }));
 
 describe('SSOCallback', () => {
-  it('routes mixed-role instructor accounts to the professor dashboard', async () => {
+  it('routes student-role instructor accounts to the student dashboard', async () => {
     render(<SSOCallback />);
 
     await waitFor(() => {
       expect(setAccessTokenMock).toHaveBeenCalledWith('test-token');
       expect(loadUserMock).toHaveBeenCalled();
-      expect(navigateMock).toHaveBeenCalledWith('/manage', { replace: true });
+      expect(navigateMock).toHaveBeenCalledWith('/student', { replace: true });
     });
   });
 });

@@ -252,7 +252,7 @@ export default function StudentDashboard() {
         {sectionCourses.map((course) => {
           const isTa = taCourseIds.has(String(course._id));
           const coursePath = isTa
-            ? `/manage/course/${course._id}`
+            ? `/prof/course/${course._id}`
             : `/student/course/${course._id}`;
           return (
             <Box key={course._id}>

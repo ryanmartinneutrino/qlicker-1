@@ -38,7 +38,7 @@ test('SSO professor login creates an SSO-managed professor account and logout cl
   await enableSso(request, admin.token);
 
   const professor = ssoConfig.users.find((user) => user.role === 'professor');
-  await loginViaSsoUi(page, professor.username, professor.password, /\/manage$/);
+  await loginViaSsoUi(page, professor.username, professor.password, /\/prof$/);
 
   const ssoUser = await findUserByEmailViaApi(request, admin.token, professor.email);
   expect(ssoUser).toBeTruthy();
@@ -56,7 +56,7 @@ test('SSO professor login creates an SSO-managed professor account and logout cl
   await page.locator('input[name="username"]').fill(professor.username);
   await page.locator('input[name="password"]').fill(professor.password);
   await page.locator('button[type="submit"], input[type="submit"]').first().click();
-  await expect(page).toHaveURL(/\/manage$/);
+  await expect(page).toHaveURL(/\/prof$/);
 });
 
 test('SSO student login creates an SSO-managed student account', async ({ page, request }) => {

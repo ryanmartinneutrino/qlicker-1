@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import ResponsiveTabsNavigation from '../components/common/ResponsiveTabsNavigation';
 import QlickerWordmark from '../components/common/QlickerWordmark';
+import { getDashboardPath } from '../utils/dashboard';
 
 export default function Login() {
   const { t } = useTranslation();
@@ -55,20 +56,13 @@ export default function Login() {
   }, []);
   const navigate = useNavigate();
 
-  const getDashboard = (user) => {
-    const roles = user?.profile?.roles || [];
-    if (roles.includes('admin')) return '/admin';
-    if (roles.includes('professor') || user?.hasInstructorCourses) return '/manage';
-    return '/student';
-  };
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       const user = await login(email, password);
-      navigate(getDashboard(user), { replace: true });
+      navigate(getDashboardPath(user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
@@ -96,7 +90,7 @@ export default function Login() {
     setLoading(true);
     try {
       const user = await register(email, password, firstname, lastname);
-      navigate(getDashboard(user), { replace: true });
+      navigate(getDashboardPath(user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
     } finally {
@@ -154,7 +148,7 @@ export default function Login() {
   }
 
   if (user) {
-    return <Navigate to={getDashboard(user)} replace />;
+    return <Navigate to={getDashboardPath(user)} replace />;
   }
 
   return (

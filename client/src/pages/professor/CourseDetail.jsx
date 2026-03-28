@@ -866,7 +866,7 @@ export default function CourseDetail() {
     setDeleting(true);
     try {
       await apiClient.delete(`/courses/${id}`);
-      navigate('/manage');
+      navigate('/prof');
     } catch {
       setMsg({ severity: 'error', text: t('professor.course.failedDeleteCourse') });
       setDeleting(false);
@@ -895,7 +895,7 @@ export default function CourseDetail() {
       if (newSessionDescInputRef.current) newSessionDescInputRef.current.value = '';
       if (createdSession?._id) {
         navigate(
-          `/manage/course/${id}/session/${createdSession._id}?returnTab=${tab}`,
+          `/prof/course/${id}/session/${createdSession._id}?returnTab=${tab}`,
           { state: { returnTab: tab } }
         );
       } else {
@@ -986,7 +986,7 @@ export default function CourseDetail() {
     try {
       await apiClient.post(`/sessions/${sessionId}/start`);
       fetchSessions();
-      navigate(`/manage/course/${id}/session/${sessionId}/live`);
+      navigate(`/prof/course/${id}/session/${sessionId}/live`);
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.course.failedLaunchSession') });
     }
@@ -1285,7 +1285,7 @@ export default function CourseDetail() {
                           color="success"
                           startIcon={<ReviewIcon />}
                           onClick={() => navigate(
-                            `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                            `/prof/course/${id}/session/${s._id}/review?returnTab=${tab}`,
                             { state: { returnTab: tab } }
                           )}
                           aria-label={t('professor.course.reviewLiveSessionAria', { name: s.name })}
@@ -1300,7 +1300,7 @@ export default function CourseDetail() {
                           color="primary"
                           startIcon={<ReviewIcon />}
                           onClick={() => navigate(
-                            `/manage/course/${id}/session/${s._id}/review?returnTab=${tab}`,
+                            `/prof/course/${id}/session/${s._id}/review?returnTab=${tab}`,
                             { state: { returnTab: tab } }
                           )}
                           aria-label={t('professor.course.reviewSessionAria', { name: s.name })}
@@ -1481,7 +1481,7 @@ export default function CourseDetail() {
           availableSessions={sortedSessions}
           gradingSummaryBySessionId={gradingSummaryBySessionId}
           onOpenSession={(sessionId) => navigate(
-            `/manage/course/${id}/session/${sessionId}/review?returnTab=2`,
+            `/prof/course/${id}/session/${sessionId}/review?returnTab=2`,
             { state: { returnTab: 2 } }
           )}
         />

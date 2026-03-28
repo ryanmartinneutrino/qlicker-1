@@ -9,6 +9,7 @@ import apiClient from '../../api/client';
 import ConnectionStatus from '../common/ConnectionStatus';
 import QlickerWordmark from '../common/QlickerWordmark';
 import { getManualPath, getPreferredManualRole } from '../../utils/userManuals';
+import { getDashboardPath } from '../../utils/dashboard';
 
 export default function AppLayout() {
   const { t } = useTranslation();
@@ -56,15 +57,9 @@ export default function AppLayout() {
     return (f + l).toUpperCase() || '?';
   };
 
-  const getDashboardPath = () => {
-    if (roles.includes('admin')) return '/admin';
-    if (roles.includes('professor') || user?.hasInstructorCourses) return '/manage';
-    return '/student';
-  };
-
   const currentPath = location.pathname;
-  const dashboardPath = getDashboardPath();
-  const isOnCourseList = currentPath === '/manage';
+  const dashboardPath = getDashboardPath(user);
+  const isOnCourseList = currentPath === '/prof';
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -151,7 +146,7 @@ export default function AppLayout() {
               <MenuItem onClick={() => { handleMenuClose(); navigate(manualPath); }}>{t('nav.userManual')}</MenuItem>
             )}
             {isAdmin && !isOnCourseList && (
-              <MenuItem onClick={() => { handleMenuClose(); navigate('/manage'); }}>{t('nav.courses')}</MenuItem>
+              <MenuItem onClick={() => { handleMenuClose(); navigate('/prof'); }}>{t('nav.courses')}</MenuItem>
             )}
             <MenuItem onClick={handleLogout}>{t('nav.logout')}</MenuItem>
           </Menu>

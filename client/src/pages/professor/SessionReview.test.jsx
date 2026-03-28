@@ -14,9 +14,9 @@ vi.mock('../../api/client', () => ({
 
 function renderSessionReview() {
   return render(
-    <MemoryRouter initialEntries={['/manage/course/course-1/session/session-1/review']}>
+    <MemoryRouter initialEntries={['/prof/course/course-1/session/session-1/review']}>
       <Routes>
-        <Route path="/manage/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
+        <Route path="/prof/course/:courseId/session/:sessionId/review" element={<SessionReview />} />
       </Routes>
     </MemoryRouter>
   );

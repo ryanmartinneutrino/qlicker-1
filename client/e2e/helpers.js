@@ -37,7 +37,7 @@ function routeFromExpectedPath(expectedPathPattern) {
   const source = typeof expectedPathPattern?.source === 'string' ? expectedPathPattern.source : String(expectedPathPattern || '');
   if (source.includes('/admin')) return '/admin';
   if (source.includes('/student')) return '/student';
-  return '/manage';
+  return '/prof';
 }
 
 export async function readE2eState() {

@@ -26,13 +26,14 @@ vi.mock('../common/ConnectionStatus', () => ({
   default: () => null,
 }));
 
-function renderLayout(initialEntry = '/manage') {
+function renderLayout(initialEntry = '/prof') {
   return render(
     <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/manage" element={<div>Dashboard destination</div>} />
+            <Route path="/prof" element={<div>Dashboard destination</div>} />
+            <Route path="/student" element={<div>Student dashboard destination</div>} />
             <Route path="/admin" element={<div>Admin destination</div>} />
             <Route path="/manual/professor" element={<div>Professor manual destination</div>} />
             <Route path="/manual/admin" element={<div>Admin manual destination</div>} />
@@ -57,7 +58,7 @@ describe('AppLayout', () => {
   });
 
   it('opens the account menu and routes professors to the professor manual', async () => {
-    renderLayout('/manage');
+    renderLayout('/prof');
 
     fireEvent.click(screen.getByRole('button', { name: /open account menu/i }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /user manual/i }));
@@ -82,6 +83,25 @@ describe('AppLayout', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Admin manual destination')).toBeInTheDocument();
+    });
+  });
+
+  it('routes student-role TA users back to the student dashboard', async () => {
+    authState.user = {
+      profile: {
+        firstname: 'Student',
+        lastname: 'TA',
+        roles: ['student'],
+      },
+      hasInstructorCourses: true,
+      canAccessProfessorDashboard: false,
+    };
+    renderLayout('/profile');
+
+    fireEvent.click(screen.getByRole('button', { name: /go to dashboard/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Student dashboard destination')).toBeInTheDocument();
     });
   });
 });

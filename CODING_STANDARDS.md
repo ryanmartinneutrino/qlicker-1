@@ -1113,7 +1113,7 @@ const res = await fetch('/api/v1/courses');
 </Route>
 
 // RequireRole — shows "Access Denied" if role doesn't match
-<Route path="/manage/*" element={
+<Route path="/prof/*" element={
   <RequireRole role="professor">
     {/* professor routes */}
   </RequireRole>

@@ -4,6 +4,7 @@ import { Box, CircularProgress, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { setAccessToken, getAccessToken } from '../api/client';
+import { getDashboardPath } from '../utils/dashboard';
 
 export default function SSOCallback() {
   const { t } = useTranslation();
@@ -36,10 +37,7 @@ export default function SSOCallback() {
 
   useEffect(() => {
     if (!user) return;
-    const roles = user.profile?.roles || [];
-    if (roles.includes('admin')) navigate('/admin', { replace: true });
-    else if (roles.includes('professor') || user.hasInstructorCourses) navigate('/manage', { replace: true });
-    else navigate('/student', { replace: true });
+    navigate(getDashboardPath(user), { replace: true });
   }, [user, navigate]);
 
   if (error) {

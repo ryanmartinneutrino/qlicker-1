@@ -45,10 +45,10 @@ describe('userManuals helpers', () => {
 
   it('returns the correct dashboard path for each role combination', () => {
     expect(getManualDashboardPath(['student'])).toBe('/student');
-    expect(getManualDashboardPath(['professor'])).toBe('/manage');
-    expect(getManualDashboardPath(['student'], true)).toBe('/manage');
+    expect(getManualDashboardPath(['professor'])).toBe('/prof');
+    expect(getManualDashboardPath(['student'], true)).toBe('/student');
     expect(getManualDashboardPath(['admin'])).toBe('/admin');
-    expect(getManualDashboardPath(['professor', 'student'])).toBe('/manage');
+    expect(getManualDashboardPath(['professor', 'student'])).toBe('/student');
     expect(getManualDashboardPath(['admin', 'professor', 'student'])).toBe('/admin');
     expect(getManualDashboardPath()).toBe('/student');
   });

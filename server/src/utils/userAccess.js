@@ -6,6 +6,11 @@ function normalizeUserId(userOrId) {
   return String(userOrId._id || userOrId.userId || '').trim();
 }
 
+function getUserRoles(userOrId) {
+  if (!userOrId || typeof userOrId === 'string') return [];
+  return Array.isArray(userOrId.profile?.roles) ? userOrId.profile.roles : [];
+}
+
 /*
  * Short-lived in-memory cache for the instructor flag.
  * Avoids a Course.exists() DB roundtrip on every GET /me and every
@@ -36,17 +41,27 @@ export function invalidateAccessCache(userId) {
 
 export async function getUserAccessFlags(userOrId) {
   const userId = normalizeUserId(userOrId);
+  const roles = getUserRoles(userOrId);
+  const canAccessProfessorDashboard = roles.includes('professor');
   if (!userId) {
-    return { hasInstructorCourses: false };
+    return {
+      hasInstructorCourses: false,
+      canAccessProfessorDashboard,
+    };
   }
 
   const cached = getCachedFlag(userId);
   if (cached !== undefined) {
-    return { hasInstructorCourses: cached };
+    return {
+      hasInstructorCourses: cached,
+      canAccessProfessorDashboard,
+    };
   }
 
   const hasInstructorCourses = !!(await Course.exists({ instructors: userId }));
   setCachedFlag(userId, hasInstructorCourses);
-  return { hasInstructorCourses };
+  return {
+    hasInstructorCourses,
+    canAccessProfessorDashboard,
+  };
 }
-

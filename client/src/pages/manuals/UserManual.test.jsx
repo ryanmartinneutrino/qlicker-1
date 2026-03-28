@@ -83,7 +83,7 @@ describe('UserManual', () => {
     renderManual('/manual/professor');
 
     expect(await screen.findByRole('heading', { name: /professor user manual/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/manage');
+    expect(screen.getByRole('link', { name: /back to dashboard/i })).toHaveAttribute('href', '/prof');
     expect(screen.getByRole('link', { name: /student/i })).toHaveAttribute('href', '/manual/student');
     const courseHeading = screen.getByRole('heading', { name: /create a course and add topics before you scale up/i });
     const groupsHeading = screen.getByRole('heading', { name: /set up groups before you need them in class/i });

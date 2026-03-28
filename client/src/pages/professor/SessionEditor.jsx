@@ -155,11 +155,11 @@ export default function SessionEditor() {
   const returnToReview = (searchParams.get('returnTo') || location.state?.returnTo) === 'review';
   const { t } = useTranslation();
   const sessionReviewLink = returnTab === 0
-    ? `/manage/course/${courseId}/session/${sessionId}/review`
-    : `/manage/course/${courseId}/session/${sessionId}/review?returnTab=${returnTab}`;
+    ? `/prof/course/${courseId}/session/${sessionId}/review`
+    : `/prof/course/${courseId}/session/${sessionId}/review?returnTab=${returnTab}`;
   const courseBackLink = returnTab === 0
-    ? `/manage/course/${courseId}`
-    : `/manage/course/${courseId}?tab=${returnTab}`;
+    ? `/prof/course/${courseId}`
+    : `/prof/course/${courseId}?tab=${returnTab}`;
   const backLink = returnToReview ? sessionReviewLink : courseBackLink;
 
   const [session, setSession] = useState(null);
@@ -399,7 +399,7 @@ export default function SessionEditor() {
     setConfirmGoLiveOpen(false);
     try {
       await apiClient.post(`/sessions/${sessionId}/start`);
-      navigate(`/manage/course/${courseId}/session/${sessionId}/live`);
+      navigate(`/prof/course/${courseId}/session/${sessionId}/live`);
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.sessionEditor.failedLaunch') });
     }
@@ -427,7 +427,7 @@ export default function SessionEditor() {
       if (newId) {
         const query = buildReturnNavigationOptions();
         navigate(
-          `/manage/course/${courseId}/session/${newId}${query ? `?${query}` : ''}`,
+          `/prof/course/${courseId}/session/${newId}${query ? `?${query}` : ''}`,
           { state: { returnTab, returnTo: returnToReview ? 'review' : undefined } }
         );
       }
@@ -555,7 +555,7 @@ export default function SessionEditor() {
       if (importedSessionId) {
         const query = buildReturnNavigationOptions();
         navigate(
-          `/manage/course/${courseId}/session/${importedSessionId}${query ? `?${query}` : ''}`,
+          `/prof/course/${courseId}/session/${importedSessionId}${query ? `?${query}` : ''}`,
           { state: { returnTab, returnTo: returnToReview ? 'review' : undefined } }
         );
       }
@@ -1248,7 +1248,7 @@ export default function SessionEditor() {
               variant="contained"
               color="success"
               startIcon={<JoinIcon />}
-              onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}/live`)}
+              onClick={() => navigate(`/prof/course/${courseId}/session/${sessionId}/live`)}
               size="small"
               aria-label={t('professor.sessionEditor.joinLiveSession')}
             >

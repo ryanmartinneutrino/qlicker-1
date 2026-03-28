@@ -2039,7 +2039,7 @@ function CoursesTab() {
           {visibleCourses.map((course) => (
             <SessionListCard
               key={course._id}
-              onClick={() => navigate(`/manage/course/${course._id}`)}
+              onClick={() => navigate(`/prof/course/${course._id}`)}
               title={buildCourseTitle(course, 'medium')}
               badges={<Chip size="small" label={course.inactive ? t('admin.courses.inactive') : t('admin.courses.active')} color={course.inactive ? 'default' : 'success'} />}
               subtitle={buildCourseOptionLabel(course)}

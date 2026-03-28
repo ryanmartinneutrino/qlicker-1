@@ -412,7 +412,7 @@ function LiveSessionContent() {
       setError(null);
 
       if (data?.session?.status === 'done') {
-        navigate(`/manage/course/${courseId}`, { replace: true });
+        navigate(`/prof/course/${courseId}`, { replace: true });
       }
     } catch (err) {
       recordLiveFetch({
@@ -534,7 +534,7 @@ function LiveSessionContent() {
         break;
       case 'session:status-changed':
         if (data.status === 'done') {
-          navigate(`/manage/course/${courseId}`, { replace: true });
+          navigate(`/prof/course/${courseId}`, { replace: true });
           return;
         }
         fetchLive(syncContext);
@@ -720,7 +720,7 @@ function LiveSessionContent() {
       }
       setEndDialogOpen(false);
       setNonAutoGradeableWarning(null);
-      navigate(`/manage/course/${courseId}`, { replace: true });
+      navigate(`/prof/course/${courseId}`, { replace: true });
     } catch (err) {
       setMsg({ severity: 'error', text: err.response?.data?.message || t('professor.liveSession.failedEndSession') });
     } finally {
@@ -803,7 +803,7 @@ function LiveSessionContent() {
   const presentationWindowRef = useRef(null);
 
   const handleOpenPresent = useCallback(() => {
-    const url = `/manage/course/${courseId}/session/${sessionId}/present`;
+    const url = `/prof/course/${courseId}/session/${sessionId}/present`;
     const w = Math.min(1200, window.screen.availWidth * 0.8);
     const h = Math.min(800, window.screen.availHeight * 0.8);
     const left = Math.round((window.screen.availWidth - w) / 2);
@@ -961,7 +961,7 @@ function LiveSessionContent() {
     return (
       <Box sx={{ p: 4 }}>
         <Alert severity="error">{error || t('professor.liveSession.sessionNotFound')}</Alert>
-        <BackLinkButton sx={{ mt: 2 }} label={t('professor.liveSession.backToCourse')} onClick={() => navigate(`/manage/course/${courseId}`)} />
+        <BackLinkButton sx={{ mt: 2 }} label={t('professor.liveSession.backToCourse')} onClick={() => navigate(`/prof/course/${courseId}`)} />
       </Box>
     );
   }
@@ -996,7 +996,7 @@ function LiveSessionContent() {
         <Box sx={{ width: '100%' }}>
           <BackLinkButton
             label={t('professor.liveSession.backToCourse')}
-            onClick={() => navigate(`/manage/course/${courseId}`)}
+            onClick={() => navigate(`/prof/course/${courseId}`)}
           />
         </Box>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 1.25, width: '100%' }}>
@@ -1033,7 +1033,7 @@ function LiveSessionContent() {
               size="small"
               variant="outlined"
               startIcon={<SettingsIcon />}
-              onClick={() => navigate(`/manage/course/${courseId}/session/${sessionId}`)}
+              onClick={() => navigate(`/prof/course/${courseId}/session/${sessionId}`)}
               aria-label={t('professor.liveSession.sessionSettings')}
             >
               {t('professor.liveSession.settings')}

@@ -204,7 +204,7 @@ describe('POST /api/v1/auth/login', () => {
     expect(typeof body.token).toBe('string');
   });
 
-  it('includes hasInstructorCourses in the login response for mixed-role accounts', async (ctx) => {
+  it('marks student-role instructor accounts as student-dashboard users in the login response', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const owner = await createTestUser({ email: 'owner-login@example.com', roles: ['professor'] });
     const ownerToken = await getAuthToken(app, owner);
@@ -241,6 +241,7 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.user.hasInstructorCourses).toBe(true);
+    expect(body.user.canAccessProfessorDashboard).toBe(false);
     expect(body.user.profile.roles).toContain('student');
     expect(body.user.profile.roles).not.toContain('professor');
   });
