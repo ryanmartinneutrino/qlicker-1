@@ -24,14 +24,40 @@ BACKUP_RUN_KEY="${BACKUP_RUN_KEY:-}"
 CRON_MODE=false
 RUNTIME="${BACKUP_RUNTIME:-}"
 MONGO_URI="${MONGO_URI:-}"
+BACKUP_LOG_FILE="${BACKUP_LOG_FILE:-$BACKUP_DIR/qlicker_backup.log}"
+LOG_DEST_READY=false
+
+ensure_log_destination() {
+  if [ "$LOG_DEST_READY" = true ]; then
+    return 0
+  fi
+
+  if mkdir -p "$BACKUP_DIR" >/dev/null 2>&1 && : >> "$BACKUP_LOG_FILE" 2>/dev/null; then
+    LOG_DEST_READY=true
+    return 0
+  fi
+
+  return 1
+}
+
+append_log_line() {
+  level="$1"
+  message="$2"
+
+  if ensure_log_destination; then
+    printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$message" >> "$BACKUP_LOG_FILE" 2>/dev/null || true
+  fi
+}
 
 log() {
+  append_log_line INFO "$*"
   if [ "$CRON_MODE" = false ]; then
     printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
   fi
 }
 
 error() {
+  append_log_line ERROR "$*"
   printf '[%s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
 }
 
@@ -48,6 +74,31 @@ usage() {
   cat <<'EOF'
 Usage: ./backup.sh [--cron] [--label daily|weekly|monthly|manual]
 EOF
+}
+
+log_command_error_output() {
+  context="$1"
+  output="$2"
+
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output" | while IFS= read -r line; do
+      if [ -n "$line" ]; then
+        error "$context output: $line"
+      fi
+    done
+  else
+    error "$context produced no additional output."
+  fi
+}
+
+run_with_error_capture() {
+  context="$1"
+  shift
+
+  command_output="$("$@" 2>&1)" && return 0
+  error "$context failed."
+  log_command_error_output "$context" "$command_output"
+  return 1
 }
 
 while [ "$#" -gt 0 ]; do
@@ -206,6 +257,9 @@ prune_backups_for_label() {
 }
 
 mkdir -p "$BACKUP_DIR"
+if ! ensure_log_destination; then
+  printf '[%s] WARN: Unable to write backup log file at %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$BACKUP_LOG_FILE" >&2
+fi
 
 TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
 BACKUP_STEM="qlicker_backup_${TIMESTAMP}_${BACKUP_LABEL}"
@@ -216,10 +270,11 @@ log "Starting $BACKUP_LABEL backup: $BACKUP_STEM"
 update_backup_status running "$ARCHIVE_NAME" "Backup started"
 
 if [ "$RUNTIME" = "host" ]; then
-  if docker exec "$MONGO_CONTAINER" mongodump \
-    --uri="mongodb://localhost:27017/qlicker" \
-    --out="/backups/$BACKUP_STEM" \
-    --quiet; then
+  if run_with_error_capture "mongodump" \
+    docker exec "$MONGO_CONTAINER" mongodump \
+      --uri="mongodb://localhost:27017/qlicker" \
+      --out="/backups/$BACKUP_STEM" \
+      --quiet; then
     :
   else
     update_backup_status failed "$ARCHIVE_NAME" "mongodump failed"
@@ -227,10 +282,11 @@ if [ "$RUNTIME" = "host" ]; then
     exit 1
   fi
 else
-  if mongodump \
-    --uri="$MONGO_URI" \
-    --out="$BACKUP_DIR/$BACKUP_STEM" \
-    --quiet; then
+  if run_with_error_capture "mongodump" \
+    mongodump \
+      --uri="$MONGO_URI" \
+      --out="$BACKUP_DIR/$BACKUP_STEM" \
+      --quiet; then
     :
   else
     update_backup_status failed "$ARCHIVE_NAME" "mongodump failed"
@@ -239,7 +295,7 @@ else
   fi
 fi
 
-if tar -czf "$ARCHIVE_PATH" -C "$BACKUP_DIR" "$BACKUP_STEM"; then
+if run_with_error_capture "tar compression" tar -czf "$ARCHIVE_PATH" -C "$BACKUP_DIR" "$BACKUP_STEM"; then
   rm -rf "$BACKUP_DIR/$BACKUP_STEM"
 else
   update_backup_status failed "$ARCHIVE_NAME" "Failed to compress backup archive"

@@ -460,6 +460,7 @@ They use the Docker volume mapping in `docker-compose.yml`:
 - host: `./backups/`
 - mongo container: `/backups/`
 - the backup manager container also mounts the same directory to write live dumps
+- both `backup.sh` and `backup-manager.sh` append operational logs to `./backups/qlicker_backup.log`
 
 ### How `backup.sh` Works
 
@@ -470,6 +471,7 @@ When you run `./backup.sh`, the script:
 4. Compresses that dump to `backups/qlicker_backup_<timestamp>_<label>.tar.gz`
 5. Deletes the uncompressed dump directory
 6. Prunes `.tar.gz` backups by label using the retention counts stored in Admin -> Backup
+7. Appends run details and errors (including captured command output) to `backups/qlicker_backup.log`
 
 ### Create a Backup
 
@@ -480,6 +482,12 @@ When you run `./backup.sh`, the script:
 Creates a timestamped, compressed backup in `./backups/`:
 ```
 backups/qlicker_backup_20260321_020000_daily.tar.gz
+```
+
+Inspect backup log history:
+
+```bash
+tail -n 100 backups/qlicker_backup.log
 ```
 
 ### Backup Methods
@@ -508,6 +516,8 @@ If the Backup tab shows a stuck `running` request while the manager is unhealthy
 ### Automatic Backups (Backup Manager Service)
 
 The `backup-manager` service in `docker-compose.yml` checks the configured backup time once per minute, runs daily backups every day, weekly backups on Sundays, and monthly backups on the first day of the month. It updates latest run metadata in MongoDB so the Admin Dashboard can show current state and warnings.
+
+`backup-manager` uses the same `MONGO_URI` value as the API server. If you override `MONGO_URI` in `.env`, recreate `backup-manager` and `server` so both point to the same database.
 
 Use the Admin Dashboard's **Backup** tab to:
 
