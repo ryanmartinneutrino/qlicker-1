@@ -105,7 +105,7 @@ export default function App() {
               <Route path="/verify-email/:token" element={<VerifyEmail />} />
               {/* Presentation window route outside AppLayout (no appbar/avatar) */}
               <Route element={<RequireAuth />}>
-                <Route path="/prof/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor"><PresentationWindow /></RequireRole>} />
+                <Route path="/prof/course/:courseId/session/:sessionId/present" element={<RequireRole role="professor" allowInstructorCourses><PresentationWindow /></RequireRole>} />
                 <Route path="/video/:courseId" element={<JitsiWindow />} />
                 <Route path="/video/:courseId/category/:catNum/group/:groupIdx" element={<JitsiWindow />} />
               </Route>
@@ -113,10 +113,10 @@ export default function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/admin" element={<RequireRole role="admin"><AdminDashboard /></RequireRole>} />
                 <Route path="/prof" element={<RequireRole role="professor" allowInstructorCourses={false}><ProfDashboard /></RequireRole>} />
-                <Route path="/prof/course/:id" element={<RequireRole role="professor"><ProfCourseDetail /></RequireRole>} />
-                <Route path="/prof/course/:courseId/session/:sessionId" element={<RequireRole role="professor"><SessionEditor /></RequireRole>} />
-                <Route path="/prof/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor"><ProfLiveSession /></RequireRole>} />
-                <Route path="/prof/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor"><ProfSessionReview /></RequireRole>} />
+                <Route path="/prof/course/:id" element={<RequireRole role="professor" allowInstructorCourses><ProfCourseDetail /></RequireRole>} />
+                <Route path="/prof/course/:courseId/session/:sessionId" element={<RequireRole role="professor" allowInstructorCourses><SessionEditor /></RequireRole>} />
+                <Route path="/prof/course/:courseId/session/:sessionId/live" element={<RequireRole role="professor" allowInstructorCourses><ProfLiveSession /></RequireRole>} />
+                <Route path="/prof/course/:courseId/session/:sessionId/review" element={<RequireRole role="professor" allowInstructorCourses><ProfSessionReview /></RequireRole>} />
                 <Route path="/student" element={<RequireRole role="student" allowAdmin={false}><StudentDashboard /></RequireRole>} />
                 <Route path="/student/course/:id" element={<RequireRole role="student" allowAdmin={false}><StudentCourseDetail /></RequireRole>} />
                 <Route path="/student/course/:courseId/practice-sessions/new" element={<RequireRole role="student" allowAdmin={false}><StudentPracticeSessionEditor /></RequireRole>} />
