@@ -222,7 +222,35 @@ const DEFAULT_BACKUP_SETTINGS = {
   backupLastRunStatus: 'idle',
   backupLastRunFilename: '',
   backupLastRunMessage: '',
+  backupManagerLastSeenAt: null,
+  backupManagerStatus: 'unknown',
+  backupManagerMessage: '',
+  backupManagerHostPath: './backups',
+  backupManagerCheckIntervalSeconds: 60,
+  backupManagerIsStale: false,
 };
+
+function buildBackupSettingsState(data = {}) {
+  return {
+    ...DEFAULT_BACKUP_SETTINGS,
+    backupEnabled: data.backupEnabled ?? false,
+    backupTimeLocal: data.backupTimeLocal ?? '02:00',
+    backupRetentionDaily: data.backupRetentionDaily ?? 7,
+    backupRetentionWeekly: data.backupRetentionWeekly ?? 4,
+    backupRetentionMonthly: data.backupRetentionMonthly ?? 12,
+    backupLastRunAt: data.backupLastRunAt ?? null,
+    backupLastRunType: data.backupLastRunType ?? '',
+    backupLastRunStatus: data.backupLastRunStatus ?? 'idle',
+    backupLastRunFilename: data.backupLastRunFilename ?? '',
+    backupLastRunMessage: data.backupLastRunMessage ?? '',
+    backupManagerLastSeenAt: data.backupManagerLastSeenAt ?? null,
+    backupManagerStatus: data.backupManagerStatus ?? 'unknown',
+    backupManagerMessage: data.backupManagerMessage ?? '',
+    backupManagerHostPath: data.backupManagerHostPath ?? './backups',
+    backupManagerCheckIntervalSeconds: data.backupManagerCheckIntervalSeconds ?? 60,
+    backupManagerIsStale: data.backupManagerIsStale ?? false,
+  };
+}
 const SSO_BASIC_FIELDS = [
   { key: 'SSO_enabled', labelKey: 'admin.sso.enable', type: 'checkbox' },
   { key: 'SSO_entrypoint', labelKey: 'admin.sso.entrypoint' },
@@ -245,6 +273,13 @@ const BACKUP_STATUS_COLORS = {
   running: 'info',
   success: 'success',
   failed: 'error',
+};
+const BACKUP_MANAGER_STATUS_COLORS = {
+  unknown: 'default',
+  healthy: 'success',
+  warning: 'warning',
+  error: 'error',
+  stale: 'warning',
 };
 const SSO_ADVANCED_FIELDS = [
   {
@@ -546,19 +581,7 @@ function BackupTab() {
     const { data } = await apiClient.get('/settings');
     setTimeFormat(data.timeFormat === '12h' ? '12h' : '24h');
     hasLoadedRef.current = false;
-    setSettings({
-      ...DEFAULT_BACKUP_SETTINGS,
-      backupEnabled: data.backupEnabled ?? false,
-      backupTimeLocal: data.backupTimeLocal ?? '02:00',
-      backupRetentionDaily: data.backupRetentionDaily ?? 7,
-      backupRetentionWeekly: data.backupRetentionWeekly ?? 4,
-      backupRetentionMonthly: data.backupRetentionMonthly ?? 12,
-      backupLastRunAt: data.backupLastRunAt ?? null,
-      backupLastRunType: data.backupLastRunType ?? '',
-      backupLastRunStatus: data.backupLastRunStatus ?? 'idle',
-      backupLastRunFilename: data.backupLastRunFilename ?? '',
-      backupLastRunMessage: data.backupLastRunMessage ?? '',
-    });
+    setSettings(buildBackupSettingsState(data));
   }, []);
 
   useEffect(() => {
@@ -580,11 +603,11 @@ function BackupTab() {
 
   useEffect(() => {
     if (loading) return undefined;
-    if (settings.backupLastRunStatus !== 'running') return undefined;
+    const refreshIntervalMs = settings.backupLastRunStatus === 'running' ? 10000 : 60000;
 
     const timer = setInterval(() => {
       loadSettings().catch(() => {});
-    }, 10000);
+    }, refreshIntervalMs);
 
     return () => clearInterval(timer);
   }, [loadSettings, loading, settings.backupLastRunStatus]);
@@ -633,6 +656,19 @@ function BackupTab() {
     success: t('admin.backup.statusSuccess'),
     failed: t('admin.backup.statusFailed'),
   }[lastRunStatus] || lastRunStatus;
+  const backupManagerStatus = settings.backupManagerStatus || 'unknown';
+  const backupManagerStatusLabel = {
+    unknown: t('admin.backup.managerStatusUnknown'),
+    healthy: t('admin.backup.managerStatusHealthy'),
+    warning: t('admin.backup.managerStatusWarning'),
+    error: t('admin.backup.managerStatusError'),
+    stale: t('admin.backup.managerStatusStale'),
+  }[backupManagerStatus] || backupManagerStatus;
+  const backupManagerNeedsWarning = backupManagerStatus !== 'healthy';
+  const backupManagerBlocksManualRun = backupManagerStatus === 'unknown'
+    || backupManagerStatus === 'error'
+    || backupManagerStatus === 'stale';
+  const backupManagerAlertSeverity = backupManagerStatus === 'error' ? 'error' : 'warning';
 
   const requestManualBackup = async () => {
     try {
@@ -640,14 +676,7 @@ function BackupTab() {
       setSaveError('');
       const { data } = await apiClient.post('/settings/backup-now');
       if (data?.backupLastRunStatus) {
-        setSettings((current) => ({
-          ...current,
-          backupLastRunStatus: data.backupLastRunStatus,
-          backupLastRunType: data.backupLastRunType ?? current.backupLastRunType,
-          backupLastRunMessage: data.backupLastRunMessage ?? current.backupLastRunMessage,
-          backupLastRunFilename: data.backupLastRunFilename ?? current.backupLastRunFilename,
-          backupLastRunAt: data.backupLastRunAt ?? current.backupLastRunAt,
-        }));
+        setSettings((current) => buildBackupSettingsState({ ...current, ...data }));
       } else {
         setSettings((current) => ({
           ...current,
@@ -669,12 +698,22 @@ function BackupTab() {
       <Alert severity="info">
         {t('admin.backup.help')}
       </Alert>
+      {backupManagerNeedsWarning ? (
+        <Alert severity={backupManagerAlertSeverity}>
+          {settings.backupManagerMessage || t('admin.backup.managerStatusUnknownHelp')}
+        </Alert>
+      ) : null}
+      {lastRunStatus === 'running' && backupManagerBlocksManualRun ? (
+        <Alert severity="warning">
+          {t('admin.backup.runningWarning')}
+        </Alert>
+      ) : null}
       <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           {t('admin.backup.storagePathLabel')}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {t('admin.backup.storagePathValue')}
+          {t('admin.backup.storagePathValue', { value: settings.backupManagerHostPath || './backups' })}
         </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
@@ -690,7 +729,7 @@ function BackupTab() {
             size="small"
             variant="contained"
             onClick={requestManualBackup}
-            disabled={saving || lastRunStatus === 'running'}
+            disabled={saving || lastRunStatus === 'running' || backupManagerBlocksManualRun}
           >
             {t('admin.backup.runNow')}
           </Button>
@@ -738,6 +777,22 @@ function BackupTab() {
           fullWidth
         />
       </Box>
+      <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+          {t('admin.backup.manager')}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Chip size="small" label={backupManagerStatusLabel} color={BACKUP_MANAGER_STATUS_COLORS[backupManagerStatus] || 'default'} />
+        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {settings.backupManagerLastSeenAt
+            ? t('admin.backup.managerLastSeen', { value: formatDisplayDateTime(settings.backupManagerLastSeenAt) })
+            : t('admin.backup.managerNeverSeen')}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {settings.backupManagerMessage || t('admin.backup.managerStatusUnknownHelp')}
+        </Typography>
+      </Paper>
       <Paper variant="outlined" sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
           {t('admin.backup.lastRun')}

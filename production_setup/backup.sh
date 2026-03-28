@@ -146,21 +146,21 @@ update_backup_status() {
   filename="$2"
   message="$3"
 
-  set_doc="backupLastRunAt: new Date(), backupLastRunType: ${js_string "$BACKUP_LABEL"}, backupLastRunStatus: ${js_string "$status"}, backupLastRunFilename: ${js_string "$filename"}, backupLastRunMessage: ${js_string "$message"}"
+  set_doc="backupLastRunAt: new Date(), backupLastRunType: $(js_string "$BACKUP_LABEL"), backupLastRunStatus: $(js_string "$status"), backupLastRunFilename: $(js_string "$filename"), backupLastRunMessage: $(js_string "$message")"
 
   if [ -n "$BACKUP_RUN_KEY" ]; then
     case "$BACKUP_LABEL" in
       daily)
-        set_doc="$set_doc, backupLastDailyRunKey: ${js_string "$BACKUP_RUN_KEY"}"
+        set_doc="$set_doc, backupLastDailyRunKey: $(js_string "$BACKUP_RUN_KEY")"
         ;;
       weekly)
-        set_doc="$set_doc, backupLastWeeklyRunKey: ${js_string "$BACKUP_RUN_KEY"}"
+        set_doc="$set_doc, backupLastWeeklyRunKey: $(js_string "$BACKUP_RUN_KEY")"
         ;;
       monthly)
-        set_doc="$set_doc, backupLastMonthlyRunKey: ${js_string "$BACKUP_RUN_KEY"}"
+        set_doc="$set_doc, backupLastMonthlyRunKey: $(js_string "$BACKUP_RUN_KEY")"
         ;;
       manual)
-        set_doc="$set_doc, backupLastHandledManualRequestId: ${js_string "$BACKUP_RUN_KEY"}"
+        set_doc="$set_doc, backupLastHandledManualRequestId: $(js_string "$BACKUP_RUN_KEY")"
         ;;
     esac
   fi

@@ -1,6 +1,6 @@
 import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
-import { normalizeSettingsPayload } from '../utils/authPolicy.js';
+import { getBackupManagerHealth, normalizeSettingsPayload } from '../utils/authPolicy.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
 
 async function getOrCreateSettings() {
@@ -183,6 +183,15 @@ export default async function settingsRoutes(app) {
         let settings = await Settings.findOne().select('_id');
         if (!settings) {
           settings = await Settings.create({ _id: 'settings' });
+        }
+
+        const currentSettings = await Settings.findById(settings._id).lean();
+        const backupManagerHealth = getBackupManagerHealth(currentSettings);
+        if (backupManagerHealth.status !== 'healthy' && backupManagerHealth.status !== 'warning') {
+          return reply.code(503).send({
+            error: 'Service Unavailable',
+            message: backupManagerHealth.message,
+          });
         }
 
         const updatedSettings = await Settings.findByIdAndUpdate(

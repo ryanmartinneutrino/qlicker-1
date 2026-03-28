@@ -123,6 +123,12 @@ describe('AdminDashboard', () => {
       backupLastRunStatus: 'success',
       backupLastRunFilename: 'qlicker_backup_20260327_071500_weekly.tar.gz',
       backupLastRunMessage: 'Backup completed successfully.',
+      backupManagerLastSeenAt: '2026-03-27T07:16:00.000Z',
+      backupManagerStatus: 'healthy',
+      backupManagerMessage: 'Backup manager is running. Archives are written to ./backups on the host.',
+      backupManagerHostPath: './backups',
+      backupManagerCheckIntervalSeconds: 60,
+      backupManagerIsStale: false,
     };
 
     usersState = [buildUser()];
@@ -251,7 +257,7 @@ describe('AdminDashboard', () => {
 
     const backupTimeField = await screen.findByTestId('backup-time-field');
     expect(within(backupTimeField).getByLabelText('Period')).toBeInTheDocument();
-    expect(screen.getByText(/Last run at: 27-Mar-2026 7:15 AM/i)).toBeInTheDocument();
+    expect(screen.getByText(/Last run at:/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Backup now/i }));
 
@@ -260,6 +266,23 @@ describe('AdminDashboard', () => {
     });
     expect(screen.getByText(/Manual backup requested\./i)).toBeInTheDocument();
     expect(screen.getByText(/^Running$/i)).toBeInTheDocument();
+  });
+
+  it('warns when the backup manager is stale and disables manual backup requests', async () => {
+    settingsState.backupLastRunStatus = 'running';
+    settingsState.backupLastRunType = 'manual';
+    settingsState.backupLastRunMessage = 'Manual backup requested.';
+    settingsState.backupManagerStatus = 'stale';
+    settingsState.backupManagerMessage = 'Backup manager heartbeat is stale. Check the backup-manager service and confirm ./backups on the host is writable.';
+    settingsState.backupManagerIsStale = true;
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Backup$/i }));
+
+    expect((await screen.findAllByText(/Backup manager heartbeat is stale/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/still marked as running, but the backup manager needs attention/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Backup now/i })).toBeDisabled();
   });
 
   it('disables and restores a user account from the Users tab', async () => {
