@@ -46,6 +46,7 @@ services:
     environment:
       - MONGO_URI=mongodb://mongo:27017/qlicker
       - BACKUP_DIR=/backups
+      - BACKUP_HOST_PATH=./backups
       - BACKUP_CHECK_INTERVAL_SECONDS=${BACKUP_CHECK_INTERVAL_SECONDS:-60}
       - TZ=${TZ:-UTC}
     volumes:

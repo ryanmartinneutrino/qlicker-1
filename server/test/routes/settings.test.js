@@ -103,6 +103,20 @@ describe('POST /api/v1/settings/backup-now', () => {
   it('queues a manual backup request for admins', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          backupManagerLastSeenAt: new Date(),
+          backupManagerStatus: 'healthy',
+          backupManagerMessage: 'Backup manager is running. Archives are written to ./backups on the host.',
+          backupManagerHostPath: './backups',
+          backupManagerCheckIntervalSeconds: 60,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
     const admin = await createTestUser({
       email: 'admin-backup-now@example.com',
       roles: ['admin'],
@@ -123,6 +137,40 @@ describe('POST /api/v1/settings/backup-now', () => {
     expect(stored.backupManualRequestId).toMatch(/^manual-/);
     expect(stored.backupLastRunStatus).toBe('running');
     expect(stored.backupLastRunType).toBe('manual');
+  });
+
+  it('rejects manual backup requests when the backup manager heartbeat is stale', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          backupManagerLastSeenAt: new Date(Date.now() - (10 * 60 * 1000)),
+          backupManagerStatus: 'healthy',
+          backupManagerMessage: 'Backup manager is running. Archives are written to ./backups on the host.',
+          backupManagerHostPath: './backups',
+          backupManagerCheckIntervalSeconds: 60,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const admin = await createTestUser({
+      email: 'admin-backup-stale@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/settings/backup-now', {
+      token,
+    });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json().message).toMatch(/heartbeat is stale/i);
+
+    const stored = await Settings.findOne({ _id: 'settings' }).lean();
+    expect(stored.backupManualRequestId || '').toBe('');
   });
 });
 

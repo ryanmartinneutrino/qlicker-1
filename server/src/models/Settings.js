@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import {
+  DEFAULT_BACKUP_MANAGER_CHECK_INTERVAL_SECONDS,
+  DEFAULT_BACKUP_MANAGER_HOST_PATH,
   DEFAULT_BACKUP_RETENTION_DAILY,
   DEFAULT_BACKUP_RETENTION_MONTHLY,
   DEFAULT_BACKUP_RETENTION_WEEKLY,
@@ -99,6 +101,19 @@ const SettingsSchema = new mongoose.Schema(
     backupLastMonthlyRunKey: { type: String, default: '' },
     backupManualRequestId: { type: String, default: '' },
     backupLastHandledManualRequestId: { type: String, default: '' },
+    backupManagerLastSeenAt: { type: Date, default: null },
+    backupManagerCheckIntervalSeconds: {
+      type: Number,
+      default: DEFAULT_BACKUP_MANAGER_CHECK_INTERVAL_SECONDS,
+      min: 5,
+    },
+    backupManagerStatus: {
+      type: String,
+      enum: ['unknown', 'healthy', 'warning', 'error'],
+      default: 'unknown',
+    },
+    backupManagerMessage: { type: String, default: '' },
+    backupManagerHostPath: { type: String, default: DEFAULT_BACKUP_MANAGER_HOST_PATH },
 
     // Jitsi video chat settings
     Jitsi_Enabled: { type: Boolean, default: false },

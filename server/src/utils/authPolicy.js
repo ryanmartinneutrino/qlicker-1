@@ -7,6 +7,10 @@ export const DEFAULT_BACKUP_TIME_LOCAL = '02:00';
 export const DEFAULT_BACKUP_RETENTION_DAILY = 7;
 export const DEFAULT_BACKUP_RETENTION_WEEKLY = 4;
 export const DEFAULT_BACKUP_RETENTION_MONTHLY = 12;
+export const DEFAULT_BACKUP_MANAGER_CHECK_INTERVAL_SECONDS = 60;
+export const DEFAULT_BACKUP_MANAGER_HOST_PATH = './backups';
+export const BACKUP_MANAGER_STALE_MULTIPLIER = 3;
+export const BACKUP_MANAGER_MIN_STALE_MS = 3 * 60 * 1000;
 
 export const SSO_PROVIDER_ROUTES = {
   legacy: {
@@ -35,6 +39,11 @@ function normalizeBoolean(value, fallback) {
     if (normalized === 'false' || normalized === '0') return false;
   }
   return fallback;
+}
+
+function normalizeString(value, fallback = '') {
+  const normalized = String(value ?? '').trim();
+  return normalized || fallback;
 }
 
 export function isAdminUser(user = {}) {
@@ -83,6 +92,71 @@ export function normalizeBackupRetentionCount(value, fallback) {
   return normalizeInteger(value, fallback, { min: 0 });
 }
 
+export function normalizeBackupManagerCheckIntervalSeconds(value) {
+  return normalizeInteger(value, DEFAULT_BACKUP_MANAGER_CHECK_INTERVAL_SECONDS, { min: 5 });
+}
+
+export function normalizeBackupManagerHostPath(value) {
+  return normalizeString(value, DEFAULT_BACKUP_MANAGER_HOST_PATH);
+}
+
+export function normalizeBackupManagerStatus(value) {
+  const normalized = normalizeString(value).toLowerCase();
+  if (normalized === 'healthy' || normalized === 'warning' || normalized === 'error' || normalized === 'unknown') {
+    return normalized;
+  }
+  return 'unknown';
+}
+
+export function getBackupManagerHealth(settings = {}, { now = new Date() } = {}) {
+  const checkIntervalSeconds = normalizeBackupManagerCheckIntervalSeconds(
+    settings?.backupManagerCheckIntervalSeconds
+  );
+  const hostPath = normalizeBackupManagerHostPath(settings?.backupManagerHostPath);
+  const rawStatus = normalizeBackupManagerStatus(settings?.backupManagerStatus);
+  const rawMessage = normalizeString(settings?.backupManagerMessage);
+  const parsedLastSeenAt = settings?.backupManagerLastSeenAt
+    ? new Date(settings.backupManagerLastSeenAt)
+    : null;
+  const lastSeenAt = parsedLastSeenAt && !Number.isNaN(parsedLastSeenAt.getTime())
+    ? parsedLastSeenAt
+    : null;
+  const staleAfterMs = Math.max(
+    checkIntervalSeconds * BACKUP_MANAGER_STALE_MULTIPLIER * 1000,
+    BACKUP_MANAGER_MIN_STALE_MS
+  );
+  const isStale = Boolean(lastSeenAt) && (now.getTime() - lastSeenAt.getTime()) > staleAfterMs;
+
+  let status = rawStatus;
+  let message = rawMessage;
+
+  if (!lastSeenAt && status === 'unknown' && !message) {
+    message = `Backup manager has not reported in yet. Make sure the backup-manager service is running and ${hostPath} on the host is writable.`;
+  }
+
+  if (isStale) {
+    status = 'stale';
+    if (!message || rawStatus === 'healthy' || rawStatus === 'warning' || rawStatus === 'unknown') {
+      message = `Backup manager heartbeat is stale. Check the backup-manager service and confirm ${hostPath} on the host is writable.`;
+    }
+  } else if (status === 'healthy' && !message) {
+    message = `Backup manager is running. Archives are written to ${hostPath} on the host.`;
+  } else if (status === 'error' && !message) {
+    message = `Backup manager reported an error. Check the backup-manager service and ${hostPath} on the host.`;
+  } else if (status === 'warning' && !message) {
+    message = `Backup manager reported a warning. Check the latest backup details below and confirm ${hostPath} on the host is writable.`;
+  }
+
+  return {
+    status,
+    message,
+    lastSeenAt,
+    checkIntervalSeconds,
+    hostPath,
+    isStale,
+  };
+}
+
 export function normalizeSsoRouteMode(value) {
   const normalized = String(value || '').trim().toLowerCase();
   if (normalized === 'legacy' || normalized === 'api_v1') {
@@ -122,6 +196,7 @@ export function getSsoProviderRoutes(settings = {}) {
 }
 
 export function normalizeSettingsPayload(settings = {}) {
+  const backupManagerHealth = getBackupManagerHealth(settings);
   return {
     ...settings,
     tokenExpiryMinutes: normalizeTokenExpiryMinutes(settings?.tokenExpiryMinutes),
@@ -141,6 +216,12 @@ export function normalizeSettingsPayload(settings = {}) {
       settings?.backupRetentionMonthly,
       DEFAULT_BACKUP_RETENTION_MONTHLY
     ),
+    backupManagerLastSeenAt: backupManagerHealth.lastSeenAt,
+    backupManagerCheckIntervalSeconds: backupManagerHealth.checkIntervalSeconds,
+    backupManagerStatus: backupManagerHealth.status,
+    backupManagerMessage: backupManagerHealth.message,
+    backupManagerHostPath: backupManagerHealth.hostPath,
+    backupManagerIsStale: backupManagerHealth.isStale,
     SSO_routeMode: normalizeSsoRouteMode(settings?.SSO_routeMode),
     SSO_wantAssertionsSigned: normalizeBoolean(settings?.SSO_wantAssertionsSigned, false),
     SSO_wantAuthnResponseSigned: normalizeBoolean(settings?.SSO_wantAuthnResponseSigned, false),
