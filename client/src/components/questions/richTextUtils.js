@@ -5,7 +5,7 @@ import { isAllowedVideoHost, toEmbedUrl } from './VideoEmbed';
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
-const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
+const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label, iframe, video, audio, embed, object, [data-video-embed]';
 const BASE_RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'width', 'height', 'data-width', 'data-height',
 ];
@@ -222,7 +222,7 @@ function convertStoredMathNodesToDelimiters(html) {
 function normalizeBlockMathMarkup(container) {
   if (!container) return;
   const html = container.innerHTML;
-  container.innerHTML = html.replace(/\$\$([\s\S]*?)\$\$/g, (fullMatch, inner) => {
+  const normalizedHtml = html.replace(/\$\$([\s\S]*?)\$\$/g, (fullMatch, inner) => {
     let cleaned = inner
       .replace(BLOCK_SPLIT_REGEX, '\n')
       .replace(/<br\s*\/?>/gi, '\n');
@@ -239,6 +239,9 @@ function normalizeBlockMathMarkup(container) {
     if (!cleaned) return fullMatch;
     return `$$\n${normalizeLatexForKatex(cleaned)}\n$$`;
   });
+  if (normalizedHtml !== html) {
+    container.innerHTML = normalizedHtml;
+  }
 }
 
 function hasInteractiveNodes(container) {

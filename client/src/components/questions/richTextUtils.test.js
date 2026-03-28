@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStoredHtml, prepareRichTextInput } from './richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from './richTextUtils';
 
 describe('richTextUtils image attribute preservation', () => {
   it('preserves resized image width attributes through sanitization', () => {
@@ -74,5 +78,18 @@ describe('richTextUtils image attribute preservation', () => {
 
     expect(prepared).not.toContain('<iframe');
     expect(normalized).not.toContain('<iframe');
+  });
+
+  it('keeps existing iframe nodes stable when rendering KaTeX with no block math', () => {
+    const container = document.createElement('div');
+    container.innerHTML = '<p>Prompt without math</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>';
+
+    const initialIframe = container.querySelector('iframe');
+    expect(initialIframe).toBeTruthy();
+
+    renderKatexInElement(container);
+
+    const finalIframe = container.querySelector('iframe');
+    expect(finalIframe).toBe(initialIframe);
   });
 });
