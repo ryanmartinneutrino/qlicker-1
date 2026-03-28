@@ -311,6 +311,8 @@
       "runNow": "Sauvegarder maintenant",
       "runNowRequested": "Sauvegarde manuelle demandée.",
       "runNowFailed": "Échec de la demande de sauvegarde manuelle.",
+      "resetState": "Réinitialiser l'état de sauvegarde",
+      "resetStateFailed": "Échec de la réinitialisation de l'état de sauvegarde.",
       "storagePathLabel": "Emplacement des sauvegardes",
       "storagePathValue": "Les archives sont écrites à côté de docker-compose.yml dans {{value}} sur l'hôte.",
       "recoveryGuide": "Ouvrir le guide de récupération",

@@ -174,6 +174,47 @@ describe('POST /api/v1/settings/backup-now', () => {
   });
 });
 
+describe('POST /api/v1/settings/backup-reset', () => {
+  it('clears stuck backup request state for admins', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          backupManualRequestId: 'manual-stuck-1',
+          backupLastHandledManualRequestId: '',
+          backupLastRunStatus: 'running',
+          backupLastRunType: 'manual',
+          backupLastRunMessage: 'Manual backup requested.',
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const admin = await createTestUser({
+      email: 'admin-backup-reset@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'POST', '/api/v1/settings/backup-reset', {
+      token,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.backupLastRunStatus).toBe('idle');
+    expect(body.backupLastRunType).toBe('');
+    expect(body.backupLastRunMessage).toBe('Backup request state was reset by an admin.');
+
+    const stored = await Settings.findOne({ _id: 'settings' }).lean();
+    expect(stored.backupManualRequestId).toBe('');
+    expect(stored.backupLastHandledManualRequestId).toBe('');
+    expect(stored.backupLastRunStatus).toBe('idle');
+  });
+});
+
 describe('GET /api/v1/settings/jitsi-course/:courseId', () => {
   it('returns course-specific Jitsi availability for a professor', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();

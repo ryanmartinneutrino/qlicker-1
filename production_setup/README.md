@@ -482,7 +482,46 @@ Creates a timestamped, compressed backup in `./backups/`:
 backups/qlicker_backup_20260321_020000_daily.tar.gz
 ```
 
-### Automatic Backups (Cron)
+### Backup Methods
+
+Qlicker supports three primary backup trigger paths:
+
+1. **Admin UI (manual):** **Admin -> Backup -> Backup now**
+2. **Scheduled service:** `backup-manager` in `docker-compose.yml`
+3. **Host command line:** run `./backup.sh` directly in `production_setup/`
+
+For command-line runs, you can choose a label explicitly:
+
+```bash
+# default label is daily
+./backup.sh
+
+# explicit labels for one-off archival runs
+./backup.sh --label manual
+./backup.sh --label weekly
+./backup.sh --label monthly
+```
+
+If the Backup tab shows a stuck `running` request while the manager is unhealthy, use
+**Reset backup state** in the Backup tab after fixing the service health issue.
+
+### Automatic Backups (Backup Manager Service)
+
+The `backup-manager` service in `docker-compose.yml` checks the configured backup time once per minute, runs daily backups every day, weekly backups on Sundays, and monthly backups on the first day of the month. It updates latest run metadata in MongoDB so the Admin Dashboard can show current state and warnings.
+
+Use the Admin Dashboard's **Backup** tab to:
+
+- enable or disable the scheduled backup job
+- choose the local backup time
+- change daily, weekly, and monthly retention counts
+- request an immediate run with **Backup now**
+- reset a stuck manual request with **Reset backup state**
+- confirm manager heartbeat, run status, and archive filename
+- jump directly to the recovery guidance from the UI
+
+### Optional Cron Backups (Legacy Path)
+
+Use this only if you intentionally want host cron to trigger backups outside the built-in backup-manager schedule.
 
 Add to your server's crontab:
 
@@ -508,18 +547,6 @@ qlicker_backup_20260321_020000_daily.tar.gz
 qlicker_backup_20260323_020000_weekly.tar.gz
 qlicker_backup_20260401_020000_monthly.tar.gz
 ```
-
-### Backup Manager Service
-
-The `backup-manager` service in `docker-compose.yml` checks the configured backup time once per minute, runs daily backups every day, weekly backups on Sundays, and monthly backups on the first day of the month. It updates the latest run metadata in MongoDB so the Admin Dashboard can show the current state.
-
-Use the Admin Dashboard's **Backup** tab to:
-
-- enable or disable the scheduled backup job
-- choose the local backup time
-- change daily, weekly, and monthly retention counts
-- confirm the last run time, status message, and archive filename
-- jump directly to the recovery guidance from the UI
 
 ### How `restore.sh` Works
 

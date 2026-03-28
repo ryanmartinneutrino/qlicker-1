@@ -364,6 +364,7 @@ For production deployment, see the self-contained **[`production_setup/`](produc
 - **Legacy database initialization** (`init-from-legacy.sh`) with question-type migration
 - **S3 privatization scripts** (`sanitize-s3.js`, `sanitize-s3.sh`) to rewrite legacy image URLs and migrate objects toward private-bucket mode
 - **Automated live backups** (`backup.sh` + `backup-manager.sh`) with labeled daily/weekly/monthly archives retained from Admin -> Backup
+- **Direct command-line backups** from the host (`cd production_setup && ./backup.sh [--label manual|daily|weekly|monthly]`)
 - **Restore script** (`restore.sh`) for disaster recovery
 - **User management** (`manage-user.sh`) — create users, change passwords, promote roles, and toggle per-user email-login exceptions
 - **Update script** (`update.sh`) for rolling updates with pre-update backups
