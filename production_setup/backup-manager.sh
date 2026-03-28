@@ -18,12 +18,38 @@ MONGO_URI="${MONGO_URI:-mongodb://mongo:27017/qlicker}"
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 BACKUP_CHECK_INTERVAL_SECONDS="${BACKUP_CHECK_INTERVAL_SECONDS:-60}"
 BACKUP_HOST_PATH="${BACKUP_HOST_PATH:-./backups}"
+BACKUP_LOG_FILE="${BACKUP_LOG_FILE:-$BACKUP_DIR/qlicker_backup.log}"
+LOG_DEST_READY=false
+
+ensure_log_destination() {
+  if [ "$LOG_DEST_READY" = true ]; then
+    return 0
+  fi
+
+  if mkdir -p "$BACKUP_DIR" >/dev/null 2>&1 && : >> "$BACKUP_LOG_FILE" 2>/dev/null; then
+    LOG_DEST_READY=true
+    return 0
+  fi
+
+  return 1
+}
+
+append_log_line() {
+  level="$1"
+  message="$2"
+
+  if ensure_log_destination; then
+    printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$message" >> "$BACKUP_LOG_FILE" 2>/dev/null || true
+  fi
+}
 
 log() {
+  append_log_line INFO "$*"
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 error() {
+  append_log_line ERROR "$*"
   printf '[%s] ERROR: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
 }
 
@@ -53,6 +79,31 @@ sanitize_positive_integer() {
   esac
 }
 
+log_command_error_output() {
+  context="$1"
+  output="$2"
+
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output" | while IFS= read -r line; do
+      if [ -n "$line" ]; then
+        error "$context output: $line"
+      fi
+    done
+  else
+    error "$context produced no additional output."
+  fi
+}
+
+run_with_error_capture() {
+  context="$1"
+  shift
+
+  command_output="$("$@" 2>&1)" && return 0
+  error "$context failed."
+  log_command_error_output "$context" "$command_output"
+  return 1
+}
+
 strip_leading_zeros() {
   value="${1:-0}"
 
@@ -75,6 +126,10 @@ time_to_minutes() {
 }
 
 BACKUP_CHECK_INTERVAL_SECONDS="$(sanitize_positive_integer "$BACKUP_CHECK_INTERVAL_SECONDS" 60)"
+if ! ensure_log_destination; then
+  printf '[%s] WARN: Unable to write backup log file at %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$BACKUP_LOG_FILE" >&2
+fi
+log "Backup manager started. Writing logs to $BACKUP_LOG_FILE and archives to $BACKUP_DIR."
 
 update_manager_status() {
   status="$1"
@@ -102,7 +157,7 @@ update_manager_status() {
 }
 
 query_backup_state() {
-  mongosh "$MONGO_URI" --quiet --eval '
+  query_output="$(mongosh "$MONGO_URI" --quiet --eval '
     const settings = db.getSiblingDB("qlicker").settings.findOne({ _id: "settings" }) || {};
     print([
       settings.backupEnabled === true ? "true" : "false",
@@ -113,7 +168,13 @@ query_backup_state() {
       settings.backupManualRequestId || "",
       settings.backupLastHandledManualRequestId || ""
     ].join("|"));
-  '
+  ' 2>&1)" || {
+    error "Failed to read backup settings from MongoDB."
+    log_command_error_output "Read backup settings" "$query_output"
+    return 1
+  }
+
+  printf '%s\n' "$query_output"
 }
 
 run_backup() {
@@ -121,6 +182,7 @@ run_backup() {
   run_key="$2"
 
   BACKUP_RUNTIME=container \
+  BACKUP_LOG_FILE="$BACKUP_LOG_FILE" \
   BACKUP_HOST_PATH="$BACKUP_HOST_PATH" \
   MONGO_URI="$MONGO_URI" \
   BACKUP_DIR="$BACKUP_DIR" \
@@ -173,7 +235,7 @@ validate_runtime() {
   fi
   rm -f "$probe_file"
 
-  if ! mongosh "$MONGO_URI" --quiet --eval 'db.runCommand({ ping: 1 }).ok' >/dev/null 2>&1; then
+  if ! run_with_error_capture "MongoDB ping check" mongosh "$MONGO_URI" --quiet --eval 'db.runCommand({ ping: 1 }).ok'; then
     message="Backup manager cannot reach MongoDB using the configured MONGO_URI."
     error "$message"
     update_manager_status error "$message"
@@ -205,7 +267,7 @@ while :; do
     continue
   fi
 
-  if ! state="$(query_backup_state 2>/dev/null)"; then
+  if ! state="$(query_backup_state)"; then
     message="Backup manager could not read backup settings from MongoDB. Retrying."
     error "$message"
     update_manager_status warning "$message"
