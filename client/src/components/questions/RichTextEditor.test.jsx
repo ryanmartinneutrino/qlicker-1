@@ -115,4 +115,34 @@ describe('RichTextEditor image resizing', () => {
 
     expect(proseMirror.compareDocumentPosition(toggleToolbarButton)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
+
+  it('keeps embedded video iframe node stable across unrelated rerenders', async () => {
+    const videoHtml = '<div data-video-embed="" data-src="https://www.youtube.com/embed/dQw4w9WgXcQ"><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ" width="560" height="315"></iframe></div>';
+    const view = render(
+      <RichTextEditor
+        value={videoHtml}
+        onChange={() => {}}
+        enableVideo
+      />
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector('.tiptap-video-embed iframe')).toBeTruthy();
+    });
+
+    const initialIframe = view.container.querySelector('.tiptap-video-embed iframe');
+
+    view.rerender(
+      <RichTextEditor
+        value={videoHtml}
+        onChange={() => {}}
+        enableVideo
+        showTip
+      />
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector('.tiptap-video-embed iframe')).toBe(initialIframe);
+    });
+  });
 });

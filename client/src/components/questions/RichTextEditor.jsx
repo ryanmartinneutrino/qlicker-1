@@ -251,7 +251,7 @@ export default function RichTextEditor({
         emitEditorChange(transactionEditor);
       },
     },
-    [ariaDescribedBy, editorAriaLabel, enableVideo, placeholder, t]
+    [ariaDescribedBy, editorAriaLabel, enableVideo, placeholder]
   );
 
   useEffect(() => {
@@ -260,7 +260,12 @@ export default function RichTextEditor({
       editor.setEditable(!disabled);
     }
     // Keep aria-disabled in sync without recreating the editor.
-    const dom = editor.view?.dom;
+    let dom = null;
+    try {
+      dom = editor.view?.dom || null;
+    } catch {
+      dom = null;
+    }
     if (dom) {
       dom.setAttribute('aria-disabled', disabled ? 'true' : 'false');
     }
