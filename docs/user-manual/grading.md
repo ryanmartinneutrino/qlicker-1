@@ -48,7 +48,7 @@ Useful cues in the current review UI:
 
 - the Results tab shows the student's actual session grade before participation
 - clicking a student avatar in the Students tab opens the larger profile photo
-- question rows opened from the course grade table now show the question number plus type, such as `Q4 · SA`, with red/green cues for whether manual grading is still required
+- question rows opened from the course grade table now show the question number plus type, such as `Q4(SA)`, with red/green cues for whether manual grading is still required
 
 ## Reviewability and student visibility
 

@@ -1840,7 +1840,7 @@
             "Grades show participation, automatic marks, and manual-grading needs. Recalculate grades when scoring rules change or when you want automatic results rebuilt.",
             "The grading tab stays locked until the session is Ended. Ending the session seeds grade items; making the session reviewable later only controls student visibility.",
             "The results tab now shows each student's actual session grade before participation, and clicking a student's avatar in the Students tab opens the larger profile photo.",
-            "Grade detail dialogs now label question rows with both number and type, such as Q1 · MC or Q2 · SA, and visually highlight rows that still need grading while ignoring stale zero-point grading flags.",
+            "Grade detail dialogs now label question rows with both number and type, such as Q1(MC) or Q2(SA), and visually highlight rows that still need grading while ignoring stale zero-point grading flags.",
             "Students receive a notification when you publish new feedback, so use short, actionable comments that tell them what to revisit.",
             "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
           ],

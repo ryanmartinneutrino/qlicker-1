@@ -680,6 +680,14 @@ export default async function gradeRoutes(app) {
           : Promise.resolve([]),
       ]);
 
+      const questionTypeByQuestionId = new Map();
+      questions.forEach((question) => {
+        const questionId = String(question?._id || '');
+        const questionType = Number(question?.type);
+        if (!questionId || !Number.isFinite(questionType)) return;
+        questionTypeByQuestionId.set(questionId, questionType);
+      });
+
       const autoGradeableQuestionIds = new Set(
         questions
           .filter((question) => isQuestionAutoGradeable(question?.type))
@@ -762,6 +770,14 @@ export default async function gradeRoutes(app) {
           studentsNeedingGrading: 0,
           marksNeedingGrading: 0,
         };
+        const sessionQuestionTypeById = {};
+        (session.questions || []).forEach((questionId) => {
+          const normalizedQuestionId = String(questionId || '');
+          if (!normalizedQuestionId) return;
+          const questionType = questionTypeByQuestionId.get(normalizedQuestionId);
+          if (!Number.isFinite(questionType)) return;
+          sessionQuestionTypeById[normalizedQuestionId] = questionType;
+        });
         return {
           _id: sessionId,
           name: session.name,
@@ -776,6 +792,7 @@ export default async function gradeRoutes(app) {
           autoGradeableQuestionIds: (session.questions || [])
             .map((questionId) => String(questionId))
             .filter((questionId) => autoGradeableQuestionIds.has(questionId)),
+          questionTypeById: sessionQuestionTypeById,
         };
       });
 
