@@ -998,6 +998,19 @@ function buildAttemptStatsEntry(question, attemptNumber, responses = []) {
   return entry;
 }
 
+function getResponseTimestampValue(response) {
+  const timestamp = new Date(response?.updatedAt || response?.createdAt || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortResponseEntriesNewestFirst(entries = []) {
+  return [...entries].sort((a, b) => {
+    const timestampDiff = getResponseTimestampValue(b) - getResponseTimestampValue(a);
+    if (timestampDiff !== 0) return timestampDiff;
+    return String(b?._id || '').localeCompare(String(a?._id || ''));
+  });
+}
+
 function mergeResponseIntoAttemptStatsEntry(entry, question, response) {
   if (!entry || !question || !response) return entry;
 
@@ -1020,6 +1033,8 @@ function mergeResponseIntoAttemptStatsEntry(entry, question, response) {
         studentUserId: getResponseStudentId(response),
         answer: response.answer,
         answerWysiwyg: response.answerWysiwyg || '',
+        createdAt: response.createdAt || null,
+        updatedAt: response.updatedAt || null,
       },
     ];
     return entry;
@@ -1031,6 +1046,8 @@ function mergeResponseIntoAttemptStatsEntry(entry, question, response) {
       {
         studentUserId: getResponseStudentId(response),
         answer: response.answer,
+        createdAt: response.createdAt || null,
+        updatedAt: response.updatedAt || null,
       },
     ];
 
@@ -1065,19 +1082,25 @@ function materializeAttemptStatsEntry(entry) {
   }
 
   if (entry.type === 'shortAnswer') {
+    const answers = sortResponseEntriesNewestFirst(entry.answers || []);
     return {
       type: 'shortAnswer',
-      answers: (entry.answers || []).map((item) => ({
+      answers: answers.map((item) => ({
         studentUserId: getResponseStudentId(item),
         answer: item?.answer,
         answerWysiwyg: item?.answerWysiwyg || '',
+        createdAt: item?.createdAt || null,
+        updatedAt: item?.updatedAt || null,
       })),
       total,
     };
   }
 
   if (entry.type === 'numerical') {
-    const values = (entry.values || []).map((value) => Number(value)).filter((value) => !Number.isNaN(value));
+    const values = (entry.values || [])
+      .map((value) => Number(value))
+      .filter((value) => !Number.isNaN(value))
+      .sort((a, b) => a - b);
     const totalValues = total || values.length;
     const sum = Number.isFinite(Number(entry.sum))
       ? Number(entry.sum)
@@ -1095,9 +1118,11 @@ function materializeAttemptStatsEntry(entry) {
     return {
       type: 'numerical',
       values,
-      answers: (entry.answers || []).map((item) => ({
+      answers: sortResponseEntriesNewestFirst(entry.answers || []).map((item) => ({
         studentUserId: getResponseStudentId(item),
         answer: item?.answer,
+        createdAt: item?.createdAt || null,
+        updatedAt: item?.updatedAt || null,
       })),
       mean: Math.round(mean * 100) / 100,
       stdev: Math.round(Math.sqrt(variance) * 100) / 100,
@@ -1136,7 +1161,10 @@ function isCanonicalAttemptStatsEntry(question, entry, responseCount) {
   if (type === 2) {
     return entry.type === 'shortAnswer'
       && Array.isArray(entry.answers)
-      && entry.answers.length === expectedCount;
+      && entry.answers.length === expectedCount
+      && entry.answers.every((answerEntry) => (
+        answerEntry?.createdAt != null || answerEntry?.updatedAt != null
+      ));
   }
 
   if (type === 4) {
@@ -1274,11 +1302,14 @@ function formatInstructorLiveResponseStats(responseStats, studentNameById = {}, 
   if (!responseStats) return responseStats;
 
   if (responseStats.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+    const answers = sortResponseEntriesNewestFirst(responseStats.answers);
     return {
       ...responseStats,
-      answers: responseStats.answers.map((entry) => ({
+      answers: answers.map((entry) => ({
         answer: entry.answer,
         answerWysiwyg: entry.answerWysiwyg,
+        createdAt: entry.createdAt || null,
+        updatedAt: entry.updatedAt || null,
         ...(includeStudentNames
           ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
           : {}),
@@ -1287,10 +1318,13 @@ function formatInstructorLiveResponseStats(responseStats, studentNameById = {}, 
   }
 
   if (responseStats.type === 'numerical' && Array.isArray(responseStats.answers)) {
+    const answers = sortResponseEntriesNewestFirst(responseStats.answers);
     return {
       ...responseStats,
-      answers: responseStats.answers.map((entry) => ({
+      answers: answers.map((entry) => ({
         answer: entry.answer,
+        createdAt: entry.createdAt || null,
+        updatedAt: entry.updatedAt || null,
         ...(includeStudentNames
           ? { studentName: studentNameById[getResponseStudentId(entry)] || 'Unknown Student' }
           : {}),
@@ -1305,20 +1339,26 @@ function formatStudentLiveResponseStats(responseStats) {
   if (!responseStats) return responseStats;
 
   if (responseStats.type === 'shortAnswer' && Array.isArray(responseStats.answers)) {
+    const answers = sortResponseEntriesNewestFirst(responseStats.answers);
     return {
       ...responseStats,
-      answers: responseStats.answers.map((entry) => ({
+      answers: answers.map((entry) => ({
         answer: entry.answer,
         answerWysiwyg: entry.answerWysiwyg,
+        createdAt: entry.createdAt || null,
+        updatedAt: entry.updatedAt || null,
       })),
     };
   }
 
   if (responseStats.type === 'numerical' && Array.isArray(responseStats.answers)) {
+    const answers = sortResponseEntriesNewestFirst(responseStats.answers);
     return {
       ...responseStats,
-      answers: responseStats.answers.map((entry) => ({
+      answers: answers.map((entry) => ({
         answer: entry.answer,
+        createdAt: entry.createdAt || null,
+        updatedAt: entry.updatedAt || null,
       })),
     };
   }
@@ -1391,7 +1431,7 @@ async function appendResponseToQuestionAttemptStats(question, attemptNumber, res
       ? await Response.find({
         questionId: question._id,
         attempt: normalizedAttemptNumber,
-      }).lean()
+      }).sort({ updatedAt: -1, createdAt: -1, _id: -1 }).lean()
       : [];
     const rebuilt = buildAttemptStatsEntry(question, normalizedAttemptNumber, responses);
     await upsertQuestionAttemptStatsEntry(question._id, normalizedAttemptNumber, rebuilt);
@@ -1440,6 +1480,8 @@ async function appendResponseToQuestionAttemptStats(question, attemptNumber, res
             studentUserId: getResponseStudentId(response),
             answer: response.answer,
             answerWysiwyg: response.answerWysiwyg || '',
+            createdAt: response.createdAt || null,
+            updatedAt: response.updatedAt || null,
           },
         },
       },
@@ -1458,6 +1500,8 @@ async function appendResponseToQuestionAttemptStats(question, attemptNumber, res
         'sessionOptions.attemptStats.$[attempt].answers': {
           studentUserId: getResponseStudentId(response),
           answer: response.answer,
+          createdAt: response.createdAt || null,
+          updatedAt: response.updatedAt || null,
         },
       },
     };
@@ -4174,7 +4218,7 @@ export default async function sessionRoutes(app) {
           const responses = await Response.find({
             questionId,
             attempt: currentAttempt.number,
-          }).lean();
+          }).sort({ updatedAt: -1, createdAt: -1, _id: -1 }).lean();
           const cachedResponseStats = currentAttempt
             ? getAttemptStatsEntry(currentQuestion, currentAttempt.number)
             : null;
@@ -4292,6 +4336,8 @@ export default async function sessionRoutes(app) {
         });
       }
 
+      const showResponseList = currentQuestion?.sessionOptions?.responseListVisible !== false;
+
       // Build response payload.
       // Student payload is intentionally minimal and only includes fields needed for live participation.
       const result = {
@@ -4331,6 +4377,7 @@ export default async function sessionRoutes(app) {
         questionCount,
         pageProgress,
         questionProgress,
+        showResponseList,
       };
 
       if (isInstrOrAdmin) {
@@ -4338,6 +4385,12 @@ export default async function sessionRoutes(app) {
       }
 
       if (isInstrOrAdmin) {
+        if (presentationView && responseStats?.type === 'shortAnswer' && !showResponseList) {
+          result.responseStats = {
+            ...responseStats,
+            answers: [],
+          };
+        }
         if (!presentationView) {
           result.session.joined = session.joined;
           result.session.joinRecords = session.joinRecords;
@@ -4406,9 +4459,16 @@ export default async function sessionRoutes(app) {
             result.histogramData = currentQuestion.sessionOptions.histogramData;
           }
         }
+        if (responseStats?.type === 'shortAnswer' && !showResponseList) {
+          result.responseStats = {
+            ...responseStats,
+            answers: [],
+          };
+        }
         result.studentResponse = studentResponse;
         result.isJoined = isJoined;
         result.showStats = showStats;
+        result.showResponseList = showResponseList;
         result.showCorrect = showCorrect;
         result.questionHidden = questionHidden;
       }
@@ -4652,6 +4712,7 @@ export default async function sessionRoutes(app) {
             hidden: { type: 'boolean' },
             stats: { type: 'boolean' },
             correct: { type: 'boolean' },
+            responseListVisible: { type: 'boolean' },
           },
           additionalProperties: false,
         },
@@ -4687,6 +4748,9 @@ export default async function sessionRoutes(app) {
       if (isQuestionResponseCollectionEnabled(question)) {
         if (request.body.stats !== undefined) updates['sessionOptions.stats'] = request.body.stats;
         if (request.body.correct !== undefined) updates['sessionOptions.correct'] = request.body.correct;
+        if (request.body.responseListVisible !== undefined) {
+          updates['sessionOptions.responseListVisible'] = request.body.responseListVisible;
+        }
       } else {
         updates['sessionOptions.stats'] = false;
         updates['sessionOptions.correct'] = false;
@@ -4703,6 +4767,7 @@ export default async function sessionRoutes(app) {
         hidden: updatedQuestion?.sessionOptions?.hidden,
         stats: updatedQuestion?.sessionOptions?.stats,
         correct: updatedQuestion?.sessionOptions?.correct,
+        responseListVisible: updatedQuestion?.sessionOptions?.responseListVisible,
       });
 
       return { question: updatedQuestion?.toObject() };

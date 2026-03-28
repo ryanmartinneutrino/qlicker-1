@@ -348,6 +348,36 @@ function isMarkAutoGradeable(mark, autoGradeableQuestionIdSet = null) {
   return autoGradeableQuestionIdSet.has(questionId);
 }
 
+function getEffectiveMarkOutOf(mark, question = null) {
+  const markOutOf = Number(mark?.outOf);
+  if (Number.isFinite(markOutOf) && markOutOf >= 0) return markOutOf;
+  const questionOutOf = Number(question?.sessionOptions?.points);
+  if (Number.isFinite(questionOutOf) && questionOutOf >= 0) return questionOutOf;
+  return 0;
+}
+
+function markActuallyNeedsGrading(mark, { question = null, latestResponse = null } = {}) {
+  const effectiveOutOf = getEffectiveMarkOutOf(mark, question);
+  if (effectiveOutOf <= 0) return false;
+
+  const questionType = Number(question?.type ?? mark?.questionType ?? question?.questionType);
+  const markNeedsGrading = !!mark?.needsGrading;
+  const questionNeedsManualGrading = !AUTO_GRADEABLE_QUESTION_TYPES.has(questionType);
+  const needsManualGrading = questionNeedsManualGrading
+    && !!latestResponse
+    && (!mark || markNeedsGrading);
+
+  return markNeedsGrading || needsManualGrading;
+}
+
+function buildQuestionNumberLabel(t, questionNumber, questionType) {
+  const baseLabel = Number.isInteger(questionNumber) && questionNumber > 0
+    ? t('grades.coursePanel.questionShort', { index: questionNumber })
+    : t('grades.coursePanel.question');
+  const questionTypeAbbrev = getQuestionTypeAbbreviation(questionType);
+  return questionTypeAbbrev ? `${baseLabel} · ${questionTypeAbbrev}` : baseLabel;
+}
+
 function isSameConflict(left, right) {
   return String(left?.gradeId || '') === String(right?.gradeId || '')
     && String(left?.questionId || '') === String(right?.questionId || '')
@@ -381,6 +411,7 @@ function MarkQuestionDetailPanel({
   saving = false,
   actionButtons = null,
   showFeedbackEditor = false,
+  questionNumber = null,
 }) {
   const { t } = useTranslation();
   const studentAnswer = formatAnswerValue(question, latestResponse?.answer);
@@ -391,7 +422,8 @@ function MarkQuestionDetailPanel({
       defaultValue: 'Question',
     })
     : '';
-  const needsGrading = !!mark?.needsGrading;
+  const needsGrading = markActuallyNeedsGrading(mark, { question, latestResponse });
+  const questionHeading = buildQuestionNumberLabel(t, questionNumber, questionType);
 
   if (loading) {
     return (
@@ -437,7 +469,7 @@ function MarkQuestionDetailPanel({
               />
             ) : null}
           </Box>
-          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{t('grades.coursePanel.question')}</Typography>
+          <Typography variant="subtitle2" sx={{ mb: 0.75 }}>{questionHeading}</Typography>
           <QuestionDisplay question={question} />
         </Paper>
       ) : (
@@ -653,7 +685,8 @@ function GradeDetailDialog({
               {(workingGrade.marks || []).map((mark, index) => {
                 const markCanAutoGrade = isMarkAutoGradeable(mark, autoGradeableQuestionIdSet);
                 const questionTypeAbbrev = getQuestionTypeAbbreviation(mark);
-                const rowNeedsGrading = !!mark.needsGrading;
+                const rowNeedsGrading = markActuallyNeedsGrading(mark);
+                const questionLabel = buildQuestionNumberLabel(t, index + 1, mark);
                 return (
                   <TableRow
                     key={`${mark.questionId}-${index}`}
@@ -676,7 +709,7 @@ function GradeDetailDialog({
                           })}
                           sx={{ px: 0, minWidth: 0, textTransform: 'none' }}
                         >
-                          {t('grades.coursePanel.questionShort', { index: index + 1 })}
+                          {questionLabel}
                         </Button>
                         {questionTypeAbbrev ? (
                           <Chip
@@ -834,9 +867,14 @@ function QuestionMarkDialog({
   const { t } = useTranslation();
   if (!open) return null;
 
+  const questionLabel = buildQuestionNumberLabel(
+    t,
+    Number.isInteger(questionNumber) ? questionNumber : null,
+    question || mark
+  );
   const titleParts = [
     normalizeAnswerValue(sessionName),
-    Number.isInteger(questionNumber) ? t('grades.coursePanel.questionShort', { index: questionNumber }) : '',
+    questionLabel,
   ].filter(Boolean);
 
   return (
@@ -847,6 +885,7 @@ function QuestionMarkDialog({
           loading={loading}
           error={error}
           student={student}
+          questionNumber={questionNumber}
           mark={mark}
           question={question}
           latestResponse={latestResponse}

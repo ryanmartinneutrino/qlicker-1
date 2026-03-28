@@ -729,6 +729,9 @@
       "studentsCurrently": "Étudiants actuellement dans la séance",
       "joinPeriod": "Période d'inscription",
       "responsesOpen": "Réponses ouvertes",
+      "showResponsesOnStudentDisplays": "Afficher la liste des réponses aux étudiants / à la présentation",
+      "responsesShownOnStudentDisplays": "La liste des réponses est maintenant visible pour les étudiants et la fenêtre de présentation.",
+      "responsesHiddenOnStudentDisplays": "La liste des réponses est maintenant masquée pour les étudiants et la fenêtre de présentation.",
       "makeReviewable": "Rendre la séance révisable pour les étudiants",
       "nonAutoGradeableWarning": "Cette séance contient {{count}} question(s) qui ne peuvent pas être corrigées automatiquement (ex. réponse courte). Les notes seront créées mais ces questions devront être corrigées manuellement.",
       "nonAutoGradeableChoose": "Choisissez comment procéder :",
@@ -840,6 +843,7 @@
       "needsGrading": "À noter",
       "needsGradingCount": "À noter ({{count}})",
       "sessionStillRunning": "Cette session est encore en cours. Les résultats seront disponibles après la fin de la session.",
+      "liveResultsAvailableWhileRunning": "Cette séance interactive en direct est encore en cours. Les résultats continuent de se mettre à jour ici, mais l'évaluation reste verrouillée jusqu'à la fin de la séance.",
       "pageProgress": "Page {{current}}/{{total}}",
       "questionProgress": "Question {{current}}/{{total}}",
       "ungradedSummary": "Il y a {{questions}} {{questionWord}} non noté(es), affectant {{students}} {{studentWord}} ({{marks}} {{markWord}}).",
@@ -1809,6 +1813,7 @@
           "subtitle": "Différents types de séance conviennent à différents moments d'enseignement.",
           "bullets": [
             "Les séances interactives servent à l'enseignement en direct : vous contrôlez la navigation, les fenêtres de réponse, les statistiques, la révélation des réponses, les essais et la fenêtre de présentation.",
+            "Pour les questions à réponse courte, la vue de contrôle professeur garde toujours la liste complète des réponses visible; un interrupteur distinct contrôle si les étudiants et la fenêtre de présentation voient cette liste partagée.",
             "Les quiz sont des fenêtres planifiées pendant lesquelles les étudiants répondent à leur rythme. Utilisez les heures de début, de fin et les prolongations pour les accommodements.",
             "Les quiz de pratique conviennent bien à l'étude personnelle ou au renforcement facultatif.",
             "Si une séance dépend des codes d'accès, des groupes ou des statistiques visibles, confirmez ces réglages avant que les étudiants commencent à se joindre.",
@@ -1823,7 +1828,7 @@
             "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
             "L'onglet de correction reste verrouillé tant que la séance n'est pas Terminée. Terminer la séance crée les éléments de note; la rendre révisable plus tard ne fait que contrôler la visibilité étudiante.",
             "L'onglet Résultats affiche maintenant la note réelle de chaque étudiant avant la participation, et cliquer sur l'avatar d'un étudiant dans l'onglet Étudiants ouvre la photo en grand.",
-            "Les dialogues de détail des notes identifient maintenant chaque ligne par numéro et type, par exemple Q1 · MC ou Q2 · SA, et mettent en évidence les lignes qui demandent encore une correction.",
+            "Les dialogues de détail des notes identifient maintenant chaque ligne par numéro et type, par exemple Q1 · MC ou Q2 · SA, et mettent en évidence les lignes qui demandent encore une correction tout en ignorant les anciens indicateurs de correction sur les questions à zéro point.",
             "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables.",
             "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],
@@ -1874,7 +1879,8 @@
             "Les quiz ont une fenêtre de temps définie et demandent généralement de répondre à tout l'ensemble avant la remise finale. Votre travail s'enregistre pendant la navigation.",
             "Les séances de pratique servent à l'étude personnelle et peuvent sembler plus flexibles parce qu'elles sont conçues pour la répétition, non pour suivre un cours en direct.",
             "Des diapositives peuvent apparaître entre les questions. Ce sont des pages de contenu; lisez-les attentivement avant de continuer.",
-            "Si votre enseignant révèle les statistiques d'un nuage de mots ou d'un histogramme, la vue devrait se mettre à jour automatiquement sans rechargement."
+            "Si votre enseignant révèle les statistiques d'un nuage de mots ou d'un histogramme, la vue devrait se mettre à jour automatiquement sans rechargement.",
+            "Pour les questions à réponse courte, la liste partagée des réponses peut être affichée ou masquée séparément du nuage de mots; vous pouvez donc voir l'un sans l'autre."
           ]
         },
         {

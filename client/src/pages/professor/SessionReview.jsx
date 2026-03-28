@@ -30,7 +30,7 @@ import BackLinkButton from '../../components/common/BackLinkButton';
 import StudentIdentity from '../../components/common/StudentIdentity';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { buildCourseTitle } from '../../utils/courseTitle';
-import { getLatestResponse } from '../../utils/responses';
+import { getLatestResponse, sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -638,6 +638,7 @@ export default function SessionReview() {
   }, [studentResults]);
 
   const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
+  const liveInteractiveSession = session?.status === 'running' && !session?.quiz && !session?.practiceQuiz;
 
   // ---- Group-filtered student results for grading tab ----
   const selectedGroupCat = groupCategories[selectedCatIdx] || null;
@@ -777,16 +778,20 @@ export default function SessionReview() {
         : null;
 
       const saResponses = qType === QUESTION_TYPES.SHORT_ANSWER
-        ? (
+        ? sortResponsesNewestFirst(
           Array.isArray(cachedAttemptStats?.answers) && cachedAttemptStats.answers.length > 0
             ? cachedAttemptStats.answers.map((response) => ({
               answer: response?.answer,
               answerWysiwyg: response?.answerWysiwyg,
+              createdAt: response?.createdAt,
+              updatedAt: response?.updatedAt,
               studentName: studentNameById.get(String(response?.studentUserId || '')) || t('professor.sessionReview.unknownStudent'),
             }))
             : attemptResponses.map((response) => ({
               answer: response?.answer,
               answerWysiwyg: response?.answerWysiwyg,
+              createdAt: response?.createdAt,
+              updatedAt: response?.updatedAt,
               studentName: response?.studentName || t('professor.sessionReview.unknownStudent'),
             }))
         )
@@ -976,19 +981,6 @@ export default function SessionReview() {
     );
   }
 
-  // ---- Render: session still running ----
-
-  if (session?.status === 'running' && !session?.quiz && !session?.practiceQuiz) {
-    return (
-      <Box sx={{ p: 3, maxWidth: 800 }}>
-        <BackLinkButton label={t('professor.sessionReview.backToCourse')} onClick={() => navigate(backToCoursePath)} sx={{ mb: 2 }} />
-        <Alert severity="info">
-          {t('professor.sessionReview.sessionStillRunning')}
-        </Alert>
-      </Box>
-    );
-  }
-
   return (
     <Box sx={{ p: 2.5, maxWidth: 1120 }}>
       {/* Header */}
@@ -1069,6 +1061,11 @@ export default function SessionReview() {
       {reviewableWarning ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
           {reviewableWarning}
+        </Alert>
+      ) : null}
+      {liveInteractiveSession ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('professor.sessionReview.liveResultsAvailableWhileRunning')}
         </Alert>
       ) : null}
       {hasOutstandingManualGrading ? (

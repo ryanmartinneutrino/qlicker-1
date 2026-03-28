@@ -729,6 +729,9 @@
       "studentsCurrently": "Students currently in session",
       "joinPeriod": "Join Period",
       "responsesOpen": "Responses Open",
+      "showResponsesOnStudentDisplays": "Show response list to students / presentation",
+      "responsesShownOnStudentDisplays": "The response list is now visible to students and the presentation window.",
+      "responsesHiddenOnStudentDisplays": "The response list is now hidden from students and the presentation window.",
       "makeReviewable": "Make session reviewable for students",
       "nonAutoGradeableWarning": "This session has {{count}} question(s) that cannot be auto-graded (e.g. Short Answer). Grades will be created but those questions will need manual grading.",
       "nonAutoGradeableChoose": "Choose how to proceed:",
@@ -840,6 +843,7 @@
       "needsGrading": "Needs grading",
       "needsGradingCount": "Needs grading ({{count}})",
       "sessionStillRunning": "This session is still running. Results will be available after the session ends.",
+      "liveResultsAvailableWhileRunning": "This live interactive session is still running. Results continue to update here, but grading stays locked until the session ends.",
       "pageProgress": "Page {{current}}/{{total}}",
       "questionProgress": "Question {{current}}/{{total}}",
       "ungradedSummary": "There {{verb}} {{questions}} ungraded {{questionWord}}, affecting {{students}} {{studentWord}} ({{marks}} {{markWord}}).",
@@ -1809,6 +1813,7 @@
           "subtitle": "Different session types are best for different teaching moments.",
           "bullets": [
             "Interactive sessions are for live teaching: you control navigation, response windows, statistics, answer reveals, attempts, and the presentation window.",
+            "For short-answer questions, the professor control view always keeps the full response list visible; a separate toggle controls whether students and the presentation window see that shared list.",
             "Quizzes are scheduled windows where students answer on their own timeline. Use start and end times plus extensions for accommodation workflows.",
             "Practice quizzes feel more like guided rehearsal and are well suited for self-study or optional reinforcement.",
             "If a session depends on passcodes, groups, or visible statistics, confirm those settings before students begin joining.",
@@ -1823,7 +1828,7 @@
             "Grades show participation, automatic marks, and manual-grading needs. Recalculate grades when scoring rules change or when you want automatic results rebuilt.",
             "The grading tab stays locked until the session is Ended. Ending the session seeds grade items; making the session reviewable later only controls student visibility.",
             "The results tab now shows each student's actual session grade before participation, and clicking a student's avatar in the Students tab opens the larger profile photo.",
-            "Grade detail dialogs now label question rows with both number and type, such as Q1 · MC or Q2 · SA, and visually highlight rows that still need grading.",
+            "Grade detail dialogs now label question rows with both number and type, such as Q1 · MC or Q2 · SA, and visually highlight rows that still need grading while ignoring stale zero-point grading flags.",
             "Students receive a notification when you publish new feedback, so use short, actionable comments that tell them what to revisit.",
             "If group structures mattered during the activity, compare the review and grading data with the course groups so you can spot uneven participation patterns."
           ],
@@ -1874,7 +1879,8 @@
             "Quizzes have a defined time window and normally expect you to answer the whole set before final submission. Your work saves while you move between questions.",
             "Practice sessions are for self-study and can feel more flexible because they are designed to help you rehearse instead of keeping pace with a live class.",
             "Slides can appear between questions. They are content pages, so read them carefully before moving on.",
-            "If your instructor reveals statistics for a word cloud or histogram, the view should update automatically without a refresh."
+            "If your instructor reveals statistics for a word cloud or histogram, the view should update automatically without a refresh.",
+            "For short-answer questions, the shared response list can be shown or hidden separately from the word cloud, so you may see one without the other."
           ]
         },
         {

@@ -217,6 +217,9 @@ function buildSessionOptionsPayload(sessionOptions = {}, nextPoints) {
   if (sessionOptions.hidden !== undefined) payload.hidden = !!sessionOptions.hidden;
   if (sessionOptions.stats !== undefined) payload.stats = !!sessionOptions.stats;
   if (sessionOptions.correct !== undefined) payload.correct = !!sessionOptions.correct;
+  if (sessionOptions.responseListVisible !== undefined) {
+    payload.responseListVisible = !!sessionOptions.responseListVisible;
+  }
 
   const maxAttempts = Number(sessionOptions.maxAttempts);
   if (Number.isFinite(maxAttempts)) {

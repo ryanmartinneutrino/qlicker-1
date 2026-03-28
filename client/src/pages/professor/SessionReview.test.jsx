@@ -22,6 +22,56 @@ function renderSessionReview() {
   );
 }
 
+function buildResultsPayload(sessionOverrides = {}) {
+  return {
+    session: {
+      _id: 'session-1',
+      name: 'Midterm review',
+      status: 'done',
+      reviewable: true,
+      questions: ['q-1'],
+      ...sessionOverrides,
+    },
+    questions: [
+      {
+        _id: 'q-1',
+        type: 0,
+        content: '<p>Pick one</p>',
+        plainText: 'Pick one',
+        sessionOptions: { points: 5 },
+        options: [
+          { answer: 'A', plainText: 'A', correct: false },
+          { answer: 'B', plainText: 'B', correct: true },
+        ],
+      },
+    ],
+    studentResults: [
+      {
+        studentId: 'student-1',
+        firstname: 'Ada',
+        lastname: 'Lovelace',
+        email: 'ada@example.edu',
+        profileImage: 'https://example.edu/ada-full.png',
+        profileThumbnail: 'https://example.edu/ada-thumb.png',
+        inSession: true,
+        participation: 100,
+        questionResults: [
+          {
+            questionId: 'q-1',
+            responses: [
+              {
+                attempt: 2,
+                answer: '1',
+                createdAt: '2026-03-15T12:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe('SessionReview', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -30,52 +80,7 @@ describe('SessionReview', () => {
     apiClient.get.mockImplementation(async (url) => {
       if (url === '/sessions/session-1/results') {
         return {
-          data: {
-            session: {
-              _id: 'session-1',
-              name: 'Midterm review',
-              status: 'done',
-              reviewable: true,
-              questions: ['q-1'],
-            },
-            questions: [
-              {
-                _id: 'q-1',
-                type: 0,
-                content: '<p>Pick one</p>',
-                plainText: 'Pick one',
-                sessionOptions: { points: 5 },
-                options: [
-                  { answer: 'A', plainText: 'A', correct: false },
-                  { answer: 'B', plainText: 'B', correct: true },
-                ],
-              },
-            ],
-            studentResults: [
-              {
-                studentId: 'student-1',
-                firstname: 'Ada',
-                lastname: 'Lovelace',
-                email: 'ada@example.edu',
-                profileImage: 'https://example.edu/ada-full.png',
-                profileThumbnail: 'https://example.edu/ada-thumb.png',
-                inSession: true,
-                participation: 100,
-                questionResults: [
-                  {
-                    questionId: 'q-1',
-                    responses: [
-                      {
-                        attempt: 2,
-                        answer: '1',
-                        createdAt: '2026-03-15T12:00:00.000Z',
-                      },
-                    ],
-                  },
-                ],
-              },
-            ],
-          },
+          data: buildResultsPayload(),
         };
       }
 
@@ -191,5 +196,49 @@ describe('SessionReview', () => {
     fireEvent.click(screen.getByRole('button', { name: /ada lovelace/i }));
 
     expect(await screen.findByRole('img', { name: 'Ada Lovelace' })).toBeInTheDocument();
+  });
+
+  it('loads running live interactive sessions but warns that grading stays locked', async () => {
+    apiClient.get.mockImplementation(async (url) => {
+      if (url === '/sessions/session-1/results') {
+        return {
+          data: buildResultsPayload({ status: 'running', reviewable: false, quiz: false, practiceQuiz: false }),
+        };
+      }
+      if (url === '/courses/course-1') {
+        return {
+          data: {
+            course: {
+              _id: 'course-1',
+              name: 'Discrete Math',
+              deptCode: 'MATH',
+              courseNumber: '200',
+              section: '001',
+              semester: 'Fall 2026',
+            },
+          },
+        };
+      }
+      if (url === '/sessions/session-1/grades') {
+        return {
+          data: {
+            grades: [],
+          },
+        };
+      }
+      if (url === '/courses/course-1/groups') {
+        return { data: { groupCategories: [] } };
+      }
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    renderSessionReview();
+
+    await screen.findByText('Midterm review');
+    expect(screen.getByText(/results continue to update here, but grading stays locked until the session ends/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /grading/i }));
+    expect(await screen.findByText(/this grading interface is locked while the session is live/i)).toBeInTheDocument();
+    expect(screen.queryByText(/results will be available after the session ends/i)).not.toBeInTheDocument();
   });
 });

@@ -567,6 +567,16 @@ const settings = await Settings.findOne().lean();
 const users = await User.find(filter).skip(offset).limit(limit).lean();
 ```
 
+For live-response payloads, pair `.lean()` with an explicit recency sort so short-answer response lists stay newest-first without hydrating full Mongoose documents:
+
+```javascript
+const responses = await Response.find({ questionId, attempt })
+  .sort({ updatedAt: -1, createdAt: -1, _id: -1 })
+  .lean();
+```
+
+If you cache attempt stats on `Question.sessionOptions.attemptStats`, keep enough timestamp data to rebuild or re-sort short-answer lists later. Do not rely on insertion order alone when the UI promises "latest response first".
+
 ### Delta WebSocket Events (Not Generic Broadcasts)
 
 **Critical:** Never use generic `session:updated` for live-session mutations. Use granular delta events:
@@ -586,6 +596,8 @@ broadcastToSessionMembers(app, course, 'session:updated', { sessionId: session._
 ```
 
 **Why:** With 30 students, a generic `session:updated` triggers 31 clients × 6 DB queries = 186 queries per event. Delta events let clients update local state without re-fetching.
+
+When a live-session control affects only students and the presentation window (for example, hiding the shared short-answer response list while the professor still sees it), broadcast that state as a granular visibility field and keep the professor payload richer than the student/presentation payload.
 
 ### Single-Serialize Broadcasts (`wsSendToUsers`)
 

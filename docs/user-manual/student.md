@@ -93,6 +93,7 @@ Live sessions are used when an instructor is controlling the pace of the class.
 - Slides can appear between questions. Slides are content-only pages, so read them before moving on.
 - Statistics and correct answers only become visible when the instructor turns them on.
 - When statistics include a word cloud or histogram, those visualizations should appear automatically as soon as the instructor reveals them.
+- For short-answer questions, your instructor can show or hide the shared response list separately from the word cloud, so you may see one without the other.
 
 ## Take quizzes
 

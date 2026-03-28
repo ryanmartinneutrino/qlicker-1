@@ -16,6 +16,7 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -83,6 +84,7 @@ function applyVisibilityChanged(prev, payload) {
         hidden: payload?.hidden ?? prev.currentQuestion?.sessionOptions?.hidden,
         stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
         correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+        responseListVisible: payload?.responseListVisible ?? prev.currentQuestion?.sessionOptions?.responseListVisible,
       },
     },
   };
@@ -186,7 +188,8 @@ function NumericalStats({ stats }) {
 /** Short-answer responses list (large format, rendered rich text). */
 function ShortAnswerList({ responses }) {
   const { t } = useTranslation();
-  if (!responses || !responses.length) {
+  const sortedResponses = sortResponsesNewestFirst(responses);
+  if (!sortedResponses.length) {
     return (
       <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center' }}>
         {t('professor.secondDesktop.noResponsesYet')}
@@ -195,7 +198,7 @@ function ShortAnswerList({ responses }) {
   }
   return (
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-      {responses.map((r, i) => (
+      {sortedResponses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1.5, mb: 0.75 }}>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             {t('common.unknown')}
@@ -480,6 +483,9 @@ export default function PresentationWindow() {
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
+  const showResponseList = currentQ?.sessionOptions?.responseListVisible !== false;
+  const showShortAnswerStats = showStats && responseStats?.type === 'shortAnswer'
+    && (!!showResponseList || !!wordCloudData?.wordFrequencies?.length);
   const questionIds = session?.questions || [];
   const qIdx = session ? questionIds.indexOf(session.currentQuestion) : -1;
   const totalQ = questionIds.length || 0;
@@ -799,7 +805,10 @@ export default function PresentationWindow() {
       )}
 
       {/* Response statistics */}
-      {showStats && !isSlide && (!isOptionBasedQuestion || responseStats?.type !== 'distribution') && (
+      {showStats
+        && !isSlide
+        && (!isOptionBasedQuestion || responseStats?.type !== 'distribution')
+        && (responseStats?.type !== 'shortAnswer' || showShortAnswerStats) && (
         <Paper
           variant="outlined"
           sx={{ p: { xs: 2, sm: 3 }, mb: 3 }}
@@ -811,7 +820,9 @@ export default function PresentationWindow() {
           {responseStats?.type === 'shortAnswer' ? (
             <>
               <WordCloudPanel wordCloudData={wordCloudData} />
-              <ShortAnswerList responses={responseStats.answers || allResponses} />
+              {showResponseList ? (
+                <ShortAnswerList responses={responseStats.answers || allResponses} />
+              ) : null}
             </>
           ) : responseStats?.type === 'numerical' ? (
             <>
