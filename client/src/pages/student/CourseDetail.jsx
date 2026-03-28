@@ -440,7 +440,7 @@ export default function StudentCourseDetail() {
 
   useEffect(() => {
     if (!shouldRedirectToInstructorView) return;
-    navigate(`/manage/course/${id}`, { replace: true });
+    navigate(`/prof/course/${id}`, { replace: true });
   }, [shouldRedirectToInstructorView, id, navigate]);
 
   const studentPracticeEnabled = !!course?.allowStudentQuestions;

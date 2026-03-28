@@ -1,3 +1,5 @@
+import { getDashboardPath } from './dashboard';
+
 export const USER_MANUAL_ROLES = ['admin', 'professor', 'student'];
 
 export function getPreferredManualRole(roles = [], hasInstructorCourses = false) {
@@ -7,9 +9,10 @@ export function getPreferredManualRole(roles = [], hasInstructorCourses = false)
 }
 
 export function getManualDashboardPath(roles = [], hasInstructorCourses = false) {
-  if (roles.includes('admin')) return '/admin';
-  if (roles.includes('professor') || hasInstructorCourses) return '/manage';
-  return '/student';
+  return getDashboardPath({
+    profile: { roles },
+    hasInstructorCourses,
+  });
 }
 
 export function getManualPath(role) {

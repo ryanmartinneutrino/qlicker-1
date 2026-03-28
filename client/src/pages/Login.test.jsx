@@ -147,7 +147,7 @@ describe('Login', () => {
     expect(screen.getByText('When SSO is enabled, password reset is limited to approved email-login accounts.')).toBeInTheDocument();
   });
 
-  it('sends mixed-role instructor accounts to the professor dashboard', async () => {
+  it('sends student-role instructor accounts to the student dashboard', async () => {
     apiClientMock.get.mockResolvedValue({
       data: {
         SSO_enabled: false,
@@ -156,6 +156,7 @@ describe('Login', () => {
     loginMock.mockResolvedValue({
       profile: { roles: ['student'] },
       hasInstructorCourses: true,
+      canAccessProfessorDashboard: false,
     });
 
     render(<Login />);
@@ -170,7 +171,7 @@ describe('Login', () => {
 
     await waitFor(() => {
       expect(loginMock).toHaveBeenCalledWith('mix@example.com', 'password123');
-      expect(navigateMock).toHaveBeenCalledWith('/manage', { replace: true });
+      expect(navigateMock).toHaveBeenCalledWith('/student', { replace: true });
     });
   });
 });

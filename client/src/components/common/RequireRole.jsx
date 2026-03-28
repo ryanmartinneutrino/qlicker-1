@@ -2,12 +2,17 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Typography, Box } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 
-export default function RequireRole({ role, children, allowAdmin = true }) {
+export default function RequireRole({
+  role,
+  children,
+  allowAdmin = true,
+  allowInstructorCourses = role === 'professor',
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const roles = user?.profile?.roles || [];
   const hasRole = role === 'professor'
-    ? roles.includes('professor') || !!user?.hasInstructorCourses
+    ? roles.includes('professor') || (allowInstructorCourses && !!user?.hasInstructorCourses)
     : roles.includes(role);
   const hasAdmin = roles.includes('admin');
 

@@ -145,7 +145,7 @@ test('course management flow lets a professor create and open a course', async (
   const { professor } = await seedUsers(request, { student: false });
   const courseName = `Course ${Date.now()}`;
 
-  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await loginViaUi(page, professor.email, professor.password, /\/prof$/);
 
   await page.getByRole('button', { name: /create course/i }).click();
   await page.getByLabel(/course name/i).fill(courseName);
@@ -156,7 +156,7 @@ test('course management flow lets a professor create and open a course', async (
 
   await expect(page.getByText(courseName)).toBeVisible();
   await page.getByText(courseName).click();
-  await expect(page).toHaveURL(/\/manage\/course\//);
+  await expect(page).toHaveURL(/\/prof\/course\//);
   await expect(page.getByRole('heading', { name: new RegExp(courseName, 'i') })).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });
@@ -167,9 +167,9 @@ test('session creation flow lets a professor create a session and open the edito
   await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   const sessionName = `Session ${Date.now()}`;
 
-  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await loginViaUi(page, professor.email, professor.password, /\/prof$/);
   await page.getByRole('heading', { name: /^CS 101$/ }).click();
-  await expect(page).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await expect(page).toHaveURL(new RegExp(`/prof/course/${course._id}$`));
 
   await page.getByRole('button', { name: /create session/i }).click();
   await page.getByLabel(/session name/i).fill(sessionName);
@@ -178,7 +178,7 @@ test('session creation flow lets a professor create a session and open the edito
 
   await expect(page.getByText(sessionName)).toBeVisible();
   await page.getByText(sessionName).click();
-  await expect(page).toHaveURL(/\/manage\/course\/.+\/session\/.+/);
+  await expect(page).toHaveURL(/\/prof\/course\/.+\/session\/.+/);
   await expect(page.getByText(sessionName).first()).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });
@@ -200,11 +200,11 @@ test('live session flow lets a student join with a passcode and submit a respons
 
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
-  await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.goto(`/manage/course/${course._id}`);
-  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await loginViaUi(professorPage, professor.email, professor.password, /\/prof$/);
+  await professorPage.goto(`/prof/course/${course._id}`);
+  await expect(professorPage).toHaveURL(new RegExp(`/prof/course/${course._id}$`));
   await professorPage.getByRole('button', { name: new RegExp(`Launch session ${sessionName}`, 'i') }).click();
-  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}/session/${session._id}/live$`));
+  await expect(professorPage).toHaveURL(new RegExp(`/prof/course/${course._id}/session/${session._id}/live$`));
 
   await professorPage.getByLabel(/require passcode/i).click();
   await professorPage.getByLabel(/join period/i).click();
@@ -291,12 +291,12 @@ test('quiz and grading flows cover student submission and instructor grade recal
 
   const professorContext = await browser.newContext();
   const professorPage = await professorContext.newPage();
-  await loginViaUi(professorPage, professor.email, professor.password, /\/manage$/);
-  await professorPage.goto(`/manage/course/${course._id}`);
-  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await loginViaUi(professorPage, professor.email, professor.password, /\/prof$/);
+  await professorPage.goto(`/prof/course/${course._id}`);
+  await expect(professorPage).toHaveURL(new RegExp(`/prof/course/${course._id}$`));
   await professorPage.getByRole('tab', { name: /^Quizzes/i }).click();
   await professorPage.getByText(quizSession.name).click();
-  await expect(professorPage).toHaveURL(new RegExp(`/manage/course/${course._id}/session/${quizSession._id}/review`));
+  await expect(professorPage).toHaveURL(new RegExp(`/prof/course/${course._id}/session/${quizSession._id}/review`));
   await professorPage.getByRole('tab', { name: /^Students$/i }).click();
   await expect(professorPage.getByText(student.email)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(professorPage);
@@ -358,9 +358,9 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   });
   expect(recalcGrades.response.status(), JSON.stringify(recalcGrades.body)).toBe(200);
 
-  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
-  await page.goto(`/manage/course/${course._id}`);
-  await expect(page).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await loginViaUi(page, professor.email, professor.password, /\/prof$/);
+  await page.goto(`/prof/course/${course._id}`);
+  await expect(page).toHaveURL(new RegExp(`/prof/course/${course._id}$`));
 
   await page.getByRole('tab', { name: /^Grades$/i }).click();
   await page.getByRole('button', { name: /^Show Grade Table$/i }).click();
@@ -387,7 +387,7 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   expect(savedMark?.points).toBe(4);
   expect(savedGrade?.value).toBe(80);
 
-  await page.goto(`/manage/course/${course._id}`);
+  await page.goto(`/prof/course/${course._id}`);
   await page.getByRole('tab', { name: /^Grades$/i }).click();
 
   const csvDownloadPromise = page.waitForEvent('download');
@@ -413,9 +413,9 @@ test('group management flow lets a professor create, populate, download, and imp
   await addInstructorToCourseViaApi(request, admin.token, course._id, professor.user._id);
   await enrollStudentViaApi(request, student.token, course.enrollmentCode);
 
-  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
+  await loginViaUi(page, professor.email, professor.password, /\/prof$/);
   await page.getByText(course.name).click();
-  await expect(page).toHaveURL(new RegExp(`/manage/course/${course._id}$`));
+  await expect(page).toHaveURL(new RegExp(`/prof/course/${course._id}$`));
 
   await page.getByRole('tab', { name: /^Groups$/i }).click();
   await page.getByRole('button', { name: /^Create Category$/i }).click();
@@ -484,9 +484,9 @@ test('question library flow lets a professor export, copy, and import questions'
     content: questionContent,
   });
 
-  await loginViaUi(page, professor.email, professor.password, /\/manage$/);
-  await page.goto(`/manage/course/${sourceCourse._id}`);
-  await expect(page).toHaveURL(new RegExp(`/manage/course/${sourceCourse._id}$`));
+  await loginViaUi(page, professor.email, professor.password, /\/prof$/);
+  await page.goto(`/prof/course/${sourceCourse._id}`);
+  await expect(page).toHaveURL(new RegExp(`/prof/course/${sourceCourse._id}$`));
 
   await page.getByRole('tab', { name: /^Question Library$/i }).click();
   await expect(page.getByText(questionContent)).toBeVisible();

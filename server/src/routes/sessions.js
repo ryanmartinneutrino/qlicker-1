@@ -44,6 +44,7 @@ import {
   normalizeQuestionIds,
   sessionResponseTrackingNeedsHydration,
 } from '../utils/sessionResponseTracking.js';
+import { getUserAccessFlags } from '../utils/userAccess.js';
 
 const createSessionSchema = {
   body: {
@@ -2075,6 +2076,16 @@ export default async function sessionRoutes(app) {
 
       if (isAllView && !isAdmin) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      if (resolvedView === 'instructor' && !isAdmin && !roles.includes('professor')) {
+        const { hasInstructorCourses } = await getUserAccessFlags({
+          _id: userId,
+          profile: { roles },
+        });
+        if (!hasInstructorCourses) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+        }
       }
 
       const courseFilter = {};

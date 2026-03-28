@@ -4,7 +4,7 @@ import User from '../models/User.js';
 import { normalizeTags } from '../services/questionImportExport.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
-import { invalidateAccessCache } from '../utils/userAccess.js';
+import { getUserAccessFlags, invalidateAccessCache } from '../utils/userAccess.js';
 
 function generateEnrollmentCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -189,6 +189,15 @@ export default async function courseRoutes(app) {
           return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
         }
       } else if (resolvedView === 'instructor') {
+        if (!isAdmin && !roles.includes('professor')) {
+          const { hasInstructorCourses } = await getUserAccessFlags({
+            _id: userId,
+            profile: { roles },
+          });
+          if (!hasInstructorCourses) {
+            return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+          }
+        }
         filter.instructors = userId;
       } else {
         filter.students = userId;

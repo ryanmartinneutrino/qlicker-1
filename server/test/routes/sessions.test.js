@@ -859,6 +859,18 @@ describe('GET /api/v1/sessions/live', () => {
     expect(sessionIds).not.toContain(String(studentPracticeSession._id));
   });
 
+  it('rejects instructor-view live sessions for students without instructor courses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const student = await createTestUser({ email: 'plain-student-live@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live?view=instructor', {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
   it('admin all-view includes student-created live sessions', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent({ allowStudentQuestions: true });

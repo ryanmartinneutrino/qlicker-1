@@ -275,7 +275,7 @@ describe('SessionEditor inline close behavior', () => {
         importTags: ['Imported'],
       });
       expect(navigateMock).toHaveBeenCalledWith(
-        '/manage/course/course-1/session/imported-session-1?returnTab=1',
+        '/prof/course/course-1/session/imported-session-1?returnTab=1',
         { state: { returnTab: 1, returnTo: undefined } }
       );
     });

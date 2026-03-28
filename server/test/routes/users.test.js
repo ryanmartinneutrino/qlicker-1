@@ -82,7 +82,7 @@ describe('GET /api/v1/users/me', () => {
     expect(body.user.locale).toBe('fr');
   });
 
-  it('includes hasInstructorCourses for student accounts that also instruct courses', async (ctx) => {
+  it('includes student-dashboard access flags for student accounts that also instruct courses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'owner@example.com', roles: ['professor'] });
     const profToken = await getAuthToken(app, prof);
@@ -110,6 +110,7 @@ describe('GET /api/v1/users/me', () => {
     const res = await authenticatedRequest(app, 'GET', '/api/v1/users/me', { token: studentToken });
     expect(res.statusCode).toBe(200);
     expect(res.json().user.hasInstructorCourses).toBe(true);
+    expect(res.json().user.canAccessProfessorDashboard).toBe(false);
 
     const storedCourse = await Course.findById(course._id).lean();
     expect((storedCourse.students || []).map(String)).not.toContain(String(student._id));

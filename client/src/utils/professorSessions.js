@@ -4,14 +4,14 @@ export function getProfessorSessionPrimaryPath(session, courseId, returnTab = 0)
   const isQuiz = !!(session?.quiz || session?.practiceQuiz);
 
   if (String(session?.status || '') === 'done') {
-    return `/manage/course/${courseId}/session/${sessionId}/review${tabSuffix}`;
+    return `/prof/course/${courseId}/session/${sessionId}/review${tabSuffix}`;
   }
 
   if (String(session?.status || '') === 'running' && !isQuiz) {
-    return `/manage/course/${courseId}/session/${sessionId}/live${tabSuffix}`;
+    return `/prof/course/${courseId}/session/${sessionId}/live${tabSuffix}`;
   }
 
-  return `/manage/course/${courseId}/session/${sessionId}${tabSuffix}`;
+  return `/prof/course/${courseId}/session/${sessionId}${tabSuffix}`;
 }
 
 export function sessionCanShowLiveReviewAction(session) {

@@ -557,14 +557,14 @@ export default function SessionReview() {
   const requestedReturnTab = Number.parseInt(searchParams.get('returnTab') || '', 10);
   const resolvedReturnTab = Number.isInteger(requestedReturnTab) && requestedReturnTab >= 0 ? requestedReturnTab : 0;
   const backToCoursePath = resolvedReturnTab > 0
-    ? `/manage/course/${courseId}?tab=${resolvedReturnTab}`
-    : `/manage/course/${courseId}`;
+    ? `/prof/course/${courseId}?tab=${resolvedReturnTab}`
+    : `/prof/course/${courseId}`;
   const editSessionParams = new URLSearchParams();
   if (resolvedReturnTab > 0) {
     editSessionParams.set('returnTab', String(resolvedReturnTab));
   }
   editSessionParams.set('returnTo', 'review');
-  const editSessionPath = `/manage/course/${courseId}/session/${sessionId}?${editSessionParams.toString()}`;
+  const editSessionPath = `/prof/course/${courseId}/session/${sessionId}?${editSessionParams.toString()}`;
 
   // ---- Data fetching ----
 

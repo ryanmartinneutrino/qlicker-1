@@ -165,6 +165,18 @@ describe('GET /api/v1/courses', () => {
     expect((storedStudent.profile.courses || []).map(String)).toContain(String(course._id));
   });
 
+  it('rejects instructor-view course lists for students without instructor courses', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const student = await createTestUser({ email: 'plain-student@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/courses?view=instructor', {
+      token: studentToken,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
   it('admin sees all courses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof@example.com', roles: ['professor'] });

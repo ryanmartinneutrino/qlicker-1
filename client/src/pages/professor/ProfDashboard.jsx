@@ -165,8 +165,8 @@ export default function ProfDashboard() {
                 highlighted
                 onClick={() => navigate(
                   ls.quiz || ls.practiceQuiz
-                    ? `/manage/course/${ls.courseId}/session/${ls._id}/review`
-                    : `/manage/course/${ls.courseId}/session/${ls._id}/live`
+                    ? `/prof/course/${ls.courseId}/session/${ls._id}/review`
+                    : `/prof/course/${ls.courseId}/session/${ls._id}/live`
                 )}
                 title={ls.name}
                 subtitle={ls.courseName}
@@ -204,7 +204,7 @@ export default function ProfDashboard() {
               <Card
                 variant="outlined"
                 sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                onClick={() => navigate(`/manage/course/${course._id}`)}
+                onClick={() => navigate(`/prof/course/${course._id}`)}
               >
                 <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
