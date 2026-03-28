@@ -6,7 +6,7 @@ import { normalizeCertificatePem, normalizePrivateKeyPem } from '../utils/certif
 
 async function samlPlugin(fastify) {
   fastify.decorate('getSamlProvider', async function getSamlProvider(options = {}) {
-    const settings = await Settings.findOne().lean();
+    const settings = await Settings.findById('settings').lean();
     if (!settings?.SSO_enabled) {
       return null;
     }

@@ -79,7 +79,7 @@ async function uploadPlugin(fastify) {
   }
 
   async function getStorageConfig() {
-    const settings = await Settings.findOne().lean();
+    const settings = await Settings.findById('settings').lean();
     const storageType = normalizeStorageType(
       settings?.storageType || 'local'
     );

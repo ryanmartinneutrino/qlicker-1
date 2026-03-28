@@ -10,7 +10,12 @@ import {
 
 const SettingsSchema = new mongoose.Schema(
   {
-    _id: { type: String },
+    _id: {
+      type: String,
+      default: 'settings',
+      enum: ['settings'],
+      required: true,
+    },
     restrictDomain: { type: Boolean, default: false },
     allowedDomains: { type: [String], default: [] },
     requireVerified: { type: Boolean, default: false },

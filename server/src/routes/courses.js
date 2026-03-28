@@ -409,7 +409,7 @@ export default async function courseRoutes(app) {
       }
 
       if (course.requireVerified) {
-        const settings = await Settings.findOne().select('SSO_enabled').lean();
+        const settings = await Settings.findById('settings').select('SSO_enabled').lean();
         if (!settings?.SSO_enabled) {
           const enrollingUser = await User.findById(userId).lean();
           if (!enrollingUser?.emails?.[0]?.verified) {

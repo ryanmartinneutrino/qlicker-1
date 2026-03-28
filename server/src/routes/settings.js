@@ -2,13 +2,10 @@ import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
 import { getBackupManagerHealth, normalizeSettingsPayload } from '../utils/authPolicy.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
-async function getOrCreateSettings() {
-  let settings = await Settings.findOne();
-  if (!settings) {
-    settings = await Settings.create({ _id: 'settings' });
-  }
-  return settings;
+async function getOrCreateSettings(options = {}) {
+  return getOrCreateSettingsDocument(options);
 }
 
 function buildBackupRequestId() {
@@ -145,10 +142,7 @@ export default async function settingsRoutes(app) {
     }
 
     try {
-      let settings = await Settings.findOne().select('_id');
-      if (!settings) {
-        settings = await Settings.create({ _id: 'settings' });
-      }
+      const settings = await getOrCreateSettings({ select: '_id' });
 
       const updatedSettings = await Settings.findByIdAndUpdate(
         settings._id,
@@ -182,12 +176,9 @@ export default async function settingsRoutes(app) {
       const requestId = buildBackupRequestId();
 
       try {
-        let settings = await Settings.findOne().select('_id');
-        if (!settings) {
-          settings = await Settings.create({ _id: 'settings' });
-        }
+        const settings = await getOrCreateSettings({ select: '_id' });
 
-        const currentSettings = await Settings.findById(settings._id).lean();
+        const currentSettings = await getOrCreateSettings({ lean: true });
         const backupManagerHealth = getBackupManagerHealth(currentSettings);
         if (backupManagerHealth.status !== 'healthy' && backupManagerHealth.status !== 'warning') {
           return reply.code(503).send({
@@ -234,10 +225,7 @@ export default async function settingsRoutes(app) {
     },
     async (request, reply) => {
       try {
-        let settings = await Settings.findOne().select('_id');
-        if (!settings) {
-          settings = await Settings.create({ _id: 'settings' });
-        }
+        const settings = await getOrCreateSettings({ select: '_id' });
 
         const updatedSettings = await Settings.findByIdAndUpdate(
           settings._id,

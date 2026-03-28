@@ -198,7 +198,7 @@ function rewriteHtmlImageSources(html, config, stats) {
 }
 
 async function resolveStorageConfig(db) {
-  const settings = await db.collection('settings').findOne({}) || {};
+  const settings = await db.collection('settings').findOne({ _id: 'settings' }) || {};
   const endpoint = process.env.AWS_ENDPOINT || settings.AWS_endpoint || settings.S3_endpoint || '';
   const defaultPathStyleForEndpoint = Boolean(endpoint);
 

@@ -43,7 +43,7 @@ async function sanitizeUser(user, settings = {}) {
 }
 
 async function getAuthSettings() {
-  return Settings.findOne().lean();
+  return Settings.findById('settings').lean();
 }
 
 async function getTokenExpiryMinutes(settings = null) {

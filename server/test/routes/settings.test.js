@@ -99,6 +99,78 @@ describe('PATCH /api/v1/settings', () => {
   });
 });
 
+describe('settings singleton hardening', () => {
+  it('removes duplicate settings documents on app startup', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.collection.updateOne(
+      { _id: 'settings' },
+      { $set: { backupTimeLocal: '02:00' } },
+      { upsert: true }
+    );
+    await Settings.collection.insertOne({
+      _id: 'legacy-settings',
+      backupTimeLocal: '07:30',
+      backupEnabled: true,
+    });
+
+    await app.close();
+    app = await createApp();
+
+    const docs = await Settings.collection.find({}).toArray();
+    expect(docs).toHaveLength(1);
+    expect(String(docs[0]._id)).toBe('settings');
+    expect(docs[0].backupTimeLocal).toBe('02:00');
+  });
+
+  it('seeds canonical settings from a legacy document when canonical settings are missing', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.collection.deleteMany({});
+    await Settings.collection.insertOne({
+      _id: 'legacy-settings',
+      backupEnabled: true,
+      backupTimeLocal: '04:10',
+      storageType: 's3',
+    });
+
+    await app.close();
+    app = await createApp();
+
+    const canonical = await Settings.collection.findOne({ _id: 'settings' });
+    const extras = await Settings.collection.countDocuments({ _id: { $ne: 'settings' } });
+    expect(canonical).toBeTruthy();
+    expect(canonical.backupEnabled).toBe(true);
+    expect(canonical.backupTimeLocal).toBe('04:10');
+    expect(canonical.storageType).toBe('s3');
+    expect(extras).toBe(0);
+  });
+
+  it('always serves the canonical settings document even if a duplicate appears later', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { backupLastRunMessage: 'canonical-settings-message' } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.collection.insertOne({
+      _id: 'rogue-settings',
+      backupLastRunMessage: 'rogue-settings-message',
+    });
+
+    const admin = await createTestUser({
+      email: 'admin-settings-singleton@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/settings', { token });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().backupLastRunMessage).toBe('canonical-settings-message');
+  });
+});
+
 describe('POST /api/v1/settings/backup-now', () => {
   it('queues a manual backup request for admins', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
