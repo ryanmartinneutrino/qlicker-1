@@ -669,6 +669,7 @@ function BackupTab() {
     || backupManagerStatus === 'error'
     || backupManagerStatus === 'stale';
   const backupManagerAlertSeverity = backupManagerStatus === 'error' ? 'error' : 'warning';
+  const showBackupResetButton = backupManagerNeedsWarning || lastRunStatus === 'running';
 
   const requestManualBackup = async () => {
     try {
@@ -689,6 +690,23 @@ function BackupTab() {
     } catch (err) {
       setSaveStatus('error');
       setSaveError(err.response?.data?.message || t('admin.backup.runNowFailed'));
+    }
+  };
+
+  const requestBackupReset = async () => {
+    try {
+      setSaveStatus('saving');
+      setSaveError('');
+      const { data } = await apiClient.post('/settings/backup-reset');
+      if (data?.backupLastRunStatus) {
+        setSettings((current) => buildBackupSettingsState({ ...current, ...data }));
+      } else {
+        await loadSettings();
+      }
+      setSaveStatus('success');
+    } catch (err) {
+      setSaveStatus('error');
+      setSaveError(err.response?.data?.message || t('admin.backup.resetStateFailed'));
     }
   };
 
@@ -725,6 +743,17 @@ function BackupTab() {
           >
             {t('admin.backup.recoveryGuide')}
           </Button>
+          {showBackupResetButton ? (
+            <Button
+              size="small"
+              variant="outlined"
+              color="warning"
+              onClick={requestBackupReset}
+              disabled={saving}
+            >
+              {t('admin.backup.resetState')}
+            </Button>
+          ) : null}
           <Button
             size="small"
             variant="contained"

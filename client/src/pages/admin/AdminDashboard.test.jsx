@@ -193,6 +193,18 @@ describe('AdminDashboard', () => {
         return Promise.resolve({ data: settingsState });
       }
 
+      if (url === '/settings/backup-reset') {
+        settingsState = {
+          ...settingsState,
+          backupManualRequestId: '',
+          backupLastHandledManualRequestId: '',
+          backupLastRunStatus: 'idle',
+          backupLastRunType: '',
+          backupLastRunMessage: 'Backup request state was reset by an admin.',
+        };
+        return Promise.resolve({ data: settingsState });
+      }
+
       throw new Error(`Unexpected POST ${url}`);
     });
   });
@@ -283,6 +295,27 @@ describe('AdminDashboard', () => {
     expect((await screen.findAllByText(/Backup manager heartbeat is stale/i)).length).toBeGreaterThan(0);
     expect(screen.getByText(/still marked as running, but the backup manager needs attention/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Backup now/i })).toBeDisabled();
+  });
+
+  it('resets a stuck backup request from the Backup tab', async () => {
+    settingsState.backupLastRunStatus = 'running';
+    settingsState.backupLastRunType = 'manual';
+    settingsState.backupLastRunMessage = 'Manual backup requested.';
+    settingsState.backupManagerStatus = 'stale';
+    settingsState.backupManagerMessage = 'Backup manager heartbeat is stale. Check the backup-manager service and confirm ./backups on the host is writable.';
+    settingsState.backupManagerIsStale = true;
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Backup$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Reset backup state/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/settings/backup-reset');
+    });
+
+    expect(screen.queryByText(/still marked as running, but the backup manager needs attention/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Backup request state was reset by an admin\./i)).toBeInTheDocument();
   });
 
   it('disables and restores a user account from the Users tab', async () => {

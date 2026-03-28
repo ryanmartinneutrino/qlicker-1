@@ -15,6 +15,8 @@ function buildBackupRequestId() {
   return `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+const BACKUP_STATE_RESET_MESSAGE = 'Backup request state was reset by an admin.';
+
 const updateSettingsSchema = {
   body: {
     type: 'object',
@@ -216,6 +218,50 @@ export default async function settingsRoutes(app) {
         return reply.code(400).send({
           error: 'Bad Request',
           message: err.message || 'Failed to queue manual backup',
+        });
+      }
+    }
+  );
+
+  app.post(
+    '/backup-reset',
+    {
+      preHandler: [requireRole(['admin']), settingsRateLimitPreHandler],
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      try {
+        let settings = await Settings.findOne().select('_id');
+        if (!settings) {
+          settings = await Settings.create({ _id: 'settings' });
+        }
+
+        const updatedSettings = await Settings.findByIdAndUpdate(
+          settings._id,
+          {
+            $set: {
+              backupManualRequestId: '',
+              backupLastHandledManualRequestId: '',
+              backupLastRunStatus: 'idle',
+              backupLastRunType: '',
+              backupLastRunMessage: BACKUP_STATE_RESET_MESSAGE,
+            },
+          },
+          {
+            returnDocument: 'after',
+            runValidators: true,
+          }
+        );
+
+        return normalizeSettingsPayload(updatedSettings.toObject());
+      } catch (err) {
+        request.log.error({ err }, 'Failed to reset backup state');
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: err.message || 'Failed to reset backup state',
         });
       }
     }

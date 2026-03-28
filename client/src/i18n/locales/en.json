@@ -311,6 +311,8 @@
       "runNow": "Backup now",
       "runNowRequested": "Manual backup requested.",
       "runNowFailed": "Failed to request a manual backup.",
+      "resetState": "Reset backup state",
+      "resetStateFailed": "Failed to reset backup state.",
       "storagePathLabel": "Backup storage path",
       "storagePathValue": "Archives are written next to docker-compose.yml in {{value}} on the host.",
       "recoveryGuide": "Open recovery guide",
