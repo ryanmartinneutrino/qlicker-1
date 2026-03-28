@@ -757,6 +757,7 @@ function QuestionEditor({
             minHeight={26}
             resizable
             showTip
+            enableVideo
           />
         </Box>
 

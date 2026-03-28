@@ -30,6 +30,7 @@ import {
   FormatUnderlined as UnderlineIcon,
   ExpandLess as CollapseToolbarIcon,
   ExpandMore as ExpandToolbarIcon,
+  OndemandVideo as VideoIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
@@ -41,6 +42,7 @@ import {
   prepareRichTextInput,
 } from './richTextUtils';
 import ResizableImage from './ResizableImage';
+import VideoEmbed, { toEmbedUrl } from './VideoEmbed';
 
 function isImageFile(file) {
   return Boolean(file?.type?.startsWith('image/'));
@@ -81,6 +83,7 @@ export default function RichTextEditor({
   ariaLabel,
   ariaDescribedBy,
   onBlur,
+  enableVideo = false,
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -88,6 +91,9 @@ export default function RichTextEditor({
   const [linkDraft, setLinkDraft] = useState('');
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
   const [sourceDraft, setSourceDraft] = useState('');
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoDraft, setVideoDraft] = useState('');
+  const [videoError, setVideoError] = useState('');
   const { t } = useTranslation();
   const lastEditorHtmlRef = useRef('');
   const lastPropHtmlRef = useRef('');
@@ -184,6 +190,7 @@ export default function RichTextEditor({
         }),
         Underline,
         ResizableImage.configure({ allowBase64: false }),
+        ...(enableVideo ? [VideoEmbed] : []),
         Placeholder.configure({
           placeholder: placeholder || '',
           showOnlyWhenEditable: true,
@@ -240,7 +247,7 @@ export default function RichTextEditor({
         emitEditorChange(transactionEditor);
       },
     },
-    [ariaDescribedBy, editorAriaLabel, placeholder, t]
+    [ariaDescribedBy, editorAriaLabel, enableVideo, placeholder, t]
   );
 
   useEffect(() => {
@@ -307,6 +314,25 @@ export default function RichTextEditor({
     setSourceDialogOpen(false);
   };
 
+  const openVideoDialog = () => {
+    setVideoDraft('');
+    setVideoError('');
+    setVideoDialogOpen(true);
+  };
+
+  const applyVideoDraft = () => {
+    if (!editor) return;
+    const embedSrc = toEmbedUrl(videoDraft);
+    if (!embedSrc) {
+      setVideoError(t('questions.richText.videoInvalidUrl'));
+      return;
+    }
+    editor.commands.setVideoEmbed({ src: videoDraft });
+    setVideoDialogOpen(false);
+    setVideoDraft('');
+    setVideoError('');
+  };
+
   const handleToolbarImageInput = async (event) => {
     const files = Array.from(event.target.files || []).filter(isImageFile);
     if (editor?.view && files.length > 0) {
@@ -357,6 +383,10 @@ export default function RichTextEditor({
             '& ul, & ol': { my: 0.7, pl: 3 },
             '& .tiptap-resizable-image': {
               my: 0.8,
+            },
+            '& .tiptap-video-embed': {
+              my: 1,
+              maxWidth: '100%',
             },
             '& img': { maxWidth: '100%', height: 'auto', borderRadius: 0 },
             '& p.is-empty:first-of-type::before, & .is-editor-empty:first-of-type::before': {
@@ -509,6 +539,17 @@ export default function RichTextEditor({
                     onChange={handleToolbarImageInput}
                   />
                 </Button>
+                {enableVideo ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<VideoIcon />}
+                  onClick={openVideoDialog}
+                  disabled={disabled}
+                >
+                  {t('questions.richText.video')}
+                </Button>
+                ) : null}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                   {TEXT_ALIGN_OPTIONS.map(({ value, labelKey, Icon }) => (
                     <IconButton
@@ -678,6 +719,29 @@ export default function RichTextEditor({
           <Button variant="contained" onClick={applySourceDraft}>{t('questions.richText.applySource')}</Button>
         </DialogActions>
       </Dialog>
+
+      {enableVideo ? (
+        <Dialog open={videoDialogOpen} onClose={() => setVideoDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>{t('questions.richText.videoEmbed')}</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              autoFocus
+              label={t('questions.richText.videoUrl')}
+              value={videoDraft}
+              onChange={(event) => { setVideoDraft(event.target.value); setVideoError(''); }}
+              placeholder={t('questions.richText.videoUrlPlaceholder')}
+              error={Boolean(videoError)}
+              helperText={videoError || t('questions.richText.videoHelp')}
+              sx={{ mt: 1 }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setVideoDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="contained" onClick={applyVideoDraft}>{t('questions.richText.videoInsert')}</Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
     </Box>
   );
 }

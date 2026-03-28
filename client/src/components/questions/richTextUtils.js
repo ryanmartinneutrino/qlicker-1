@@ -1,12 +1,42 @@
 import renderMathInElement from 'katex/contrib/auto-render';
 import DOMPurify from 'dompurify';
+import { isAllowedVideoHost } from './VideoEmbed';
 
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
-const RICH_TEXT_ALLOWED_ATTRIBUTES = ['width', 'height', 'data-width', 'data-height'];
+const RICH_TEXT_ALLOWED_ATTRIBUTES = [
+  'width', 'height', 'data-width', 'data-height',
+  'data-video-embed', 'data-src',
+  'frameborder', 'allowfullscreen', 'allow', 'loading',
+];
 const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
+
+// ---------------------------------------------------------------------------
+// DOMPurify hook: preserve <iframe> elements that point to allowed video hosts
+// and their <div data-video-embed> wrapper.
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined') {
+  DOMPurify.addHook('uponSanitizeElement', (node, data) => {
+    if (data.tagName === 'iframe') {
+      const src = node.getAttribute('src') || '';
+      if (isAllowedVideoHost(src)) {
+        // Mark as safe so DOMPurify keeps it
+        data.allowedTags.iframe = true; // eslint-disable-line no-param-reassign
+      }
+    }
+  });
+
+  DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+    // Allow src on iframes that point to permitted video hosts
+    if (node.tagName === 'IFRAME' && data.attrName === 'src') {
+      if (isAllowedVideoHost(data.attrValue)) {
+        data.forceKeepAttr = true; // eslint-disable-line no-param-reassign
+      }
+    }
+  });
+}
 
 function createInertContainer(html) {
   const template = document.createElement('template');
@@ -206,6 +236,7 @@ export function sanitizeRichHtml(html) {
 
   return DOMPurify.sanitize(stripTransientBlobUrls(source), {
     USE_PROFILES: { html: true },
+    ADD_TAGS: ['iframe'],
     ADD_ATTR: RICH_TEXT_ALLOWED_ATTRIBUTES,
   });
 }
@@ -239,7 +270,7 @@ export function hasRichTextContent(html) {
   const plainText = extractPlainTextFromHtml(normalized);
   if (plainText.length > 0) return true;
 
-  return /<img\b/i.test(normalized);
+  return /<img\b/i.test(normalized) || /<iframe\b/i.test(normalized);
 }
 
 export function renderKatexInElement(container) {
