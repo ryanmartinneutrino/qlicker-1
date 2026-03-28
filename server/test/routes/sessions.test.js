@@ -1708,12 +1708,14 @@ describe('GET /api/v1/sessions/:id/live', () => {
       studentUserId: student._id,
       attempt: 1,
       answer: 'First response',
+      createdAt: new Date('2026-03-28T10:00:00.000Z'),
     });
     await Response.create({
       questionId: copiedQId3,
       studentUserId: studentTwo._id,
       attempt: 1,
       answer: 'Second response',
+      createdAt: new Date('2026-03-28T10:05:00.000Z'),
     });
 
     const liveRes = await authenticatedRequest(
@@ -1727,10 +1729,73 @@ describe('GET /api/v1/sessions/:id/live', () => {
     const body = liveRes.json();
     expect(body.responseStats?.type).toBe('shortAnswer');
     expect(body.responseStats?.answers?.length).toBeGreaterThan(0);
+    expect(body.responseStats.answers.map((entry) => entry.answer)).toEqual(['Second response', 'First response']);
     expect(body.responseStats.answers[0]).not.toHaveProperty('studentUserId');
     expect(body.responseStats.answers[0]).toHaveProperty('studentName');
     expect(body.allResponses[0]).not.toHaveProperty('studentUserId');
     expect(body.allResponses[0]).toHaveProperty('studentName');
+  });
+
+  it('hides the short-answer response list from student and presentation payloads when the professor turns it off', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+    const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Explain.</p>',
+        plainText: 'Explain.',
+        sessionId: session._id,
+        courseId: course._id,
+      },
+    });
+    const question = qRes.json().question;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: question._id },
+    });
+    const copiedQuestionId = addRes.json().session.questions.at(-1);
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, { token: profToken });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true, responseListVisible: false },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    await Response.create({
+      questionId: copiedQuestionId,
+      studentUserId: student._id,
+      attempt: 1,
+      answer: 'Hidden response',
+      createdAt: new Date('2026-03-28T10:10:00.000Z'),
+    });
+
+    const studentLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live`, {
+      token: studentToken,
+    });
+    expect(studentLiveRes.statusCode).toBe(200);
+    expect(studentLiveRes.json().showResponseList).toBe(false);
+    expect(studentLiveRes.json().responseStats?.answers || []).toHaveLength(0);
+
+    const presentationLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live?view=presentation`, {
+      token: profToken,
+    });
+    expect(presentationLiveRes.statusCode).toBe(200);
+    expect(presentationLiveRes.json().showResponseList).toBe(false);
+    expect(presentationLiveRes.json().responseStats?.answers || []).toHaveLength(0);
+
+    const instructorLiveRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/live?includeStudentNames=true`, {
+      token: profToken,
+    });
+    expect(instructorLiveRes.statusCode).toBe(200);
+    expect(instructorLiveRes.json().responseStats?.answers?.map((entry) => entry.answer)).toEqual(['Hidden response']);
   });
 
   it('instructor can opt in to student names for numerical control view', async (ctx) => {
@@ -4483,9 +4548,9 @@ describe('Histogram in /sessions/:id/live', () => {
         expect(stats.type).toBe('shortAnswer');
         expect(stats.total).toBe(3);
         expect(stats.answers.map((entry) => entry.answer)).toEqual([
-          'First response',
-          'Legacy cached response',
           'Newest response',
+          'Legacy cached response',
+          'First response',
         ]);
       },
     },
@@ -4502,7 +4567,7 @@ describe('Histogram in /sessions/:id/live', () => {
       assertStats: (stats) => {
         expect(stats.type).toBe('numerical');
         expect(stats.total).toBe(3);
-        expect(stats.values).toEqual([10, 20, 30]);
+        expect([...(stats.values || [])].sort((a, b) => a - b)).toEqual([10, 20, 30]);
         if (stats.sum !== undefined) expect(stats.sum).toBe(60);
         expect(stats.min).toBe(10);
         expect(stats.max).toBe(30);

@@ -48,7 +48,7 @@ Useful cues in the current review UI:
 
 - the Results tab shows the student's actual session grade before participation
 - clicking a student avatar in the Students tab opens the larger profile photo
-- question rows opened from the course grade table now show the question number plus type, such as `Q4 · SA`
+- question rows opened from the course grade table now show the question number plus type, such as `Q4 · SA`, with red/green cues for whether manual grading is still required
 
 ## Reviewability and student visibility
 
@@ -77,6 +77,7 @@ Tooltip text in the Session Editor explains each formula in the app.
 - If recalculation disagrees with an existing manual mark, the manual mark is not overwritten automatically.
 - A conflict dialog lists these differences and allows you to apply automatic values explicitly.
 - When a student has multiple attempts on a question, grading uses that student's latest attempt for that question.
+- Zero-point questions should not be treated as needing grading even if an older mark record still has a stale `needsGrading` flag.
 - A submitted short-answer response that is blank still counts for participation, but it is automatically scored `0` and does not remain flagged for manual grading.
 - Duplicate `{ userId, courseId, sessionId }` grade identities are now blocked in the backend. If you are cleaning up older data, run the documented `scripts/dedupe-grades.js` maintenance script first.
 - Students receive notifications when new feedback is published, so concise and actionable comments are better than long notes.

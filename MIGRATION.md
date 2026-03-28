@@ -133,6 +133,13 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Added component coverage for the new Admin backup flow plus shared `SessionListCard` and `StudentIdentity` UI surfaces, and expanded Playwright coverage for backup-policy saves plus disabled-account login blocking/restoration.
 - Fixed a `StudentCourseDetail` hook-order bug when dynamic tabs appear, and labeled grade/session-picker row checkboxes so the critical accessibility E2E checks pass.
 
+### Recent 2026-03-28 Fixes
+
+- Live short-answer response lists are now newest-first in both live-session controls and professor session review, using response timestamps as the tie-breaker.
+- Professors now get a dedicated live-session toggle to hide or show the shared short-answer response list for students and the presentation window without affecting the professor's own control view.
+- Live interactive-session review stays available while the session is running, and the page now warns that grading remains locked until the session reaches **Ended**.
+- Course grade detail dialogs now label rows as `Q1 · MC`, `Q2 · SA`, and so on, with red/green grading cues that ignore stale zero-point `needsGrading` flags.
+
 ---
 
 ## Phase 8 — Remaining Work

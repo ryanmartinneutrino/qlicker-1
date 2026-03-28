@@ -209,6 +209,7 @@ Interactive sessions are designed for instructor-paced teaching.
 - Use the presenter and second-display windows when you need a cleaner classroom display.
 - If students report that they can open the session but cannot answer, first check whether responses are currently enabled.
 - If statistics are meant to stay hidden until discussion time, reveal them only after the class has committed to answers.
+- For short-answer questions, the professor control view always keeps the full response list visible. Use the toggle above that list when you want to hide or reveal the shared response list for students and the presentation window without changing the word cloud.
 
 ## Review results and grade consistently
 
@@ -243,7 +244,7 @@ Important grading rule: the grading interface is intentionally locked while a se
 
 From the session-review grading tab you can also change how many points a question is worth. Qlicker warns before proceeding because that action triggers a full session grade recalculation. Any marks that were manually assigned stay preserved.
 
-When you open a question from the grade table, the detail dialog lets you edit the manual mark directly from that question view.
+When you open a question from the grade table, the detail dialog lets you edit the manual mark directly from that question view. The question rows and nested dialog titles now include the question number plus type, such as `Q1 · MC` or `Q2 · SA`, and use red/green grading cues that ignore stale zero-point grading flags.
 
 Short-answer questions typically require manual grading, while many objective question types can be autograded.
 

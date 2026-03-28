@@ -24,6 +24,7 @@ import {
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -396,11 +397,19 @@ function LiveSessionContent() {
   const studentResponse = liveData?.studentResponse;
   const isJoined = liveData?.isJoined;
   const showStats = liveData?.showStats;
+  const showResponseList = liveData?.showResponseList !== false;
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
   const responseStats = liveData?.responseStats;
   const wordCloudData = liveData?.wordCloudData || null;
   const histogramData = liveData?.histogramData || null;
+  const sortedShortAnswerResponses = useMemo(
+    () => sortResponsesNewestFirst(responseStats?.answers || []),
+    [responseStats?.answers]
+  );
+  const showShortAnswerStats = showStats
+    && responseStats?.type === 'shortAnswer'
+    && (!!showResponseList || !!wordCloudData?.wordFrequencies?.length);
   const questionNumber = liveData?.questionNumber;
   const questionCount = liveData?.questionCount ?? 0;
   const pageProgress = liveData?.pageProgress || (
@@ -1070,26 +1079,28 @@ function LiveSessionContent() {
         </Paper>
       )}
 
-      {showStats && responseStats?.type === 'shortAnswer' && (
+      {showShortAnswerStats && (
         <Paper variant="outlined" sx={{ p: 2, mb: 2 }} aria-label={t('student.liveSession.shortAnswerResponses')}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
             {t('student.liveSession.responses')}
           </Typography>
           <WordCloudPanel wordCloudData={wordCloudData} />
-          <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
-            {(responseStats.answers || []).map((r, i) => (
-              <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  {t('common.unknown')}
-                </Typography>
-                {r.answerWysiwyg ? (
-                  <RichContent html={r.answerWysiwyg} />
-                ) : (
-                  <Typography variant="body2">{r.answer ?? t('common.noAnswer')}</Typography>
-                )}
-              </Paper>
-            ))}
-          </Box>
+          {showResponseList ? (
+            <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+              {sortedShortAnswerResponses.map((r, i) => (
+                <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    {t('common.unknown')}
+                  </Typography>
+                  {r.answerWysiwyg ? (
+                    <RichContent html={r.answerWysiwyg} />
+                  ) : (
+                    <Typography variant="body2">{r.answer ?? t('common.noAnswer')}</Typography>
+                  )}
+                </Paper>
+              ))}
+            </Box>
+          ) : null}
         </Paper>
       )}
 

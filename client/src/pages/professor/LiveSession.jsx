@@ -34,6 +34,7 @@ import {
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -172,6 +173,7 @@ function applyVisibilityChanged(prev, payload) {
         hidden: payload?.hidden ?? prev.currentQuestion?.sessionOptions?.hidden,
         stats: payload?.stats ?? prev.currentQuestion?.sessionOptions?.stats,
         correct: payload?.correct ?? prev.currentQuestion?.sessionOptions?.correct,
+        responseListVisible: payload?.responseListVisible ?? prev.currentQuestion?.sessionOptions?.responseListVisible,
       },
     },
   };
@@ -299,12 +301,13 @@ function RichContent({ html }) {
 /** Short-answer responses list (rendered rich text). */
 function ShortAnswerList({ responses, showStudentNames = false }) {
   const { t } = useTranslation();
-  if (!responses || !responses.length) {
+  const sortedResponses = sortResponsesNewestFirst(responses);
+  if (!sortedResponses.length) {
     return <Typography variant="body2" color="text.secondary">{t('professor.liveSession.noResponsesYet')}</Typography>;
   }
   return (
     <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-      {responses.map((r, i) => (
+      {sortedResponses.map((r, i) => (
         <Paper key={i} variant="outlined" sx={{ p: 1, mb: 0.5 }}>
           {showStudentNames && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
@@ -856,6 +859,18 @@ function LiveSessionContent() {
     }
   }, [sessionId]);
 
+  const handleToggleResponseListVisibility = useCallback((visible) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/question-visibility`, {
+        responseListVisible: visible,
+      }),
+      visible
+        ? t('professor.liveSession.responsesShownOnStudentDisplays')
+        : t('professor.liveSession.responsesHiddenOnStudentDisplays'),
+      { pendingKey: 'question-toggle:response-list' }
+    );
+  }, [doAction, sessionId, t]);
+
   // --------------------------------------------------
   // Derived values
   // --------------------------------------------------
@@ -904,6 +919,7 @@ function LiveSessionContent() {
   const isHidden = !!currentQ?.sessionOptions?.hidden;
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
+  const showResponseList = currentQ?.sessionOptions?.responseListVisible !== false;
   const responsesClosed = !!currentAttempt?.closed;
   const attemptNum = currentAttempt?.number ?? null;
   const globalActionLoading = pendingActionKey?.startsWith('global:');
@@ -916,6 +932,7 @@ function LiveSessionContent() {
   const visibleToggleBusy = pendingActionKey === 'question-toggle:hidden';
   const statsToggleBusy = pendingActionKey === 'question-toggle:stats';
   const correctToggleBusy = pendingActionKey === 'question-toggle:correct';
+  const responseListToggleBusy = pendingActionKey === 'question-toggle:response-list';
   const responsesToggleBusy = pendingActionKey === 'question-responses:toggle';
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'
@@ -1551,6 +1568,19 @@ function LiveSessionContent() {
                       onGenerate={handleGenerateWordCloud}
                       onToggleVisible={handleToggleWordCloudVisibility}
                       showControls
+                    />
+                    <FormControlLabel
+                      labelPlacement="start"
+                      sx={{ ...CONTROL_TOGGLE_LABEL_SX, mb: 0.5 }}
+                      control={(
+                        <Switch
+                          checked={showResponseList}
+                          onChange={(event) => handleToggleResponseListVisibility(event.target.checked)}
+                          disabled={!currentQ || globalActionLoading || responseListToggleBusy}
+                          size={mobileControlSize}
+                        />
+                      )}
+                      label={t('professor.liveSession.showResponsesOnStudentDisplays')}
                     />
                     <ShortAnswerList
                       responses={responseStats.answers || allResponses}

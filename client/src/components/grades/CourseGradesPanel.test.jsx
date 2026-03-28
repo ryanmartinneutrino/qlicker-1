@@ -222,13 +222,14 @@ describe('CourseGradesPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
-    expect(screen.getByText('MC')).toBeInTheDocument();
-    expect(screen.getByText('SA')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /q1 · mc/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /q2 · sa/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /q2/i }));
-    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
+    fireEvent.click(screen.getByRole('button', { name: /q2 · sa/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2 · sa/i });
 
     expect(await within(questionDialog).findByText(/because the derivative is positive\./i)).toBeInTheDocument();
+    expect(within(questionDialog).getByText('Q2 · SA')).toBeInTheDocument();
     expect(within(questionDialog).getByText(/explain your reasoning/i)).toBeInTheDocument();
     expect(within(questionDialog).getAllByText(/short answer/i).length).toBeGreaterThan(0);
     expect(within(questionDialog).getByRole('button', { name: /save mark/i })).toBeInTheDocument();
@@ -284,8 +285,8 @@ describe('CourseGradesPanel', () => {
     await openInstructorGradeTable();
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
-    fireEvent.click(screen.getByRole('button', { name: /q2/i }));
-    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
+    fireEvent.click(screen.getByRole('button', { name: /q2 · sa/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2 · sa/i });
 
     fireEvent.change(within(questionDialog).getByLabelText(/manual points/i), { target: { value: '0.5' } });
     fireEvent.click(within(questionDialog).getByRole('button', { name: /save mark/i }));
@@ -299,5 +300,52 @@ describe('CourseGradesPanel', () => {
     await waitFor(() => {
       expect(apiClient.get).toHaveBeenCalledTimes(3);
     });
+  });
+
+  it('does not mark zero-point questions as needing grading in the grade detail modal', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        ...buildGradesPayload(),
+        rows: [
+          {
+            ...buildGradesPayload().rows[0],
+            grades: [
+              {
+                ...buildGradesPayload().rows[0].grades[0],
+                marks: [
+                  {
+                    questionId: 'q-sa',
+                    questionType: 2,
+                    points: 0,
+                    outOf: 0,
+                    automatic: false,
+                    needsGrading: true,
+                    attempt: 1,
+                    feedback: '',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    render(
+      <CourseGradesPanel
+        courseId="course-1"
+        instructorView
+        availableSessions={[{ _id: 'session-1', name: 'Week 1', marksNeedingGrading: 1, autoGradeableQuestionIds: [] }]}
+      />
+    );
+
+    await openInstructorGradeTable();
+    fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
+
+    const manualOnlyChip = await screen.findByText(/manual only/i);
+    const questionRow = screen.getByRole('button', { name: /q1 · sa/i }).closest('tr');
+    expect(manualOnlyChip).toBeInTheDocument();
+    expect(questionRow).toBeTruthy();
+    expect(within(questionRow).queryByText(/^needs grading$/i)).not.toBeInTheDocument();
   });
 });

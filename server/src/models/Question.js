@@ -85,6 +85,8 @@ const AttemptAnswerEntrySchema = new mongoose.Schema(
     studentUserId: { type: String, default: '' },
     answer: { type: mongoose.Schema.Types.Mixed },
     answerWysiwyg: { type: String, default: '' },
+    createdAt: { type: Date },
+    updatedAt: { type: Date },
   },
   { _id: false }
 );
@@ -118,6 +120,7 @@ const SessionOptionsSchema = new mongoose.Schema(
     hidden: { type: Boolean, default: false },
     stats: { type: Boolean, default: false },
     correct: { type: Boolean, default: false },
+    responseListVisible: { type: Boolean, default: true },
     points: { type: Number, default: 1 },
     maxAttempts: { type: Number, default: 1 },
     attemptWeights: { type: [Number], default: [] },
