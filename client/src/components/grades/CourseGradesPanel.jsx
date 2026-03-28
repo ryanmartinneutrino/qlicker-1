@@ -32,6 +32,7 @@ import {
 import {
   AutoFixHigh as AutoFixHighIcon,
   Download as DownloadIcon,
+  Edit as EditIcon,
   Refresh as RefreshIcon,
   RateReview as ReviewIcon,
 } from '@mui/icons-material';
@@ -46,13 +47,6 @@ import {
   normalizeQuestionType,
 } from '../questions/constants';
 import { getLatestResponse } from '../../utils/responses';
-
-const COMPACT_CHIP_SX = {
-  borderRadius: 1.4,
-  '& .MuiChip-label': {
-    px: 1.15,
-  },
-};
 
 function normalizeAnswerValue(value) {
   if (value === null || value === undefined) return '';
@@ -375,7 +369,18 @@ function buildQuestionNumberLabel(t, questionNumber, questionType) {
     ? t('grades.coursePanel.questionShort', { index: questionNumber })
     : t('grades.coursePanel.question');
   const questionTypeAbbrev = getQuestionTypeAbbreviation(questionType);
-  return questionTypeAbbrev ? `${baseLabel} · ${questionTypeAbbrev}` : baseLabel;
+  return questionTypeAbbrev ? `${baseLabel}(${questionTypeAbbrev})` : baseLabel;
+}
+
+function resolveMarkQuestionType(mark, questionTypeById = {}) {
+  const directQuestionType = Number(mark?.questionType ?? mark?.sessionQuestionType ?? mark?.type);
+  if (Number.isFinite(directQuestionType)) return directQuestionType;
+
+  const questionId = normalizeAnswerValue(mark?.questionId);
+  if (!questionId) return null;
+
+  const mappedQuestionType = Number(questionTypeById?.[questionId]);
+  return Number.isFinite(mappedQuestionType) ? mappedQuestionType : null;
 }
 
 function isSameConflict(left, right) {
@@ -554,6 +559,7 @@ function GradeDetailDialog({
   student,
   sessionName,
   autoGradeableQuestionIdSet = null,
+  sessionQuestionTypeById = {},
   instructorView,
   onGradeUpdated,
   onOpenMarkDetail,
@@ -678,49 +684,38 @@ function GradeDetailDialog({
                 <TableCell sx={{ fontWeight: 700 }}>{t('common.points')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>{t('grades.coursePanel.attempt')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>{t('common.status')}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{t('common.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {(workingGrade.marks || []).map((mark, index) => {
                 const markCanAutoGrade = isMarkAutoGradeable(mark, autoGradeableQuestionIdSet);
-                const questionTypeAbbrev = getQuestionTypeAbbreviation(mark);
-                const rowNeedsGrading = markActuallyNeedsGrading(mark);
-                const questionLabel = buildQuestionNumberLabel(t, index + 1, mark);
+                const resolvedQuestionType = resolveMarkQuestionType(mark, sessionQuestionTypeById);
+                const rowNeedsGrading = markActuallyNeedsGrading({ ...mark, questionType: resolvedQuestionType });
+                const questionLabel = buildQuestionNumberLabel(t, index + 1, resolvedQuestionType);
                 return (
-                  <TableRow
-                    key={`${mark.questionId}-${index}`}
-                    sx={{
-                      bgcolor: rowNeedsGrading ? 'error.50' : 'success.50',
-                      '&:hover': { bgcolor: rowNeedsGrading ? 'error.100' : 'success.100' },
-                    }}
-                  >
+                  <TableRow key={`${mark.questionId}-${index}`}>
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => onOpenMarkDetail?.({
-                            grade: workingGrade,
-                            student,
-                            sessionName,
-                            mark,
-                            questionNumber: index + 1,
-                          })}
-                          sx={{ px: 0, minWidth: 0, textTransform: 'none' }}
-                        >
-                          {questionLabel}
-                        </Button>
-                        {questionTypeAbbrev ? (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            color={rowNeedsGrading ? 'error' : 'success'}
-                            label={questionTypeAbbrev}
-                            sx={COMPACT_CHIP_SX}
-                          />
-                        ) : null}
-                      </Box>
+                      <Button
+                        size="small"
+                        variant={instructorView ? 'outlined' : 'text'}
+                        color={rowNeedsGrading ? 'error' : 'success'}
+                        startIcon={instructorView ? <EditIcon fontSize="small" /> : undefined}
+                        onClick={() => onOpenMarkDetail?.({
+                          grade: workingGrade,
+                          student,
+                          sessionName,
+                          mark,
+                          questionNumber: index + 1,
+                        })}
+                        sx={{
+                          minWidth: 0,
+                          px: instructorView ? 1 : 0,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {questionLabel}
+                      </Button>
                     </TableCell>
                     <TableCell>{formatPercent(mark.points)} / {formatPercent(mark.outOf)}</TableCell>
                     <TableCell>{mark.attempt || 0}</TableCell>
@@ -731,24 +726,6 @@ function GradeDetailDialog({
                         <Chip size="small" color="success" variant="outlined" label={t('grades.coursePanel.manualOnly')} />
                       ) : (
                         <Chip size="small" color="success" variant="outlined" label={t('grades.coursePanel.graded')} />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {instructorView ? (
-                        <Button
-                          size="small"
-                          onClick={() => onOpenMarkDetail?.({
-                            grade: workingGrade,
-                            student,
-                            sessionName,
-                            mark,
-                            questionNumber: index + 1,
-                          })}
-                        >
-                          {t('common.edit')}
-                        </Button>
-                      ) : (
-                        <Typography variant="caption" color="text.secondary">—</Typography>
                       )}
                     </TableCell>
                   </TableRow>
@@ -1956,6 +1933,14 @@ export default function CourseGradesPanel({
   const gradeDialogAutoGradeableQuestionIdSet = useMemo(() => {
     return getAutoGradeableQuestionIdSetForSession(gradeDialogSessionId);
   }, [getAutoGradeableQuestionIdSetForSession, gradeDialogSessionId]);
+  const gradeDialogSessionQuestionTypeById = useMemo(() => {
+    if (!gradeDialogSessionId) return {};
+    const matchingSession = visibleSessions.find((session) => String(session?._id || '') === gradeDialogSessionId);
+    if (!matchingSession || typeof matchingSession.questionTypeById !== 'object' || matchingSession.questionTypeById === null) {
+      return {};
+    }
+    return matchingSession.questionTypeById;
+  }, [gradeDialogSessionId, visibleSessions]);
 
   if (loading && !instructorView) {
     return (
@@ -2433,6 +2418,7 @@ export default function CourseGradesPanel({
         student={gradeDialogState.student}
         sessionName={gradeDialogState.sessionName}
         autoGradeableQuestionIdSet={gradeDialogAutoGradeableQuestionIdSet}
+        sessionQuestionTypeById={gradeDialogSessionQuestionTypeById}
         instructorView={instructorView}
         onGradeUpdated={handleGradeDialogUpdated}
         onOpenMarkDetail={handleOpenGradeMarkDetail}

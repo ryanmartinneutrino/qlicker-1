@@ -1840,7 +1840,7 @@
             "Les notes affichent la participation, les points automatiques et les besoins de correction manuelle. Recalculez les notes lorsque les règles changent ou lorsque vous voulez reconstruire les résultats automatiques.",
             "L'onglet de correction reste verrouillé tant que la séance n'est pas Terminée. Terminer la séance crée les éléments de note; la rendre révisable plus tard ne fait que contrôler la visibilité étudiante.",
             "L'onglet Résultats affiche maintenant la note réelle de chaque étudiant avant la participation, et cliquer sur l'avatar d'un étudiant dans l'onglet Étudiants ouvre la photo en grand.",
-            "Les dialogues de détail des notes identifient maintenant chaque ligne par numéro et type, par exemple Q1 · MC ou Q2 · SA, et mettent en évidence les lignes qui demandent encore une correction tout en ignorant les anciens indicateurs de correction sur les questions à zéro point.",
+            "Les dialogues de détail des notes identifient maintenant chaque ligne par numéro et type, par exemple Q1(MC) ou Q2(SA), et mettent en évidence les lignes qui demandent encore une correction tout en ignorant les anciens indicateurs de correction sur les questions à zéro point.",
             "Les étudiants reçoivent une notification lorsque vous publiez une nouvelle rétroaction; privilégiez donc des commentaires courts et directement actionnables.",
             "Si la structure des groupes a compté pendant l'activité, comparez les données de révision et de notation avec les groupes du cours afin de repérer une participation inégale."
           ],

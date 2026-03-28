@@ -20,6 +20,10 @@ function buildGradesPayload() {
         name: 'Week 1',
         marksNeedingGrading: 5,
         autoGradeableQuestionIds: ['q-mc'],
+        questionTypeById: {
+          'q-mc': 0,
+          'q-sa': 2,
+        },
       },
     ],
     rows: [
@@ -44,7 +48,6 @@ function buildGradesPayload() {
             marks: [
               {
                 questionId: 'q-mc',
-                questionType: 0,
                 points: 1,
                 outOf: 1,
                 automatic: true,
@@ -54,7 +57,6 @@ function buildGradesPayload() {
               },
               {
                 questionId: 'q-sa',
-                questionType: 2,
                 points: 0,
                 outOf: 1,
                 automatic: true,
@@ -92,7 +94,6 @@ describe('CourseGradesPanel', () => {
           marks: [
             {
               questionId: 'q-mc',
-              questionType: 0,
               points: 1,
               outOf: 1,
               automatic: true,
@@ -102,7 +103,6 @@ describe('CourseGradesPanel', () => {
             },
             {
               questionId: 'q-sa',
-              questionType: 2,
               points: 0.5,
               outOf: 1,
               automatic: false,
@@ -222,14 +222,14 @@ describe('CourseGradesPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
-    expect(screen.getByRole('button', { name: /q1 · mc/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /q2 · sa/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /q1\(mc\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /q2\(sa\)/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /q2 · sa/i }));
-    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2 · sa/i });
+    fireEvent.click(screen.getByRole('button', { name: /q2\(sa\)/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
 
     expect(await within(questionDialog).findByText(/because the derivative is positive\./i)).toBeInTheDocument();
-    expect(within(questionDialog).getByText('Q2 · SA')).toBeInTheDocument();
+    expect(within(questionDialog).getByText('Q2(SA)')).toBeInTheDocument();
     expect(within(questionDialog).getByText(/explain your reasoning/i)).toBeInTheDocument();
     expect(within(questionDialog).getAllByText(/short answer/i).length).toBeGreaterThan(0);
     expect(within(questionDialog).getByRole('button', { name: /save mark/i })).toBeInTheDocument();
@@ -285,8 +285,8 @@ describe('CourseGradesPanel', () => {
     await openInstructorGradeTable();
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
     await screen.findByText(/manual only/i);
-    fireEvent.click(screen.getByRole('button', { name: /q2 · sa/i }));
-    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2 · sa/i });
+    fireEvent.click(screen.getByRole('button', { name: /q2\(sa\)/i }));
+    const questionDialog = await screen.findByRole('dialog', { name: /week 1\s*\/\s*q2/i });
 
     fireEvent.change(within(questionDialog).getByLabelText(/manual points/i), { target: { value: '0.5' } });
     fireEvent.click(within(questionDialog).getByRole('button', { name: /save mark/i }));
@@ -343,7 +343,7 @@ describe('CourseGradesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /87.5%/i }));
 
     const manualOnlyChip = await screen.findByText(/manual only/i);
-    const questionRow = screen.getByRole('button', { name: /q1 · sa/i }).closest('tr');
+    const questionRow = screen.getByRole('button', { name: /q1\(sa\)/i }).closest('tr');
     expect(manualOnlyChip).toBeInTheDocument();
     expect(questionRow).toBeTruthy();
     expect(within(questionRow).queryByText(/^needs grading$/i)).not.toBeInTheDocument();

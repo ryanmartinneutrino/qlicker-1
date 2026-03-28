@@ -371,7 +371,7 @@ test('manual grading flow lets a professor save a mark and export grades as CSV'
   const studentRow = page.locator('tr', { hasText: student.email }).first();
   await expect(studentRow).toBeVisible();
   await studentRow.getByRole('button', { name: /^0%$/i }).click();
-  await page.getByRole('button', { name: /^Q1$/i }).click();
+  await page.getByRole('button', { name: /^Q1\(SA\)$/i }).click();
   await expect(page.getByText(/because the balancing step preserves the equality\./i)).toBeVisible();
   await page.getByLabel(/^Manual points$/i).fill('4');
   await page.getByRole('button', { name: /^Save Mark$/i }).click();

@@ -1076,6 +1076,9 @@ describe('Grading routes', () => {
     expect(courseGradesPayload.sessions).toHaveLength(1);
     expect(courseGradesPayload.sessions[0]._id).toBe(reviewableSession._id);
     expect(courseGradesPayload.sessions[0].autoGradeableQuestionIds).toContain(reviewableQuestion._id);
+    expect(courseGradesPayload.sessions[0].questionTypeById).toMatchObject({
+      [reviewableQuestion._id]: expect.any(Number),
+    });
     expect(courseGradesPayload.rows).toHaveLength(1);
     expect(courseGradesPayload.rows[0].student.studentId).toBe(students[0]._id);
     expect(courseGradesPayload.rows[0].student).toHaveProperty('profileImage');

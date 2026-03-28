@@ -226,7 +226,7 @@ Session review also includes a few recent usability improvements:
 
 - the results tab shows the student's actual session grade before the participation column
 - clicking a student's avatar in the Students tab opens the larger profile photo
-- question entries opened from the course-grade table now show `Q1 · MC`, `Q2 · SA`, and similar type labels with visual cues for whether grading is still required
+- question entries opened from the course-grade table now show `Q1(MC)`, `Q2(SA)`, and similar type labels with visual cues for whether grading is still required
 
 Qlicker supports both automatic and manual grading.
 
@@ -244,7 +244,7 @@ Important grading rule: the grading interface is intentionally locked while a se
 
 From the session-review grading tab you can also change how many points a question is worth. Qlicker warns before proceeding because that action triggers a full session grade recalculation. Any marks that were manually assigned stay preserved.
 
-When you open a question from the grade table, the detail dialog lets you edit the manual mark directly from that question view. The question rows and nested dialog titles now include the question number plus type, such as `Q1 · MC` or `Q2 · SA`, and use red/green grading cues that ignore stale zero-point grading flags.
+When you open a question from the grade table, the detail dialog lets you edit the manual mark directly from that question view. The question rows and nested dialog titles now include the question number plus type, such as `Q1(MC)` or `Q2(SA)`, and use red/green grading cues that ignore stale zero-point grading flags.
 
 Short-answer questions typically require manual grading, while many objective question types can be autograded.
 

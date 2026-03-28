@@ -138,7 +138,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Live short-answer response lists are now newest-first in both live-session controls and professor session review, using response timestamps as the tie-breaker.
 - Professors now get a dedicated live-session toggle to hide or show the shared short-answer response list for students and the presentation window without affecting the professor's own control view.
 - Live interactive-session review stays available while the session is running, and the page now warns that grading remains locked until the session reaches **Ended**.
-- Course grade detail dialogs now label rows as `Q1 · MC`, `Q2 · SA`, and so on, with red/green grading cues that ignore stale zero-point `needsGrading` flags.
+- Course grade detail dialogs now label rows as `Q1(MC)`, `Q2(SA)`, and so on, with red/green grading cues that ignore stale zero-point `needsGrading` flags.
 
 ---
 
