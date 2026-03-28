@@ -26,6 +26,7 @@ import groupRoutes from './routes/groups.js';
 import videoRoutes from './routes/video.js';
 import { transformApiDocs } from './utils/apiDocs.js';
 import { guessImageContentTypeFromKey, normalizeRequestedStorageKey } from './utils/storageUrls.js';
+import { ensureSettingsSingleton } from './utils/settingsSingleton.js';
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -125,6 +126,12 @@ export async function buildApp(opts = {}) {
   // Database (skip in test if opts.skipDb)
   if (!opts.skipDb) {
     await app.register(dbPlugin, { uri: app.config.mongoUri });
+  }
+
+  try {
+    await ensureSettingsSingleton(app.log);
+  } catch (err) {
+    app.log.error({ err }, 'Failed to enforce settings singleton document');
   }
 
   // Upload plugin

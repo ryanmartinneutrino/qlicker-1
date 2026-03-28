@@ -18,7 +18,7 @@ import { getLastLoginAudit } from '../utils/sessionAudit.js';
 import { getUserAccessFlags } from '../utils/userAccess.js';
 
 async function getAuthSettings() {
-  return Settings.findOne().select('SSO_enabled avatarThumbnailSize').lean();
+  return Settings.findById('settings').select('SSO_enabled avatarThumbnailSize').lean();
 }
 
 function hasOnlyStudentRole(roles = []) {
