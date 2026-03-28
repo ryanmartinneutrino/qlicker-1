@@ -9,7 +9,7 @@ const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], 
 const RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'width', 'height', 'data-width', 'data-height',
   'data-video-embed', 'data-src',
-  'frameborder', 'allowfullscreen', 'allow', 'loading',
+  'allowfullscreen', 'allow', 'loading',
 ];
 const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
 

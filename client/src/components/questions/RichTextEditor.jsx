@@ -327,7 +327,7 @@ export default function RichTextEditor({
       setVideoError(t('questions.richText.videoInvalidUrl'));
       return;
     }
-    editor.commands.setVideoEmbed({ src: videoDraft });
+    editor.commands.setVideoEmbed({ src: embedSrc });
     setVideoDialogOpen(false);
     setVideoDraft('');
     setVideoError('');

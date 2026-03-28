@@ -190,7 +190,6 @@ const VideoEmbed = Node.create({
         'iframe',
         mergeAttributes(
           {
-            frameborder: '0',
             allowfullscreen: 'true',
             allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
             loading: 'lazy',
@@ -235,7 +234,6 @@ const VideoEmbed = Node.create({
       iframe.style.maxWidth = '100%';
       iframe.style.border = 'none';
       iframe.style.borderRadius = '4px';
-      iframe.setAttribute('frameborder', '0');
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.setAttribute('loading', 'lazy');
       iframe.setAttribute(
