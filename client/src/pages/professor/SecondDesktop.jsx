@@ -137,9 +137,13 @@ function applyJoinCodeChanged(prev, payload) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text content with KaTeX math support (large display). */
-function RichContent({ html, fallback }) {
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -709,7 +713,7 @@ export default function PresentationWindow() {
         sx={{ p: { xs: 2, sm: 3 }, mb: 3, flex: '0 0 auto' }}
         aria-label={t('professor.secondDesktop.currentQuestion')}
       >
-        <RichContent html={currentQ.content} fallback={currentQ.plainText} />
+        <RichContent html={currentQ.content} fallback={currentQ.plainText} allowVideoEmbeds />
       </Paper>
 
       {/* Options for MC / TF / MS */}

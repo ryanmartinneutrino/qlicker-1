@@ -123,7 +123,7 @@ const COMPACT_FIELD_SX = {
 
 function buildQuestionPayload(form, options = {}) {
   const effectiveVisibility = options.visibilityState || extractVisibilityState(form);
-  const content = normalizeStoredHtml(form.content);
+  const content = normalizeStoredHtml(form.content, { allowVideoEmbeds: true });
   const isSlide = isSlideType(form.type);
   const solution = isSlide ? '' : normalizeStoredHtml(form.solution);
   const points = isSlide ? 0 : Number(form.points) || 1;
@@ -174,15 +174,20 @@ function MathLivePreview({
   fallback = '',
   emptyText = '(no content yet)',
   compact = false,
+  allowVideoEmbeds = false,
 }) {
   const containerRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const prepared = prepareRichTextInput(html || '', fallback || '') || `<p>${emptyText}</p>`;
+    const prepared = prepareRichTextInput(
+      html || '',
+      fallback || '',
+      { allowVideoEmbeds }
+    ) || `<p>${emptyText}</p>`;
     containerRef.current.innerHTML = prepared;
     renderKatexInElement(containerRef.current);
-  }, [html, fallback, emptyText]);
+  }, [allowVideoEmbeds, html, fallback, emptyText]);
 
   return (
     <Box
@@ -319,7 +324,11 @@ function QuestionEditor({
       return question
         ? {
           type: normalizedType,
-          content: prepareRichTextInput(question.content || '', question.plainText || ''),
+          content: prepareRichTextInput(
+            question.content || '',
+            question.plainText || '',
+            { allowVideoEmbeds: true }
+          ),
           options: normalizedType === QUESTION_TYPES.TRUE_FALSE
             ? normalizeTrueFalseOptions(question.options)
             : normalizedType === QUESTION_TYPES.SLIDE
@@ -381,7 +390,7 @@ function QuestionEditor({
 
   useEffect(() => {
     if (!open || hydratingRef.current) return;
-    if (!hasRichTextContent(form.content) && !questionIdRef.current) return;
+    if (!hasRichTextContent(form.content, { allowVideoEmbeds: true }) && !questionIdRef.current) return;
 
     const payload = buildEditorPayload(form);
     const payloadHash = JSON.stringify(payload);
@@ -513,7 +522,7 @@ function QuestionEditor({
     setClosing(true);
     try {
       const latestForm = latestFormRef.current;
-      const shouldAttemptSave = hasRichTextContent(latestForm.content) || !!questionIdRef.current;
+      const shouldAttemptSave = hasRichTextContent(latestForm.content, { allowVideoEmbeds: true }) || !!questionIdRef.current;
       if (shouldAttemptSave) {
         const payload = buildEditorPayload(latestForm);
         const payloadHash = JSON.stringify(payload);
@@ -864,6 +873,7 @@ function QuestionEditor({
             html={previewPayload.content}
             fallback={previewPayload.plainText}
             emptyText="(no question text yet)"
+            allowVideoEmbeds
           />
 
           {(isOptionBasedQuestionType(form.type) || form.type === QUESTION_TYPES.TRUE_FALSE)

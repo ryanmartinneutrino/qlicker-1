@@ -43,4 +43,36 @@ describe('richTextUtils image attribute preservation', () => {
     expect(normalized).toContain('<a>download</a>');
     expect(normalized).not.toContain('<video src=');
   });
+
+  it('strips iframe embeds by default outside question-body context', () => {
+    const html = '<p>Prompt</p><iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>';
+
+    const prepared = prepareRichTextInput(html);
+    const normalized = normalizeStoredHtml(html);
+
+    expect(prepared).not.toContain('<iframe');
+    expect(normalized).not.toContain('<iframe');
+  });
+
+  it('preserves allowed video embeds only when explicitly enabled', () => {
+    const html = '<p>Prompt</p><iframe src="https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1m30s"></iframe>';
+
+    const prepared = prepareRichTextInput(html, '', { allowVideoEmbeds: true });
+    const normalized = normalizeStoredHtml(html, { allowVideoEmbeds: true });
+
+    expect(prepared).toContain('<iframe');
+    expect(prepared).toContain('src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=90"');
+    expect(normalized).toContain('<iframe');
+    expect(normalized).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+  });
+
+  it('drops disallowed iframe hosts even when video embeds are enabled', () => {
+    const html = '<p>Prompt</p><iframe src="https://evil.example.com/video/abc"></iframe>';
+
+    const prepared = prepareRichTextInput(html, '', { allowVideoEmbeds: true });
+    const normalized = normalizeStoredHtml(html, { allowVideoEmbeds: true });
+
+    expect(prepared).not.toContain('<iframe');
+    expect(normalized).not.toContain('<iframe');
+  });
 });

@@ -280,9 +280,9 @@ function formatJoinedTimestamp(value, fallbackLabel) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text question content with KaTeX math support. */
-function RichContent({ html }) {
+function RichContent({ html, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html);
+  const prepared = prepareRichTextInput(html, '', { allowVideoEmbeds });
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -1435,7 +1435,7 @@ function LiveSessionContent() {
 
                   {/* Question content (rich text with KaTeX) */}
                   <Box sx={{ mb: 2 }}>
-                    <RichContent html={currentQ.content || currentQ.plainText} />
+                    <RichContent html={currentQ.content || currentQ.plainText} allowVideoEmbeds />
                   </Box>
 
                   {/* Options for MC / TF / MS */}

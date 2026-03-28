@@ -100,7 +100,11 @@ export default function RichTextEditor({
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const fileInputRef = useRef(null);
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
-  const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
+  const allowVideoEmbeds = enableVideo;
+  const preparedValue = useMemo(
+    () => prepareRichTextInput(value || '', '', { allowVideoEmbeds }),
+    [allowVideoEmbeds, value]
+  );
   const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
 
   // Keep callback refs current so useEditor doesn't need to list them as
@@ -114,7 +118,7 @@ export default function RichTextEditor({
 
   const emitEditorChange = (nextEditor) => {
     if (!nextEditor) return;
-    const html = normalizeStoredHtml(nextEditor.getHTML());
+    const html = normalizeStoredHtml(nextEditor.getHTML(), { allowVideoEmbeds });
     if (html === lastEditorHtmlRef.current) return;
     lastEditorHtmlRef.current = html;
     onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
@@ -234,7 +238,7 @@ export default function RichTextEditor({
         },
       },
       onCreate: ({ editor: createdEditor }) => {
-        const html = normalizeStoredHtml(createdEditor.getHTML());
+        const html = normalizeStoredHtml(createdEditor.getHTML(), { allowVideoEmbeds });
         lastEditorHtmlRef.current = html;
         lastPropHtmlRef.current = preparedValue || '';
         onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
@@ -270,13 +274,13 @@ export default function RichTextEditor({
     lastPropHtmlRef.current = targetHtml;
     if (!propChanged) return;
 
-    const currentHtml = normalizeStoredHtml(editor.getHTML());
+    const currentHtml = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     if (targetHtml === currentHtml || targetHtml === lastEditorHtmlRef.current) return;
 
     editor.commands.setContent(targetHtml, false, { preserveWhitespace: 'full' });
-    const html = normalizeStoredHtml(editor.getHTML());
+    const html = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     lastEditorHtmlRef.current = html;
-  }, [editor, preparedValue]);
+  }, [allowVideoEmbeds, editor, preparedValue]);
 
   const currentColor = editor?.getAttributes('textStyle')?.color || '#000000';
   const currentFontSize = editor?.getAttributes('textStyle')?.fontSize || '';
@@ -301,14 +305,14 @@ export default function RichTextEditor({
 
   const openSourceEditor = () => {
     if (!editor) return;
-    setSourceDraft(normalizeStoredHtml(editor.getHTML()));
+    setSourceDraft(normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds }));
     setSourceDialogOpen(true);
   };
 
   const applySourceDraft = () => {
     if (!editor) return;
-    editor.commands.setContent(normalizeStoredHtml(sourceDraft || ''), false, { preserveWhitespace: 'full' });
-    const html = normalizeStoredHtml(editor.getHTML());
+    editor.commands.setContent(normalizeStoredHtml(sourceDraft || '', { allowVideoEmbeds }), false, { preserveWhitespace: 'full' });
+    const html = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     lastEditorHtmlRef.current = html;
     onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
     setSourceDialogOpen(false);

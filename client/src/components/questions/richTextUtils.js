@@ -1,17 +1,33 @@
 import renderMathInElement from 'katex/contrib/auto-render';
 import DOMPurify from 'dompurify';
-import { isAllowedVideoHost } from './VideoEmbed';
+import { isAllowedVideoHost, toEmbedUrl } from './VideoEmbed';
 
 const EMPTY_PARAGRAPH_REGEX = /<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
 const BLOCK_SPLIT_REGEX = /<\/p>\s*<p>/gi;
 const CURRENCY_PATTERN = /\$\d[\d,]*(?:\.\d{1,2})?(?:\s?(?:USD|CAD|EUR|GBP))?(?!\$)/gi;
 const INTERACTIVE_SELECTOR = 'button, input, select, textarea, [role="button"], a[href], label';
-const RICH_TEXT_ALLOWED_ATTRIBUTES = [
+const BASE_RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'width', 'height', 'data-width', 'data-height',
+];
+const VIDEO_RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'data-video-embed', 'data-src',
-  'allowfullscreen', 'allow', 'loading',
+  'allowfullscreen', 'allow', 'loading', 'referrerpolicy', 'title',
 ];
 const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
+const IFRAME_ALLOWED_ATTRIBUTES = new Set([
+  'src',
+  'width',
+  'height',
+  'allowfullscreen',
+  'allow',
+  'loading',
+  'referrerpolicy',
+  'title',
+]);
+const DEFAULT_IFRAME_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
+const DEFAULT_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
+
+let allowVideoEmbedsForCurrentSanitize = false;
 
 // ---------------------------------------------------------------------------
 // DOMPurify hook: preserve <iframe> elements that point to allowed video hosts
@@ -20,20 +36,86 @@ const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href']
 if (typeof window !== 'undefined') {
   DOMPurify.addHook('uponSanitizeElement', (node, data) => {
     if (data.tagName === 'iframe') {
-      const src = node.getAttribute('src') || '';
-      if (isAllowedVideoHost(src)) {
-        // Mark as safe so DOMPurify keeps it
-        data.allowedTags.iframe = true; // eslint-disable-line no-param-reassign
+      if (!allowVideoEmbedsForCurrentSanitize) {
+        node.remove();
+        return;
       }
+      const normalizedSrc = toEmbedUrl(node.getAttribute('src') || '');
+      if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) {
+        node.remove();
+        return;
+      }
+      node.setAttribute('src', normalizedSrc);
     }
   });
 
   DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
-    // Allow src on iframes that point to permitted video hosts
-    if (node.tagName === 'IFRAME' && data.attrName === 'src') {
-      if (isAllowedVideoHost(data.attrValue)) {
+    if (node.tagName === 'IFRAME') {
+      if (!allowVideoEmbedsForCurrentSanitize) {
+        data.keepAttr = false; // eslint-disable-line no-param-reassign
+        return;
+      }
+
+      const normalizedAttrName = String(data.attrName || '').toLowerCase();
+      if (!IFRAME_ALLOWED_ATTRIBUTES.has(normalizedAttrName)) {
+        data.keepAttr = false; // eslint-disable-line no-param-reassign
+        return;
+      }
+
+      if (normalizedAttrName === 'src') {
+        const normalizedSrc = toEmbedUrl(data.attrValue);
+        if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) {
+          data.keepAttr = false; // eslint-disable-line no-param-reassign
+          return;
+        }
+        data.attrValue = normalizedSrc; // eslint-disable-line no-param-reassign
         data.forceKeepAttr = true; // eslint-disable-line no-param-reassign
       }
+    }
+  });
+
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'IFRAME') {
+      if (!allowVideoEmbedsForCurrentSanitize) {
+        node.remove();
+        return;
+      }
+
+      const normalizedSrc = toEmbedUrl(node.getAttribute('src') || '');
+      if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) {
+        node.remove();
+        return;
+      }
+
+      node.setAttribute('src', normalizedSrc);
+      node.setAttribute('allowfullscreen', 'true');
+      node.setAttribute('allow', DEFAULT_IFRAME_ALLOW);
+      node.setAttribute('loading', 'lazy');
+      node.setAttribute('referrerpolicy', DEFAULT_IFRAME_REFERRER_POLICY);
+      if (!node.getAttribute('title')) node.setAttribute('title', 'Embedded video');
+
+      Array.from(node.attributes).forEach((attribute) => {
+        if (!IFRAME_ALLOWED_ATTRIBUTES.has(String(attribute.name || '').toLowerCase())) {
+          node.removeAttribute(attribute.name);
+        }
+      });
+      return;
+    }
+
+    if (node.tagName === 'DIV' && node.hasAttribute('data-video-embed')) {
+      if (!allowVideoEmbedsForCurrentSanitize) {
+        node.removeAttribute('data-video-embed');
+        node.removeAttribute('data-src');
+        return;
+      }
+
+      const normalizedSrc = toEmbedUrl(node.getAttribute('data-src') || '');
+      if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) {
+        node.removeAttribute('data-video-embed');
+        node.removeAttribute('data-src');
+        return;
+      }
+      node.setAttribute('data-src', normalizedSrc);
     }
   });
 }
@@ -214,7 +296,7 @@ function maskCurrencyTokens(container) {
   };
 }
 
-export function prepareRichTextInput(value, fallback = '') {
+export function prepareRichTextInput(value, fallback = '', options = {}) {
   const source = ((value && String(value)) || (fallback && String(fallback)) || '').trim();
   if (!source) return '';
 
@@ -226,25 +308,33 @@ export function prepareRichTextInput(value, fallback = '') {
     return `<p>${escapeHtml(normalized)}</p>`;
   }
 
-  return sanitizeRichHtml(normalized);
+  return sanitizeRichHtml(normalized, options);
 }
 
-export function sanitizeRichHtml(html) {
+export function sanitizeRichHtml(html, options = {}) {
+  const { allowVideoEmbeds = false } = options || {};
   const source = String(html || '').trim();
   if (!source) return '';
   if (typeof window === 'undefined') return source;
 
-  return DOMPurify.sanitize(stripTransientBlobUrls(source), {
-    USE_PROFILES: { html: true },
-    ADD_TAGS: ['iframe'],
-    ADD_ATTR: RICH_TEXT_ALLOWED_ATTRIBUTES,
-  });
+  allowVideoEmbedsForCurrentSanitize = allowVideoEmbeds;
+  try {
+    return DOMPurify.sanitize(stripTransientBlobUrls(source), {
+      USE_PROFILES: { html: true },
+      ADD_TAGS: allowVideoEmbeds ? ['iframe'] : [],
+      ADD_ATTR: allowVideoEmbeds
+        ? [...BASE_RICH_TEXT_ALLOWED_ATTRIBUTES, ...VIDEO_RICH_TEXT_ALLOWED_ATTRIBUTES]
+        : BASE_RICH_TEXT_ALLOWED_ATTRIBUTES,
+    });
+  } finally {
+    allowVideoEmbedsForCurrentSanitize = false;
+  }
 }
 
-export function normalizeStoredHtml(html) {
+export function normalizeStoredHtml(html, options = {}) {
   const trimmed = String(html || '').trim();
   if (!trimmed) return '';
-  const sanitized = sanitizeRichHtml(trimmed).trim();
+  const sanitized = sanitizeRichHtml(trimmed, options).trim();
   if (!sanitized || sanitized === '<p></p>' || sanitized === '<p><br></p>') return '';
 
   const noEmptyParagraphs = sanitized.replace(EMPTY_PARAGRAPH_REGEX, '').trim();
@@ -263,8 +353,8 @@ export function extractPlainTextFromHtml(html) {
   return (container.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-export function hasRichTextContent(html) {
-  const normalized = normalizeStoredHtml(html);
+export function hasRichTextContent(html, options = {}) {
+  const normalized = normalizeStoredHtml(html, options);
   if (!normalized) return false;
 
   const plainText = extractPlainTextFromHtml(normalized);

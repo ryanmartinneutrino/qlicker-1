@@ -121,9 +121,13 @@ function hasCorrectOption(options = []) {
   return options.some((option) => !!option?.correct);
 }
 
-function RichContent({ html, fallback }) {
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -649,7 +653,7 @@ export default function QuizSession() {
             </Box>
 
             <Box sx={{ mb: 2 }}>
-              <RichContent html={question.content} fallback={question.plainText} />
+              <RichContent html={question.content} fallback={question.plainText} allowVideoEmbeds />
             </Box>
 
             {(qType === QUESTION_TYPES.MULTIPLE_CHOICE || qType === QUESTION_TYPES.TRUE_FALSE) && (

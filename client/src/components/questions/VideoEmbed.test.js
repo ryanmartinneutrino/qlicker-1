@@ -8,14 +8,29 @@ describe('VideoEmbed', () => {
         .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
+    it('preserves YouTube start time from watch URLs', () => {
+      expect(toEmbedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1m30s'))
+        .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ?start=90');
+    });
+
     it('converts a youtu.be short URL', () => {
       expect(toEmbedUrl('https://youtu.be/dQw4w9WgXcQ'))
         .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
     });
 
+    it('preserves YouTube start time from youtu.be URLs', () => {
+      expect(toEmbedUrl('https://youtu.be/dQw4w9WgXcQ?t=75'))
+        .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ?start=75');
+    });
+
     it('passes through an existing YouTube embed URL', () => {
       expect(toEmbedUrl('https://www.youtube.com/embed/dQw4w9WgXcQ'))
         .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ');
+    });
+
+    it('preserves start time from YouTube embed URL hash', () => {
+      expect(toEmbedUrl('https://www.youtube.com/embed/dQw4w9WgXcQ#t=45'))
+        .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ?start=45');
     });
 
     it('converts a YouTube Shorts URL', () => {

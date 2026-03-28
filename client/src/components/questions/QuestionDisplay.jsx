@@ -40,9 +40,13 @@ function RichHtml({
   fallback = '',
   sx = {},
   emptyText = '(no content)',
+  allowVideoEmbeds = false,
 }) {
   const containerRef = useRef(null);
-  const contentHtml = useMemo(() => prepareRichTextInput(value || '', fallback || ''), [value, fallback]);
+  const contentHtml = useMemo(
+    () => prepareRichTextInput(value || '', fallback || '', { allowVideoEmbeds }),
+    [allowVideoEmbeds, value, fallback]
+  );
 
   useEffect(() => {
     if (!containerRef.current || !contentHtml) return;
@@ -85,7 +89,7 @@ export default function QuestionDisplay({ question }) {
         {!isSlide && points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
-      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} />
+      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} allowVideoEmbeds />
 
       {isOptionBasedQuestionType(normalizedType) && opts.length > 0 && (
         <Box sx={{ pl: 2 }}>

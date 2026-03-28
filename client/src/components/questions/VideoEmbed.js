@@ -28,6 +28,68 @@ export const ALLOWED_VIDEO_HOSTS = [
   'peertube.tv',
 ];
 
+const YOUTUBE_TIME_SEGMENT_REGEX = /(\d+)(h|m|s)/g;
+
+function parseYouTubeStartSeconds(rawValue) {
+  const value = String(rawValue || '').trim().toLowerCase();
+  if (!value) return null;
+  if (/^\d+$/.test(value)) return Number.parseInt(value, 10);
+
+  let total = 0;
+  let hasSegments = false;
+  let match = YOUTUBE_TIME_SEGMENT_REGEX.exec(value);
+  while (match) {
+    hasSegments = true;
+    const amount = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(amount)) return null;
+    if (match[2] === 'h') total += amount * 3600;
+    if (match[2] === 'm') total += amount * 60;
+    if (match[2] === 's') total += amount;
+    match = YOUTUBE_TIME_SEGMENT_REGEX.exec(value);
+  }
+  YOUTUBE_TIME_SEGMENT_REGEX.lastIndex = 0;
+
+  if (!hasSegments) return null;
+  return total > 0 ? total : null;
+}
+
+function extractYouTubeStartSeconds(url) {
+  const directCandidate = url.searchParams.get('start')
+    || url.searchParams.get('t')
+    || url.searchParams.get('time_continue');
+  const direct = parseYouTubeStartSeconds(directCandidate);
+  if (direct != null) return direct;
+
+  const hash = String(url.hash || '').replace(/^#/, '').trim();
+  if (!hash) return null;
+  const hashParams = new URLSearchParams(hash.includes('=') ? hash : `t=${hash}`);
+  const hashCandidate = hashParams.get('t') || hashParams.get('start') || hash;
+  return parseYouTubeStartSeconds(hashCandidate);
+}
+
+function buildYouTubeEmbedUrl(videoId, { noCookie = false, startSeconds = null } = {}) {
+  const normalizedId = String(videoId || '').trim();
+  if (!normalizedId) return null;
+
+  const embedUrl = new URL(
+    `https://${noCookie ? 'www.youtube-nocookie.com' : 'www.youtube.com'}/embed/${encodeURIComponent(normalizedId)}`
+  );
+  if (Number.isFinite(startSeconds) && startSeconds > 0) {
+    embedUrl.searchParams.set('start', String(Math.floor(startSeconds)));
+  }
+  return embedUrl.toString();
+}
+
+function extractYouTubeVideoId(pathname = '') {
+  if (pathname.startsWith('/embed/')) {
+    return pathname.split('/embed/')[1]?.split(/[/?#]/)[0] || '';
+  }
+  if (pathname.startsWith('/shorts/')) {
+    return pathname.split('/shorts/')[1]?.split(/[/?#]/)[0] || '';
+  }
+  return '';
+}
+
 /**
  * Parse a user-supplied URL (watch page or raw embed URL) into a safe
  * embed `src` value. Returns `null` when the URL cannot be mapped to
@@ -51,24 +113,25 @@ export function toEmbedUrl(raw) {
 
   // YouTube watch / short / embed
   if (host === 'www.youtube.com' || host === 'youtube.com') {
+    const startSeconds = extractYouTubeStartSeconds(url);
     if (url.pathname === '/watch') {
       const videoId = url.searchParams.get('v');
-      if (videoId) return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}`;
+      if (videoId) return buildYouTubeEmbedUrl(videoId, { startSeconds });
     }
-    if (url.pathname.startsWith('/embed/')) return url.href;
-    if (url.pathname.startsWith('/shorts/')) {
-      const id = url.pathname.split('/shorts/')[1]?.split(/[/?#]/)[0];
-      if (id) return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
-    }
+    const id = extractYouTubeVideoId(url.pathname);
+    if (id) return buildYouTubeEmbedUrl(id, { startSeconds });
     return null;
   }
   if (host === 'youtu.be') {
+    const startSeconds = extractYouTubeStartSeconds(url);
     const id = url.pathname.slice(1).split(/[/?#]/)[0];
-    if (id) return `https://www.youtube.com/embed/${encodeURIComponent(id)}`;
+    if (id) return buildYouTubeEmbedUrl(id, { startSeconds });
     return null;
   }
   if (host === 'www.youtube-nocookie.com' || host === 'youtube-nocookie.com') {
-    if (url.pathname.startsWith('/embed/')) return url.href;
+    const startSeconds = extractYouTubeStartSeconds(url);
+    const id = extractYouTubeVideoId(url.pathname);
+    if (id) return buildYouTubeEmbedUrl(id, { noCookie: true, startSeconds });
     return null;
   }
 
@@ -111,12 +174,7 @@ export function toEmbedUrl(raw) {
  * Check whether a given URL points to an allowed video host.
  */
 export function isAllowedVideoHost(src) {
-  try {
-    const url = new URL(src);
-    return ALLOWED_VIDEO_HOSTS.includes(url.hostname.toLowerCase());
-  } catch {
-    return false;
-  }
+  return Boolean(toEmbedUrl(src));
 }
 
 /**
@@ -167,16 +225,18 @@ const VideoEmbed = Node.create({
         tag: 'iframe[src]',
         getAttrs: (dom) => {
           const src = dom.getAttribute('src') || '';
-          if (!isAllowedVideoHost(src)) return false;
-          return { src };
+          const normalizedSrc = toEmbedUrl(src);
+          if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) return false;
+          return { src: normalizedSrc };
         },
       },
       {
         tag: 'div[data-video-embed]',
         getAttrs: (dom) => {
           const src = dom.getAttribute('data-src') || '';
-          if (!isAllowedVideoHost(src)) return false;
-          return { src };
+          const normalizedSrc = toEmbedUrl(src);
+          if (!normalizedSrc || !isAllowedVideoHost(normalizedSrc)) return false;
+          return { src: normalizedSrc };
         },
       },
     ];
@@ -193,6 +253,8 @@ const VideoEmbed = Node.create({
             allowfullscreen: 'true',
             allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
             loading: 'lazy',
+            referrerpolicy: 'strict-origin-when-cross-origin',
+            title: 'Embedded video',
           },
           HTMLAttributes,
         ),
@@ -227,15 +289,18 @@ const VideoEmbed = Node.create({
       wrapper.style.margin = '8px 0';
 
       const iframe = document.createElement('iframe');
-      iframe.src = currentNode.attrs.src || '';
-      iframe.width = String(currentNode.attrs.width || 560);
-      iframe.height = String(currentNode.attrs.height || 315);
+      const initialSrc = currentNode.attrs.src || '';
+      if (initialSrc) iframe.setAttribute('src', initialSrc);
+      iframe.setAttribute('width', String(currentNode.attrs.width || 560));
+      iframe.setAttribute('height', String(currentNode.attrs.height || 315));
       iframe.style.display = 'block';
       iframe.style.maxWidth = '100%';
       iframe.style.border = 'none';
       iframe.style.borderRadius = '4px';
       iframe.setAttribute('allowfullscreen', 'true');
       iframe.setAttribute('loading', 'lazy');
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      iframe.setAttribute('title', 'Embedded video');
       iframe.setAttribute(
         'allow',
         'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
@@ -278,11 +343,23 @@ const VideoEmbed = Node.create({
         update(updatedNode) {
           if (updatedNode.type.name !== currentNode.type.name) return false;
           currentNode = updatedNode;
-          if (iframe.src !== (updatedNode.attrs.src || '')) {
-            iframe.src = updatedNode.attrs.src || '';
+          const nextSrc = updatedNode.attrs.src || '';
+          const currentSrc = iframe.getAttribute('src') || '';
+          if (currentSrc !== nextSrc) {
+            if (nextSrc) {
+              iframe.setAttribute('src', nextSrc);
+            } else {
+              iframe.removeAttribute('src');
+            }
           }
-          iframe.width = String(updatedNode.attrs.width || 560);
-          iframe.height = String(updatedNode.attrs.height || 315);
+          const nextWidth = String(updatedNode.attrs.width || 560);
+          if ((iframe.getAttribute('width') || '') !== nextWidth) {
+            iframe.setAttribute('width', nextWidth);
+          }
+          const nextHeight = String(updatedNode.attrs.height || 315);
+          if ((iframe.getAttribute('height') || '') !== nextHeight) {
+            iframe.setAttribute('height', nextHeight);
+          }
           return true;
         },
         destroy() {

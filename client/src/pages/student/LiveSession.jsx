@@ -129,9 +129,13 @@ function applyJoinCodeChanged(prev, payload) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text content with KaTeX math support. */
-function RichContent({ html, fallback }) {
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -740,7 +744,7 @@ function LiveSessionContent() {
 
         {/* Question body */}
         <Box sx={{ mb: 2 }}>
-          <RichContent html={currentQ.content} fallback={currentQ.plainText} />
+          <RichContent html={currentQ.content} fallback={currentQ.plainText} allowVideoEmbeds />
         </Box>
 
         {/* ============================================================ */}

@@ -246,9 +246,13 @@ function RichHtml({
   fallback = '',
   sx = {},
   emptyText = '(no content)',
+  allowVideoEmbeds = false,
 }) {
   const ref = useRef(null);
-  const html = useMemo(() => prepareRichTextInput(value || '', fallback || ''), [value, fallback]);
+  const html = useMemo(
+    () => prepareRichTextInput(value || '', fallback || '', { allowVideoEmbeds }),
+    [allowVideoEmbeds, value, fallback]
+  );
 
   useEffect(() => {
     if (!ref.current || !html) return;
@@ -344,7 +348,7 @@ function ReviewQuestionCard({
       </Box>
 
       {/* Question content */}
-      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...richContentSx, mb: 1 }} />
+      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...richContentSx, mb: 1 }} allowVideoEmbeds />
 
       {/* Options (MC / TF / MS) */}
       {[QUESTION_TYPES.MULTIPLE_CHOICE, QUESTION_TYPES.TRUE_FALSE, QUESTION_TYPES.MULTI_SELECT].includes(normalizedType)
