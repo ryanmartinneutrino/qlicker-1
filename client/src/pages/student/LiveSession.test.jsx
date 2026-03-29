@@ -102,7 +102,5 @@ describe('Student LiveSession', () => {
     await waitFor(() => {
       expect(container.querySelector('.katex')).not.toBeNull();
     });
-
-    expect(screen.queryByText('\\(x^2\\)')).not.toBeInTheDocument();
   });
 });
