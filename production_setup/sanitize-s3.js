@@ -198,7 +198,14 @@ function rewriteHtmlImageSources(html, config, stats) {
 }
 
 async function resolveStorageConfig(db) {
-  const settings = await db.collection('settings').findOne({ _id: 'settings' }) || {};
+  let settings = await db.collection('settings').findOne({ _id: 'settings' });
+  if (!settings) {
+    settings = await db.collection('settings').findOne({});
+    if (settings) {
+      console.log(`[WARN] Canonical settings document (_id="settings") was not found. Using legacy settings _id="${String(settings._id || '')}".`);
+    }
+  }
+  settings = settings || {};
   const endpoint = process.env.AWS_ENDPOINT || settings.AWS_endpoint || settings.S3_endpoint || '';
   const defaultPathStyleForEndpoint = Boolean(endpoint);
 

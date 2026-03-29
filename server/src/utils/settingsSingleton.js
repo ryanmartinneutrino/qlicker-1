@@ -75,11 +75,21 @@ export async function ensureSettingsSingleton(logger) {
 }
 
 export async function getOrCreateSettingsDocument({ select = '', lean = false } = {}) {
-  let query = Settings.findById(SETTINGS_DOCUMENT_ID);
-  if (select) query = query.select(select);
-  if (lean) query = query.lean();
+  const buildQuery = () => {
+    let query = Settings.findById(SETTINGS_DOCUMENT_ID);
+    if (select) query = query.select(select);
+    if (lean) query = query.lean();
+    return query;
+  };
 
-  let settings = await query;
+  let settings = await buildQuery();
+  if (settings) return settings;
+
+  // During live restore flows, the running app may observe a legacy/non-canonical
+  // settings record before restart. Promote it instead of creating a blank doc.
+  await ensureSettingsSingleton();
+
+  settings = await buildQuery();
   if (settings) return settings;
 
   await Settings.updateOne(
@@ -88,10 +98,5 @@ export async function getOrCreateSettingsDocument({ select = '', lean = false } 
     { upsert: true }
   );
 
-  query = Settings.findById(SETTINGS_DOCUMENT_ID);
-  if (select) query = query.select(select);
-  if (lean) query = query.lean();
-  settings = await query;
-
-  return settings;
+  return buildQuery();
 }

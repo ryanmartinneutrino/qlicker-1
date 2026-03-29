@@ -146,6 +146,39 @@ describe('settings singleton hardening', () => {
     expect(extras).toBe(0);
   });
 
+  it('promotes restored legacy settings when canonical is missing after startup', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.collection.deleteMany({});
+    await Settings.collection.insertOne({
+      _id: 'legacy-restored-settings',
+      SSO_enabled: true,
+      storageType: 's3',
+      AWS_bucket: 'legacy-backup-bucket',
+      AWS_region: 'us-east-1',
+    });
+
+    const admin = await createTestUser({
+      email: 'admin-legacy-restore@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/settings', { token });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().SSO_enabled).toBe(true);
+    expect(res.json().storageType).toBe('s3');
+    expect(res.json().AWS_bucket).toBe('legacy-backup-bucket');
+
+    const canonical = await Settings.collection.findOne({ _id: 'settings' });
+    const extras = await Settings.collection.countDocuments({ _id: { $ne: 'settings' } });
+    expect(canonical).toBeTruthy();
+    expect(canonical.SSO_enabled).toBe(true);
+    expect(canonical.storageType).toBe('s3');
+    expect(canonical.AWS_bucket).toBe('legacy-backup-bucket');
+    expect(extras).toBe(0);
+  });
+
   it('always serves the canonical settings document even if a duplicate appears later', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 

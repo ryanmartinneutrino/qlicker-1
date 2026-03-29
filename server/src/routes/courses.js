@@ -1,10 +1,10 @@
 import Course from '../models/Course.js';
-import Settings from '../models/Settings.js';
 import User from '../models/User.js';
 import { normalizeTags } from '../services/questionImportExport.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
 import { getUserAccessFlags, invalidateAccessCache } from '../utils/userAccess.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
 function generateEnrollmentCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -409,7 +409,10 @@ export default async function courseRoutes(app) {
       }
 
       if (course.requireVerified) {
-        const settings = await Settings.findById('settings').select('SSO_enabled').lean();
+        const settings = await getOrCreateSettingsDocument({
+          select: 'SSO_enabled',
+          lean: true,
+        });
         if (!settings?.SSO_enabled) {
           const enrollingUser = await User.findById(userId).lean();
           if (!enrollingUser?.emails?.[0]?.verified) {

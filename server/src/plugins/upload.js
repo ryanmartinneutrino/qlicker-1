@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { generateMeteorId } from '../utils/meteorId.js';
-import Settings from '../models/Settings.js';
 import { guessImageContentTypeFromKey, toUploadsUrl } from '../utils/storageUrls.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const UPLOADS_DIR = path.resolve(__dirname, '../../uploads');
@@ -79,7 +79,7 @@ async function uploadPlugin(fastify) {
   }
 
   async function getStorageConfig() {
-    const settings = await Settings.findById('settings').lean();
+    const settings = await getOrCreateSettingsDocument({ lean: true });
     const storageType = normalizeStorageType(
       settings?.storageType || 'local'
     );

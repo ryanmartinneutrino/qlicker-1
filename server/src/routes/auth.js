@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import Settings from '../models/Settings.js';
 import {
   canUseEmailLogin,
   getSsoProviderRoutes,
@@ -13,6 +12,7 @@ import { sendVerificationEmail, sendPasswordResetEmail } from '../services/email
 import { normalizeCertificatePem } from '../utils/certificate.js';
 import { buildRefreshSessionEntry, getRequestIp, normalizeIpAddress } from '../utils/sessionAudit.js';
 import { getUserAccessFlags } from '../utils/userAccess.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
 const LOGIN_LOCKOUT_THRESHOLD = 5;
 const LOGIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000;
@@ -43,7 +43,7 @@ async function sanitizeUser(user, settings = {}) {
 }
 
 async function getAuthSettings() {
-  return Settings.findById('settings').lean();
+  return getOrCreateSettingsDocument({ lean: true });
 }
 
 async function getTokenExpiryMinutes(settings = null) {

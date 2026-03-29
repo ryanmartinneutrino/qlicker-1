@@ -2,7 +2,6 @@ import sharp from 'sharp';
 import User from '../models/User.js';
 import Course from '../models/Course.js';
 import Image from '../models/Image.js';
-import Settings from '../models/Settings.js';
 import { generateMeteorId } from '../utils/meteorId.js';
 import { emailRegex } from '../utils/email.js';
 import { escapeForRegex } from '../utils/regex.js';
@@ -16,9 +15,13 @@ import {
 import { isSafeProfileImageUrl, isPrivateHostname } from '../utils/url.js';
 import { getLastLoginAudit } from '../utils/sessionAudit.js';
 import { getUserAccessFlags } from '../utils/userAccess.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
 async function getAuthSettings() {
-  return Settings.findById('settings').select('SSO_enabled avatarThumbnailSize').lean();
+  return getOrCreateSettingsDocument({
+    select: 'SSO_enabled avatarThumbnailSize',
+    lean: true,
+  });
 }
 
 function hasOnlyStudentRole(roles = []) {

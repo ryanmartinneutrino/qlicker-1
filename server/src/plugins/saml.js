@@ -1,12 +1,12 @@
 import fp from 'fastify-plugin';
 import { SAML } from '@node-saml/node-saml';
-import Settings from '../models/Settings.js';
 import { getSamlAdvancedSettings } from '../utils/authPolicy.js';
 import { normalizeCertificatePem, normalizePrivateKeyPem } from '../utils/certificate.js';
+import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
 async function samlPlugin(fastify) {
   fastify.decorate('getSamlProvider', async function getSamlProvider(options = {}) {
-    const settings = await Settings.findById('settings').lean();
+    const settings = await getOrCreateSettingsDocument({ lean: true });
     if (!settings?.SSO_enabled) {
       return null;
     }
