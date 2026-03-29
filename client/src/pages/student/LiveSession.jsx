@@ -18,7 +18,11 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
@@ -61,8 +65,11 @@ const richContentSx = {
   },
 };
 
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function applyCurrentQuestionUpdate(prev, payload) {
@@ -761,6 +768,7 @@ function LiveSessionContent() {
               const isSelected = displayAnswerString === optId;
               const count = inlineDistribution?.[i]?.count || 0;
               const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const optionContent = getOptionRichContentProps(opt);
               const barColor = showCorrect
                 ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
                 : 'rgba(25, 118, 210, 0.18)';
@@ -818,17 +826,17 @@ function LiveSessionContent() {
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
-                  <Chip
-                    label={OPTION_LETTERS[i]}
-                    size="small"
-                    color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
-                  />
-                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={optionDisplayHtml(opt)} />
-                  </Box>
-                  {showInlineOptionStats && (
-                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                   <Chip
+                     label={OPTION_LETTERS[i]}
+                     size="small"
+                     color={isCorrectOpt ? 'success' : 'default'}
+                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                   />
+                   <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionContent.html} fallback={optionContent.fallback} />
+                   </Box>
+                   {showInlineOptionStats && (
+                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
                       {pct}%
                     </Typography>
                   )}
@@ -848,6 +856,7 @@ function LiveSessionContent() {
               const checked = displayAnswerArray.includes(optId);
               const count = inlineDistribution?.[i]?.count || 0;
               const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const optionContent = getOptionRichContentProps(opt);
               const barColor = showCorrect
                 ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
                 : 'rgba(25, 118, 210, 0.18)';
@@ -926,17 +935,17 @@ function LiveSessionContent() {
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
-                  <Chip
-                    label={OPTION_LETTERS[i]}
-                    size="small"
-                    color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
-                  />
-                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={optionDisplayHtml(opt)} />
-                  </Box>
-                  {showInlineOptionStats && (
-                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                   <Chip
+                     label={OPTION_LETTERS[i]}
+                     size="small"
+                     color={isCorrectOpt ? 'success' : 'default'}
+                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                   />
+                   <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionContent.html} fallback={optionContent.fallback} />
+                   </Box>
+                   {showInlineOptionStats && (
+                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
                       {pct}%
                     </Typography>
                   )}
