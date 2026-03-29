@@ -22,7 +22,11 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
@@ -182,6 +186,13 @@ function optionDisplayHtml(option) {
     || option?.option
     || option?.answer
     || '';
+}
+
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.text || option?.label || option?.value || option?.option || option?.answer || '',
+  };
 }
 
 function collectAttemptNumbersForQuestion(question, studentResults = []) {
@@ -481,6 +492,7 @@ function DistributionBars({
         const pct = total > 0 ? Math.round(100 * item.count / total) : 0;
         const isCorrect = highlightCorrect && correctIndices?.includes(i);
         const barColor = isCorrect ? 'success.main' : !highlightCorrect || !correctIndices?.length ? 'primary.main' : 'error.light';
+        const optionContent = getOptionRichContentProps(options?.[i]);
         return (
           <Box key={i}>
             <Box
@@ -500,7 +512,8 @@ function DistributionBars({
               />
               <Box sx={{ minWidth: 0 }}>
                 <RichContent
-                  html={optionDisplayHtml(options?.[i])}
+                  html={optionContent.html}
+                  fallback={optionContent.fallback}
                 />
               </Box>
               <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 56, textAlign: 'right' }}>
@@ -1202,6 +1215,7 @@ export default function SessionReview() {
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 1 }}>
                       {(q.options || []).map((opt, i) => {
                         const isCorrect = isCorrectOption(opt);
+                        const optionContent = getOptionRichContentProps(opt);
                         return (
                           <Paper
                             key={opt._id || i}
@@ -1219,7 +1233,7 @@ export default function SessionReview() {
                               sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28 }}
                             />
                             <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <RichContent html={optionDisplayHtml(opt)} />
+                              <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                             </Box>
                           </Paper>
                         );

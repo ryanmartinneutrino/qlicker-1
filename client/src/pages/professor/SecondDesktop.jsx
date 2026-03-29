@@ -11,7 +11,11 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
@@ -49,6 +53,13 @@ function buildWebsocketUrl(token) {
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
+}
+
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function applyCurrentQuestionUpdate(prev, payload) {
@@ -719,6 +730,7 @@ export default function PresentationWindow() {
             const isCorrect = showCorrect && !!opt.correct;
             const count = inlineDistribution?.[i]?.count || 0;
             const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+            const optionContent = getOptionRichContentProps(opt);
             const barColor = showCorrect
               ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
               : 'rgba(25, 118, 210, 0.18)';
@@ -771,7 +783,7 @@ export default function PresentationWindow() {
                   sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 32, fontSize: '1rem', justifySelf: 'start' }}
                 />
                 <Box sx={{ minWidth: 0 }}>
-                  <RichContent html={optionDisplayHtml(opt)} />
+                  <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                 </Box>
                 {showInlineOptionStats && (
                   <Typography variant="h6" sx={{ minWidth: 80, textAlign: 'right', fontWeight: 600 }}>
@@ -850,7 +862,7 @@ export default function PresentationWindow() {
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
             {t('common.solution')}
           </Typography>
-          <RichContent html={currentQ.solution} />
+          <RichContent html={currentQ.solution} fallback={currentQ.solution_plainText} />
         </Paper>
       )}
     </Box>
