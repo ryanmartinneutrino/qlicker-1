@@ -222,7 +222,12 @@ export default async function gradeRoutes(app) {
 
   app.get(
     '/sessions/:id/grades',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 120, timeWindow: '1 minute' },
+      },
+    },
     async (request, reply) => {
       const session = await Session.findById(request.params.id).lean();
       if (!session) {

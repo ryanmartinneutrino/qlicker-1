@@ -1517,7 +1517,6 @@ function UsersTab({ currentUserId }) {
                 <TextField
                   label={t('admin.users.newPassword')}
                   type="password"
-                  autoComplete="new-password"
                   name="admin-reset-password"
                   value={resetPasswordValues.password}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, password: event.target.value }))}
@@ -1527,7 +1526,6 @@ function UsersTab({ currentUserId }) {
                 <TextField
                   label={t('admin.users.confirmNewPassword')}
                   type="password"
-                  autoComplete="new-password"
                   name="admin-reset-password-confirm"
                   value={resetPasswordValues.confirmPassword}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}

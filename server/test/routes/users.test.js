@@ -861,6 +861,8 @@ describe('Admin user management', () => {
       },
     });
     expect(loginRes.statusCode).toBe(200);
+    const postLoginUser = await User.findById(target._id);
+    expect(postLoginUser.services?.resetPassword).toBeUndefined();
   });
 
   it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {
