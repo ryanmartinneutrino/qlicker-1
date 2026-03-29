@@ -3,7 +3,7 @@
 # Qlicker Production — Interactive Setup Script
 # =============================================================================
 # Generates the .env file, optionally obtains Let's Encrypt certificates,
-# and builds/pulls Docker images.
+# and optionally pulls app Docker images.
 #
 # Usage:
 #   ./setup.sh                  # Interactive .env setup
@@ -77,6 +77,34 @@ prompt_yes_no() {
       n|no) printf -v "$output_var" 'false'; return 0 ;;
       *) echo "Please answer y or n." ;;
     esac
+  done
+}
+
+pull_required_images() {
+  local force_pull="${1:-false}" image
+  local seen="|"
+  local images=("${SERVER_IMAGE:-}" "${CLIENT_IMAGE:-}")
+
+  for image in "${images[@]}"; do
+    [ -n "$image" ] || continue
+
+    case "$seen" in
+      *"|$image|"*) continue ;;
+      *) seen="${seen}${image}|" ;;
+    esac
+
+    if [ "$force_pull" = true ]; then
+      info "Pulling (forced): $image"
+      docker pull "$image"
+      continue
+    fi
+
+    if docker image inspect "$image" >/dev/null 2>&1; then
+      info "Image already present locally: $image"
+    else
+      info "Image missing locally. Pulling: $image"
+      docker pull "$image"
+    fi
   done
 }
 
@@ -460,14 +488,17 @@ while true; do
         fi
       fi
 
-      if [[ "$TLS_CERT_PATH" == ./certs/* && "$TLS_KEY_PATH" == ./certs/* ]]; then
-        echo ""
-        echo "  These certificate paths use ./certs/."
-        echo "  If these files came from Let's Encrypt, enable auto-renew to keep them current."
-        prompt_yes_no "Enable automatic Let's Encrypt renewal for these certs?" "$DEFAULT_CERTBOT_AUTORENEW" CERTBOT_AUTORENEW
-      else
-        CERTBOT_AUTORENEW=false
+      CERTBOT_AUTORENEW_DEFAULT="$DEFAULT_CERTBOT_AUTORENEW"
+      if ! is_truthy "$CERTBOT_AUTORENEW_DEFAULT"; then
+        if [[ "$TLS_CERT_PATH" == ./certs/* && "$TLS_KEY_PATH" == ./certs/* ]]; then
+          CERTBOT_AUTORENEW_DEFAULT=true
+        elif [[ "$TLS_CERT_PATH" == *letsencrypt* || "$TLS_KEY_PATH" == *letsencrypt* ]]; then
+          CERTBOT_AUTORENEW_DEFAULT=true
+        fi
       fi
+      echo ""
+      echo "  If these files are managed by Let's Encrypt, enable auto-renew to keep certs current."
+      prompt_yes_no "Enable automatic Let's Encrypt renewal?" "$CERTBOT_AUTORENEW_DEFAULT" CERTBOT_AUTORENEW
       break
       ;;
     2)
@@ -637,13 +668,17 @@ if [ "$REQUEST_LE_CERTS" = true ]; then
   fi
 fi
 
-# ---- Optionally build images ------------------------------------------------
+# ---- Optionally pull app images ---------------------------------------------
 echo ""
-read -r -p "Build Docker images now? [y/N]: " BUILD_NOW
-if [[ "${BUILD_NOW:-N}" =~ ^[Yy]$ ]]; then
-  info "Building images..."
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" build
-  info "Images built successfully."
+PULL_IMAGES_NOW=false
+FORCE_PULL_IMAGES=false
+prompt_yes_no "Pull app images now?" "true" PULL_IMAGES_NOW
+if [ "$PULL_IMAGES_NOW" = true ]; then
+  echo "  Choose whether to refresh tags even if images already exist locally."
+  echo "  Use this to update mutable tags such as :latest."
+  prompt_yes_no "Force pull and refresh existing tags?" "false" FORCE_PULL_IMAGES
+  pull_required_images "$FORCE_PULL_IMAGES"
+  info "Image pull step completed."
 fi
 
 # ---- Done -------------------------------------------------------------------

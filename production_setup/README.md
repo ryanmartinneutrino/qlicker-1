@@ -118,8 +118,10 @@ It will prompt for:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Domain | Your server's FQDN | `qlicker.example.com` |
+| Server/client image tags | Tags applied to existing image repositories | `latest` (or current `.env` values) |
 | TLS certificate path | Path to fullchain.pem | `./certs/fullchain.pem` |
 | TLS key path | Path to privkey.pem | `./certs/privkey.pem` |
+| Let's Encrypt auto-renew | Whether certbot auto-renew runs in Docker | `false` (or current `.env` value) |
 | Server replicas | Number of API server instances | `2` |
 | JWT secrets | Auto-generated cryptographic secrets | (generated) |
 | MAIL_URL | SMTP connection string | (none) |
