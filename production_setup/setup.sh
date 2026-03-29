@@ -108,6 +108,29 @@ pull_required_images() {
   done
 }
 
+ensure_backup_directory_permissions() {
+  local backup_dir="$SCRIPT_DIR/backups"
+  local preferred_user="${SUDO_USER:-${USER:-}}"
+  local owner_uid owner_gid
+
+  if ! mkdir -p "$backup_dir"; then
+    warn "Could not create $backup_dir. Create it manually before running backups."
+    return 0
+  fi
+
+  if [ -n "$preferred_user" ] && id "$preferred_user" >/dev/null 2>&1; then
+    owner_uid="$(id -u "$preferred_user")"
+    owner_gid="$(id -g "$preferred_user")"
+    if ! chown -R "$owner_uid:$owner_gid" "$backup_dir" 2>/dev/null; then
+      warn "Could not update ownership on $backup_dir (requires elevated permissions in some environments)."
+    fi
+  fi
+
+  if ! chmod 770 "$backup_dir" 2>/dev/null; then
+    warn "Could not set permissions to 770 on $backup_dir."
+  fi
+}
+
 extract_image_repo() {
   local image_ref="$1" default_repo="$2" without_digest last_segment
   without_digest="${image_ref%@*}"
@@ -603,6 +626,8 @@ echo "  Switch to S3 or Azure later from Admin -> Storage after signing in."
 echo ""
 BACKUP_CHECK_INTERVAL_SECONDS="${BACKUP_CHECK_INTERVAL_SECONDS:-60}"
 TZ="${TZ:-UTC}"
+info "Ensuring backup directory exists with writable permissions..."
+ensure_backup_directory_permissions
 
 # ---- Write .env file --------------------------------------------------------
 echo ""
