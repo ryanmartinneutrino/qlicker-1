@@ -30,7 +30,11 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -113,8 +117,11 @@ function getDraftForQuestion(question, response) {
   };
 }
 
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function hasCorrectOption(options = []) {
@@ -666,6 +673,7 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const selected = String(draft.answer || '') === value;
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const optionContent = getOptionRichContentProps(option);
                   return (
                     <Paper
                       key={value}
@@ -692,7 +700,7 @@ export default function QuizSession() {
                         />
                         <Chip label={OPTION_LETTERS[index]} size="small" />
                         <Box sx={{ minWidth: 0, pt: 0.6 }}>
-                          <RichContent html={optionDisplayHtml(option)} />
+                          <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                         </Box>
                       </Box>
                     </Paper>
@@ -707,6 +715,7 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const checked = optionAnswers.includes(value);
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const optionContent = getOptionRichContentProps(option);
                   return (
                     <Paper
                       key={value}
@@ -737,7 +746,7 @@ export default function QuizSession() {
                         />
                         <Chip label={OPTION_LETTERS[index]} size="small" />
                         <Box sx={{ minWidth: 0, pt: 0.6 }}>
-                          <RichContent html={optionDisplayHtml(option)} />
+                          <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                         </Box>
                       </Box>
                     </Paper>
