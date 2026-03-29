@@ -104,7 +104,7 @@
     "quizEndedAt": "Quiz ended at: {{dateTime}}"
   },
   "home": {
-    "tagline": "Open source, designed by and for students",
+    "tagline": "Open source educational software that you control",
     "subtitle": "Answer. Learn.",
     "description": "In-class polling, at home quizzes, student practice sessions, grade management, statistics, and so much more. All at your fingertips and for free!",
     "getStarted": "Get started",
