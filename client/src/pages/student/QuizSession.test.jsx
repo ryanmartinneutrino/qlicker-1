@@ -82,4 +82,41 @@ describe('Student QuizSession', () => {
 
     expect(screen.queryByText('\\(x^2\\)')).not.toBeInTheDocument();
   });
+
+  it('shows numerical tolerance helper text next to the answer input', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        session: {
+          _id: 'session-1',
+          name: 'Math quiz',
+          quiz: true,
+          practiceQuiz: false,
+          studentCreated: false,
+        },
+        questions: [
+          {
+            _id: 'q-1',
+            type: QUESTION_TYPES.NUMERICAL,
+            content: '<p>Estimate the value</p>',
+            plainText: 'Estimate the value',
+            toleranceNumerical: 0.00012,
+            sessionOptions: { points: 1 },
+          },
+        ],
+        responses: {},
+        allAnswered: false,
+        submitted: false,
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/student/course/course-1/session/session-1/quiz']}>
+        <Routes>
+          <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<QuizSession />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Answers will be scored based on a tolerance of +/- 1.2E-4.')).toBeInTheDocument();
+  });
 });
