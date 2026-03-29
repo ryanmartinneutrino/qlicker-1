@@ -171,7 +171,7 @@ This will:
 3. Run Certbot to obtain the real certificate
 4. Overwrite `./certs/fullchain.pem` and `./certs/privkey.pem` with the Let's Encrypt certificate files (setup warns before overwrite)
 5. Keep `.env` paths set to `./certs/fullchain.pem` and `./certs/privkey.pem`
-6. The `certbot` service in Docker Compose auto-renews every 12 hours
+6. Optionally enable `CERTBOT_AUTORENEW=true` so the `certbot` service checks renewal every 12 hours
 
 ### Option 2: Bring Your Own Certificate
 
@@ -182,6 +182,7 @@ During setup, choose:
 ```
 
 If `./certs/fullchain.pem` and `./certs/privkey.pem` already exist, setup offers to use them automatically. Otherwise it prompts for certificate/key paths.
+When using `./certs/*`, setup also asks whether Let's Encrypt auto-renew should stay enabled.
 
 You can also place files in `./certs/` manually:
 
@@ -706,6 +707,7 @@ production_setup/
 | `DOMAIN` | Yes | `qlicker.example.com` | Server domain name |
 | `TLS_CERT_PATH` | Yes | `./certs/fullchain.pem` | TLS certificate path |
 | `TLS_KEY_PATH` | Yes | `./certs/privkey.pem` | TLS private key path |
+| `CERTBOT_AUTORENEW` | No | `false` | If `true`, certbot periodically runs `certbot renew` |
 | `SERVER_IMAGE` | No | `qlicker/qlicker-server:latest` | API server image reference |
 | `CLIENT_IMAGE` | No | `qlicker/qlicker-client:latest` | Client image reference |
 | `SERVER_REPLICAS` | No | `2` | Number of API server replicas |

@@ -49,6 +49,63 @@ choose_token_value() {
   printf -v "$output_var" '%s' "$selected"
 }
 
+is_truthy() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|y|yes|true|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+prompt_yes_no() {
+  local prompt="$1" default_value="${2:-false}" output_var="$3" response normalized
+  local default_hint='y/N'
+  if is_truthy "$default_value"; then default_hint='Y/n'; fi
+
+  while true; do
+    read -r -p "$prompt [$default_hint]: " response
+    normalized="$(printf '%s' "${response:-}" | tr '[:upper:]' '[:lower:]')"
+    if [ -z "$normalized" ]; then
+      if is_truthy "$default_value"; then
+        printf -v "$output_var" 'true'
+      else
+        printf -v "$output_var" 'false'
+      fi
+      return 0
+    fi
+    case "$normalized" in
+      y|yes) printf -v "$output_var" 'true'; return 0 ;;
+      n|no) printf -v "$output_var" 'false'; return 0 ;;
+      *) echo "Please answer y or n." ;;
+    esac
+  done
+}
+
+extract_image_repo() {
+  local image_ref="$1" default_repo="$2" without_digest last_segment
+  without_digest="${image_ref%@*}"
+  if [ -z "$without_digest" ]; then
+    printf '%s' "$default_repo"
+    return 0
+  fi
+  last_segment="${without_digest##*/}"
+  if [[ "$last_segment" == *:* ]]; then
+    printf '%s' "${without_digest%:*}"
+  else
+    printf '%s' "$without_digest"
+  fi
+}
+
+extract_image_tag() {
+  local image_ref="$1" default_tag="$2" without_digest last_segment
+  without_digest="${image_ref%@*}"
+  last_segment="${without_digest##*/}"
+  if [[ "$last_segment" == *:* ]]; then
+    printf '%s' "${last_segment##*:}"
+  else
+    printf '%s' "$default_tag"
+  fi
+}
+
 resolve_host_path() {
   local path="$1"
   if [[ "$path" == /* ]]; then
@@ -308,9 +365,12 @@ if [ -n "$LOADED_FROM" ]; then
   echo ""
   echo "  Imported defaults from: $LOADED_FROM"
   [ -n "${DOMAIN:-}" ]       && echo "    DOMAIN=$DOMAIN"
+  [ -n "${SERVER_IMAGE:-}" ] && echo "    SERVER_IMAGE=$SERVER_IMAGE"
+  [ -n "${CLIENT_IMAGE:-}" ] && echo "    CLIENT_IMAGE=$CLIENT_IMAGE"
   [ -n "${MAIL_URL:-}" ]     && echo "    MAIL_URL=$MAIL_URL"
   [ -n "${JWT_SECRET:-}" ]   && echo "    JWT_SECRET=(set)"
   [ -n "${SERVER_REPLICAS:-}" ] && echo "    SERVER_REPLICAS=$SERVER_REPLICAS"
+  [ -n "${CERTBOT_AUTORENEW:-}" ] && echo "    CERTBOT_AUTORENEW=$CERTBOT_AUTORENEW"
   echo ""
   echo "  Press Enter at each prompt to keep the shown default, or type a new value."
 fi
@@ -322,6 +382,26 @@ DEFAULT_DOMAIN="${DOMAIN:-qlicker.example.com}"
 read -r -p "Domain name [$DEFAULT_DOMAIN]: " DOMAIN_INPUT
 DOMAIN="${DOMAIN_INPUT:-$DEFAULT_DOMAIN}"
 
+# ---- Images -----------------------------------------------------------------
+echo ""
+echo "--- Container Images ---"
+echo "  Enter image tags to use for server/client containers."
+echo "  Existing image repositories (including custom registries) are preserved."
+DEFAULT_SERVER_IMAGE="${SERVER_IMAGE:-qlicker/qlicker-server:latest}"
+DEFAULT_CLIENT_IMAGE="${CLIENT_IMAGE:-qlicker/qlicker-client:latest}"
+SERVER_IMAGE_REPO="$(extract_image_repo "$DEFAULT_SERVER_IMAGE" "qlicker/qlicker-server")"
+CLIENT_IMAGE_REPO="$(extract_image_repo "$DEFAULT_CLIENT_IMAGE" "qlicker/qlicker-client")"
+DEFAULT_SERVER_IMAGE_TAG="$(extract_image_tag "$DEFAULT_SERVER_IMAGE" "latest")"
+DEFAULT_CLIENT_IMAGE_TAG="$(extract_image_tag "$DEFAULT_CLIENT_IMAGE" "latest")"
+read -r -p "Server image tag [$DEFAULT_SERVER_IMAGE_TAG]: " SERVER_IMAGE_TAG_INPUT
+SERVER_IMAGE_TAG="${SERVER_IMAGE_TAG_INPUT:-$DEFAULT_SERVER_IMAGE_TAG}"
+read -r -p "Client image tag [$DEFAULT_CLIENT_IMAGE_TAG]: " CLIENT_IMAGE_TAG_INPUT
+CLIENT_IMAGE_TAG="${CLIENT_IMAGE_TAG_INPUT:-$DEFAULT_CLIENT_IMAGE_TAG}"
+SERVER_IMAGE="${SERVER_IMAGE_REPO}:${SERVER_IMAGE_TAG}"
+CLIENT_IMAGE="${CLIENT_IMAGE_REPO}:${CLIENT_IMAGE_TAG}"
+info "Using SERVER_IMAGE=$SERVER_IMAGE"
+info "Using CLIENT_IMAGE=$CLIENT_IMAGE"
+
 # ---- TLS -------------------------------------------------------------------
 echo ""
 echo "--- TLS Certificate ---"
@@ -332,9 +412,11 @@ echo "    3) Generate a self-signed certificate (testing only)"
 echo ""
 DEFAULT_TLS_CERT="${TLS_CERT_PATH:-./certs/fullchain.pem}"
 DEFAULT_TLS_KEY="${TLS_KEY_PATH:-./certs/privkey.pem}"
+DEFAULT_CERTBOT_AUTORENEW="${CERTBOT_AUTORENEW:-false}"
 LOCAL_TLS_CERT="./certs/fullchain.pem"
 LOCAL_TLS_KEY="./certs/privkey.pem"
 REQUEST_LE_CERTS=false
+CERTBOT_AUTORENEW="$DEFAULT_CERTBOT_AUTORENEW"
 
 while true; do
   read -r -p "Choose TLS option [1-3]: " TLS_OPTION
@@ -377,18 +459,29 @@ while true; do
           continue
         fi
       fi
+
+      if [[ "$TLS_CERT_PATH" == ./certs/* && "$TLS_KEY_PATH" == ./certs/* ]]; then
+        echo ""
+        echo "  These certificate paths use ./certs/."
+        echo "  If these files came from Let's Encrypt, enable auto-renew to keep them current."
+        prompt_yes_no "Enable automatic Let's Encrypt renewal for these certs?" "$DEFAULT_CERTBOT_AUTORENEW" CERTBOT_AUTORENEW
+      else
+        CERTBOT_AUTORENEW=false
+      fi
       break
       ;;
     2)
       TLS_CERT_PATH="$LOCAL_TLS_CERT"
       TLS_KEY_PATH="$LOCAL_TLS_KEY"
       REQUEST_LE_CERTS=true
+      prompt_yes_no "Enable automatic Let's Encrypt renewal after setup?" "true" CERTBOT_AUTORENEW
       info "Let's Encrypt selected. setup.sh will run certificate initialization after writing .env."
       break
       ;;
     3)
       TLS_CERT_PATH="$LOCAL_TLS_CERT"
       TLS_KEY_PATH="$LOCAL_TLS_KEY"
+      CERTBOT_AUTORENEW=false
       if local_certs_exist; then
         read -r -p "Existing certificates found in ./certs/. Regenerate self-signed files? [y/N]: " REPLACE_SELF_SIGNED
         if [[ ! "${REPLACE_SELF_SIGNED:-N}" =~ ^[Yy]$ ]]; then
@@ -490,6 +583,11 @@ cat > "$ENV_FILE" <<EOF
 DOMAIN=$DOMAIN
 TLS_CERT_PATH=$TLS_CERT_PATH
 TLS_KEY_PATH=$TLS_KEY_PATH
+CERTBOT_AUTORENEW=$CERTBOT_AUTORENEW
+
+# Images
+SERVER_IMAGE=$SERVER_IMAGE
+CLIENT_IMAGE=$CLIENT_IMAGE
 
 # Scaling
 SERVER_REPLICAS=$SERVER_REPLICAS
@@ -558,12 +656,18 @@ echo "  .env file:   $ENV_FILE"
 echo "  Replicas:    $SERVER_REPLICAS API servers"
 echo "  Domain:      $DOMAIN"
 echo "  TLS cert:    $TLS_CERT_PATH"
+echo "  Auto-renew:  $CERTBOT_AUTORENEW"
 echo ""
 echo "  Next steps:"
 echo "    1. Review and edit .env if needed"
 if [[ "$TLS_CERT_PATH" == ./certs/* ]]; then
+if [ "$CERTBOT_AUTORENEW" = true ]; then
+echo "    2. Let's Encrypt auto-renew is enabled."
+echo "       If you have not issued certs yet: ./setup.sh --init-certs"
+else
 echo "    2. For real TLS: ./setup.sh --init-certs  (Let's Encrypt)"
 echo "       Or replace ./certs/ files with your own certificate"
+fi
 fi
 echo "    3. Start:   docker compose up -d"
 echo "    4. Check:   docker compose ps"

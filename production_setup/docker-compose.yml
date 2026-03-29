@@ -144,16 +144,18 @@ services:
   # ---------------------------------------------------------------------------
   # Certbot — automatic Let's Encrypt certificate renewal (optional)
   # ---------------------------------------------------------------------------
-  # Uncomment this service if you want automated certificate management.
   # On first run, use setup.sh --init-certs to obtain the initial certificate.
+  # Renewal behavior is controlled by CERTBOT_AUTORENEW in .env.
   certbot:
     image: certbot/certbot:latest
     restart: unless-stopped
+    environment:
+      - CERTBOT_AUTORENEW=${CERTBOT_AUTORENEW:-false}
     volumes:
       - certbot-conf:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
-    # Renew certificates every 12 hours (certbot is a no-op if not due)
-    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 43200 & wait $${!}; done'
+    # Check every 12h; certbot renew is a no-op when not due.
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do if [ "$${CERTBOT_AUTORENEW:-false}" = "true" ]; then certbot renew --webroot -w /var/www/certbot --quiet; fi; sleep 43200 & wait $${!}; done'
     depends_on:
       - nginx
 
