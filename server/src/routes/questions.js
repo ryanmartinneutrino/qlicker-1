@@ -1861,7 +1861,7 @@ export default async function questionRoutes(app) {
       if (!question) {
         return reply.code(404).send({ error: 'Not Found', message: 'Question not found' });
       }
-      await copyQuestionToSession({
+      const copy = await copyQuestionToSession({
         sourceQuestion: question,
         targetSessionId: String(session._id),
         targetCourseId: String(course._id),
@@ -1869,7 +1869,7 @@ export default async function questionRoutes(app) {
       });
 
       const updated = await Session.findById(session._id).lean();
-      return { session: updated };
+      return { session: updated, copiedQuestionId: String(copy._id) };
     }
   );
 

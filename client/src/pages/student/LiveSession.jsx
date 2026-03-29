@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
@@ -18,12 +18,17 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 import {
   LiveSessionWebSocketProvider,
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import { formatToleranceValue } from '../../utils/numericalFormatting';
 import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
@@ -61,8 +66,11 @@ const richContentSx = {
   },
 };
 
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function applyCurrentQuestionUpdate(prev, payload) {
@@ -136,8 +144,9 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
     fallback || '',
     { allowVideoEmbeds }
   );
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
   }, [prepared]);
 
@@ -146,7 +155,7 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
     <Box
       ref={ref}
       sx={richContentSx}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -158,7 +167,7 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
 function LiveSessionContent() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { lastEvent, registerRefreshHandler, transport } = useLiveSessionWebSocket();
   const courseBackLink = `/student/course/${courseId}`;
   const {
@@ -765,6 +774,7 @@ function LiveSessionContent() {
               const isSelected = displayAnswerString === optId;
               const count = inlineDistribution?.[i]?.count || 0;
               const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const optionContent = getOptionRichContentProps(opt);
               const barColor = showCorrect
                 ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
                 : 'rgba(25, 118, 210, 0.18)';
@@ -822,17 +832,17 @@ function LiveSessionContent() {
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
-                  <Chip
-                    label={OPTION_LETTERS[i]}
-                    size="small"
-                    color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
-                  />
-                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={optionDisplayHtml(opt)} />
-                  </Box>
-                  {showInlineOptionStats && (
-                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                   <Chip
+                     label={OPTION_LETTERS[i]}
+                     size="small"
+                     color={isCorrectOpt ? 'success' : 'default'}
+                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                   />
+                   <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionContent.html} fallback={optionContent.fallback} />
+                   </Box>
+                   {showInlineOptionStats && (
+                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
                       {pct}%
                     </Typography>
                   )}
@@ -852,6 +862,7 @@ function LiveSessionContent() {
               const checked = displayAnswerArray.includes(optId);
               const count = inlineDistribution?.[i]?.count || 0;
               const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+              const optionContent = getOptionRichContentProps(opt);
               const barColor = showCorrect
                 ? (isCorrectOpt ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
                 : 'rgba(25, 118, 210, 0.18)';
@@ -930,17 +941,17 @@ function LiveSessionContent() {
                     sx={{ m: 0, mr: 0, width: 34, alignSelf: 'start' }}
                     aria-label={t('common.option', { letter: OPTION_LETTERS[i] })}
                   />
-                  <Chip
-                    label={OPTION_LETTERS[i]}
-                    size="small"
-                    color={isCorrectOpt ? 'success' : 'default'}
-                    sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
-                  />
-                  <Box sx={{ minWidth: 0, pt: 0.25 }}>
-                    <RichContent html={optionDisplayHtml(opt)} />
-                  </Box>
-                  {showInlineOptionStats && (
-                    <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
+                   <Chip
+                     label={OPTION_LETTERS[i]}
+                     size="small"
+                     color={isCorrectOpt ? 'success' : 'default'}
+                     sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, mt: 0.25, justifySelf: 'start' }}
+                   />
+                   <Box sx={{ minWidth: 0, pt: 0.25 }}>
+                    <RichContent html={optionContent.html} fallback={optionContent.fallback} />
+                   </Box>
+                   {showInlineOptionStats && (
+                     <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
                       {pct}%
                     </Typography>
                   )}
@@ -991,12 +1002,15 @@ function LiveSessionContent() {
               fullWidth
               disabled={isLocked}
               inputProps={{ 'aria-label': t('student.liveSession.numericalResponseAriaLabel') }}
+              helperText={currentQ.toleranceNumerical != null
+                ? t('student.liveSession.toleranceHelper', {
+                  value: formatToleranceValue(
+                    currentQ.toleranceNumerical,
+                    i18n.resolvedLanguage || i18n.language,
+                  ),
+                })
+                : undefined}
             />
-            {currentQ.toleranceNumerical != null && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                {t('student.liveSession.tolerance', { value: currentQ.toleranceNumerical })}
-              </Typography>
-            )}
           </Box>
         )}
       </Paper>

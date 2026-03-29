@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -30,7 +30,12 @@ import {
   normalizeQuestionType,
 } from '../../components/questions/constants';
 import { useTranslation } from 'react-i18next';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
+import { formatToleranceValue } from '../../utils/numericalFormatting';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -113,8 +118,11 @@ function getDraftForQuestion(question, response) {
   };
 }
 
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function hasCorrectOption(options = []) {
@@ -128,8 +136,9 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
     fallback || '',
     { allowVideoEmbeds }
   );
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
   }, [prepared]);
 
@@ -138,7 +147,7 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
     <Box
       ref={ref}
       sx={richContentSx}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -146,7 +155,7 @@ function RichContent({ html, fallback, allowVideoEmbeds = false }) {
 export default function QuizSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -670,6 +679,7 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const selected = String(draft.answer || '') === value;
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const optionContent = getOptionRichContentProps(option);
                   return (
                     <Paper
                       key={value}
@@ -696,7 +706,7 @@ export default function QuizSession() {
                         />
                         <Chip label={OPTION_LETTERS[index]} size="small" />
                         <Box sx={{ minWidth: 0, pt: 0.6 }}>
-                          <RichContent html={optionDisplayHtml(option)} />
+                          <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                         </Box>
                       </Box>
                     </Paper>
@@ -711,6 +721,7 @@ export default function QuizSession() {
                   const value = optionId(option, index);
                   const checked = optionAnswers.includes(value);
                   const isCorrect = showCorrectForQuestion && !!option.correct;
+                  const optionContent = getOptionRichContentProps(option);
                   return (
                     <Paper
                       key={value}
@@ -741,7 +752,7 @@ export default function QuizSession() {
                         />
                         <Chip label={OPTION_LETTERS[index]} size="small" />
                         <Box sx={{ minWidth: 0, pt: 0.6 }}>
-                          <RichContent html={optionDisplayHtml(option)} />
+                          <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                         </Box>
                       </Box>
                     </Paper>
@@ -794,12 +805,15 @@ export default function QuizSession() {
                   type="number"
                   fullWidth
                   placeholder={t('student.quiz.enterNumber')}
+                  helperText={question.toleranceNumerical != null
+                    ? t('student.quiz.toleranceHelper', {
+                      value: formatToleranceValue(
+                        question.toleranceNumerical,
+                        i18n.resolvedLanguage || i18n.language,
+                      ),
+                    })
+                    : undefined}
                 />
-                {question.toleranceNumerical != null && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                    {t('student.quiz.tolerance', { value: question.toleranceNumerical })}
-                  </Typography>
-                )}
               </Box>
             )}
 

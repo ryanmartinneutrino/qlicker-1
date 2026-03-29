@@ -724,14 +724,20 @@ export default function SessionEditor() {
     if (!normalizedIds.length) return;
 
     const insertIndex = Math.max(0, Math.min(addQuestionDialog.index, questions.length));
+    const copiedIds = [];
     for (const questionId of normalizedIds) {
-      await apiClient.post(`/sessions/${sessionId}/questions`, { questionId });
+      const { data } = await apiClient.post(`/sessions/${sessionId}/questions`, { questionId });
+      if (data.copiedQuestionId) {
+        copiedIds.push(String(data.copiedQuestionId));
+      }
     }
 
-    const existingIds = questions.map((question) => String(question._id)).filter((questionId) => !normalizedIds.includes(questionId));
-    const orderedIds = [...existingIds];
-    orderedIds.splice(insertIndex, 0, ...normalizedIds);
-    await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
+    if (copiedIds.length > 0) {
+      const existingIds = questions.map((question) => String(question._id));
+      const orderedIds = [...existingIds];
+      orderedIds.splice(insertIndex, 0, ...copiedIds);
+      await apiClient.patch(`/sessions/${sessionId}/questions/order`, { questions: orderedIds });
+    }
     setLibraryDialogOpen(false);
     setAddQuestionDialog({ open: false, index: insertIndex });
     await fetchSession();

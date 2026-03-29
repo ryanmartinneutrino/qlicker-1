@@ -402,3 +402,14 @@ export function renderKatexInElement(container) {
     restoreCurrency();
   }
 }
+
+export function prepareRichTextForDisplay(value, fallback = '') {
+  const prepared = prepareRichTextInput(value, fallback);
+  if (!prepared) return '';
+  if (typeof document === 'undefined') return prepared;
+
+  const container = document.createElement('div');
+  container.innerHTML = prepared;
+  renderKatexInElement(container);
+  return container.innerHTML;
+}
