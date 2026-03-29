@@ -26,6 +26,8 @@ RUNTIME="${BACKUP_RUNTIME:-}"
 MONGO_URI="${MONGO_URI:-}"
 BACKUP_LOG_FILE="${BACKUP_LOG_FILE:-$BACKUP_DIR/qlicker_backup.log}"
 LOG_DEST_READY=false
+HOST_UID=""
+HOST_GID=""
 
 ensure_log_destination() {
   if [ "$LOG_DEST_READY" = true ]; then
@@ -101,6 +103,36 @@ run_with_error_capture() {
   return 1
 }
 
+is_nonnegative_integer() {
+  case "${1:-}" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+remove_dump_directory() {
+  host_path="$1"
+  container_path="${2:-}"
+
+  if rm -rf "$host_path" 2>/dev/null; then
+    return 0
+  fi
+
+  # Host mode fallback: clean from inside the Mongo container when legacy
+  # root-owned dump folders already exist on the bind mount.
+  if [ "$RUNTIME" = "host" ] && [ -n "$container_path" ]; then
+    if docker exec "$MONGO_CONTAINER" rm -rf "$container_path" >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --cron)
@@ -166,6 +198,13 @@ if [ "$RUNTIME" = "host" ]; then
   if [ -z "$MONGO_CONTAINER" ]; then
     error "MongoDB container is not running. Start with: docker compose up -d mongo"
     exit 1
+  fi
+
+  HOST_UID="$(id -u 2>/dev/null || printf '')"
+  HOST_GID="$(id -g 2>/dev/null || printf '')"
+  if ! is_nonnegative_integer "$HOST_UID" || ! is_nonnegative_integer "$HOST_GID"; then
+    HOST_UID=""
+    HOST_GID=""
   fi
 else
   if [ -z "$MONGO_URI" ]; then
@@ -263,6 +302,7 @@ fi
 
 TIMESTAMP="$(date '+%Y%m%d_%H%M%S')"
 BACKUP_STEM="qlicker_backup_${TIMESTAMP}_${BACKUP_LABEL}"
+DUMP_PATH_HOST="$BACKUP_DIR/$BACKUP_STEM"
 ARCHIVE_PATH="$BACKUP_DIR/${BACKUP_STEM}.tar.gz"
 ARCHIVE_NAME="$(basename "$ARCHIVE_PATH")"
 log "Starting $BACKUP_LABEL backup: $BACKUP_STEM"
@@ -270,22 +310,36 @@ log "Starting $BACKUP_LABEL backup: $BACKUP_STEM"
 update_backup_status running "$ARCHIVE_NAME" "Backup started"
 
 if [ "$RUNTIME" = "host" ]; then
-  if run_with_error_capture "mongodump" \
-    docker exec "$MONGO_CONTAINER" mongodump \
-      --uri="mongodb://localhost:27017/qlicker" \
-      --out="/backups/$BACKUP_STEM" \
-      --quiet; then
-    :
+  if [ -n "$HOST_UID" ] && [ -n "$HOST_GID" ]; then
+    if run_with_error_capture "mongodump" \
+      docker exec --user "$HOST_UID:$HOST_GID" "$MONGO_CONTAINER" mongodump \
+        --uri="mongodb://localhost:27017/qlicker" \
+        --out="/backups/$BACKUP_STEM" \
+        --quiet; then
+      :
+    else
+      update_backup_status failed "$ARCHIVE_NAME" "mongodump failed"
+      error "mongodump failed!"
+      exit 1
+    fi
   else
-    update_backup_status failed "$ARCHIVE_NAME" "mongodump failed"
-    error "mongodump failed!"
-    exit 1
+    if run_with_error_capture "mongodump" \
+      docker exec "$MONGO_CONTAINER" mongodump \
+        --uri="mongodb://localhost:27017/qlicker" \
+        --out="/backups/$BACKUP_STEM" \
+        --quiet; then
+      :
+    else
+      update_backup_status failed "$ARCHIVE_NAME" "mongodump failed"
+      error "mongodump failed!"
+      exit 1
+    fi
   fi
 else
   if run_with_error_capture "mongodump" \
     mongodump \
       --uri="$MONGO_URI" \
-      --out="$BACKUP_DIR/$BACKUP_STEM" \
+      --out="$DUMP_PATH_HOST" \
       --quiet; then
     :
   else
@@ -296,7 +350,17 @@ else
 fi
 
 if run_with_error_capture "tar compression" tar -czf "$ARCHIVE_PATH" -C "$BACKUP_DIR" "$BACKUP_STEM"; then
-  rm -rf "$BACKUP_DIR/$BACKUP_STEM"
+  if [ "$RUNTIME" = "host" ]; then
+    if ! remove_dump_directory "$DUMP_PATH_HOST" "/backups/$BACKUP_STEM"; then
+      update_backup_status failed "$ARCHIVE_NAME" "Backup archive created but dump cleanup failed"
+      error "Backup archive created, but could not remove temporary dump directory."
+      exit 1
+    fi
+  elif ! remove_dump_directory "$DUMP_PATH_HOST"; then
+    update_backup_status failed "$ARCHIVE_NAME" "Backup archive created but dump cleanup failed"
+    error "Backup archive created, but could not remove temporary dump directory."
+    exit 1
+  fi
 else
   update_backup_status failed "$ARCHIVE_NAME" "Failed to compress backup archive"
   error "Failed to compress backup archive."
