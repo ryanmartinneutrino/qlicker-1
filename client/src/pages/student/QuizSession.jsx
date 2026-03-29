@@ -32,8 +32,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   normalizeStoredHtml,
-  prepareRichTextInput,
-  renderKatexInElement,
+  prepareRichTextForDisplay,
 } from '../../components/questions/richTextUtils';
 import { formatToleranceValue } from '../../utils/numericalFormatting';
 
@@ -130,17 +129,11 @@ function hasCorrectOption(options = []) {
 }
 
 function RichContent({ html, fallback }) {
-  const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
-
-  useEffect(() => {
-    if (ref.current) renderKatexInElement(ref.current);
-  }, [prepared]);
+  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
 
   if (!prepared) return null;
   return (
     <Box
-      ref={ref}
       sx={richContentSx}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />

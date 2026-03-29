@@ -89,19 +89,27 @@ describe('Student LiveSession', () => {
   });
 
   it('renders math from option plain-text fallbacks for live MS options', async () => {
-    const { container } = render(
+    const view = (
       <MemoryRouter initialEntries={['/student/course/course-1/live/session-1']}>
         <Routes>
           <Route path="/student/course/:courseId/live/:sessionId" element={<LiveSession />} />
         </Routes>
       </MemoryRouter>
     );
+    const { container, rerender } = render(view);
 
     expect(await screen.findByText('Live math session')).toBeInTheDocument();
 
     await waitFor(() => {
       expect(container.querySelector('.katex')).not.toBeNull();
     });
+
+    rerender(view);
+
+    await waitFor(() => {
+      expect(container.querySelector('.katex')).not.toBeNull();
+    });
+    expect(screen.queryByText('\\(x^2\\)')).not.toBeInTheDocument();
   });
 
   it('shows numerical tolerance helper text next to the live answer input', async () => {

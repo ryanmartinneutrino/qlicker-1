@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStoredHtml, prepareRichTextInput, renderKatexInElement } from './richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextForDisplay,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from './richTextUtils';
 
 describe('richTextUtils image attribute preservation', () => {
   it('preserves resized image width attributes through sanitization', () => {
@@ -88,5 +93,11 @@ describe('richTextUtils KaTeX rendering', () => {
     container.innerHTML = prepared;
     renderKatexInElement(container);
     expect(container.querySelector('.katex')).not.toBeNull();
+  });
+
+  it('pre-renders math markup for display containers', () => {
+    const rendered = prepareRichTextForDisplay('<p>Area is $x^2$</p>');
+    expect(rendered).toContain('class="katex"');
+    expect(rendered).not.toContain('$x^2$');
   });
 });

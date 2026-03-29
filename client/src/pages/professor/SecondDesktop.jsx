@@ -13,8 +13,7 @@ import {
 } from '../../components/questions/constants';
 import {
   normalizeStoredHtml,
-  prepareRichTextInput,
-  renderKatexInElement,
+  prepareRichTextForDisplay,
 } from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
@@ -49,10 +48,6 @@ function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${protocol}://${window.location.host}/ws?token=${encodedToken}`;
-}
-
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
 }
 
 function getOptionRichContentProps(option) {
@@ -149,17 +144,11 @@ function applyJoinCodeChanged(prev, payload) {
 
 /** Renders rich-text content with KaTeX math support (large display). */
 function RichContent({ html, fallback }) {
-  const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
-
-  useEffect(() => {
-    if (ref.current) renderKatexInElement(ref.current);
-  }, [prepared]);
+  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
 
   if (!prepared) return null;
   return (
     <Box
-      ref={ref}
       sx={{ ...richContentSx, fontSize: '1.35rem', lineHeight: 1.6 }}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />

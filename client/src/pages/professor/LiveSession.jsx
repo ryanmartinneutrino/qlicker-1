@@ -24,8 +24,7 @@ import {
 } from '../../components/questions/constants';
 import {
   normalizeStoredHtml,
-  prepareRichTextInput,
-  renderKatexInElement,
+  prepareRichTextForDisplay,
 } from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
@@ -104,10 +103,6 @@ const SR_ONLY_SX = {
 };
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-function optionDisplayHtml(option) {
-  return option?.content || option?.plainText || option?.answer || '';
-}
 
 function getOptionRichContentProps(option) {
   return {
@@ -292,17 +287,11 @@ function formatJoinedTimestamp(value, fallbackLabel) {
 
 /** Renders rich-text question content with KaTeX math support. */
 function RichContent({ html, fallback }) {
-  const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
-
-  useEffect(() => {
-    if (ref.current) renderKatexInElement(ref.current);
-  }, [prepared]);
+  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
 
   if (!prepared) return null;
   return (
     <Box
-      ref={ref}
       sx={{ '& p': { my: 0.5 }, '& img': { maxWidth: '100%' } }}
       dangerouslySetInnerHTML={{ __html: prepared }}
     />
