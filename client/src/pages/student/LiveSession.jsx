@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, CircularProgress, Chip,
@@ -20,7 +20,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   normalizeStoredHtml,
-  prepareRichTextForDisplay,
+  prepareRichTextInput,
+  renderKatexInElement,
 } from '../../components/questions/richTextUtils';
 import {
   LiveSessionWebSocketProvider,
@@ -136,14 +137,25 @@ function applyJoinCodeChanged(prev, payload) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text content with KaTeX math support. */
-function RichContent({ html, fallback }) {
-  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
+  const ref = useRef(null);
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
+
+  useLayoutEffect(() => {
+    if (ref.current) renderKatexInElement(ref.current);
+  }, [prepared]);
 
   if (!prepared) return null;
   return (
     <Box
+      ref={ref}
       sx={richContentSx}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -741,7 +753,7 @@ function LiveSessionContent() {
 
         {/* Question body */}
         <Box sx={{ mb: 2 }}>
-          <RichContent html={currentQ.content} fallback={currentQ.plainText} />
+          <RichContent html={currentQ.content} fallback={currentQ.plainText} allowVideoEmbeds />
         </Box>
 
         {/* ============================================================ */}

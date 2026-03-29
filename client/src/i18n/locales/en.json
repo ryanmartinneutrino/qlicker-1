@@ -1194,7 +1194,14 @@
       "readFailed": "Failed to read image file",
       "decodeFailed": "Failed to decode image",
       "showToolbar": "Show toolbar",
-      "hideToolbar": "Hide toolbar"
+      "hideToolbar": "Hide toolbar",
+      "video": "Video",
+      "videoEmbed": "Embed video",
+      "videoUrl": "Video URL",
+      "videoUrlPlaceholder": "https://www.youtube.com/watch?v=...",
+      "videoInsert": "Insert video",
+      "videoInvalidUrl": "Please enter a valid video URL (YouTube, Vimeo, Dailymotion, Loom, etc.)",
+      "videoHelp": "Supports YouTube, Vimeo, Dailymotion, Loom, and other video platforms"
     },
     "studentRichText": {
       "editorLabel": "Short answer response editor",

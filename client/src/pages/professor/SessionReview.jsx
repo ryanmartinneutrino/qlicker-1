@@ -475,9 +475,13 @@ function downloadCsv(filename, csvContent) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text content with KaTeX math support. */
-function RichContent({ html, fallback }) {
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -1235,7 +1239,7 @@ export default function SessionReview() {
 
                   {/* Question content */}
                   <Box sx={{ mb: 2 }}>
-                    <RichContent html={q.content} fallback={q.plainText} />
+                    <RichContent html={q.content} fallback={q.plainText} allowVideoEmbeds />
                   </Box>
 
                   {/* Inline stats for MC/TF/MS using option bars */}

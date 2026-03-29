@@ -4,7 +4,7 @@ import {
 import {
   CheckCircle as CorrectIcon,
 } from '@mui/icons-material';
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   getQuestionTypeLabel,
@@ -40,9 +40,14 @@ function RichHtml({
   fallback = '',
   sx = {},
   emptyText = '(no content)',
+  allowVideoEmbeds = false,
 }) {
   const containerRef = useRef(null);
-  const contentHtml = useMemo(() => prepareRichTextInput(value || '', fallback || ''), [value, fallback]);
+  const contentHtml = useMemo(
+    () => prepareRichTextInput(value || '', fallback || '', { allowVideoEmbeds }),
+    [allowVideoEmbeds, value, fallback]
+  );
+  const innerHtml = useMemo(() => ({ __html: contentHtml }), [contentHtml]);
 
   useEffect(() => {
     if (!containerRef.current || !contentHtml) return;
@@ -56,7 +61,7 @@ function RichHtml({
     <Box
       ref={containerRef}
       sx={sx}
-      dangerouslySetInnerHTML={{ __html: contentHtml }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -68,7 +73,7 @@ function isCorrectOption(option) {
   return Boolean(value);
 }
 
-export default function QuestionDisplay({ question }) {
+function QuestionDisplay({ question }) {
   const { t } = useTranslation();
   if (!question) return null;
   const opts = question.options || [];
@@ -85,7 +90,7 @@ export default function QuestionDisplay({ question }) {
         {!isSlide && points != null && <Chip label={t(points !== 1 ? 'questions.display.pointsPlural' : 'questions.display.points', { points })} size="small" variant="outlined" sx={COMPACT_CHIP_SX} />}
       </Box>
 
-      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} />
+      <RichHtml value={question.content} fallback={question.plainText} sx={{ ...questionRichContentSx, mb: 1 }} allowVideoEmbeds />
 
       {isOptionBasedQuestionType(normalizedType) && opts.length > 0 && (
         <Box sx={{ pl: 2 }}>
@@ -152,3 +157,5 @@ export default function QuestionDisplay({ question }) {
     </Paper>
   );
 }
+
+export default memo(QuestionDisplay);

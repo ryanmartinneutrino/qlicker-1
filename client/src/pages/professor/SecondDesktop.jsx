@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
@@ -13,7 +13,8 @@ import {
 } from '../../components/questions/constants';
 import {
   normalizeStoredHtml,
-  prepareRichTextForDisplay,
+  prepareRichTextInput,
+  renderKatexInElement,
 } from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
@@ -143,14 +144,25 @@ function applyJoinCodeChanged(prev, payload) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text content with KaTeX math support (large display). */
-function RichContent({ html, fallback }) {
-  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
+  const ref = useRef(null);
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
+
+  useLayoutEffect(() => {
+    if (ref.current) renderKatexInElement(ref.current);
+  }, [prepared]);
 
   if (!prepared) return null;
   return (
     <Box
+      ref={ref}
       sx={{ ...richContentSx, fontSize: '1.35rem', lineHeight: 1.6 }}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -709,7 +721,7 @@ export default function PresentationWindow() {
         sx={{ p: { xs: 2, sm: 3 }, mb: 3, flex: '0 0 auto' }}
         aria-label={t('professor.secondDesktop.currentQuestion')}
       >
-        <RichContent html={currentQ.content} fallback={currentQ.plainText} />
+        <RichContent html={currentQ.content} fallback={currentQ.plainText} allowVideoEmbeds />
       </Paper>
 
       {/* Options for MC / TF / MS */}

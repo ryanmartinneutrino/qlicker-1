@@ -30,6 +30,7 @@ import {
   FormatUnderlined as UnderlineIcon,
   ExpandLess as CollapseToolbarIcon,
   ExpandMore as ExpandToolbarIcon,
+  OndemandVideo as VideoIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient from '../../api/client';
@@ -41,6 +42,7 @@ import {
   prepareRichTextInput,
 } from './richTextUtils';
 import ResizableImage from './ResizableImage';
+import VideoEmbed, { toEmbedUrl } from './VideoEmbed';
 
 function isImageFile(file) {
   return Boolean(file?.type?.startsWith('image/'));
@@ -81,6 +83,7 @@ export default function RichTextEditor({
   ariaLabel,
   ariaDescribedBy,
   onBlur,
+  enableVideo = false,
 }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -88,13 +91,20 @@ export default function RichTextEditor({
   const [linkDraft, setLinkDraft] = useState('');
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
   const [sourceDraft, setSourceDraft] = useState('');
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoDraft, setVideoDraft] = useState('');
+  const [videoError, setVideoError] = useState('');
   const { t } = useTranslation();
   const lastEditorHtmlRef = useRef('');
   const lastPropHtmlRef = useRef('');
   const bubbleMenuKey = useRef(`bubble-menu-${Math.random().toString(36).slice(2)}`);
   const fileInputRef = useRef(null);
   const [toolbarExpanded, setToolbarExpanded] = useState(false);
-  const preparedValue = useMemo(() => prepareRichTextInput(value || ''), [value]);
+  const allowVideoEmbeds = enableVideo;
+  const preparedValue = useMemo(
+    () => prepareRichTextInput(value || '', '', { allowVideoEmbeds }),
+    [allowVideoEmbeds, value]
+  );
   const editorAriaLabel = ariaLabel || (label ? t('questions.richText.editorLabel', { label }) : t('questions.richText.defaultLabel'));
 
   // Keep callback refs current so useEditor doesn't need to list them as
@@ -108,7 +118,7 @@ export default function RichTextEditor({
 
   const emitEditorChange = (nextEditor) => {
     if (!nextEditor) return;
-    const html = normalizeStoredHtml(nextEditor.getHTML());
+    const html = normalizeStoredHtml(nextEditor.getHTML(), { allowVideoEmbeds });
     if (html === lastEditorHtmlRef.current) return;
     lastEditorHtmlRef.current = html;
     onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
@@ -184,6 +194,7 @@ export default function RichTextEditor({
         }),
         Underline,
         ResizableImage.configure({ allowBase64: false }),
+        ...(enableVideo ? [VideoEmbed] : []),
         Placeholder.configure({
           placeholder: placeholder || '',
           showOnlyWhenEditable: true,
@@ -227,7 +238,7 @@ export default function RichTextEditor({
         },
       },
       onCreate: ({ editor: createdEditor }) => {
-        const html = normalizeStoredHtml(createdEditor.getHTML());
+        const html = normalizeStoredHtml(createdEditor.getHTML(), { allowVideoEmbeds });
         lastEditorHtmlRef.current = html;
         lastPropHtmlRef.current = preparedValue || '';
         onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
@@ -240,7 +251,7 @@ export default function RichTextEditor({
         emitEditorChange(transactionEditor);
       },
     },
-    [ariaDescribedBy, editorAriaLabel, placeholder, t]
+    [ariaDescribedBy, editorAriaLabel, enableVideo, placeholder]
   );
 
   useEffect(() => {
@@ -249,7 +260,12 @@ export default function RichTextEditor({
       editor.setEditable(!disabled);
     }
     // Keep aria-disabled in sync without recreating the editor.
-    const dom = editor.view?.dom;
+    let dom = null;
+    try {
+      dom = editor.view?.dom || null;
+    } catch {
+      dom = null;
+    }
     if (dom) {
       dom.setAttribute('aria-disabled', disabled ? 'true' : 'false');
     }
@@ -263,13 +279,13 @@ export default function RichTextEditor({
     lastPropHtmlRef.current = targetHtml;
     if (!propChanged) return;
 
-    const currentHtml = normalizeStoredHtml(editor.getHTML());
+    const currentHtml = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     if (targetHtml === currentHtml || targetHtml === lastEditorHtmlRef.current) return;
 
     editor.commands.setContent(targetHtml, false, { preserveWhitespace: 'full' });
-    const html = normalizeStoredHtml(editor.getHTML());
+    const html = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     lastEditorHtmlRef.current = html;
-  }, [editor, preparedValue]);
+  }, [allowVideoEmbeds, editor, preparedValue]);
 
   const currentColor = editor?.getAttributes('textStyle')?.color || '#000000';
   const currentFontSize = editor?.getAttributes('textStyle')?.fontSize || '';
@@ -294,17 +310,36 @@ export default function RichTextEditor({
 
   const openSourceEditor = () => {
     if (!editor) return;
-    setSourceDraft(normalizeStoredHtml(editor.getHTML()));
+    setSourceDraft(normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds }));
     setSourceDialogOpen(true);
   };
 
   const applySourceDraft = () => {
     if (!editor) return;
-    editor.commands.setContent(normalizeStoredHtml(sourceDraft || ''), false, { preserveWhitespace: 'full' });
-    const html = normalizeStoredHtml(editor.getHTML());
+    editor.commands.setContent(normalizeStoredHtml(sourceDraft || '', { allowVideoEmbeds }), false, { preserveWhitespace: 'full' });
+    const html = normalizeStoredHtml(editor.getHTML(), { allowVideoEmbeds });
     lastEditorHtmlRef.current = html;
     onChangeRef.current?.({ html, plainText: extractPlainTextFromHtml(html) });
     setSourceDialogOpen(false);
+  };
+
+  const openVideoDialog = () => {
+    setVideoDraft('');
+    setVideoError('');
+    setVideoDialogOpen(true);
+  };
+
+  const applyVideoDraft = () => {
+    if (!editor) return;
+    const embedSrc = toEmbedUrl(videoDraft);
+    if (!embedSrc) {
+      setVideoError(t('questions.richText.videoInvalidUrl'));
+      return;
+    }
+    editor.commands.setVideoEmbed({ src: embedSrc });
+    setVideoDialogOpen(false);
+    setVideoDraft('');
+    setVideoError('');
   };
 
   const handleToolbarImageInput = async (event) => {
@@ -357,6 +392,10 @@ export default function RichTextEditor({
             '& ul, & ol': { my: 0.7, pl: 3 },
             '& .tiptap-resizable-image': {
               my: 0.8,
+            },
+            '& .tiptap-video-embed': {
+              my: 1,
+              maxWidth: '100%',
             },
             '& img': { maxWidth: '100%', height: 'auto', borderRadius: 0 },
             '& p.is-empty:first-of-type::before, & .is-editor-empty:first-of-type::before': {
@@ -509,6 +548,17 @@ export default function RichTextEditor({
                     onChange={handleToolbarImageInput}
                   />
                 </Button>
+                {enableVideo ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={<VideoIcon />}
+                  onClick={openVideoDialog}
+                  disabled={disabled}
+                >
+                  {t('questions.richText.video')}
+                </Button>
+                ) : null}
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
                   {TEXT_ALIGN_OPTIONS.map(({ value, labelKey, Icon }) => (
                     <IconButton
@@ -678,6 +728,29 @@ export default function RichTextEditor({
           <Button variant="contained" onClick={applySourceDraft}>{t('questions.richText.applySource')}</Button>
         </DialogActions>
       </Dialog>
+
+      {enableVideo ? (
+        <Dialog open={videoDialogOpen} onClose={() => setVideoDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>{t('questions.richText.videoEmbed')}</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              autoFocus
+              label={t('questions.richText.videoUrl')}
+              value={videoDraft}
+              onChange={(event) => { setVideoDraft(event.target.value); setVideoError(''); }}
+              placeholder={t('questions.richText.videoUrlPlaceholder')}
+              error={Boolean(videoError)}
+              helperText={videoError || t('questions.richText.videoHelp')}
+              sx={{ mt: 1 }}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setVideoDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button variant="contained" onClick={applyVideoDraft}>{t('questions.richText.videoInsert')}</Button>
+          </DialogActions>
+        </Dialog>
+      ) : null}
     </Box>
   );
 }

@@ -29,7 +29,7 @@ function buildPdfRenderRoot(htmlContent) {
   const parsed = new DOMParser().parseFromString(String(htmlContent || ''), 'text/html');
   const root = document.createElement('div');
   root.className = 'session-export-root';
-  root.innerHTML = sanitizeRichHtml(parsed.body?.innerHTML || '');
+  root.innerHTML = sanitizeRichHtml(parsed.body?.innerHTML || '', { allowVideoEmbeds: true });
 
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -174,7 +174,11 @@ function buildQuestionAnswerHtml(question, { t } = {}) {
 }
 
 function buildQuestionHtml(question, index, { showAnswers = false, showSolutions = false, t }) {
-  const prompt = prepareRichTextInput(question?.content || '', question?.plainText || t('common.noContent'));
+  const prompt = prepareRichTextInput(
+    question?.content || '',
+    question?.plainText || t('common.noContent'),
+    { allowVideoEmbeds: true }
+  );
   const options = !showAnswers && Array.isArray(question?.options) && question.options.length > 0
     ? `<ul class="options">${question.options.map((option, optionIndex) => buildOptionHtml(option, optionIndex)).join('')}</ul>`
     : '';

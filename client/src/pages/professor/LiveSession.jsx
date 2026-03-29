@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, Alert, Snackbar, CircularProgress, Chip,
@@ -24,7 +24,8 @@ import {
 } from '../../components/questions/constants';
 import {
   normalizeStoredHtml,
-  prepareRichTextForDisplay,
+  prepareRichTextInput,
+  renderKatexInElement,
 } from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
@@ -286,14 +287,21 @@ function formatJoinedTimestamp(value, fallbackLabel) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text question content with KaTeX math support. */
-function RichContent({ html, fallback }) {
-  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
+  const ref = useRef(null);
+  const prepared = prepareRichTextInput(html || '', fallback || '', { allowVideoEmbeds });
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
+
+  useLayoutEffect(() => {
+    if (ref.current) renderKatexInElement(ref.current);
+  }, [prepared]);
 
   if (!prepared) return null;
   return (
     <Box
+      ref={ref}
       sx={{ '& p': { my: 0.5 }, '& img': { maxWidth: '100%' } }}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -1435,7 +1443,7 @@ function LiveSessionContent() {
 
                   {/* Question content (rich text with KaTeX) */}
                   <Box sx={{ mb: 2 }}>
-                    <RichContent html={currentQ.content} fallback={currentQ.plainText} />
+                    <RichContent html={currentQ.content} fallback={currentQ.plainText} allowVideoEmbeds />
                   </Box>
 
                   {/* Options for MC / TF / MS */}

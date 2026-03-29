@@ -384,9 +384,13 @@ function summarizeUngradedFromGrades(gradesByStudentId = {}) {
   };
 }
 
-function RichContent({ html, fallback }) {
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html || '', fallback || '');
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -1496,7 +1500,7 @@ export default function SessionQuestionGradingPanel({
           />
         </Box>
 
-        <RichContent html={activeQuestion.content} fallback={activeQuestion.plainText} />
+        <RichContent html={activeQuestion.content} fallback={activeQuestion.plainText} allowVideoEmbeds />
 
         <Box sx={{ mt: 1.25, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField

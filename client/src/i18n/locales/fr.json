@@ -1194,7 +1194,14 @@
       "readFailed": "Échec de la lecture du fichier image",
       "decodeFailed": "Échec du décodage de l'image",
       "showToolbar": "Afficher la barre d'outils",
-      "hideToolbar": "Masquer la barre d'outils"
+      "hideToolbar": "Masquer la barre d'outils",
+      "video": "Vidéo",
+      "videoEmbed": "Intégrer une vidéo",
+      "videoUrl": "URL de la vidéo",
+      "videoUrlPlaceholder": "https://www.youtube.com/watch?v=...",
+      "videoInsert": "Insérer la vidéo",
+      "videoInvalidUrl": "Veuillez entrer une URL vidéo valide (YouTube, Vimeo, Dailymotion, Loom, etc.)",
+      "videoHelp": "Prend en charge YouTube, Vimeo, Dailymotion, Loom et d'autres plateformes vidéo"
     },
     "studentRichText": {
       "editorLabel": "Éditeur de réponse courte",

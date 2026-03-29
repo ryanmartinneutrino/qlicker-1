@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -32,7 +32,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   normalizeStoredHtml,
-  prepareRichTextForDisplay,
+  prepareRichTextInput,
+  renderKatexInElement,
 } from '../../components/questions/richTextUtils';
 import { formatToleranceValue } from '../../utils/numericalFormatting';
 
@@ -128,14 +129,25 @@ function hasCorrectOption(options = []) {
   return options.some((option) => !!option?.correct);
 }
 
-function RichContent({ html, fallback }) {
-  const prepared = useMemo(() => prepareRichTextForDisplay(html || '', fallback || ''), [html, fallback]);
+function RichContent({ html, fallback, allowVideoEmbeds = false }) {
+  const ref = useRef(null);
+  const prepared = prepareRichTextInput(
+    html || '',
+    fallback || '',
+    { allowVideoEmbeds }
+  );
+  const innerHtml = useMemo(() => ({ __html: prepared }), [prepared]);
+
+  useLayoutEffect(() => {
+    if (ref.current) renderKatexInElement(ref.current);
+  }, [prepared]);
 
   if (!prepared) return null;
   return (
     <Box
+      ref={ref}
       sx={richContentSx}
-      dangerouslySetInnerHTML={{ __html: prepared }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -650,7 +662,7 @@ export default function QuizSession() {
             </Box>
 
             <Box sx={{ mb: 2 }}>
-              <RichContent html={question.content} fallback={question.plainText} />
+              <RichContent html={question.content} fallback={question.plainText} allowVideoEmbeds />
             </Box>
 
             {(qType === QUESTION_TYPES.MULTIPLE_CHOICE || qType === QUESTION_TYPES.TRUE_FALSE) && (
