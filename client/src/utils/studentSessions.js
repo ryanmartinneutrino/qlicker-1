@@ -3,6 +3,13 @@ function getTimestamp(value) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function normalizeNowTimestamp(now) {
+  if (typeof now === 'number') {
+    return Number.isFinite(now) ? now : 0;
+  }
+  return getTimestamp(now);
+}
+
 function getSessionSortBucket(session) {
   const status = String(session?.status || '');
   if (status === 'running') return 0;
@@ -12,16 +19,41 @@ function getSessionSortBucket(session) {
   return 4;
 }
 
-export function getSessionSortTime(session) {
+export function getEffectiveQuizStatus(session, now = Date.now()) {
   const status = String(session?.status || '');
+  if (!isQuizSession(session)) return status;
+  if (status === 'hidden' || status === 'done') return status;
+
+  const nowTimestamp = normalizeNowTimestamp(now);
+  if (nowTimestamp <= 0) return status;
+
+  const quizStartTimestamp = getTimestamp(session?.quizStart || session?.date || session?.createdAt);
+  const quizEndTimestamp = getTimestamp(session?.quizEnd);
+
+  if (quizEndTimestamp > 0 && nowTimestamp >= quizEndTimestamp) {
+    return 'done';
+  }
+
+  if (quizStartTimestamp > 0) {
+    if (nowTimestamp >= quizStartTimestamp) return 'running';
+    return 'visible';
+  }
+
+  return status;
+}
+
+export function getSessionSortTime(session, now = Date.now()) {
   const isQuiz = isQuizSession(session);
+  const status = isQuiz ? getEffectiveQuizStatus(session, now) : String(session?.status || '');
 
   if (isQuiz && status === 'visible') {
     return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
   }
-  if (isQuiz && status === 'done') {
+
+  if (isQuiz && (status === 'running' || status === 'done')) {
     return getTimestamp(session?.quizEnd || session?.date || session?.quizStart || session?.createdAt);
   }
+
   if (isQuiz) {
     return getTimestamp(session?.quizStart || session?.date || session?.createdAt || session?.quizEnd);
   }
@@ -136,14 +168,14 @@ export function getStudentSessionAction(session, courseId, listTabIndex = 0) {
   };
 }
 
-export function sortStudentSessions(items) {
+export function sortStudentSessions(items, now = Date.now()) {
   return [...items].sort((a, b) => {
     const aBucket = getSessionSortBucket(a);
     const bBucket = getSessionSortBucket(b);
     if (aBucket !== bBucket) return aBucket - bBucket;
     const submittedDiff = Number(isSubmittedLiveQuiz(a)) - Number(isSubmittedLiveQuiz(b));
     if (submittedDiff !== 0) return submittedDiff;
-    return getSessionSortTime(b) - getSessionSortTime(a);
+    return getSessionSortTime(b, now) - getSessionSortTime(a, now);
   });
 }
 
