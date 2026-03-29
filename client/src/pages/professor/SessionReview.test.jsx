@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SessionReview, { buildSessionResultsCsv } from './SessionReview';
@@ -55,6 +55,7 @@ function buildResultsPayload(sessionOverrides = {}) {
         profileThumbnail: 'https://example.edu/ada-thumb.png',
         inSession: true,
         participation: 100,
+        joinedAt: '2026-03-15T12:05:00.000Z',
         questionResults: [
           {
             questionId: 'q-1',
@@ -63,6 +64,29 @@ function buildResultsPayload(sessionOverrides = {}) {
                 attempt: 2,
                 answer: '1',
                 createdAt: '2026-03-15T12:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        studentId: 'student-2',
+        firstname: 'Grace',
+        lastname: 'Hopper',
+        email: 'grace@example.edu',
+        profileImage: 'https://example.edu/grace-full.png',
+        profileThumbnail: 'https://example.edu/grace-thumb.png',
+        inSession: false,
+        participation: 50,
+        joinedAt: '2026-03-15T11:55:00.000Z',
+        questionResults: [
+          {
+            questionId: 'q-1',
+            responses: [
+              {
+                attempt: 1,
+                answer: '0',
+                createdAt: '2026-03-15T11:56:00.000Z',
               },
             ],
           },
@@ -117,6 +141,20 @@ describe('SessionReview', () => {
                   },
                 ],
               },
+              {
+                _id: 'grade-2',
+                userId: 'student-2',
+                value: 20,
+                participation: 50,
+                marks: [
+                  {
+                    questionId: 'q-1',
+                    points: 1,
+                    outOf: 5,
+                    needsGrading: false,
+                  },
+                ],
+              },
             ],
           },
         };
@@ -130,17 +168,62 @@ describe('SessionReview', () => {
     });
   });
 
-  it('shows response-table answers with points and exports CSV points from session grades', async () => {
+  it('shows the consolidated response data table, sorts rows, and exports the visible CSV', async () => {
+    let downloadedBlob = null;
+    const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      downloadedBlob = blob;
+      return 'blob:session-review-test';
+    });
+    const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
     renderSessionReview();
 
     await screen.findByText('Midterm review');
+    expect(screen.queryByRole('tab', { name: /students/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: /response data/i }));
 
     expect(await screen.findByText('B (4)')).toBeInTheDocument();
-    expect(screen.queryByText(/attempt 2/i)).not.toBeInTheDocument();
+    expect(screen.getByText('A (1)')).toBeInTheDocument();
     expect(screen.getByText('Grade')).toBeInTheDocument();
     expect(screen.getByText('87.5%')).toBeInTheDocument();
+    expect(screen.getByText('Joined Session')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /export results to csv/i })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Joined Session' }));
+
+    const resultsTable = screen.getByRole('table', { name: /student results/i });
+    await waitFor(() => {
+      const rows = within(resultsTable).getAllByRole('row');
+      expect(within(rows[1]).getByText('Grace Hopper')).toBeInTheDocument();
+      expect(within(rows[2]).getByText('Ada Lovelace')).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByLabelText(/search students/i);
+    fireEvent.change(searchInput, { target: { value: 'ada@example.edu' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+      expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /export results to csv/i }));
+
+    expect(clickSpy).toHaveBeenCalled();
+    expect(downloadedBlob).toBeTruthy();
+    const csvText = await downloadedBlob.text();
+    expect(csvText).toContain('Last Name,First Name,Email,Grade,In Session,Participation,Percent Correct,Joined Session,Q1 Response,Q1 Points');
+    expect(csvText).toContain('Lovelace,Ada,ada@example.edu,87.5%,Yes,100%,100%');
+    expect(csvText).toContain(',B,4');
+    expect(csvText).not.toContain('grace@example.edu');
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+    clickSpy.mockRestore();
+    expect(screen.queryByText(/attempt 2/i)).not.toBeInTheDocument();
+  });
+
+  it('builds CSV rows for the visible students in table order with split identity columns', async () => {
     const csvExport = buildSessionResultsCsv({
       csvQuestionAttempts: [
         {
@@ -159,6 +242,7 @@ describe('SessionReview', () => {
       gradesByStudentId: {
         'student-1': {
           userId: 'student-1',
+          value: 87.5,
           marks: [{ questionId: 'q-1', points: 4 }],
         },
       },
@@ -169,7 +253,9 @@ describe('SessionReview', () => {
           firstname: 'Ada',
           lastname: 'Lovelace',
           email: 'ada@example.edu',
+          inSession: true,
           participation: 100,
+          joinedAt: '2026-03-15T12:05:00.000Z',
           questionResults: [
             {
               questionId: 'q-1',
@@ -178,19 +264,26 @@ describe('SessionReview', () => {
           ],
         },
       ],
+      visibleStudents: [
+        {
+          studentId: 'student-1',
+          percentCorrectValue: 100,
+        },
+      ],
       t: i18n.t.bind(i18n),
     });
 
     expect(csvExport.filename).toBe('Midterm_review_results.csv');
-    expect(csvExport.csvContent).toContain('Q1 Response,Q1 Points');
-    expect(csvExport.csvContent).toContain('ada@example.edu,100%,B,4');
+    expect(csvExport.csvContent).toContain('Last Name,First Name,Email,Grade,In Session,Participation,Percent Correct,Joined Session,Q1 Response,Q1 Points');
+    expect(csvExport.csvContent).toContain('Lovelace,Ada,ada@example.edu,87.5%,Yes,100%,100%');
+    expect(csvExport.csvContent).toContain(',B,4');
   });
 
-  it('opens the student avatar image from the students tab', async () => {
+  it('opens the student avatar image from the response data tab', async () => {
     renderSessionReview();
 
     await screen.findByText('Midterm review');
-    fireEvent.click(screen.getByRole('tab', { name: /students/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /response data/i }));
     await screen.findByText('Ada Lovelace');
 
     fireEvent.click(screen.getByRole('button', { name: /ada lovelace/i }));

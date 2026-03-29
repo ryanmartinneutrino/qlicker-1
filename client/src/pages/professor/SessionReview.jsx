@@ -345,11 +345,28 @@ export function buildSessionResultsCsv({
   gradesByStudentId,
   sessionName,
   studentResults,
+  visibleStudents = [],
   t,
 }) {
-  if (!csvQuestionAttempts.length || !studentResults.length) return null;
+  const orderedStudents = visibleStudents.length > 0
+    ? visibleStudents
+    : studentResults;
+  if (!csvQuestionAttempts.length || !orderedStudents.length) return null;
 
-  const headers = [t('professor.sessionReview.csvLastName'), t('professor.sessionReview.csvFirstName'), t('professor.sessionReview.csvEmail'), t('professor.sessionReview.csvParticipation')];
+  const studentResultsById = new Map(
+    studentResults.map((student) => [String(student?.studentId || ''), student]),
+  );
+
+  const headers = [
+    t('professor.sessionReview.csvLastName'),
+    t('professor.sessionReview.csvFirstName'),
+    t('professor.sessionReview.csvEmail'),
+    t('professor.sessionReview.grade'),
+    t('professor.sessionReview.inSession'),
+    t('professor.sessionReview.csvParticipation'),
+    t('professor.sessionReview.percentCorrect'),
+    t('professor.sessionReview.joinedSession'),
+  ];
   csvQuestionAttempts.forEach(({ questionNumber, attempts }) => {
     if (attempts.length <= 1) {
       headers.push(t('professor.sessionReview.csvResponse', { number: questionNumber }));
@@ -362,16 +379,23 @@ export function buildSessionResultsCsv({
     });
   });
 
-  const rows = studentResults.map((student) => {
+  const rows = orderedStudents.map((visibleStudent) => {
+    const student = studentResultsById.get(String(visibleStudent?.studentId || ''));
+    if (!student) return null;
     const questionResultsById = new Map(
       (student.questionResults || []).map((result) => [String(result.questionId), result]),
     );
+    const gradeValue = gradesByStudentId[String(student.studentId)]?.value;
 
     const row = [
       escapeCsvCell(student.lastname),
       escapeCsvCell(student.firstname),
       escapeCsvCell(student.email),
+      escapeCsvCell(formatPercent(gradeValue)),
+      escapeCsvCell(student.inSession ? t('common.yes') : t('common.no')),
       escapeCsvCell(formatParticipation(student.participation)),
+      escapeCsvCell(formatPercent(visibleStudent?.percentCorrectValue)),
+      escapeCsvCell(formatJoinedAt(student.joinedAt)),
     ];
 
     csvQuestionAttempts.forEach(({ question, attempts }) => {
@@ -414,7 +438,7 @@ export function buildSessionResultsCsv({
     });
 
     return row.join(',');
-  });
+  }).filter(Boolean);
 
   return {
     csvContent: [headers.map(escapeCsvCell).join(','), ...rows].join('\n'),
@@ -843,9 +867,20 @@ export default function SessionReview() {
 
     let gradedCount = 0;
     let correctCount = 0;
+    const questionCells = {};
     questions.forEach((question) => {
       const qr = questionResultsById.get(String(question._id));
       const latestResponse = getLatestResponse(qr?.responses || []);
+      const responseDisplay = latestResponse ? (formatAnswerText(question, latestResponse?.answer) || '—') : '—';
+      const responsePoints = latestResponse
+        ? getStudentQuestionPoints(gradesByStudentId, student.studentId, question._id, latestResponse)
+        : null;
+      questionCells[String(question._id)] = {
+        display: responseDisplay,
+        sortDisplay: normalizeComparableText(responseDisplay),
+        pointsValue: Number.isFinite(Number(responsePoints)) ? Number(responsePoints) : null,
+        hasResponse: !!latestResponse,
+      };
       if (!latestResponse) return;
       const correct = isLatestResponseCorrect(question, latestResponse);
       if (correct === null) return;
@@ -858,6 +893,7 @@ export default function SessionReview() {
     const fullName = `${first} ${last}`.trim();
     const displayName = fullName || student.email || t('professor.sessionReview.unknownStudent');
     const joinedAtMillis = student.joinedAt ? new Date(student.joinedAt).getTime() : NaN;
+    const gradeValue = Number(gradesByStudentId[String(student.studentId)]?.value);
 
     return {
       ...student,
@@ -867,11 +903,13 @@ export default function SessionReview() {
       sortFirstName: first,
       sortEmail: normalizeAnswerValue(student.email),
       inSessionValue: student.inSession ? 1 : 0,
+      gradeValue: Number.isFinite(gradeValue) ? gradeValue : null,
       participationValue: Number(student.participation) || 0,
       percentCorrectValue: gradedCount > 0 ? Math.round((1000 * correctCount) / gradedCount) / 10 : null,
       joinedAtValue: Number.isFinite(joinedAtMillis) ? joinedAtMillis : null,
+      questionCells,
     };
-  }), [studentResults, questions, t]);
+  }), [gradesByStudentId, questions, studentResults, t]);
 
   const handleStudentsSort = useCallback((field) => {
     setStudentSort((prev) => {
@@ -881,7 +919,7 @@ export default function SessionReview() {
           direction: prev.direction === 'asc' ? 'desc' : 'asc',
         };
       }
-      const defaultDirection = ['participation', 'percentCorrect'].includes(field) ? 'desc' : 'asc';
+      const defaultDirection = ['grade', 'participation', 'percentCorrect'].includes(field) ? 'desc' : 'asc';
       return { field, direction: defaultDirection };
     });
   }, []);
@@ -894,6 +932,14 @@ export default function SessionReview() {
       if (!aFinite) return 1;
       if (!bFinite) return -1;
       return a - b;
+    };
+    const compareQuestionCell = (a, b) => {
+      if (!a?.hasResponse && !b?.hasResponse) return 0;
+      if (!a?.hasResponse) return 1;
+      if (!b?.hasResponse) return -1;
+      const textCompare = normalizeAnswerValue(a?.sortDisplay).localeCompare(normalizeAnswerValue(b?.sortDisplay));
+      if (textCompare !== 0) return textCompare;
+      return compareNullableNumber(a?.pointsValue, b?.pointsValue);
     };
 
     const query = normalizeAnswerValue(studentSearch).toLowerCase();
@@ -914,12 +960,17 @@ export default function SessionReview() {
       let cmp = 0;
       if (studentSort.field === 'participation') {
         cmp = compareNullableNumber(a.participationValue, b.participationValue);
+      } else if (studentSort.field === 'grade') {
+        cmp = compareNullableNumber(a.gradeValue, b.gradeValue);
       } else if (studentSort.field === 'percentCorrect') {
         cmp = compareNullableNumber(a.percentCorrectValue, b.percentCorrectValue);
       } else if (studentSort.field === 'joinedAt') {
         cmp = compareNullableNumber(a.joinedAtValue, b.joinedAtValue);
       } else if (studentSort.field === 'inSession') {
         cmp = compareNullableNumber(a.inSessionValue, b.inSessionValue);
+      } else if (studentSort.field.startsWith('question:')) {
+        const questionId = studentSort.field.slice('question:'.length);
+        cmp = compareQuestionCell(a.questionCells?.[questionId], b.questionCells?.[questionId]);
       } else if (studentSort.field === 'email') {
         cmp = normalizeAnswerValue(a.sortEmail).localeCompare(normalizeAnswerValue(b.sortEmail));
       } else {
@@ -953,12 +1004,13 @@ export default function SessionReview() {
       gradesByStudentId,
       sessionName: session?.name,
       studentResults,
+      visibleStudents: sortedStudentsTabRows,
       t,
     });
     if (!csvExport) return;
 
     downloadCsv(csvExport.filename, csvExport.csvContent);
-  }, [csvQuestionAttempts, gradesByStudentId, studentResults, session?.name, t]);
+  }, [csvQuestionAttempts, gradesByStudentId, sortedStudentsTabRows, studentResults, session?.name, t]);
 
   // ---- Render: loading ----
 
@@ -1047,16 +1099,6 @@ export default function SessionReview() {
           aria-label={t('professor.sessionReview.toggleReview')}
         />
 
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<DownloadIcon />}
-          onClick={handleExportCsv}
-          disabled={!studentResults.length}
-          aria-label={t('professor.sessionReview.exportResultsCSV')}
-        >
-          {t('professor.sessionReview.exportCSV')}
-        </Button>
       </Box>
       {reviewableWarning ? (
         <Alert severity="warning" sx={{ mb: 2 }}>
@@ -1092,9 +1134,8 @@ export default function SessionReview() {
         tabs={[
           { value: 0, label: t('professor.sessionReview.results') },
           { value: 1, label: t('professor.sessionReview.responseData') },
-          { value: 2, label: t('professor.sessionReview.students') },
           {
-            value: 3,
+            value: 2,
             label: (
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <span>{t('professor.sessionReview.grading')}</span>
@@ -1328,201 +1369,170 @@ export default function SessionReview() {
         {studentResults.length === 0 ? (
           <Alert severity="info">{t('professor.sessionReview.noResults')}</Alert>
         ) : (
-          <TableContainer component={Paper} variant="outlined">
-            <Table
-              size="small"
-              aria-label={t('professor.sessionReview.studentResults')}
-              sx={{ '& .MuiTableCell-root': { px: 0.65, py: 0.5 } }}
-            >
-              <TableHead>
-                <TableRow>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.name')}</TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>{t('professor.sessionReview.email')}</TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">{t('professor.sessionReview.grade')}</TableCell>
-                  <TableCell component="th" scope="col" sx={{ fontWeight: 700 }} align="center">{t('professor.sessionReview.participation')}</TableCell>
-                  {questions.map((_, i) => (
-                    <TableCell key={i} component="th" scope="col" sx={{ fontWeight: 700 }} align="center">
-                      Q{i + 1}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {studentResults.map((student) => (
-                  <TableRow key={student.studentId}>
-                    <TableCell component="th" scope="row">
-                      <StudentIdentity
-                        student={student}
-                        showEmail={false}
-                        avatarSize={30}
-                        nameVariant="body2"
-                        nameWeight={600}
-                      />
-                    </TableCell>
-                    <TableCell>{student.email}</TableCell>
-                    <TableCell align="center">
-                      {formatPercent(gradesByStudentId[String(student.studentId)]?.value)}
-                    </TableCell>
-                    <TableCell align="center">
-                      {formatParticipation(student.participation)}
-                    </TableCell>
-                    {questions.map((q, qi) => {
-                      const qr = (student.questionResults || []).find(
-                        (r) => String(r.questionId) === String(q._id),
-                      );
-                      if (!qr || !qr.responses || !qr.responses.length) {
-                        return (
-                          <TableCell key={qi} align="center">
-                            <Typography variant="body2" color="text.secondary">—</Typography>
-                          </TableCell>
-                        );
-                      }
-                      const lastResponse = getLatestResponse(qr.responses);
-                      const display = formatAnswerText(q, lastResponse?.answer) || '—';
-                      const points = getStudentQuestionPoints(
-                        gradesByStudentId,
-                        student.studentId,
-                        q._id,
-                        lastResponse
-                      );
-
-                      return (
-                        <TableCell key={qi} align="center">
-                          <Typography variant="body2">
-                            {display}
-                            {` (${points ?? '—'})`}
-                          </Typography>
-                        </TableCell>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </TabPanel>
-
-      {/* Students tab */}
-      <TabPanel value={tab} index={2}>
-        {sortedStudentsTabRows.length === 0 ? (
-          <Alert severity="info">{t('professor.sessionReview.noStudentsAvailable')}</Alert>
-        ) : (
           <>
-            <Autocomplete
-              freeSolo
-              options={studentSearchOptions}
-              value={studentSearch}
-              onInputChange={(_, value) => setStudentSearch(value || '')}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label={t('professor.sessionReview.searchStudents')}
-                  placeholder={t('professor.sessionReview.nameOrEmail')}
-                  size="small"
-                />
-              )}
-              sx={{ mb: 1.5, maxWidth: 420 }}
-            />
-            <TableContainer component={Paper} variant="outlined">
-              <Table
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 1.5,
+                mb: 1.5,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <Autocomplete
+                freeSolo
+                options={studentSearchOptions}
+                value={studentSearch}
+                onInputChange={(_, value) => setStudentSearch(value || '')}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label={t('professor.sessionReview.searchStudents')}
+                    placeholder={t('professor.sessionReview.nameOrEmail')}
+                    size="small"
+                  />
+                )}
+                sx={{ flex: '1 1 320px', maxWidth: 420 }}
+              />
+              <Button
+                variant="outlined"
                 size="small"
-                aria-label={t('professor.sessionReview.sessionStudentList')}
-                sx={{ '& .MuiTableCell-root': { px: 0.65, py: 0.5 } }}
+                startIcon={<DownloadIcon />}
+                onClick={handleExportCsv}
+                disabled={!sortedStudentsTabRows.length}
+                aria-label={t('professor.sessionReview.exportResultsCSV')}
               >
-                <TableHead>
-                  <TableRow>
-                    <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'name'}
-                        direction={studentSort.field === 'name' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('name')}
-                      >
-                        {t('professor.sessionReview.name')}
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell component="th" scope="col" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'email'}
-                        direction={studentSort.field === 'email' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('email')}
-                      >
-                        {t('professor.sessionReview.email')}
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'inSession'}
-                        direction={studentSort.field === 'inSession' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('inSession')}
-                      >
-                        {t('professor.sessionReview.inSession')}
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'participation'}
-                        direction={studentSort.field === 'participation' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('participation')}
-                      >
-                        {t('professor.sessionReview.participation')}
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'percentCorrect'}
-                        direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('percentCorrect')}
-                      >
-                        {t('professor.sessionReview.percentCorrect')}
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
-                      <TableSortLabel
-                        active={studentSort.field === 'joinedAt'}
-                        direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
-                        onClick={() => handleStudentsSort('joinedAt')}
-                      >
-                        {t('professor.sessionReview.joinedSession')}
-                      </TableSortLabel>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {sortedStudentsTabRows.map((student) => (
-                    <TableRow key={student.studentId}>
-                      <TableCell component="th" scope="row">
-                        <StudentIdentity
-                          student={student}
-                          showEmail={false}
-                          avatarSize={30}
-                          nameVariant="body2"
-                          nameWeight={600}
-                        />
+                {t('professor.sessionReview.exportCSV')}
+              </Button>
+            </Box>
+
+            {sortedStudentsTabRows.length === 0 ? (
+              <Alert severity="info">{t('professor.sessionReview.noStudentsMatch')}</Alert>
+            ) : (
+              <TableContainer component={Paper} variant="outlined">
+                <Table
+                  size="small"
+                  aria-label={t('professor.sessionReview.studentResults')}
+                  sx={{ '& .MuiTableCell-root': { px: 0.65, py: 0.5 } }}
+                >
+                  <TableHead>
+                    <TableRow>
+                      <TableCell component="th" scope="col" sx={{ fontWeight: 700, minWidth: 220 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'name'}
+                          direction={studentSort.field === 'name' ? studentSort.direction : 'asc'}
+                          onClick={() => handleStudentsSort('name')}
+                        >
+                          {t('professor.sessionReview.name')}
+                        </TableSortLabel>
                       </TableCell>
-                      <TableCell>{student.email || '—'}</TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={student.inSession ? t('common.yes') : t('common.no')}
-                          color={student.inSession ? 'success' : 'default'}
-                          size="small"
-                          variant={student.inSession ? 'filled' : 'outlined'}
-                        />
+                      <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'grade'}
+                          direction={studentSort.field === 'grade' ? studentSort.direction : 'desc'}
+                          onClick={() => handleStudentsSort('grade')}
+                        >
+                          {t('professor.sessionReview.grade')}
+                        </TableSortLabel>
                       </TableCell>
-                      <TableCell align="center">{formatParticipation(student.participationValue)}</TableCell>
-                      <TableCell align="center">{formatPercent(student.percentCorrectValue)}</TableCell>
-                      <TableCell align="center">{formatJoinedAt(student.joinedAt)}</TableCell>
+                      <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'inSession'}
+                          direction={studentSort.field === 'inSession' ? studentSort.direction : 'asc'}
+                          onClick={() => handleStudentsSort('inSession')}
+                        >
+                          {t('professor.sessionReview.inSession')}
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'participation'}
+                          direction={studentSort.field === 'participation' ? studentSort.direction : 'desc'}
+                          onClick={() => handleStudentsSort('participation')}
+                        >
+                          {t('professor.sessionReview.participation')}
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'percentCorrect'}
+                          direction={studentSort.field === 'percentCorrect' ? studentSort.direction : 'desc'}
+                          onClick={() => handleStudentsSort('percentCorrect')}
+                        >
+                          {t('professor.sessionReview.percentCorrect')}
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell component="th" scope="col" align="center" sx={{ fontWeight: 700 }}>
+                        <TableSortLabel
+                          active={studentSort.field === 'joinedAt'}
+                          direction={studentSort.field === 'joinedAt' ? studentSort.direction : 'asc'}
+                          onClick={() => handleStudentsSort('joinedAt')}
+                        >
+                          {t('professor.sessionReview.joinedSession')}
+                        </TableSortLabel>
+                      </TableCell>
+                      {questions.map((_, i) => (
+                        <TableCell key={i} component="th" scope="col" sx={{ fontWeight: 700 }} align="center">
+                          <TableSortLabel
+                            active={studentSort.field === `question:${String(questions[i]?._id || i)}`}
+                            direction={studentSort.field === `question:${String(questions[i]?._id || i)}` ? studentSort.direction : 'asc'}
+                            onClick={() => handleStudentsSort(`question:${String(questions[i]?._id || i)}`)}
+                          >
+                            Q{i + 1}
+                          </TableSortLabel>
+                        </TableCell>
+                      ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {sortedStudentsTabRows.map((student) => (
+                      <TableRow key={student.studentId}>
+                        <TableCell component="th" scope="row">
+                          <StudentIdentity
+                            student={student}
+                            showEmail
+                            avatarSize={30}
+                            nameVariant="body2"
+                            nameWeight={600}
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          {formatPercent(student.gradeValue)}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Chip
+                            label={student.inSession ? t('common.yes') : t('common.no')}
+                            color={student.inSession ? 'success' : 'default'}
+                            size="small"
+                            variant={student.inSession ? 'filled' : 'outlined'}
+                          />
+                        </TableCell>
+                        <TableCell align="center">{formatParticipation(student.participationValue)}</TableCell>
+                        <TableCell align="center">{formatPercent(student.percentCorrectValue)}</TableCell>
+                        <TableCell align="center">{formatJoinedAt(student.joinedAt)}</TableCell>
+                        {questions.map((q, qi) => {
+                          const questionCell = student.questionCells?.[String(q._id)];
+                          return (
+                            <TableCell key={qi} align="center">
+                              <Typography variant="body2">
+                                {questionCell?.display || '—'}
+                                {` (${questionCell?.pointsValue ?? '—'})`}
+                              </Typography>
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </>
         )}
       </TabPanel>
 
       {/* Grading tab */}
-      <TabPanel value={tab} index={3}>
+      <TabPanel value={tab} index={2}>
         <SessionQuestionGradingPanel
           sessionId={sessionId}
           session={session}
