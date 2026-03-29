@@ -527,6 +527,46 @@ describe('Admin user management', () => {
     body.users.forEach((u) => expect(u.services).toBeUndefined());
   });
 
+  it('lists users by most recent last login by default and supports explicit sort fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-sort@example.com', roles: ['admin'] });
+    await User.create({
+      emails: [{ address: 'zoe@example.com', verified: true }],
+      services: { password: { hash: await User.hashPassword('password123') } },
+      profile: { firstname: 'Zoe', lastname: 'Zimmer', roles: ['student'] },
+      lastLogin: new Date('2026-03-28T10:00:00.000Z'),
+      createdAt: new Date(),
+    });
+    await User.create({
+      emails: [{ address: 'amy@example.com', verified: true }],
+      services: { password: { hash: await User.hashPassword('password123') } },
+      profile: { firstname: 'Amy', lastname: 'Able', roles: ['student'] },
+      lastLogin: new Date('2026-03-29T10:00:00.000Z'),
+      createdAt: new Date(),
+    });
+    await User.create({
+      emails: [{ address: 'mike@example.com', verified: true }],
+      services: { password: { hash: await User.hashPassword('password123') } },
+      profile: { firstname: 'Mike', lastname: 'Middle', roles: ['professor'] },
+      createdAt: new Date(),
+    });
+    const token = await getAuthToken(app, admin);
+
+    const defaultRes = await authenticatedRequest(app, 'GET', '/api/v1/users?limit=10', { token });
+    expect(defaultRes.statusCode).toBe(200);
+    const defaultEmails = defaultRes.json().users
+      .map((user) => user.emails?.[0]?.address)
+      .filter((email) => ['amy@example.com', 'zoe@example.com', 'mike@example.com'].includes(email));
+    expect(defaultEmails.slice(0, 3)).toEqual(['amy@example.com', 'zoe@example.com', 'mike@example.com']);
+
+    const nameSortRes = await authenticatedRequest(app, 'GET', '/api/v1/users?limit=10&sortBy=name&sortDirection=asc', { token });
+    expect(nameSortRes.statusCode).toBe(200);
+    const nameSortedEmails = nameSortRes.json().users
+      .map((user) => user.emails?.[0]?.address)
+      .filter((email) => ['amy@example.com', 'zoe@example.com', 'mike@example.com'].includes(email));
+    expect(nameSortedEmails.slice(0, 3)).toEqual(['amy@example.com', 'mike@example.com', 'zoe@example.com']);
+  });
+
   it('derives last login in the users list from active refresh sessions when needed', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const admin = await createTestUser({ email: 'admin-derived-list@example.com', roles: ['admin'] });
