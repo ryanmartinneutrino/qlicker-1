@@ -211,6 +211,7 @@ const DEFAULT_SSO_SETTINGS = {
   SSO_authnContext: '',
   SSO_routeMode: 'legacy',
 };
+const SSO_SETTINGS_KEYS = Object.keys(DEFAULT_SSO_SETTINGS);
 const DEFAULT_BACKUP_SETTINGS = {
   backupEnabled: false,
   backupTimeLocal: '02:00',
@@ -251,6 +252,25 @@ function buildBackupSettingsState(data = {}) {
     backupManagerIsStale: data.backupManagerIsStale ?? false,
   };
 }
+
+function buildSsoSettingsState(data = {}) {
+  const nextState = { ...DEFAULT_SSO_SETTINGS };
+  SSO_SETTINGS_KEYS.forEach((key) => {
+    if (data[key] !== undefined && data[key] !== null) {
+      nextState[key] = data[key];
+    }
+  });
+  return nextState;
+}
+
+function buildSsoSettingsPatchPayload(settings = {}) {
+  const payload = {};
+  SSO_SETTINGS_KEYS.forEach((key) => {
+    payload[key] = settings[key];
+  });
+  return payload;
+}
+
 const SSO_BASIC_FIELDS = [
   { key: 'SSO_enabled', labelKey: 'admin.sso.enable', type: 'checkbox' },
   { key: 'SSO_entrypoint', labelKey: 'admin.sso.entrypoint' },
@@ -1716,10 +1736,7 @@ function SSOTab() {
     let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
-      setSettings({
-        ...DEFAULT_SSO_SETTINGS,
-        ...data,
-      });
+      setSettings(buildSsoSettingsState(data));
     }).catch(() => {
       if (mounted) {
         setSaveStatus('error');
@@ -1748,8 +1765,9 @@ function SSOTab() {
       setSaveError('');
       try {
         const parsedClockSkew = Number.parseInt(settings.SSO_acceptedClockSkewMs, 10);
+        const payload = buildSsoSettingsPatchPayload(settings);
         await apiClient.patch('/settings', {
-          ...settings,
+          ...payload,
           SSO_acceptedClockSkewMs: Number.isFinite(parsedClockSkew) ? parsedClockSkew : 60000,
         });
         setSaveStatus('success');

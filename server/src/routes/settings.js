@@ -14,6 +14,42 @@ function buildBackupRequestId() {
 
 const BACKUP_STATE_RESET_MESSAGE = 'Backup request state was reset by an admin.';
 
+// Whitelist of fields that may be updated via the admin settings PATCH endpoint.
+// Prevents injection of unexpected fields into the settings document.
+const ALLOWED_SETTINGS_FIELDS = new Set([
+  'restrictDomain', 'allowedDomains', 'requireVerified', 'adminEmail', 'email',
+  'SSO_enabled', 'SSO_entrypoint', 'SSO_cert', 'SSO_privCert', 'SSO_privKey',
+  'SSO_EntityId', 'SSO_logoutUrl', 'SSO_identifierFormat', 'SSO_emailIdentifier',
+  'SSO_firstNameIdentifier', 'SSO_lastNameIdentifier', 'SSO_studentNumberIdentifier',
+  'SSO_institutionName', 'SSO_roleIdentifier', 'SSO_roleProfName',
+  'SSO_wantAssertionsSigned', 'SSO_wantAuthnResponseSigned', 'SSO_acceptedClockSkewMs',
+  'SSO_disableRequestedAuthnContext', 'SSO_authnContext', 'SSO_routeMode',
+  'storageType', 'AWS_bucket', 'AWS_region', 'AWS_accessKeyId', 'AWS_secretAccessKey',
+  'AWS_endpoint', 'AWS_forcePathStyle', 'AWS_accessKey', 'AWS_secret',
+  'Azure_storageAccount', 'Azure_storageAccessKey', 'Azure_storageContainer',
+  'Azure_accountName', 'Azure_accountKey', 'Azure_containerName',
+  'tokenExpiryMinutes',
+  'backupEnabled', 'backupTimeLocal', 'backupRetentionDaily', 'backupRetentionWeekly',
+  'backupRetentionMonthly',
+  'Jitsi_Enabled', 'Jitsi_Domain', 'Jitsi_EtherpadDomain', 'Jitsi_EnabledCourses',
+  'locale', 'dateFormat', 'timeFormat',
+  'maxImageSize', 'maxImageWidth', 'avatarThumbnailSize',
+]);
+
+function sanitizeSettingsPatchPayload(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return {};
+  }
+
+  const filtered = {};
+  for (const key of Object.keys(payload)) {
+    if (ALLOWED_SETTINGS_FIELDS.has(key)) {
+      filtered[key] = payload[key];
+    }
+  }
+  return filtered;
+}
+
 const updateSettingsSchema = {
   body: {
     type: 'object',
@@ -65,11 +101,6 @@ const updateSettingsSchema = {
       backupRetentionDaily: { type: 'number', minimum: 0 },
       backupRetentionWeekly: { type: 'number', minimum: 0 },
       backupRetentionMonthly: { type: 'number', minimum: 0 },
-      backupLastRunAt: { type: 'string', format: 'date-time' },
-      backupLastRunType: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'manual'] },
-      backupLastRunStatus: { type: 'string', enum: ['idle', 'running', 'success', 'failed'] },
-      backupLastRunFilename: { type: 'string' },
-      backupLastRunMessage: { type: 'string' },
       Jitsi_Enabled: { type: 'boolean' },
       Jitsi_Domain: { type: 'string' },
       Jitsi_EtherpadDomain: { type: 'string' },
@@ -108,60 +139,42 @@ export default async function settingsRoutes(app) {
     return normalizeSettingsPayload(settings.toObject());
   });
 
-  // Whitelist of fields that may be updated via the admin settings PATCH endpoint.
-  // Prevents injection of unexpected fields into the settings document.
-  const ALLOWED_SETTINGS_FIELDS = new Set([
-    'restrictDomain', 'allowedDomains', 'requireVerified', 'adminEmail', 'email',
-    'SSO_enabled', 'SSO_entrypoint', 'SSO_cert', 'SSO_privCert', 'SSO_privKey',
-    'SSO_EntityId', 'SSO_logoutUrl', 'SSO_identifierFormat', 'SSO_emailIdentifier',
-    'SSO_firstNameIdentifier', 'SSO_lastNameIdentifier', 'SSO_studentNumberIdentifier',
-    'SSO_institutionName', 'SSO_roleIdentifier', 'SSO_roleProfName',
-    'SSO_wantAssertionsSigned', 'SSO_wantAuthnResponseSigned', 'SSO_acceptedClockSkewMs',
-    'SSO_disableRequestedAuthnContext', 'SSO_authnContext', 'SSO_routeMode',
-    'storageType', 'AWS_bucket', 'AWS_region', 'AWS_accessKeyId', 'AWS_secretAccessKey',
-    'AWS_endpoint', 'AWS_forcePathStyle', 'AWS_accessKey', 'AWS_secret',
-    'Azure_storageAccount', 'Azure_storageAccessKey', 'Azure_storageContainer',
-    'Azure_accountName', 'Azure_accountKey', 'Azure_containerName',
-    'tokenExpiryMinutes',
-    'backupEnabled', 'backupTimeLocal', 'backupRetentionDaily', 'backupRetentionWeekly',
-    'backupRetentionMonthly',
-    'Jitsi_Enabled', 'Jitsi_Domain', 'Jitsi_EtherpadDomain', 'Jitsi_EnabledCourses',
-    'locale', 'dateFormat', 'timeFormat',
-    'maxImageSize', 'maxImageWidth', 'avatarThumbnailSize',
-  ]);
-
   // PATCH / (admin only)
-  app.patch('/', { preHandler: requireRole(['admin']), schema: updateSettingsSchema, ...settingsRateLimit }, async (request, reply) => {
-    const rawUpdates = request.body || {};
-    // Filter to allowed fields only
-    const updates = {};
-    for (const key of Object.keys(rawUpdates)) {
-      if (ALLOWED_SETTINGS_FIELDS.has(key)) {
-        updates[key] = rawUpdates[key];
+  app.patch(
+    '/',
+    {
+      preValidation: async (request) => {
+        request.body = sanitizeSettingsPatchPayload(request.body);
+      },
+      preHandler: requireRole(['admin']),
+      schema: updateSettingsSchema,
+      ...settingsRateLimit,
+    },
+    async (request, reply) => {
+      const updates = request.body || {};
+
+      try {
+        const settings = await getOrCreateSettings({ select: '_id' });
+
+        const updatedSettings = await Settings.findByIdAndUpdate(
+          settings._id,
+          { $set: updates },
+          {
+            returnDocument: 'after',
+            runValidators: true,
+          }
+        );
+
+        return normalizeSettingsPayload(updatedSettings.toObject());
+      } catch (err) {
+        request.log.error({ err }, 'Failed to update settings');
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: err.message || 'Failed to update settings',
+        });
       }
     }
-
-    try {
-      const settings = await getOrCreateSettings({ select: '_id' });
-
-      const updatedSettings = await Settings.findByIdAndUpdate(
-        settings._id,
-        { $set: updates },
-        {
-          returnDocument: 'after',
-          runValidators: true,
-        }
-      );
-
-      return normalizeSettingsPayload(updatedSettings.toObject());
-    } catch (err) {
-      request.log.error({ err }, 'Failed to update settings');
-      return reply.code(400).send({
-        error: 'Bad Request',
-        message: err.message || 'Failed to update settings',
-      });
-    }
-  });
+  );
 
   app.post(
     '/backup-now',

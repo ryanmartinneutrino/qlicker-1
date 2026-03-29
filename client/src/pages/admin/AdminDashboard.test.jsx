@@ -318,6 +318,42 @@ describe('AdminDashboard', () => {
     expect(screen.getByText(/Backup request state was reset by an admin\./i)).toBeInTheDocument();
   });
 
+  it('sends only SSO fields when auto-saving from the SSO tab', async () => {
+    settingsState.backupLastRunAt = null;
+    settingsState.backupLastRunType = '';
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /SSO Configuration/i }));
+
+    const ssoToggle = await screen.findByRole('checkbox', { name: /Enable SSO/i });
+    fireEvent.click(ssoToggle);
+
+    vi.useFakeTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    vi.useRealTimers();
+
+    let ssoPatchCall;
+    await waitFor(() => {
+      ssoPatchCall = apiClientMock.patch.mock.calls.find(
+        ([url, payload]) => url === '/settings' && Object.prototype.hasOwnProperty.call(payload, 'SSO_enabled')
+      );
+      expect(ssoPatchCall).toBeTruthy();
+    });
+
+    const [, payload] = ssoPatchCall;
+    expect(payload).toMatchObject({
+      SSO_enabled: false,
+      SSO_routeMode: 'legacy',
+    });
+    expect(payload).not.toHaveProperty('backupLastRunAt');
+    expect(payload).not.toHaveProperty('backupLastRunType');
+    expect(payload).not.toHaveProperty('backupLastRunStatus');
+    expect(payload).not.toHaveProperty('storageType');
+  });
+
   it('disables and restores a user account from the Users tab', async () => {
     renderDashboard();
 

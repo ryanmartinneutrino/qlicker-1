@@ -97,6 +97,57 @@ describe('PATCH /api/v1/settings', () => {
     expect(stored.backupTimeLocal).toBe('03:15');
     expect(stored.backupRetentionMonthly).toBe(14);
   });
+
+  it('ignores read-only backup metadata fields when legacy clients include null values', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          backupLastRunAt: new Date('2026-03-27T07:15:00.000Z'),
+          backupLastRunType: 'weekly',
+          backupLastRunStatus: 'success',
+          backupLastRunFilename: 'keep-existing.tar.gz',
+          backupLastRunMessage: 'Previous backup completed successfully.',
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const admin = await createTestUser({
+      email: 'admin-legacy-settings-payload@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'PATCH', '/api/v1/settings', {
+      token,
+      payload: {
+        SSO_enabled: true,
+        backupLastRunAt: null,
+        backupLastRunType: '',
+        backupLastRunStatus: 'idle',
+        backupLastRunFilename: 'should-not-overwrite.tar.gz',
+        backupLastRunMessage: 'Should be ignored.',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.SSO_enabled).toBe(true);
+    expect(body.backupLastRunType).toBe('weekly');
+    expect(body.backupLastRunStatus).toBe('success');
+    expect(body.backupLastRunFilename).toBe('keep-existing.tar.gz');
+    expect(body.backupLastRunMessage).toBe('Previous backup completed successfully.');
+
+    const stored = await Settings.collection.findOne({ _id: 'settings' });
+    expect(stored.SSO_enabled).toBe(true);
+    expect(stored.backupLastRunType).toBe('weekly');
+    expect(stored.backupLastRunStatus).toBe('success');
+    expect(stored.backupLastRunFilename).toBe('keep-existing.tar.gz');
+    expect(stored.backupLastRunMessage).toBe('Previous backup completed successfully.');
+  });
 });
 
 describe('settings singleton hardening', () => {
@@ -156,6 +207,13 @@ describe('settings singleton hardening', () => {
       storageType: 's3',
       AWS_bucket: 'legacy-backup-bucket',
       AWS_region: 'us-east-1',
+      AWS_accessKey: 'legacy-access-key',
+      AWS_secret: 'legacy-secret-key',
+      AWS_endpoint: 'https://nyc3.example-storage.local',
+      AWS_forcePathStyle: true,
+      Azure_accountName: 'legacy-azure-account',
+      Azure_accountKey: 'legacy-azure-key',
+      Azure_containerName: 'legacy-azure-container',
     });
 
     const admin = await createTestUser({
@@ -169,6 +227,19 @@ describe('settings singleton hardening', () => {
     expect(res.json().SSO_enabled).toBe(true);
     expect(res.json().storageType).toBe('s3');
     expect(res.json().AWS_bucket).toBe('legacy-backup-bucket');
+    expect(res.json().AWS_region).toBe('us-east-1');
+    expect(res.json().AWS_accessKey).toBe('legacy-access-key');
+    expect(res.json().AWS_secret).toBe('legacy-secret-key');
+    expect(res.json().AWS_endpoint).toBe('https://nyc3.example-storage.local');
+    expect(res.json().AWS_forcePathStyle).toBe(true);
+    expect(res.json().resolvedAWSAccessKeyId).toBe('legacy-access-key');
+    expect(res.json().resolvedAWSSecretAccessKey).toBe('legacy-secret-key');
+    expect(res.json().Azure_accountName).toBe('legacy-azure-account');
+    expect(res.json().Azure_accountKey).toBe('legacy-azure-key');
+    expect(res.json().Azure_containerName).toBe('legacy-azure-container');
+    expect(res.json().resolvedAzureStorageAccount).toBe('legacy-azure-account');
+    expect(res.json().resolvedAzureStorageAccessKey).toBe('legacy-azure-key');
+    expect(res.json().resolvedAzureStorageContainer).toBe('legacy-azure-container');
 
     const canonical = await Settings.collection.findOne({ _id: 'settings' });
     const extras = await Settings.collection.countDocuments({ _id: { $ne: 'settings' } });
@@ -176,6 +247,14 @@ describe('settings singleton hardening', () => {
     expect(canonical.SSO_enabled).toBe(true);
     expect(canonical.storageType).toBe('s3');
     expect(canonical.AWS_bucket).toBe('legacy-backup-bucket');
+    expect(canonical.AWS_region).toBe('us-east-1');
+    expect(canonical.AWS_accessKey).toBe('legacy-access-key');
+    expect(canonical.AWS_secret).toBe('legacy-secret-key');
+    expect(canonical.AWS_endpoint).toBe('https://nyc3.example-storage.local');
+    expect(canonical.AWS_forcePathStyle).toBe(true);
+    expect(canonical.Azure_accountName).toBe('legacy-azure-account');
+    expect(canonical.Azure_accountKey).toBe('legacy-azure-key');
+    expect(canonical.Azure_containerName).toBe('legacy-azure-container');
     expect(extras).toBe(0);
   });
 
