@@ -171,7 +171,7 @@ describe('settings singleton hardening', () => {
     const docs = await Settings.collection.find({}).toArray();
     expect(docs).toHaveLength(1);
     expect(String(docs[0]._id)).toBe('settings');
-    expect(docs[0].backupTimeLocal).toBe('02:00');
+    expect(docs[0].backupTimeLocal).toBe('07:30');
   });
 
   it('seeds canonical settings from a legacy document when canonical settings are missing', async (ctx) => {
@@ -204,7 +204,7 @@ describe('settings singleton hardening', () => {
     await Settings.collection.insertOne({
       _id: 'legacy-restored-settings',
       SSO_enabled: true,
-      storageType: 's3',
+      storageType: 'AWS',
       AWS_bucket: 'legacy-backup-bucket',
       AWS_region: 'us-east-1',
       AWS_accessKey: 'legacy-access-key',
@@ -255,6 +255,56 @@ describe('settings singleton hardening', () => {
     expect(canonical.Azure_accountName).toBe('legacy-azure-account');
     expect(canonical.Azure_accountKey).toBe('legacy-azure-key');
     expect(canonical.Azure_containerName).toBe('legacy-azure-container');
+    expect(extras).toBe(0);
+  });
+
+  it('merges restored legacy settings into a sparse canonical document created during restore', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    // Simulate backup-manager upsert creating only a sparse canonical record.
+    await Settings.collection.deleteMany({});
+    await Settings.collection.insertOne({
+      _id: 'settings',
+      backupManagerStatus: 'healthy',
+      backupManagerMessage: 'Backup manager is running.',
+    });
+    // Simulate legacy restore adding a duplicate settings document afterward.
+    await Settings.collection.insertOne({
+      _id: 'legacy-restored-settings',
+      SSO_enabled: true,
+      storageType: 'AWS',
+      AWS_bucket: 'legacy-bucket',
+      AWS_region: 'us-east-1',
+      AWS_accessKey: 'legacy-access-key',
+      AWS_secret: 'legacy-secret-key',
+    });
+
+    await app.close();
+    app = await createApp();
+
+    const admin = await createTestUser({
+      email: 'admin-sparse-canonical-merge@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/settings', { token });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().SSO_enabled).toBe(true);
+    expect(res.json().storageType).toBe('s3');
+    expect(res.json().AWS_bucket).toBe('legacy-bucket');
+    expect(res.json().resolvedAWSAccessKeyId).toBe('legacy-access-key');
+    expect(res.json().resolvedAWSSecretAccessKey).toBe('legacy-secret-key');
+
+    const canonical = await Settings.collection.findOne({ _id: 'settings' });
+    const extras = await Settings.collection.countDocuments({ _id: { $ne: 'settings' } });
+    expect(canonical).toBeTruthy();
+    expect(canonical.SSO_enabled).toBe(true);
+    expect(canonical.storageType).toBe('s3');
+    expect(canonical.AWS_bucket).toBe('legacy-bucket');
+    expect(canonical.AWS_accessKey).toBe('legacy-access-key');
+    expect(canonical.AWS_secret).toBe('legacy-secret-key');
+    expect(canonical.backupManagerStatus).toBe('healthy');
     expect(extras).toBe(0);
   });
 

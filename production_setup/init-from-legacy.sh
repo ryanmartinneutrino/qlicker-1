@@ -267,6 +267,10 @@ info "mongorestore complete."
 docker exec "$MONGO_CONTAINER" rm -rf "$CONTAINER_TEMP" 2>/dev/null || true
 trap - EXIT
 
+# ---- Reconcile settings singleton --------------------------------------------
+info "Reconciling settings singleton (defaults + legacy overrides)..."
+docker exec "$SERVER_CONTAINER" node scripts/reconcile-settings-singleton.js
+
 # ---- Run question-type migration ---------------------------------------------
 info "Running question-type migration (dry run)..."
 docker exec "$SERVER_CONTAINER" node scripts/migrate-question-types.js 2>&1 | tail -5

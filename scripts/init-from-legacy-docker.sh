@@ -34,6 +34,9 @@ if [ -z "$SERVER_CONTAINER" ]; then
   exit 1
 fi
 
+echo "Reconciling settings singleton inside server container..."
+docker exec "$SERVER_CONTAINER" node scripts/reconcile-settings-singleton.js
+
 echo "Applying question-type migration inside server container..."
 docker exec "$SERVER_CONTAINER" node scripts/migrate-question-types.js --apply
 

@@ -35,6 +35,12 @@ fi
 echo "Restoring legacy dump into native dev database..."
 "$SCRIPT_DIR/seed-db.sh" --legacy-restore
 
+echo "Reconciling settings singleton..."
+(
+  cd "$PROJECT_ROOT/server"
+  node scripts/reconcile-settings-singleton.js
+)
+
 echo "Applying question-type migration..."
 (
   cd "$PROJECT_ROOT/server"
