@@ -837,6 +837,7 @@
       "searchStudents": "Rechercher des étudiants",
       "nameOrEmail": "Nom ou courriel",
       "noStudentsAvailable": "Aucun étudiant n'est disponible pour cette séance.",
+      "noStudentsMatch": "Aucun étudiant ne correspond à la recherche actuelle.",
       "noResponsesYet": "Aucune réponse pour l'instant.",
       "correct": "Correct : {{value}}",
       "tolerance": "tolérance : {{value}}",
