@@ -1767,6 +1767,10 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     const copiedQuestionId = String(body.session.questions[0]);
     expect(copiedQuestionId).not.toBe(String(question._id));
 
+    // Verify the copiedQuestionId is returned and matches the session copy
+    expect(body.copiedQuestionId).toBeTruthy();
+    expect(String(body.copiedQuestionId)).toBe(copiedQuestionId);
+
     const copiedQuestion = await Question.findById(copiedQuestionId).lean();
     expect(copiedQuestion).toBeTruthy();
     expect(String(copiedQuestion.originalQuestion)).toBe(String(question._id));
@@ -1872,6 +1876,84 @@ describe('POST /api/v1/sessions/:sessionId/questions', () => {
     });
 
     expect(res.statusCode).toBe(403);
+  });
+
+  it('copied question has fresh sessionOptions and no responses from the source', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, session } = await setupCourseAndSession();
+
+    // Create a question that already has session data (simulating a question from a used session)
+    const qRes = await createQuestionAsProf(profToken, {
+      type: 0,
+      content: 'Question with data',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const sourceQuestion = qRes.json().question;
+
+    // Simulate the question having accumulated session data
+    await Question.findByIdAndUpdate(sourceQuestion._id, {
+      $set: {
+        sessionOptions: {
+          hidden: false,
+          stats: true,
+          correct: true,
+          points: 5,
+          maxAttempts: 3,
+          attempts: [{ number: 1, closed: true }, { number: 2, closed: false }],
+          attemptStats: [{ number: 1, type: 'MC', total: 10, distribution: [] }],
+        },
+        sessionProperties: { lastAttemptNumber: 2, lastAttemptResponseCount: 10 },
+      },
+    });
+
+    // Create a response for the source question
+    await Response.create({
+      questionId: sourceQuestion._id,
+      studentUserId: 'student-user-id',
+      attempt: 1,
+      answer: 0,
+      correct: true,
+    });
+
+    // Create a new session and add the question to it
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Target Session' });
+    const targetSession = sessionRes.json().session;
+
+    const addRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${targetSession._id}/questions`, {
+      token: profToken,
+      payload: { questionId: sourceQuestion._id },
+    });
+
+    expect(addRes.statusCode).toBe(200);
+    const body = addRes.json();
+    expect(body.copiedQuestionId).toBeTruthy();
+    expect(String(body.copiedQuestionId)).not.toBe(String(sourceQuestion._id));
+
+    const copiedQuestion = await Question.findById(body.copiedQuestionId).lean();
+    expect(copiedQuestion).toBeTruthy();
+
+    // Session config should be preserved
+    expect(copiedQuestion.sessionOptions.points).toBe(5);
+    expect(copiedQuestion.sessionOptions.maxAttempts).toBe(3);
+
+    // Session runtime data should be reset
+    expect(copiedQuestion.sessionOptions.hidden).toBe(true);
+    expect(copiedQuestion.sessionOptions.stats).toBe(false);
+    expect(copiedQuestion.sessionOptions.correct).toBe(false);
+    expect(copiedQuestion.sessionOptions.attempts).toEqual([]);
+    expect(copiedQuestion.sessionOptions.attemptStats).toEqual([]);
+
+    // Session properties should be absent
+    expect(copiedQuestion.sessionProperties).toBeUndefined();
+
+    // No responses should exist for the new copy
+    const responseCount = await Response.countDocuments({ questionId: body.copiedQuestionId });
+    expect(responseCount).toBe(0);
   });
 });
 
