@@ -35,6 +35,7 @@ import {
   prepareRichTextInput,
   renderKatexInElement,
 } from '../../components/questions/richTextUtils';
+import { formatToleranceValue } from '../../utils/numericalFormatting';
 
 const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -149,7 +150,7 @@ function RichContent({ html, fallback }) {
 export default function QuizSession() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -799,12 +800,15 @@ export default function QuizSession() {
                   type="number"
                   fullWidth
                   placeholder={t('student.quiz.enterNumber')}
+                  helperText={question.toleranceNumerical != null
+                    ? t('student.quiz.toleranceHelper', {
+                      value: formatToleranceValue(
+                        question.toleranceNumerical,
+                        i18n.resolvedLanguage || i18n.language,
+                      ),
+                    })
+                    : undefined}
                 />
-                {question.toleranceNumerical != null && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                    {t('student.quiz.tolerance', { value: question.toleranceNumerical })}
-                  </Typography>
-                )}
               </Box>
             )}
 

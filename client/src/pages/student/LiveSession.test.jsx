@@ -103,4 +103,49 @@ describe('Student LiveSession', () => {
       expect(container.querySelector('.katex')).not.toBeNull();
     });
   });
+
+  it('shows numerical tolerance helper text next to the live answer input', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      data: {
+        session: {
+          _id: 'session-1',
+          name: 'Live math session',
+        },
+        currentQuestion: {
+          _id: 'q-1',
+          type: QUESTION_TYPES.NUMERICAL,
+          content: '<p>Estimate the value</p>',
+          plainText: 'Estimate the value',
+          toleranceNumerical: 12345,
+          sessionOptions: {
+            hidden: false,
+            stats: false,
+            correct: false,
+            attempts: [{ number: 1, closed: false }],
+          },
+        },
+        currentAttempt: { number: 1, closed: false },
+        isJoined: true,
+        questionHidden: false,
+        showStats: false,
+        showCorrect: false,
+        responseStats: null,
+        studentResponse: null,
+        questionCount: 1,
+        questionNumber: 1,
+        questionProgress: { current: 1, total: 1 },
+        pageProgress: { current: 1, total: 1 },
+      },
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/student/course/course-1/live/session-1']}>
+        <Routes>
+          <Route path="/student/course/:courseId/live/:sessionId" element={<LiveSession />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Answers will be scored based on a tolerance of +/- 1.2345E4.')).toBeInTheDocument();
+  });
 });

@@ -28,6 +28,7 @@ import {
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import { formatToleranceValue } from '../../utils/numericalFormatting';
 import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
@@ -161,7 +162,7 @@ function RichContent({ html, fallback }) {
 function LiveSessionContent() {
   const { courseId, sessionId } = useParams();
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { lastEvent, registerRefreshHandler, transport } = useLiveSessionWebSocket();
   const courseBackLink = `/student/course/${courseId}`;
   const {
@@ -996,12 +997,15 @@ function LiveSessionContent() {
               fullWidth
               disabled={isLocked}
               inputProps={{ 'aria-label': t('student.liveSession.numericalResponseAriaLabel') }}
+              helperText={currentQ.toleranceNumerical != null
+                ? t('student.liveSession.toleranceHelper', {
+                  value: formatToleranceValue(
+                    currentQ.toleranceNumerical,
+                    i18n.resolvedLanguage || i18n.language,
+                  ),
+                })
+                : undefined}
             />
-            {currentQ.toleranceNumerical != null && (
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
-                {t('student.liveSession.tolerance', { value: currentQ.toleranceNumerical })}
-              </Typography>
-            )}
           </Box>
         )}
       </Paper>
