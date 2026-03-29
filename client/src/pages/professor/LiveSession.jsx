@@ -22,7 +22,11 @@ import {
   isSlideType,
   normalizeQuestionType,
 } from '../../components/questions/constants';
-import { prepareRichTextInput, renderKatexInElement } from '../../components/questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../../components/questions/richTextUtils';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
@@ -103,6 +107,13 @@ const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 function optionDisplayHtml(option) {
   return option?.content || option?.plainText || option?.answer || '';
+}
+
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.answer || '',
+  };
 }
 
 function normalizeValue(value) {
@@ -280,9 +291,9 @@ function formatJoinedTimestamp(value, fallbackLabel) {
 // ---------------------------------------------------------------------------
 
 /** Renders rich-text question content with KaTeX math support. */
-function RichContent({ html }) {
+function RichContent({ html, fallback }) {
   const ref = useRef(null);
-  const prepared = prepareRichTextInput(html);
+  const prepared = prepareRichTextInput(html || '', fallback || '');
 
   useEffect(() => {
     if (ref.current) renderKatexInElement(ref.current);
@@ -1435,7 +1446,7 @@ function LiveSessionContent() {
 
                   {/* Question content (rich text with KaTeX) */}
                   <Box sx={{ mb: 2 }}>
-                    <RichContent html={currentQ.content || currentQ.plainText} />
+                    <RichContent html={currentQ.content} fallback={currentQ.plainText} />
                   </Box>
 
                   {/* Options for MC / TF / MS */}
@@ -1445,6 +1456,7 @@ function LiveSessionContent() {
                         const isCorrect = !!opt.correct;
                         const count = inlineDistribution?.[i]?.count || 0;
                         const pct = inlineDistributionTotal > 0 ? Math.round(100 * count / inlineDistributionTotal) : 0;
+                        const optionContent = getOptionRichContentProps(opt);
                         const barColor = showCorrect
                           ? (isCorrect ? 'rgba(46, 125, 50, 0.22)' : 'rgba(211, 47, 47, 0.14)')
                           : 'rgba(25, 118, 210, 0.18)';
@@ -1494,7 +1506,7 @@ function LiveSessionContent() {
                                 sx={{ ...COMPACT_CHIP_SX, fontWeight: 700, minWidth: 28, justifySelf: 'start' }}
                               />
                               <Box sx={{ minWidth: 0 }}>
-                                <RichContent html={optionDisplayHtml(opt)} />
+                                <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                               </Box>
                               <Typography variant="body2" sx={{ fontWeight: 700, minWidth: 58, textAlign: 'right' }}>
                                 {pct}% ({count})
@@ -1530,7 +1542,7 @@ function LiveSessionContent() {
                         {t('common.solution')}
                       </Typography>
                       <Paper variant="outlined" sx={{ p: 1.5 }}>
-                        <RichContent html={currentQ.solution} />
+                        <RichContent html={currentQ.solution} fallback={currentQ.solution_plainText} />
                       </Paper>
                     </Box>
                   )}

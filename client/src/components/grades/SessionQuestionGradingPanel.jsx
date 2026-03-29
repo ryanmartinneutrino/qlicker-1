@@ -35,7 +35,11 @@ import {
   getQuestionTypeLabel,
   normalizeQuestionType,
 } from '../questions/constants';
-import { prepareRichTextInput, renderKatexInElement } from '../questions/richTextUtils';
+import {
+  normalizeStoredHtml,
+  prepareRichTextInput,
+  renderKatexInElement,
+} from '../questions/richTextUtils';
 import RichTextEditor from '../questions/RichTextEditor';
 import { getLatestResponse } from '../../utils/responses';
 
@@ -151,6 +155,13 @@ function optionDisplayHtml(option) {
     || option?.option
     || option?.answer
     || '';
+}
+
+function getOptionRichContentProps(option) {
+  return {
+    html: normalizeStoredHtml(option?.content || ''),
+    fallback: option?.plainText || option?.text || option?.label || option?.value || option?.option || option?.answer || '',
+  };
 }
 
 function isCorrectOption(option) {
@@ -1515,6 +1526,7 @@ export default function SessionQuestionGradingPanel({
           <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             {questionOptions.map((option, index) => {
               const isCorrect = isCorrectOption(option);
+              const optionContent = getOptionRichContentProps(option);
               return (
                 <Paper
                   key={option?._id || index}
@@ -1533,7 +1545,7 @@ export default function SessionQuestionGradingPanel({
                       sx={COMPACT_CHIP_SX}
                     />
                     <Box sx={{ minWidth: 0 }}>
-                      <RichContent html={optionDisplayHtml(option)} />
+                      <RichContent html={optionContent.html} fallback={optionContent.fallback} />
                     </Box>
                   </Box>
                 </Paper>
