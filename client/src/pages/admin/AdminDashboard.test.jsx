@@ -78,6 +78,51 @@ function buildUser(overrides = {}) {
   };
 }
 
+function compareValues(aValue, bValue, direction = 'asc') {
+  const factor = direction === 'desc' ? -1 : 1;
+  if (aValue < bValue) return -1 * factor;
+  if (aValue > bValue) return 1 * factor;
+  return 0;
+}
+
+function sortUsers(users = [], sortBy = 'lastLogin', sortDirection = 'desc') {
+  return [...users].sort((a, b) => {
+    if (sortBy === 'name') {
+      const aName = `${a.profile?.lastname || ''}\u0000${a.profile?.firstname || ''}`.toLowerCase();
+      const bName = `${b.profile?.lastname || ''}\u0000${b.profile?.firstname || ''}`.toLowerCase();
+      return compareValues(aName, bName, sortDirection);
+    }
+
+    if (sortBy === 'email') {
+      return compareValues(
+        String(a.emails?.[0]?.address || '').toLowerCase(),
+        String(b.emails?.[0]?.address || '').toLowerCase(),
+        sortDirection
+      );
+    }
+
+    if (sortBy === 'verified') {
+      return compareValues(
+        a.emails?.[0]?.verified ? 1 : 0,
+        b.emails?.[0]?.verified ? 1 : 0,
+        sortDirection
+      );
+    }
+
+    if (sortBy === 'role') {
+      return compareValues(
+        String(a.profile?.roles?.[0] || '').toLowerCase(),
+        String(b.profile?.roles?.[0] || '').toLowerCase(),
+        sortDirection
+      );
+    }
+
+    const aLastLogin = a.lastLogin ? new Date(a.lastLogin).getTime() : 0;
+    const bLastLogin = b.lastLogin ? new Date(b.lastLogin).getTime() : 0;
+    return compareValues(aLastLogin, bLastLogin, sortDirection);
+  });
+}
+
 function renderDashboard() {
   return render(
     <I18nextProvider i18n={i18n}>
@@ -134,16 +179,37 @@ describe('AdminDashboard', () => {
     usersState = [buildUser()];
     userDetailsState = new Map(usersState.map((user) => [user._id, { ...user }]));
 
-    apiClientMock.get.mockImplementation((url) => {
+    apiClientMock.get.mockImplementation((url, config = {}) => {
       if (url === '/settings') {
         return Promise.resolve({ data: settingsState });
       }
 
       if (url === '/users') {
+        const params = config?.params || {};
+        const searchValue = String(params.search || '').trim().toLowerCase();
+        const roleValue = String(params.role || '').trim();
+        const pageValue = Number(params.page) || 1;
+        const limitValue = Number(params.limit) || usersState.length || 20;
+        let filteredUsers = usersState;
+
+        if (searchValue) {
+          filteredUsers = filteredUsers.filter((user) => {
+            const name = `${user.profile?.firstname || ''} ${user.profile?.lastname || ''}`.toLowerCase();
+            const email = String(user.emails?.[0]?.address || '').toLowerCase();
+            return name.includes(searchValue) || email.includes(searchValue);
+          });
+        }
+
+        if (roleValue) {
+          filteredUsers = filteredUsers.filter((user) => user.profile?.roles?.includes(roleValue));
+        }
+
+        const sortedUsers = sortUsers(filteredUsers, params.sortBy, params.sortDirection);
+        const startIndex = Math.max(0, (pageValue - 1) * limitValue);
         return Promise.resolve({
           data: {
-            users: usersState,
-            total: usersState.length,
+            users: sortedUsers.slice(startIndex, startIndex + limitValue),
+            total: filteredUsers.length,
           },
         });
       }
@@ -395,6 +461,94 @@ describe('AdminDashboard', () => {
       });
     });
     expect(within(getUserRow()).queryByText(/^Disabled$/i)).not.toBeInTheDocument();
+  });
+
+  it('loads users sorted by last login by default and lets admins change the sort column', async () => {
+    usersState = [
+      buildUser({
+        _id: 'student-1',
+        emails: [{ address: 'zoe@example.com', verified: true }],
+        profile: { firstname: 'Zoe', lastname: 'Zimmer', roles: ['student'] },
+        lastLogin: '2026-03-28T10:00:00.000Z',
+      }),
+      buildUser({
+        _id: 'student-2',
+        emails: [{ address: 'amy@example.com', verified: false }],
+        profile: { firstname: 'Amy', lastname: 'Able', roles: ['student'] },
+        lastLogin: '2026-03-29T10:00:00.000Z',
+      }),
+      buildUser({
+        _id: 'student-3',
+        emails: [{ address: 'mike@example.com', verified: true }],
+        profile: { firstname: 'Mike', lastname: 'Middle', roles: ['professor'] },
+        lastLogin: null,
+      }),
+    ];
+    userDetailsState = new Map(usersState.map((user) => [user._id, { ...user }]));
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Users$/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/users', {
+        params: expect.objectContaining({
+          page: 1,
+          limit: 20,
+          sortBy: 'lastLogin',
+          sortDirection: 'desc',
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('row').map((row) => row.textContent)).toEqual(expect.arrayContaining([
+        expect.stringContaining('amy@example.com'),
+        expect.stringContaining('zoe@example.com'),
+        expect.stringContaining('mike@example.com'),
+      ]));
+    });
+
+    let bodyRows = screen.getAllByRole('row').slice(1);
+    expect(within(bodyRows[0]).getByText('amy@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[1]).getByText('zoe@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[2]).getByText('mike@example.com')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Name$/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenLastCalledWith('/users', {
+        params: expect.objectContaining({
+          page: 1,
+          limit: 20,
+          sortBy: 'name',
+          sortDirection: 'asc',
+        }),
+      });
+    });
+
+    bodyRows = screen.getAllByRole('row').slice(1);
+    expect(within(bodyRows[0]).getByText('amy@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[1]).getByText('mike@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[2]).getByText('zoe@example.com')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Name$/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenLastCalledWith('/users', {
+        params: expect.objectContaining({
+          page: 1,
+          limit: 20,
+          sortBy: 'name',
+          sortDirection: 'desc',
+        }),
+      });
+    });
+
+    bodyRows = screen.getAllByRole('row').slice(1);
+    expect(within(bodyRows[0]).getByText('zoe@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[1]).getByText('mike@example.com')).toBeInTheDocument();
+    expect(within(bodyRows[2]).getByText('amy@example.com')).toBeInTheDocument();
   });
 
   it('uses new-password autocomplete for admin reset password fields', async () => {

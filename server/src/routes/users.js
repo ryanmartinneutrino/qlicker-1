@@ -268,6 +268,14 @@ const listUsersSchema = {
       role: { type: 'string' },
       page: { type: 'integer', minimum: 1 },
       limit: { type: 'integer', minimum: 1, maximum: 100 },
+      sortBy: {
+        type: 'string',
+        enum: ['name', 'email', 'verified', 'lastLogin', 'role'],
+      },
+      sortDirection: {
+        type: 'string',
+        enum: ['asc', 'desc'],
+      },
     },
     additionalProperties: false,
   },
@@ -321,6 +329,48 @@ export default async function userRoutes(app) {
       rateLimit: { max: 30, timeWindow: '1 minute' },
     },
   };
+
+  function buildUserListSort(sortBy = 'lastLogin', sortDirection = 'desc') {
+    const direction = sortDirection === 'asc' ? 1 : -1;
+    switch (sortBy) {
+      case 'name':
+        return {
+          'profile.lastname': direction,
+          'profile.firstname': direction,
+          'emails.address': 1,
+          _id: 1,
+        };
+      case 'email':
+        return {
+          'emails.address': direction,
+          'profile.lastname': 1,
+          'profile.firstname': 1,
+          _id: 1,
+        };
+      case 'verified':
+        return {
+          'emails.verified': direction,
+          'profile.lastname': 1,
+          'profile.firstname': 1,
+          _id: 1,
+        };
+      case 'role':
+        return {
+          'profile.roles': direction,
+          'profile.lastname': 1,
+          'profile.firstname': 1,
+          _id: 1,
+        };
+      case 'lastLogin':
+      default:
+        return {
+          lastLogin: direction,
+          'profile.lastname': 1,
+          'profile.firstname': 1,
+          _id: 1,
+        };
+    }
+  }
 
   // GET /me
   app.get('/me', { preHandler: authenticate }, async (request, reply) => {
@@ -583,7 +633,14 @@ export default async function userRoutes(app) {
     '/',
     { preHandler: requireRole(['admin']), schema: listUsersSchema },
     async (request, reply) => {
-      const { search, role, page: pageParam, limit: limitParam } = request.query;
+      const {
+        search,
+        role,
+        page: pageParam,
+        limit: limitParam,
+        sortBy = 'lastLogin',
+        sortDirection = 'desc',
+      } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(limitParam, 10) || 20));
 
@@ -604,6 +661,7 @@ export default async function userRoutes(app) {
 
       const [users, total, settings] = await Promise.all([
         User.find(filter)
+          .sort(buildUserListSort(sortBy, sortDirection))
           .skip((page - 1) * limit)
           .limit(limit)
           .lean(),

@@ -6,7 +6,7 @@ import {
   TableHead, TableRow, Paper, TablePagination, Select, MenuItem,
   IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
   InputAdornment, Alert, Snackbar, FormControl, InputLabel,
-  ButtonBase, CircularProgress, Tooltip, Chip,
+  ButtonBase, CircularProgress, Tooltip, Chip, TableSortLabel,
   Avatar,
 } from '@mui/material';
 import {
@@ -877,6 +877,8 @@ function UsersTab({ currentUserId }) {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [sortBy, setSortBy] = useState('lastLogin');
+  const [sortDirection, setSortDirection] = useState('desc');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
   const [ssoEnabled, setSsoEnabled] = useState(false);
@@ -908,10 +910,28 @@ function UsersTab({ currentUserId }) {
     return (firstInitial + lastInitial).toUpperCase() || '?';
   };
 
+  const getDefaultSortDirection = (field) => (field === 'lastLogin' ? 'desc' : 'asc');
+
+  const handleSort = (field) => {
+    setPage(0);
+    setSortDirection((prevDirection) => {
+      if (sortBy === field) {
+        return prevDirection === 'asc' ? 'desc' : 'asc';
+      }
+      return getDefaultSortDirection(field);
+    });
+    setSortBy(field);
+  };
+
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page: page + 1, limit: rowsPerPage };
+      const params = {
+        page: page + 1,
+        limit: rowsPerPage,
+        sortBy,
+        sortDirection,
+      };
       if (search) params.search = search;
       if (roleFilter) params.role = roleFilter;
       const { data } = await apiClient.get('/users', { params });
@@ -922,7 +942,7 @@ function UsersTab({ currentUserId }) {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, search, roleFilter]);
+  }, [page, rowsPerPage, search, roleFilter, sortBy, sortDirection, t]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
@@ -1156,11 +1176,51 @@ function UsersTab({ currentUserId }) {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell component="th" scope="col">{t('admin.users.name')}</TableCell>
-              <TableCell component="th" scope="col">{t('admin.users.email')}</TableCell>
-              <TableCell component="th" scope="col">{t('admin.users.verified')}</TableCell>
-              <TableCell component="th" scope="col">{t('admin.users.lastLogin')}</TableCell>
-              <TableCell component="th" scope="col">{t('admin.users.role')}</TableCell>
+              <TableCell component="th" scope="col">
+                <TableSortLabel
+                  active={sortBy === 'name'}
+                  direction={sortBy === 'name' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('name')}
+                >
+                  {t('admin.users.name')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell component="th" scope="col">
+                <TableSortLabel
+                  active={sortBy === 'email'}
+                  direction={sortBy === 'email' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('email')}
+                >
+                  {t('admin.users.email')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell component="th" scope="col">
+                <TableSortLabel
+                  active={sortBy === 'verified'}
+                  direction={sortBy === 'verified' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('verified')}
+                >
+                  {t('admin.users.verified')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell component="th" scope="col">
+                <TableSortLabel
+                  active={sortBy === 'lastLogin'}
+                  direction={sortBy === 'lastLogin' ? sortDirection : 'desc'}
+                  onClick={() => handleSort('lastLogin')}
+                >
+                  {t('admin.users.lastLogin')}
+                </TableSortLabel>
+              </TableCell>
+              <TableCell component="th" scope="col">
+                <TableSortLabel
+                  active={sortBy === 'role'}
+                  direction={sortBy === 'role' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('role')}
+                >
+                  {t('admin.users.role')}
+                </TableSortLabel>
+              </TableCell>
               <TableCell component="th" scope="col" align="right">{t('admin.users.actions')}</TableCell>
             </TableRow>
           </TableHead>
