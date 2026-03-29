@@ -14,7 +14,7 @@ services:
   # MongoDB
   # ---------------------------------------------------------------------------
   mongo:
-    image: mongo:7
+    image: mongo:7.0.31
     restart: unless-stopped
     # Not exposed to host; only reachable within the Docker network.
     expose:
@@ -38,7 +38,7 @@ services:
   # timezone. Set TZ in your deployment environment if the host timezone is not
   # already reflected in the container runtime.
   backup-manager:
-    image: mongo:7
+    image: mongo:7.0.31
     restart: unless-stopped
     depends_on:
       mongo:
@@ -59,7 +59,7 @@ services:
   # Redis — required for multi-instance WebSocket pub/sub
   # ---------------------------------------------------------------------------
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.8-alpine
     restart: unless-stopped
     expose:
       - "6379"
@@ -120,7 +120,7 @@ services:
   # Nginx — TLS termination & reverse proxy (the only service exposed to host)
   # ---------------------------------------------------------------------------
   nginx:
-    image: nginx:alpine
+    image: nginx:1.29.7-alpine
     restart: unless-stopped
     ports:
       - "80:80"
@@ -147,7 +147,7 @@ services:
   # On first run, use setup.sh --init-certs to obtain the initial certificate.
   # Renewal behavior is controlled by CERTBOT_AUTORENEW in .env.
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v5.4.0
     restart: unless-stopped
     environment:
       - CERTBOT_AUTORENEW=${CERTBOT_AUTORENEW:-false}
