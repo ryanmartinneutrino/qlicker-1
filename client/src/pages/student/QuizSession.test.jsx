@@ -66,13 +66,14 @@ describe('Student QuizSession', () => {
   });
 
   it('renders math from option plain-text fallbacks for quiz MC options', async () => {
-    const { container } = render(
+    const view = (
       <MemoryRouter initialEntries={['/student/course/course-1/session/session-1/quiz']}>
         <Routes>
           <Route path="/student/course/:courseId/session/:sessionId/quiz" element={<QuizSession />} />
         </Routes>
       </MemoryRouter>
     );
+    const { container, rerender } = render(view);
 
     expect(await screen.findByText('Math quiz')).toBeInTheDocument();
 
@@ -80,6 +81,11 @@ describe('Student QuizSession', () => {
       expect(container.querySelector('.katex')).not.toBeNull();
     });
 
+    rerender(view);
+
+    await waitFor(() => {
+      expect(container.querySelector('.katex')).not.toBeNull();
+    });
     expect(screen.queryByText('\\(x^2\\)')).not.toBeInTheDocument();
   });
 
