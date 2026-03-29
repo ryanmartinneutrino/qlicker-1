@@ -450,41 +450,44 @@ while true; do
   read -r -p "Choose TLS option [1-3]: " TLS_OPTION
   case "${TLS_OPTION:-}" in
     1)
+      USE_EXISTING_LOCAL_CERTS=false
       if local_certs_exist; then
         read -r -p "Found certificates in ./certs/. Use these files? [Y/n]: " USE_LOCAL_CERTS
         case "${USE_LOCAL_CERTS:-Y}" in
           [Yy]*)
             TLS_CERT_PATH="$LOCAL_TLS_CERT"
             TLS_KEY_PATH="$LOCAL_TLS_KEY"
+            USE_EXISTING_LOCAL_CERTS=true
             info "Using existing certificates from ./certs/"
-            break
             ;;
         esac
       fi
 
-      read -r -p "TLS certificate path [$DEFAULT_TLS_CERT]: " TLS_CERT_INPUT
-      TLS_CERT_PATH="${TLS_CERT_INPUT:-$DEFAULT_TLS_CERT}"
+      if [ "$USE_EXISTING_LOCAL_CERTS" != true ]; then
+        read -r -p "TLS certificate path [$DEFAULT_TLS_CERT]: " TLS_CERT_INPUT
+        TLS_CERT_PATH="${TLS_CERT_INPUT:-$DEFAULT_TLS_CERT}"
 
-      read -r -p "TLS private key path [$DEFAULT_TLS_KEY]: " TLS_KEY_INPUT
-      TLS_KEY_PATH="${TLS_KEY_INPUT:-$DEFAULT_TLS_KEY}"
+        read -r -p "TLS private key path [$DEFAULT_TLS_KEY]: " TLS_KEY_INPUT
+        TLS_KEY_PATH="${TLS_KEY_INPUT:-$DEFAULT_TLS_KEY}"
 
-      CERT_HOST_PATH="$(resolve_host_path "$TLS_CERT_PATH")"
-      KEY_HOST_PATH="$(resolve_host_path "$TLS_KEY_PATH")"
-      MISSING_TLS_FILES=false
+        CERT_HOST_PATH="$(resolve_host_path "$TLS_CERT_PATH")"
+        KEY_HOST_PATH="$(resolve_host_path "$TLS_KEY_PATH")"
+        MISSING_TLS_FILES=false
 
-      if [ ! -f "$CERT_HOST_PATH" ]; then
-        warn "Certificate file not found: $TLS_CERT_PATH"
-        MISSING_TLS_FILES=true
-      fi
-      if [ ! -f "$KEY_HOST_PATH" ]; then
-        warn "Private key file not found: $TLS_KEY_PATH"
-        MISSING_TLS_FILES=true
-      fi
+        if [ ! -f "$CERT_HOST_PATH" ]; then
+          warn "Certificate file not found: $TLS_CERT_PATH"
+          MISSING_TLS_FILES=true
+        fi
+        if [ ! -f "$KEY_HOST_PATH" ]; then
+          warn "Private key file not found: $TLS_KEY_PATH"
+          MISSING_TLS_FILES=true
+        fi
 
-      if [ "$MISSING_TLS_FILES" = true ]; then
-        read -r -p "Continue with missing certificate files? [y/N]: " CONTINUE_WITH_MISSING_CERTS
-        if [[ ! "${CONTINUE_WITH_MISSING_CERTS:-N}" =~ ^[Yy]$ ]]; then
-          continue
+        if [ "$MISSING_TLS_FILES" = true ]; then
+          read -r -p "Continue with missing certificate files? [y/N]: " CONTINUE_WITH_MISSING_CERTS
+          if [[ ! "${CONTINUE_WITH_MISSING_CERTS:-N}" =~ ^[Yy]$ ]]; then
+            continue
+          fi
         fi
       fi
 
