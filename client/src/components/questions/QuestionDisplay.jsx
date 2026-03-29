@@ -4,7 +4,7 @@ import {
 import {
   CheckCircle as CorrectIcon,
 } from '@mui/icons-material';
-import { useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   getQuestionTypeLabel,
@@ -47,6 +47,7 @@ function RichHtml({
     () => prepareRichTextInput(value || '', fallback || '', { allowVideoEmbeds }),
     [allowVideoEmbeds, value, fallback]
   );
+  const innerHtml = useMemo(() => ({ __html: contentHtml }), [contentHtml]);
 
   useEffect(() => {
     if (!containerRef.current || !contentHtml) return;
@@ -60,7 +61,7 @@ function RichHtml({
     <Box
       ref={containerRef}
       sx={sx}
-      dangerouslySetInnerHTML={{ __html: contentHtml }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }
@@ -72,7 +73,7 @@ function isCorrectOption(option) {
   return Boolean(value);
 }
 
-export default function QuestionDisplay({ question }) {
+function QuestionDisplay({ question }) {
   const { t } = useTranslation();
   if (!question) return null;
   const opts = question.options || [];
@@ -156,3 +157,5 @@ export default function QuestionDisplay({ question }) {
     </Paper>
   );
 }
+
+export default memo(QuestionDisplay);
