@@ -169,7 +169,15 @@ describe('SessionReview', () => {
   });
 
   it('shows the consolidated response data table, sorts rows, and exports the visible CSV', async () => {
+    const originalBlob = globalThis.Blob;
     let downloadedBlob = null;
+    class BlobSpy {
+      constructor(parts, options = {}) {
+        this.parts = parts;
+        this.type = options.type;
+      }
+    }
+    vi.stubGlobal('Blob', BlobSpy);
     const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
       downloadedBlob = blob;
       return 'blob:session-review-test';
@@ -187,7 +195,7 @@ describe('SessionReview', () => {
     expect(screen.getByText('A (1)')).toBeInTheDocument();
     expect(screen.getByText('Grade')).toBeInTheDocument();
     expect(screen.getByText('87.5%')).toBeInTheDocument();
-    expect(screen.getByText('Joined Session')).toBeInTheDocument();
+    expect(screen.getAllByText('Joined Session').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /export results to csv/i })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Joined Session' }));
@@ -203,20 +211,23 @@ describe('SessionReview', () => {
     fireEvent.change(searchInput, { target: { value: 'ada@example.edu' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
-      expect(screen.queryByText('Grace Hopper')).not.toBeInTheDocument();
+      const filteredRows = within(resultsTable).getAllByRole('row');
+      expect(within(filteredRows[1]).getByText('Ada Lovelace')).toBeInTheDocument();
+      expect(within(resultsTable).queryByText('Grace Hopper')).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: /export results to csv/i }));
 
     expect(clickSpy).toHaveBeenCalled();
     expect(downloadedBlob).toBeTruthy();
-    const csvText = await downloadedBlob.text();
-    expect(csvText).toContain('Last Name,First Name,Email,Grade,In Session,Participation,Percent Correct,Joined Session,Q1 Response,Q1 Points');
+    const csvText = downloadedBlob.parts.join('');
+    expect(csvText).toContain('Last Name,First Name,Email,Grade,In Session,Participation,Percent Correct,Joined Session');
+    expect(csvText).toContain('Q1 Attempt 1 Response,Q1 Attempt 1 Points,Q1 Attempt 2 Response,Q1 Attempt 2 Points');
     expect(csvText).toContain('Lovelace,Ada,ada@example.edu,87.5%,Yes,100%,100%');
     expect(csvText).toContain(',B,4');
     expect(csvText).not.toContain('grace@example.edu');
 
+    vi.stubGlobal('Blob', originalBlob);
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
     clickSpy.mockRestore();
