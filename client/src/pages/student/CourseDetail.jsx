@@ -7,16 +7,15 @@ import {
 } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient, { getAccessToken } from '../../api/client';
-import { formatDisplayDate } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import {
-  getSessionSortTime,
   getStudentSessionAction,
   isQuizSession,
   isSubmittedLiveQuiz,
   shouldShowStudentSessionQuestionCount,
   sortStudentSessions,
 } from '../../utils/studentSessions';
+import { getSessionTimingText } from '../../utils/sessionDisplay';
 import {
   Delete as DeleteIcon,
   Edit as EditIcon,
@@ -97,8 +96,9 @@ function buildSessionSubtitle(session, t) {
   if (shouldShowStudentSessionQuestionCount(session)) {
     details.push(t('student.course.questionCount', { count: (session.questions || []).length }));
   }
-  if (getSessionSortTime(session) > 0) {
-    details.push(formatDisplayDate(getSessionSortTime(session)));
+  const timingText = getSessionTimingText(session, t);
+  if (timingText) {
+    details.push(timingText);
   }
   return details.join(' · ');
 }
@@ -480,6 +480,8 @@ export default function StudentCourseDetail() {
   const practiceSessions = sortedSessions.filter((session) => !!session.studentCreated && !!session.practiceQuiz);
   const interactiveSessions = sortedSessions.filter((session) => !isQuizSession(session) && !session.studentCreated);
   const quizSessions = sortedSessions.filter((session) => isQuizSession(session) && !session.studentCreated);
+  const liveSessions = sortedSessions.filter((session) => session.status === 'running' && !session.studentCreated);
+  const visibleLiveSessions = liveSessions.filter((session) => !isSubmittedLiveQuiz(session));
   const sessionCountsArePartial = sessionsBackgroundLoading && sessions.length < sessionTotalCount;
   const interactiveSessionCount = Number(sessionTypeCounts.interactive) || interactiveSessions.length;
   const quizSessionCount = Number(sessionTypeCounts.quizzes) || quizSessions.length;
@@ -802,6 +804,43 @@ export default function StudentCourseDetail() {
           )}
         </Box>
       </Box>
+
+      {visibleLiveSessions.length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+            {t('dashboard.liveSessions')}
+          </Typography>
+          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            {visibleLiveSessions.map((session) => {
+              const action = getStudentSessionAction(session, id, tab);
+              return (
+                <SessionListCard
+                  key={`live-course-${session._id}`}
+                  highlighted
+                  onClick={action.clickable && action.path ? () => navigate(action.path) : undefined}
+                  disabled={!action.clickable || !action.path}
+                  title={<Typography variant="body1" sx={{ fontWeight: 700 }}>{session.name}</Typography>}
+                  subtitle={buildSessionSubtitle(session, t)}
+                  badges={(
+                    <>
+                      <SessionStatusChip status={session.status} />
+                      {action.label ? (
+                        <Chip
+                          label={t(action.label)}
+                          size="small"
+                          color={action.chipColor}
+                          variant={action.chipVariant}
+                          sx={COMPACT_CHIP_SX}
+                        />
+                      ) : null}
+                    </>
+                  )}
+                />
+              );
+            })}
+          </Box>
+        </Box>
+      )}
 
       <ResponsiveTabsNavigation
         value={tab}

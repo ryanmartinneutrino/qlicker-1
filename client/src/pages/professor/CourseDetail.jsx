@@ -17,13 +17,13 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import apiClient, { getAccessToken } from '../../api/client';
-import { formatDisplayDate } from '../../utils/date';
 import { buildCourseSelectionLabel, buildCourseTitle, sortCoursesByRecent } from '../../utils/courseTitle';
 import {
   getProfessorSessionPrimaryPath,
   sessionCanShowListReviewAction,
   sessionCanShowLiveReviewAction,
 } from '../../utils/professorSessions';
+import { getSessionTimingText } from '../../utils/sessionDisplay';
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionStatusChip from '../../components/common/SessionStatusChip';
@@ -126,8 +126,9 @@ function buildProfessorSessionSubtitle(session, t) {
   if (joinedCount > 0) {
     details.push(t('professor.course.joinedCount', { count: joinedCount }));
   }
-  if (getSessionSortTime(session) > 0) {
-    details.push(formatDisplayDate(getSessionSortTime(session)));
+  const timingText = getSessionTimingText(session, t);
+  if (timingText) {
+    details.push(timingText);
   }
   return details.join(' · ');
 }
@@ -1001,6 +1002,7 @@ export default function CourseDetail() {
   const sortedSessions = sortSessions((sessions || []).filter((session) => !session.studentCreated));
   const interactiveSessions = sortedSessions.filter((s) => !s.quiz);
   const quizSessions = sortedSessions.filter((s) => !!s.quiz);
+  const liveSessions = sortedSessions.filter((session) => session.status === 'running');
   const interactiveSessionCount = Number(sessionTypeCounts.interactive) || interactiveSessions.length;
   const quizSessionCount = Number(sessionTypeCounts.quizzes) || quizSessions.length;
   const hasMissingCourseProperties = !hasAllCourseEditFields(editFields);
@@ -1406,6 +1408,29 @@ export default function CourseDetail() {
         </Box>
         <Chip label={course.inactive ? t('professor.course.courseInactive') : t('professor.course.courseActive')} color={course.inactive ? 'default' : 'success'} sx={COMPACT_CHIP_SX} />
       </Box>
+
+      {liveSessions.length > 0 && (
+        <Box sx={{ mb: 2.5 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
+            {t('dashboard.liveSessions')}
+          </Typography>
+          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+            {liveSessions.map((session) => (
+              <SessionListCard
+                key={`live-course-${session._id}`}
+                highlighted
+                onClick={() => navigate(
+                  getProfessorSessionPrimaryPath(session, id, tab),
+                  { state: { returnTab: tab } }
+                )}
+                title={<Typography variant="body1" sx={{ fontWeight: 700 }}>{session.name}</Typography>}
+                subtitle={buildProfessorSessionSubtitle(session, t)}
+                badges={<SessionStatusChip status={session.status} />}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
 
       {/* Tabs */}
       <ResponsiveTabsNavigation

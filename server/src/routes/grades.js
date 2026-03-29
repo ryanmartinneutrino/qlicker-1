@@ -11,6 +11,7 @@ import {
   getSessionUngradedSummary,
   hasNonEmptyFeedback,
   isQuestionAutoGradeable,
+  normalizeGradesManualGradingState,
   recalculateSessionGrades,
   recomputeGradeAggregates,
   setSessionGradesVisibility,
@@ -221,7 +222,12 @@ export default async function gradeRoutes(app) {
 
   app.get(
     '/sessions/:id/grades',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      config: {
+        rateLimit: { max: 120, timeWindow: '1 minute' },
+      },
+    },
     async (request, reply) => {
       const session = await Session.findById(request.params.id).lean();
       if (!session) {
@@ -263,7 +269,7 @@ export default async function gradeRoutes(app) {
         gradeQuery.visibleToStudents = true;
       }
 
-      const grades = await Grade.find(gradeQuery).lean();
+      const grades = await normalizeGradesManualGradingState(await Grade.find(gradeQuery).lean());
 
       return {
         sessionId: String(session._id),

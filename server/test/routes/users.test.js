@@ -844,7 +844,25 @@ describe('Admin user management', () => {
     expect(updated.refreshTokenVersion).toBe(1);
     expect(updated.services?.resume?.loginTokens).toEqual([]);
     expect(updated.services?.resetPassword).toBeUndefined();
+    expect(updated.services?.password?.hash).toMatch(/^\$argon2id\$/);
     await expect(updated.verifyPassword('newpassword456')).resolves.toBe(true);
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { SSO_enabled: true } },
+      { upsert: true }
+    );
+    await User.findByIdAndUpdate(target._id, { $set: { allowEmailLogin: true } });
+
+    const loginRes = await authenticatedRequest(app, 'POST', '/api/v1/auth/login', {
+      payload: {
+        email: 'reset-target@example.com',
+        password: 'newpassword456',
+      },
+    });
+    expect(loginRes.statusCode).toBe(200);
+    const postLoginUser = await User.findById(target._id);
+    expect(postLoginUser.services?.resetPassword).toBeUndefined();
   });
 
   it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {

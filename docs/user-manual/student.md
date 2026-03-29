@@ -63,6 +63,8 @@ If the instructor turns off **Allow students access to practice questions**, the
 
 If a course has many sessions, the page shows the first batch of session cards quickly and continues loading the remaining session lists in the background.
 Search, status, page-size, and pagination controls now live inside a collapsible **Search sessions** area so the session cards remain easier to scan.
+When a course currently has a live activity, matching live tiles also appear above the tabs so you can jump into that course's active work immediately. Submitted live quizzes are excluded from that quick-access area.
+Quiz cards now show the relevant date and time directly on the course page: upcoming quizzes show when they start, live quizzes show when they end, and ended quizzes show when they ended.
 
 ### How to choose the right tab
 
@@ -81,7 +83,7 @@ Live sessions are used when an instructor is controlling the pace of the class.
 ### Typical workflow
 
 1. Open the course page.
-2. Select the live session card when it becomes available.
+2. Select the live tile or live session card when it becomes available.
 3. Enter the join code or passcode if required.
 4. Wait for the current question or slide to appear.
 5. Submit your answer once the instructor allows responses.

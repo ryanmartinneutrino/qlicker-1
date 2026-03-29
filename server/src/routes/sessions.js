@@ -2941,6 +2941,7 @@ export default async function sessionRoutes(app) {
 
       const updates = {
         status: 'done',
+        date: new Date(),
         joinCodeActive: false,
         currentJoinCode: '',
         joinCodeExpiresAt: null,

@@ -338,6 +338,85 @@ describe('Grading routes', () => {
     expect(sessionGrades.json().grades[0].marks[0].needsGrading).toBe(false);
   });
 
+  it('ignores stale blank-response grading flags in session review and course summaries', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'stale-blank-sa',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Stale blank SA session' });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: true,
+        joined: [students[0]._id],
+        questions: [question._id],
+      },
+    });
+
+    const response = await Response.create({
+      attempt: 1,
+      questionId: question._id,
+      studentUserId: students[0]._id,
+      answer: '   ',
+      createdAt: new Date('2026-01-02T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-02T00:00:00.000Z'),
+    });
+
+    await Grade.create({
+      courseId: course._id,
+      sessionId: session._id,
+      userId: students[0]._id,
+      name: session.name,
+      points: 0,
+      outOf: 1,
+      participation: 100,
+      automatic: false,
+      joined: true,
+      needsGrading: true,
+      visibleToStudents: true,
+      numAnswered: 1,
+      numQuestions: 1,
+      numAnsweredTotal: 1,
+      numQuestionsTotal: 1,
+      marks: [
+        {
+          questionId: question._id,
+          points: 0,
+          outOf: 1,
+          automatic: false,
+          needsGrading: true,
+          attempt: 1,
+          responseId: String(response._id),
+          feedback: '',
+        },
+      ],
+    });
+
+    const sessionGrades = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/grades`, {
+      token: profToken,
+    });
+    expect(sessionGrades.statusCode).toBe(200);
+    expect(sessionGrades.json().grades[0].needsGrading).toBe(false);
+    expect(sessionGrades.json().grades[0].marks[0].needsGrading).toBe(false);
+
+    const courseGrades = await authenticatedRequest(app, 'GET', `/api/v1/courses/${course._id}/grades?sessionIds=${session._id}`, {
+      token: profToken,
+    });
+    expect(courseGrades.statusCode).toBe(200);
+    expect(courseGrades.json().sessions[0].studentsNeedingGrading).toBe(0);
+    expect(courseGrades.json().sessions[0].marksNeedingGrading).toBe(0);
+  });
+
   it('tracks feedbackUpdatedAt on marks when instructor feedback changes', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 

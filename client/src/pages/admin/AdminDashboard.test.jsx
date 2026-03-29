@@ -179,6 +179,15 @@ describe('AdminDashboard', () => {
         return Promise.resolve({ data: nextUser });
       }
 
+      if (url === '/users/student-1/password') {
+        const nextUser = {
+          ...userDetailsState.get('student-1'),
+        };
+        userDetailsState.set('student-1', nextUser);
+        usersState = usersState.map((user) => (user._id === nextUser._id ? nextUser : user));
+        return Promise.resolve({ data: nextUser });
+      }
+
       throw new Error(`Unexpected PATCH ${url}`);
     });
 
@@ -386,5 +395,38 @@ describe('AdminDashboard', () => {
       });
     });
     expect(within(getUserRow()).queryByText(/^Disabled$/i)).not.toBeInTheDocument();
+  });
+
+  it('uses new-password autocomplete for admin reset password fields', async () => {
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Users$/i }));
+    fireEvent.change(await screen.findByPlaceholderText(/Search by name or email/i), {
+      target: { value: 'student@example.com' },
+    });
+
+    const userRow = await waitFor(() => {
+      const row = screen.getByText('student@example.com').closest('tr');
+      expect(row).not.toBeNull();
+      return row;
+    });
+
+    fireEvent.click(within(userRow).getByRole('button', { name: /Open user properties/i }));
+
+    const [newPasswordField] = await screen.findAllByLabelText(/New Password/i);
+    const confirmPasswordField = screen.getByLabelText(/Confirm New Password/i);
+
+    expect(newPasswordField).toHaveAttribute('autocomplete', 'new-password');
+    expect(confirmPasswordField).toHaveAttribute('autocomplete', 'new-password');
+
+    fireEvent.change(newPasswordField, { target: { value: 'newpassword456' } });
+    fireEvent.change(confirmPasswordField, { target: { value: 'newpassword456' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Reset password$/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.patch).toHaveBeenCalledWith('/users/student-1/password', {
+        newPassword: 'newpassword456',
+      });
+    });
   });
 });
