@@ -140,6 +140,14 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Live interactive-session review stays available while the session is running, and the page now warns that grading remains locked until the session reaches **Ended**.
 - Course grade detail dialogs now label rows as `Q1(MC)`, `Q2(SA)`, and so on, with red/green grading cues that ignore stale zero-point `needsGrading` flags.
 
+### Recent 2026-03-29 Fixes
+
+- Admin-side password resets now save a working Argon2 local password immediately, clear pending reset tokens, and no longer leave affected users stuck with the **No local password is set** prompt after email login is allowed.
+- Student and professor course pages now show course-scoped live-session tiles above the tabs, mirroring the dashboard quick-access pattern without repeating the course name.
+- Course quiz cards now show date-and-time context directly in the list: **Quiz starts at**, **Quiz ends at**, or **Quiz ended at**, depending on status.
+- Blank short-answer responses no longer keep professor review pages or course session lists flagged as **Needs grading**; they still count toward participation with an accepted score of `0`.
+- Ending a live session from the live controls now stamps the session `date` with the actual end time instead of leaving the original draft timestamp in place.
+
 ---
 
 ## Phase 8 — Remaining Work

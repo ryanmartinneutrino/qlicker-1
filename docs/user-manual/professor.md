@@ -63,6 +63,7 @@ The course workspace combines:
 - the course question library
 
 The session and quiz lists now keep search, status filters, page size, and pagination inside a collapsible **Search sessions** area so the list itself can stay compact.
+If the course currently has running activities, matching live tiles appear above the tabs so you can reopen the active session or quiz review flow without returning to the dashboard.
 
 ### Recommended setup order
 
@@ -160,7 +161,9 @@ From the session editor you can:
 - The course page shows the first batch of sessions quickly, then loads the remaining session cards in the background.
 - Open **Search sessions** when you need search, status filtering, or pagination controls; collapse it again when you want more room for the cards.
 - Session cards can show a **Needs grading** chip when manual work remains.
+- Empty short-answer submissions still count for participation, but they no longer keep the session flagged as needing grading.
 - Professor session cards also show the number of joined students when the session has participation data.
+- Quiz cards now show the most relevant timestamp directly in the list: **starts at** for upcoming quizzes, **ends at** for live quizzes, and **ended at** for finished quizzes.
 - Clicking the main body of a live interactive-session card opens the live controls directly.
 - Clicking the main body of a live quiz session still opens the session editor.
 - Clicking the main body of a session card opens the session editor while the session is still draft or upcoming.
@@ -231,6 +234,7 @@ Session review also includes a few recent usability improvements:
 Qlicker supports both automatic and manual grading.
 
 For live interactive sessions, you can open the review page while the session is still running to watch results accumulate. The grading interface stays locked until the session reaches **Ended**.
+Using **End Session** from the live controls now stamps the session with the actual time it was ended, which keeps later review and reporting timestamps aligned with what happened in class.
 
 Use the grading workflows to:
 

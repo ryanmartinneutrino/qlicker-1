@@ -411,10 +411,10 @@ describe('AdminDashboard', () => {
       return row;
     });
 
-    fireEvent.click(within(userRow).getByRole('button', { name: /^Edit$/i }));
+    fireEvent.click(within(userRow).getByRole('button', { name: /Open user properties/i }));
 
-    const newPasswordField = await screen.findByLabelText(/New Password/i);
-    const confirmPasswordField = await screen.findByLabelText(/Confirm New Password/i);
+    const [newPasswordField] = await screen.findAllByLabelText(/New Password/i);
+    const confirmPasswordField = screen.getByLabelText(/Confirm New Password/i);
 
     expect(newPasswordField).toHaveAttribute('autocomplete', 'new-password');
     expect(confirmPasswordField).toHaveAttribute('autocomplete', 'new-password');

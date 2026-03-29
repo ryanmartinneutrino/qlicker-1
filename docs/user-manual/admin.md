@@ -115,6 +115,7 @@ If a student-only account is listed in a course's instructor roster, the UI labe
 Prefer disabling over deleting when support staff may need to restore the account later. A disabled user cannot log in, refresh tokens, or continue using an existing authenticated session, but the underlying records stay available for future restoration.
 
 The Last Login column now shows date and time, not just the day, so support staff can compare account activity against reports from a user more accurately.
+When you reset a user's local password from the user modal, Qlicker now saves a current Argon2 local password immediately and clears any pending reset token for that account.
 
 ### Courses tab
 
