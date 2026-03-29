@@ -98,6 +98,11 @@
   "dashboard": {
     "liveSessions": "Séances en direct"
   },
+  "sessionTiming": {
+    "quizStartsAt": "Le quiz commence à : {{dateTime}}",
+    "quizEndsAt": "Le quiz se termine à : {{dateTime}}",
+    "quizEndedAt": "Le quiz s'est terminé à : {{dateTime}}"
+  },
   "home": {
     "tagline": "Open source et conçu pour et pour les étudiants",
     "subtitle": "Répondez. Apprenez.",

@@ -655,6 +655,69 @@ function summarizeMarksNeedingGrading(grades = []) {
   return summary;
 }
 
+async function loadResponseContentMapForGrades(grades = []) {
+  const responseIds = new Set();
+  grades.forEach((grade) => {
+    (grade?.marks || []).forEach((mark) => {
+      if (!mark?.needsGrading) return;
+      const responseId = normalizeAnswerValue(mark?.responseId);
+      if (responseId) responseIds.add(responseId);
+    });
+  });
+
+  if (responseIds.size === 0) return new Map();
+
+  const responses = await Response.find({ _id: { $in: [...responseIds] } })
+    .select('_id answer')
+    .lean();
+
+  return new Map(responses.map((response) => [String(response._id), response]));
+}
+
+function shouldCountMarkAsNeedingGrading(mark, responseById = new Map()) {
+  if (!mark?.needsGrading) return false;
+  if (toFiniteNumber(mark?.outOf, 0) <= 0) return false;
+
+  const responseId = normalizeAnswerValue(mark?.responseId);
+  if (!responseId) return true;
+
+  const response = responseById.get(responseId);
+  if (!response) return true;
+
+  return responseHasContent(response);
+}
+
+export async function normalizeGradesManualGradingState(grades = []) {
+  if (!Array.isArray(grades) || grades.length === 0) return [];
+
+  const responseById = await loadResponseContentMapForGrades(grades);
+  return grades.map((grade) => {
+    let changed = false;
+    const marks = (grade?.marks || []).map((mark) => {
+      if (shouldCountMarkAsNeedingGrading(mark, responseById)) {
+        return mark;
+      }
+      if (!mark?.needsGrading) {
+        return mark;
+      }
+      changed = true;
+      return {
+        ...mark,
+        needsGrading: false,
+      };
+    });
+
+    if (!changed) return grade;
+
+    const nextGrade = {
+      ...grade,
+      marks,
+    };
+    recomputeGradeAggregates(nextGrade);
+    return nextGrade;
+  });
+}
+
 function shouldExcludeQuestionForLowResponses({ question, joinedCount, questionResponseCount }) {
   if (!question) return false;
   if (joinedCount <= 0) return false;
@@ -1099,6 +1162,7 @@ export async function getSessionUngradedSummary(sessionIds = []) {
   const grades = await Grade.find({ sessionId: { $in: sessionIds.map((id) => String(id)) } })
     .select('sessionId marks needsGrading joined')
     .lean();
+  const normalizedGrades = await normalizeGradesManualGradingState(grades);
 
   const summaryBySessionId = {};
   sessionIds.forEach((sessionId) => {
@@ -1108,7 +1172,7 @@ export async function getSessionUngradedSummary(sessionIds = []) {
     };
   });
 
-  grades.forEach((grade) => {
+  normalizedGrades.forEach((grade) => {
     const sessionId = String(grade.sessionId || '');
     if (!summaryBySessionId[sessionId]) {
       summaryBySessionId[sessionId] = {

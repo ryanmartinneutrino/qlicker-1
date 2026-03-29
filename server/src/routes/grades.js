@@ -11,6 +11,7 @@ import {
   getSessionUngradedSummary,
   hasNonEmptyFeedback,
   isQuestionAutoGradeable,
+  normalizeGradesManualGradingState,
   recalculateSessionGrades,
   recomputeGradeAggregates,
   setSessionGradesVisibility,
@@ -263,7 +264,7 @@ export default async function gradeRoutes(app) {
         gradeQuery.visibleToStudents = true;
       }
 
-      const grades = await Grade.find(gradeQuery).lean();
+      const grades = await normalizeGradesManualGradingState(await Grade.find(gradeQuery).lean());
 
       return {
         sessionId: String(session._id),

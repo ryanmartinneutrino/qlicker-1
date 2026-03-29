@@ -98,6 +98,11 @@
   "dashboard": {
     "liveSessions": "Live Sessions"
   },
+  "sessionTiming": {
+    "quizStartsAt": "Quiz starts at: {{dateTime}}",
+    "quizEndsAt": "Quiz ends at: {{dateTime}}",
+    "quizEndedAt": "Quiz ended at: {{dateTime}}"
+  },
   "home": {
     "tagline": "Open source, designed by and for students",
     "subtitle": "Answer. Learn.",

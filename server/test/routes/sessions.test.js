@@ -1957,6 +1957,7 @@ describe('POST /api/v1/sessions/:id/end', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.session.status).toBe('done');
+    expect(new Date(body.session.date).getTime()).toBeGreaterThanOrEqual(new Date(session.createdAt).getTime());
   });
 
   it('can end a session and set reviewable in one request', async (ctx) => {
