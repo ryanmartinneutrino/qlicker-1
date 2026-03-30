@@ -187,7 +187,7 @@ export default async function courseRoutes(app) {
       } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
       const loadAll = all === true;
-      const limit = loadAll ? null : Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
+      const limit = Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
 
       const roles = request.user.roles || [];
       const userId = request.user.userId;
@@ -237,12 +237,15 @@ export default async function courseRoutes(app) {
         courseQuery.lean(),
         Course.countDocuments(filter),
       ]);
+      const pages = loadAll
+        ? (total > 0 ? 1 : 0)
+        : Math.max(Math.ceil(total / limit), 1);
 
       return {
         courses,
         total,
         page: loadAll ? 1 : page,
-        pages: loadAll ? 1 : Math.max(Math.ceil(total / limit), 1),
+        pages,
       };
     }
   );

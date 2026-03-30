@@ -2157,7 +2157,6 @@ function CoursesTab() {
     apiClient.get('/courses', { params: { all: true, view: 'all' } }).then(({ data }) => {
       if (mounted) {
         setCourses(data.courses || []);
-        setShowAllCourses(false);
       }
     }).catch((error) => {
       if (mounted) {
