@@ -604,9 +604,18 @@ describe('AdminDashboard', () => {
 
     expect(newPasswordField).toHaveAttribute('autocomplete', 'new-password');
     expect(confirmPasswordField).toHaveAttribute('autocomplete', 'new-password');
+    expect(newPasswordField).toHaveAttribute('data-lpignore', 'true');
+    expect(confirmPasswordField).toHaveAttribute('data-lpignore', 'true');
+    expect(newPasswordField).toHaveAttribute('data-1p-ignore', 'true');
+    expect(confirmPasswordField).toHaveAttribute('data-1p-ignore', 'true');
+    expect(newPasswordField).toHaveAttribute('data-bwignore', 'true');
+    expect(confirmPasswordField).toHaveAttribute('data-bwignore', 'true');
 
     fireEvent.change(newPasswordField, { target: { value: 'newpassword456' } });
+    fireEvent.change(confirmPasswordField, { target: { value: 'n' } });
+    expect(confirmPasswordField).toHaveValue('n');
     fireEvent.change(confirmPasswordField, { target: { value: 'newpassword456' } });
+    expect(confirmPasswordField).toHaveValue('newpassword456');
     fireEvent.click(screen.getByRole('button', { name: /^Reset password$/i }));
 
     await waitFor(() => {

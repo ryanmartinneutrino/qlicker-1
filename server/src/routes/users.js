@@ -137,8 +137,8 @@ async function setLocalPassword(user, newPassword) {
   if (!user.services.password) user.services.password = {};
   if (!user.services.resume) user.services.resume = {};
   user.services.password.hash = hashedPassword;
-  user.services.password.bcrypt = undefined;
-  user.services.resetPassword = undefined;
+  delete user.services.password.bcrypt;
+  delete user.services.resetPassword;
   user.services.resume.loginTokens = [];
   user.refreshTokenVersion = (Number(user.refreshTokenVersion) || 0) + 1;
 }

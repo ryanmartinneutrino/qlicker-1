@@ -855,7 +855,7 @@ describe('Admin user management', () => {
     const target = await User.create({
       emails: [{ address: 'reset-target@example.com', verified: true }],
       services: {
-        password: { hash: await User.hashPassword('password123') },
+        password: { bcrypt: '$2a$10$RpS898ow7xM8/7VsgV.CRO07nMYdzt5t62DZXEejz75DbUIH.clgm' },
         resume: {
           loginTokens: [{ sessionId: 'device-1', createdAt: new Date(), expiresAt: new Date(Date.now() + 60_000) }],
         },
@@ -885,6 +885,8 @@ describe('Admin user management', () => {
     expect(updated.services?.resume?.loginTokens).toEqual([]);
     expect(updated.services?.resetPassword).toBeUndefined();
     expect(updated.services?.password?.hash).toMatch(/^\$argon2id\$/);
+    expect(updated.services?.password?.bcrypt).toBeUndefined();
+    expect(updated.passwordResetRequired()).toBe(false);
     await expect(updated.verifyPassword('newpassword456')).resolves.toBe(true);
 
     await Settings.findOneAndUpdate(
@@ -903,6 +905,7 @@ describe('Admin user management', () => {
     expect(loginRes.statusCode).toBe(200);
     const postLoginUser = await User.findById(target._id);
     expect(postLoginUser.services?.resetPassword).toBeUndefined();
+    expect(postLoginUser.passwordResetRequired()).toBe(false);
   });
 
   it('keeps canPromote disabled for student-only accounts and clears it when a user is demoted to student', async (ctx) => {

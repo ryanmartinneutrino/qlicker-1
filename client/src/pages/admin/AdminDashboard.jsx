@@ -898,6 +898,16 @@ function UsersTab({ currentUserId }) {
   const [propertiesSaving, setPropertiesSaving] = useState(false);
   const [resetPasswordValues, setResetPasswordValues] = useState({ password: '', confirmPassword: '' });
   const [resetPasswordSaving, setResetPasswordSaving] = useState(false);
+  const adminResetPasswordInputProps = useMemo(() => ({
+    autoComplete: 'section-admin-user-password new-password',
+    autoCapitalize: 'none',
+    autoCorrect: 'off',
+    spellCheck: 'false',
+    'data-form-type': 'other',
+    'data-lpignore': 'true',
+    'data-1p-ignore': 'true',
+    'data-bwignore': 'true',
+  }), []);
 
   const isStudentOnlyRole = (user) => {
     const roles = user?.profile?.roles || [];
@@ -1578,19 +1588,21 @@ function UsersTab({ currentUserId }) {
                 <TextField
                   label={t('admin.users.newPassword')}
                   type="password"
-                  name="admin-reset-password"
+                  name="admin-user-local-password"
                   value={resetPasswordValues.password}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, password: event.target.value }))}
-                  slotProps={{ htmlInput: { autoComplete: 'new-password' } }}
+                  autoComplete="new-password"
+                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
                   fullWidth
                 />
                 <TextField
                   label={t('admin.users.confirmNewPassword')}
                   type="password"
-                  name="admin-reset-password-confirm"
+                  name="admin-user-local-password-confirmation"
                   value={resetPasswordValues.confirmPassword}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}
-                  slotProps={{ htmlInput: { autoComplete: 'new-password' } }}
+                  autoComplete="new-password"
+                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
                   fullWidth
                 />
                 <Typography variant="caption" color="text.secondary">
