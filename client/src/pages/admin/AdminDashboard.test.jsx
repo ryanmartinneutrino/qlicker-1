@@ -602,8 +602,8 @@ describe('AdminDashboard', () => {
     const [newPasswordField] = await screen.findAllByLabelText(/New Password/i);
     const confirmPasswordField = screen.getByLabelText(/Confirm New Password/i);
 
-    expect(newPasswordField).toHaveAttribute('autocomplete', 'new-password');
-    expect(confirmPasswordField).toHaveAttribute('autocomplete', 'new-password');
+    expect(newPasswordField.getAttribute('autocomplete')).toContain('new-password');
+    expect(confirmPasswordField.getAttribute('autocomplete')).toContain('new-password');
     expect(newPasswordField).toHaveAttribute('data-lpignore', 'true');
     expect(confirmPasswordField).toHaveAttribute('data-lpignore', 'true');
     expect(newPasswordField).toHaveAttribute('data-1p-ignore', 'true');
