@@ -24,6 +24,7 @@ import apiClient from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDisplayDateTime } from '../../utils/date';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import { fetchAllCourses } from '../../utils/fetchAllCourses';
 import {
   approximate16x9JpegSizeBytes,
   approximateSquareJpegSizeBytes,
@@ -2144,18 +2145,20 @@ function VideoTab() {
 
 // ── Courses Tab ─────────────────────────────────────────────────────────────
 function CoursesTab() {
+  const INITIAL_COURSE_COUNT = 50;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [showAllCourses, setShowAllCourses] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/courses', { params: { limit: 500, view: 'all' } }).then(({ data }) => {
+    fetchAllCourses(apiClient, { view: 'all' }).then((allCourses) => {
       if (mounted) {
-        setCourses(data.courses || []);
+        setCourses(allCourses);
       }
     }).catch((error) => {
       if (mounted) {
@@ -2169,12 +2172,19 @@ function CoursesTab() {
     };
   }, [t]);
 
-  const visibleCourses = useMemo(() => {
+  const matchingCourses = useMemo(() => {
     const searchTerm = String(search || '').trim().toLowerCase();
     const baseCourses = sortCoursesByRecent(courses);
     if (!searchTerm) return baseCourses;
     return baseCourses.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
   }, [courses, search]);
+  const hasSearch = String(search || '').trim().length > 0;
+  const shouldLimitVisibleCourses = !hasSearch && !showAllCourses;
+  const visibleCourses = useMemo(
+    () => (shouldLimitVisibleCourses ? matchingCourses.slice(0, INITIAL_COURSE_COUNT) : matchingCourses),
+    [INITIAL_COURSE_COUNT, matchingCourses, shouldLimitVisibleCourses]
+  );
+  const hasHiddenCourses = shouldLimitVisibleCourses && matchingCourses.length > INITIAL_COURSE_COUNT;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -2188,7 +2198,7 @@ function CoursesTab() {
           sx={{ minWidth: 280 }}
         />
         <Typography variant="body2" color="text.secondary">
-          {t('admin.courses.totalCount', { total: visibleCourses.length })}
+          {t('admin.courses.totalCount', { total: matchingCourses.length })}
         </Typography>
       </Box>
 
@@ -2211,6 +2221,11 @@ function CoursesTab() {
               subtitle={buildCourseOptionLabel(course)}
             />
           ))}
+          {hasHiddenCourses ? (
+            <Button variant="outlined" onClick={() => setShowAllCourses(true)} sx={{ alignSelf: 'center' }}>
+              {t('admin.courses.showAllCount', { total: matchingCourses.length })}
+            </Button>
+          ) : null}
         </Box>
       )}
     </Box>

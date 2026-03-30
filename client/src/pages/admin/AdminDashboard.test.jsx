@@ -47,6 +47,7 @@ vi.mock('../../components/common/AutoSaveStatus', () => ({
 let settingsState;
 let usersState;
 let userDetailsState;
+let coursesState;
 
 function buildUser(overrides = {}) {
   const user = {
@@ -75,6 +76,20 @@ function buildUser(overrides = {}) {
       canPromote: false,
       ...(overrides.profile || {}),
     },
+  };
+}
+
+function buildCourse(overrides = {}) {
+  return {
+    _id: 'course-1',
+    name: 'Course 1',
+    deptCode: 'CS',
+    courseNumber: '101',
+    section: '001',
+    semester: 'Fall 2026',
+    createdAt: '2026-03-30T00:00:00.000Z',
+    inactive: false,
+    ...overrides,
   };
 }
 
@@ -178,6 +193,7 @@ describe('AdminDashboard', () => {
 
     usersState = [buildUser()];
     userDetailsState = new Map(usersState.map((user) => [user._id, { ...user }]));
+    coursesState = [];
 
     apiClientMock.get.mockImplementation((url, config = {}) => {
       if (url === '/settings') {
@@ -217,6 +233,22 @@ describe('AdminDashboard', () => {
       if (url.startsWith('/users/')) {
         const userId = url.split('/').at(-1);
         return Promise.resolve({ data: userDetailsState.get(userId) });
+      }
+
+      if (url === '/courses') {
+        const params = config?.params || {};
+        const pageValue = Number(params.page) || 1;
+        const limitValue = Number(params.limit) || coursesState.length || 20;
+        const startIndex = Math.max(0, (pageValue - 1) * limitValue);
+        const total = coursesState.length;
+        return Promise.resolve({
+          data: {
+            courses: coursesState.slice(startIndex, startIndex + limitValue),
+            total,
+            page: pageValue,
+            pages: Math.max(Math.ceil(total / limitValue), 1),
+          },
+        });
       }
 
       throw new Error(`Unexpected GET ${url}`);
@@ -582,5 +614,61 @@ describe('AdminDashboard', () => {
         newPassword: 'newpassword456',
       });
     });
+  });
+
+  it('shows the first 50 courses by default and searches across the full fetched course set', async () => {
+    coursesState = Array.from({ length: 55 }, (_, index) => buildCourse({
+      _id: `course-${index + 1}`,
+      name: index >= 50 ? `Hidden Course ${index + 1}` : `Visible Course ${index + 1}`,
+      courseNumber: String(101 + index),
+      createdAt: new Date(Date.UTC(2026, 2, 30, 0, 55 - index, 0)).toISOString(),
+    }));
+    const hiddenCourse = buildCourse({
+      _id: 'course-hidden-search',
+      name: 'Special Astronomy Seminar',
+      courseNumber: '999',
+      createdAt: '2026-03-29T00:00:00.000Z',
+    });
+    coursesState[54] = hiddenCourse;
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Courses$/i }));
+
+    await screen.findByRole('button', { name: /Show all 55/i });
+
+    expect(screen.queryByText(/Special Astronomy Seminar/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/Search courses by code, section, name, or semester/i), {
+      target: { value: 'astronomy' },
+    });
+
+    expect(await screen.findByText(/Special Astronomy Seminar/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show all 55/i })).not.toBeInTheDocument();
+  });
+
+  it('fetches additional pages for the admin courses tab before rendering the full result count', async () => {
+    coursesState = Array.from({ length: 501 }, (_, index) => buildCourse({
+      _id: `course-${index + 1}`,
+      name: `Course ${index + 1}`,
+      courseNumber: String(100 + index),
+      createdAt: new Date(Date.UTC(2026, 2, 30, 0, 0, 501 - index)).toISOString(),
+    }));
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Courses$/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/courses', {
+        params: { view: 'all', page: 1, limit: 500 },
+      });
+      expect(apiClientMock.get).toHaveBeenCalledWith('/courses', {
+        params: { view: 'all', page: 2, limit: 500 },
+      });
+    });
+
+    expect(await screen.findByText(/501 course\(s\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Show all 501/i })).toBeInTheDocument();
   });
 });

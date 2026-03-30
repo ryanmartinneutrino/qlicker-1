@@ -19,6 +19,7 @@ import {
   getYearOptions,
 } from '../../utils/courseSemester';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import { fetchAllCourses } from '../../utils/fetchAllCourses';
 import SessionListCard from '../../components/common/SessionListCard';
 
 const COMPACT_CHIP_SX = {
@@ -67,10 +68,10 @@ export default function ProfDashboard() {
     setLoading(true);
     try {
       const [coursesRes, liveRes] = await Promise.all([
-        apiClient.get('/courses', { params: { view: 'instructor' } }),
+        fetchAllCourses(apiClient, { view: 'instructor' }),
         apiClient.get('/sessions/live', { params: { view: 'instructor' } }).catch(() => ({ data: { liveSessions: [] } })),
       ]);
-      setCourses(coursesRes.data.courses || []);
+      setCourses(coursesRes);
       setLiveSessions(liveRes.data.liveSessions || []);
     } catch {
       setMsg({ severity: 'error', text: t('professor.dashboard.failedLoadCourses') });
