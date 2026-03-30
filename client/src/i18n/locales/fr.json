@@ -431,6 +431,7 @@
     "courses": {
       "searchPlaceholder": "Rechercher des cours par code, section, nom ou semestre",
       "totalCount": "{{total}} cours",
+      "showAllCount": "Afficher les {{total}} cours",
       "noCoursesFound": "Aucun cours trouvé",
       "active": "Actif",
       "inactive": "Inactif",

@@ -9,6 +9,7 @@ import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@m
 import { useTranslation } from 'react-i18next';
 import apiClient, { getAccessToken } from '../../api/client';
 import { buildCourseTitle } from '../../utils/courseTitle';
+import { fetchAllCourses } from '../../utils/fetchAllCourses';
 import {
   getStudentSessionAction,
   isSubmittedLiveQuiz,
@@ -57,8 +58,8 @@ export default function StudentDashboard() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const coursesRes = await apiClient.get('/courses', { params: { view: 'student' } });
-      setCourses(coursesRes.data.courses || []);
+      const nextCourses = await fetchAllCourses(apiClient, { view: 'student' });
+      setCourses(nextCourses);
     } catch {
       setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
     }
@@ -66,8 +67,8 @@ export default function StudentDashboard() {
 
   const fetchTaCourses = useCallback(async () => {
     try {
-      const res = await apiClient.get('/courses', { params: { view: 'instructor' } });
-      setTaCourses(res.data.courses || []);
+      const nextCourses = await fetchAllCourses(apiClient, { view: 'instructor' });
+      setTaCourses(nextCourses);
     } catch {
       setTaCourses([]);
     }
