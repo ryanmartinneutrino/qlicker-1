@@ -395,3 +395,4 @@ cd scripts
 | Legacy question types (`type=5`, string types) | Rendering errors | Migration script + runtime normalization |
 | `meteor_accounts_loginServiceConfiguration` | Empty collection, no model | Ignored — not needed |
 | Legacy `services.password.reset.*` path | Differs from new `services.resetPassword` path | Decision pending: transform or ignore pending legacy tokens |
+| Legacy lowercase enrollment codes | Meteor generates lowercase codes (`a-z0-9`), new app generates uppercase (`A-Z2-9`) | Case-insensitive regex lookup in enrollment endpoint and uniqueness check |
