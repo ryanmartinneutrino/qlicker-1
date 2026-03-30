@@ -16,7 +16,10 @@ function generateEnrollmentCode() {
 async function generateUniqueEnrollmentCode() {
   for (let attempt = 0; attempt < 10; attempt++) {
     const code = generateEnrollmentCode();
-    const existing = await Course.findOne({ enrollmentCode: code }).lean();
+    // Case-insensitive check to avoid collisions with legacy lowercase codes
+    const existing = await Course.findOne({
+      enrollmentCode: { $regex: new RegExp(`^${escapeForRegex(code)}$`, 'i') },
+    }).lean();
     if (!existing) return code;
   }
   const err = new Error('Failed to generate a unique enrollment code');
@@ -396,7 +399,13 @@ export default async function courseRoutes(app) {
       const userId = request.user.userId;
       const roles = request.user.roles || [];
 
-      const course = await Course.findOne({ enrollmentCode }).lean();
+      // Case-insensitive lookup: legacy (Meteor) enrollment codes are lowercase,
+      // new codes are uppercase. Match either form so students can enroll
+      // regardless of which app created the course.
+      const normalizedCode = String(enrollmentCode || '').trim();
+      const course = await Course.findOne({
+        enrollmentCode: { $regex: new RegExp(`^${escapeForRegex(normalizedCode)}$`, 'i') },
+      }).lean();
       if (!course) {
         return reply.code(404).send({ error: 'Not Found', message: 'Invalid enrollment code' });
       }

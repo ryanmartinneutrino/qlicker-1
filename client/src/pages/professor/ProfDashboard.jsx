@@ -67,7 +67,7 @@ export default function ProfDashboard() {
     setLoading(true);
     try {
       const [coursesRes, liveRes] = await Promise.all([
-        apiClient.get('/courses', { params: { view: 'instructor' } }),
+        apiClient.get('/courses', { params: { view: 'instructor', limit: 500 } }),
         apiClient.get('/sessions/live', { params: { view: 'instructor' } }).catch(() => ({ data: { liveSessions: [] } })),
       ]);
       setCourses(coursesRes.data.courses || []);
