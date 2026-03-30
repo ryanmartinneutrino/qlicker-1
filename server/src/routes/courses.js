@@ -108,6 +108,7 @@ const listCoursesSchema = {
   querystring: {
     type: 'object',
     properties: {
+      all: { type: 'boolean' },
       search: { type: 'string' },
       page: { type: 'integer', minimum: 1 },
       limit: { type: 'integer', minimum: 1, maximum: 500 },
@@ -177,9 +178,16 @@ export default async function courseRoutes(app) {
     '/',
     { preHandler: authenticate, schema: listCoursesSchema },
     async (request, reply) => {
-      const { search, page: pageParam, limit: limitParam, view } = request.query;
+      const {
+        all,
+        search,
+        page: pageParam,
+        limit: limitParam,
+        view,
+      } = request.query;
       const page = Math.max(1, parseInt(pageParam, 10) || 1);
-      const limit = Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
+      const loadAll = all === true;
+      const limit = loadAll ? null : Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20));
 
       const roles = request.user.roles || [];
       const userId = request.user.userId;
@@ -220,19 +228,21 @@ export default async function courseRoutes(app) {
 
       const projection = { students: 0, groupCategories: 0 };
 
+      const courseQuery = Course.find(filter, projection);
+      if (!loadAll) {
+        courseQuery.skip((page - 1) * limit).limit(limit);
+      }
+
       const [courses, total] = await Promise.all([
-        Course.find(filter, projection)
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
+        courseQuery.lean(),
         Course.countDocuments(filter),
       ]);
 
       return {
         courses,
         total,
-        page,
-        pages: Math.ceil(total / limit),
+        page: loadAll ? 1 : page,
+        pages: loadAll ? 1 : Math.max(Math.ceil(total / limit), 1),
       };
     }
   );

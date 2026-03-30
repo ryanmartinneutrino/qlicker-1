@@ -193,6 +193,30 @@ describe('GET /api/v1/courses', () => {
     const body = res.json();
     expect(body.courses.length).toBe(2);
   });
+
+  it('supports fetching all matching courses when all=true', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-all@example.com', roles: ['professor'] });
+    const token = await getAuthToken(app, prof);
+
+    for (let index = 0; index < 25; index += 1) {
+      await createCourseAsProf(token, {
+        name: `Course ${index + 1}`,
+        courseNumber: String(101 + index),
+      });
+    }
+
+    const pagedRes = await authenticatedRequest(app, 'GET', '/api/v1/courses?view=instructor', { token });
+    expect(pagedRes.statusCode).toBe(200);
+    expect(pagedRes.json().courses.length).toBe(20);
+
+    const allRes = await authenticatedRequest(app, 'GET', '/api/v1/courses?view=instructor&all=true', { token });
+    expect(allRes.statusCode).toBe(200);
+    const body = allRes.json();
+    expect(body.courses.length).toBe(25);
+    expect(body.total).toBe(25);
+    expect(body.pages).toBe(1);
+  });
 });
 
 // ---------- GET /api/v1/courses/:id ----------

@@ -47,6 +47,7 @@ vi.mock('../../components/common/AutoSaveStatus', () => ({
 let settingsState;
 let usersState;
 let userDetailsState;
+let coursesState;
 
 function buildUser(overrides = {}) {
   const user = {
@@ -178,6 +179,7 @@ describe('AdminDashboard', () => {
 
     usersState = [buildUser()];
     userDetailsState = new Map(usersState.map((user) => [user._id, { ...user }]));
+    coursesState = [];
 
     apiClientMock.get.mockImplementation((url, config = {}) => {
       if (url === '/settings') {
@@ -217,6 +219,17 @@ describe('AdminDashboard', () => {
       if (url.startsWith('/users/')) {
         const userId = url.split('/').at(-1);
         return Promise.resolve({ data: userDetailsState.get(userId) });
+      }
+
+      if (url === '/courses') {
+        return Promise.resolve({
+          data: {
+            courses: coursesState,
+            total: coursesState.length,
+            page: 1,
+            pages: 1,
+          },
+        });
       }
 
       throw new Error(`Unexpected GET ${url}`);
@@ -582,5 +595,32 @@ describe('AdminDashboard', () => {
         newPassword: 'newpassword456',
       });
     });
+  });
+
+  it('shows only the 50 most recent courses by default and expands to all courses on demand', async () => {
+    coursesState = Array.from({ length: 55 }, (_, index) => ({
+      _id: `course-${index + 1}`,
+      name: `Course ${index + 1}`,
+      deptCode: 'CISC',
+      courseNumber: String(100 + index + 1),
+      section: '001',
+      semester: 'Fall 2026',
+      inactive: false,
+      createdAt: new Date(Date.UTC(2026, 0, index + 1)).toISOString(),
+    }));
+
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Courses$/i }));
+
+    expect(await screen.findByText('CISC 155: Course 55')).toBeInTheDocument();
+    expect(screen.getByText('CISC 106: Course 6')).toBeInTheDocument();
+    expect(screen.queryByText('CISC 101: Course 1')).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show all 55' }));
+
+    expect(await screen.findByText('CISC 101: Course 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show all 55' })).not.toBeInTheDocument();
+    expect(apiClientMock.get).toHaveBeenCalledWith('/courses', { params: { all: true, view: 'all' } });
   });
 });

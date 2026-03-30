@@ -57,7 +57,7 @@ export default function StudentDashboard() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const coursesRes = await apiClient.get('/courses', { params: { view: 'student', limit: 500 } });
+      const coursesRes = await apiClient.get('/courses', { params: { view: 'student', all: true } });
       setCourses(coursesRes.data.courses || []);
     } catch {
       setMsg({ severity: 'error', text: t('student.dashboard.failedLoadCourses') });
@@ -66,7 +66,7 @@ export default function StudentDashboard() {
 
   const fetchTaCourses = useCallback(async () => {
     try {
-      const res = await apiClient.get('/courses', { params: { view: 'instructor', limit: 500 } });
+      const res = await apiClient.get('/courses', { params: { view: 'instructor', all: true } });
       setTaCourses(res.data.courses || []);
     } catch {
       setTaCourses([]);

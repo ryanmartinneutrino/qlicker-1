@@ -1959,7 +1959,7 @@ function VideoTab() {
     let mounted = true;
     Promise.all([
       apiClient.get('/settings'),
-      apiClient.get('/courses', { params: { limit: 500, view: 'all' } }).catch(() => ({ data: { courses: [] } })),
+      apiClient.get('/courses', { params: { all: true, view: 'all' } }).catch(() => ({ data: { courses: [] } })),
     ]).then(([settingsRes, coursesRes]) => {
       if (!mounted) return;
       const data = settingsRes.data;
@@ -2149,13 +2149,15 @@ function CoursesTab() {
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [showAllCourses, setShowAllCourses] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     let mounted = true;
-    apiClient.get('/courses', { params: { limit: 500, view: 'all' } }).then(({ data }) => {
+    apiClient.get('/courses', { params: { all: true, view: 'all' } }).then(({ data }) => {
       if (mounted) {
         setCourses(data.courses || []);
+        setShowAllCourses(false);
       }
     }).catch((error) => {
       if (mounted) {
@@ -2175,6 +2177,11 @@ function CoursesTab() {
     if (!searchTerm) return baseCourses;
     return baseCourses.filter((course) => buildCourseSearchIndex(course).includes(searchTerm));
   }, [courses, search]);
+
+  const displayedCourses = useMemo(
+    () => (showAllCourses ? visibleCourses : visibleCourses.slice(0, 50)),
+    [showAllCourses, visibleCourses]
+  );
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -2200,9 +2207,9 @@ function CoursesTab() {
         <Typography variant="body2" color="text.secondary">
           {t('admin.courses.noCoursesFound')}
         </Typography>
-      ) : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-          {visibleCourses.map((course) => (
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          {displayedCourses.map((course) => (
             <SessionListCard
               key={course._id}
               onClick={() => navigate(`/prof/course/${course._id}`)}
@@ -2211,6 +2218,13 @@ function CoursesTab() {
               subtitle={buildCourseOptionLabel(course)}
             />
           ))}
+            {!showAllCourses && visibleCourses.length > 50 ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', pt: 0.5 }}>
+                <Button onClick={() => setShowAllCourses(true)}>
+                  {t('admin.courses.showAllCount', { total: visibleCourses.length })}
+                </Button>
+              </Box>
+            ) : null}
         </Box>
       )}
     </Box>
