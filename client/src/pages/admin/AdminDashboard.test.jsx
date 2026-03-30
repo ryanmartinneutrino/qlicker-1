@@ -643,7 +643,7 @@ describe('AdminDashboard', () => {
       target: { value: 'astronomy' },
     });
 
-    expect(await screen.findByText(/Special Astronomy Seminar/i)).toBeInTheDocument();
+    expect(await screen.findByText(/CS 999: Special Astronomy Seminar/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Show all 55/i })).not.toBeInTheDocument();
   });
 
