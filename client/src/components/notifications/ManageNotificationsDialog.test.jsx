@@ -52,6 +52,7 @@ describe('ManageNotificationsDialog', () => {
     fireEvent.change(screen.getByLabelText(/title/i), { target: { value: 'Course notice' } });
     fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'Read chapter 5.' } });
     fireEvent.click(screen.getByRole('button', { name: /post notification/i }));
+    expect(await screen.findByText(/all users in this course/i)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }));
 
     await waitFor(() => {
@@ -62,6 +63,16 @@ describe('ManageNotificationsDialog', () => {
         message: 'Read chapter 5.',
       }));
     });
+  });
+
+  it('uses system-wide recipient copy in the confirmation dialog', async () => {
+    renderDialog({ scopeType: 'system', courseId: '' });
+
+    fireEvent.change(await screen.findByLabelText(/title/i), { target: { value: 'System notice' } });
+    fireEvent.change(screen.getByLabelText(/message/i), { target: { value: 'Scheduled maintenance.' } });
+    fireEvent.click(screen.getByRole('button', { name: /post notification/i }));
+
+    expect(await screen.findByText(/all users on the system/i)).toBeInTheDocument();
   });
 
   it('edits and deletes existing notifications', async () => {

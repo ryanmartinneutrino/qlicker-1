@@ -1,5 +1,7 @@
 import {
+  Button,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
 } from '@mui/material';
@@ -26,6 +28,9 @@ export default function NotificationsDialog({
           onDismiss={onDismiss}
         />
       </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t('common.close')}</Button>
+      </DialogActions>
     </Dialog>
   );
 }

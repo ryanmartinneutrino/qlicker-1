@@ -201,7 +201,30 @@ export default function AppLayout() {
               {user?.profile?.firstname} {user?.profile?.lastname}
             </MenuItem>
             {notificationCount > 0 && (
-              <MenuItem onClick={handleNotificationsOpen}>{t('notifications.title')}</MenuItem>
+              <MenuItem onClick={handleNotificationsOpen}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <span>{t('notifications.title')}</span>
+                  <Box
+                    component="span"
+                    sx={{
+                      minWidth: 20,
+                      height: 20,
+                      px: 0.75,
+                      borderRadius: 10,
+                      bgcolor: 'error.main',
+                      color: 'error.contrastText',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {notificationCount}
+                  </Box>
+                </Box>
+              </MenuItem>
             )}
             {currentPath !== dashboardPath && (
               <MenuItem onClick={() => { handleMenuClose(); navigate(dashboardPath); }}>{t('nav.dashboard')}</MenuItem>

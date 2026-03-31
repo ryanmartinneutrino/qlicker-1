@@ -153,10 +153,20 @@ describe('AppLayout', () => {
     renderLayout('/prof');
 
     fireEvent.click(screen.getByRole('button', { name: /open account menu/i }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /notifications/i }));
+    const notificationsMenuItem = await screen.findByRole('menuitem', { name: /notifications/i });
+    expect(within(notificationsMenuItem).getByText('2')).toBeInTheDocument();
+    fireEvent.click(notificationsMenuItem);
 
     expect(await screen.findByRole('heading', { name: /notifications/i })).toBeInTheDocument();
     expect(screen.getByText('System update')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    await waitFor(() => {
+      expect(screen.queryByText('System update')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open account menu/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /notifications/i }));
+    expect(await screen.findByText('System update')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }));
 
     await waitFor(() => {

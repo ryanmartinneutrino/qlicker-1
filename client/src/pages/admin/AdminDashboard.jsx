@@ -903,7 +903,6 @@ function UsersTab({ currentUserId }) {
   const [resetPasswordValues, setResetPasswordValues] = useState({ password: '', confirmPassword: '' });
   const [resetPasswordSaving, setResetPasswordSaving] = useState(false);
   const adminResetPasswordInputProps = useMemo(() => ({
-    autoComplete: 'section-admin-user-password new-password',
     autoCapitalize: 'none',
     autoCorrect: 'off',
     spellCheck: 'false',
@@ -1602,8 +1601,13 @@ function UsersTab({ currentUserId }) {
                   name="admin-user-local-password"
                   value={resetPasswordValues.password}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, password: event.target.value }))}
-                  autoComplete="new-password"
-                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
+                  autoComplete="section-admin-user-password-new new-password"
+                  slotProps={{
+                    htmlInput: {
+                      ...adminResetPasswordInputProps,
+                      autoComplete: 'section-admin-user-password-new new-password',
+                    },
+                  }}
                   fullWidth
                 />
                 <TextField
@@ -1612,8 +1616,13 @@ function UsersTab({ currentUserId }) {
                   name="admin-user-local-password-confirmation"
                   value={resetPasswordValues.confirmPassword}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}
-                  autoComplete="new-password"
-                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
+                  autoComplete="section-admin-user-password-confirm new-password"
+                  slotProps={{
+                    htmlInput: {
+                      ...adminResetPasswordInputProps,
+                      autoComplete: 'section-admin-user-password-confirm new-password',
+                    },
+                  }}
                   fullWidth
                 />
                 <Typography variant="caption" color="text.secondary">

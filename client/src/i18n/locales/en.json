@@ -2146,10 +2146,12 @@
       "validationRequired": "Enter a title, a message, and valid dates before continuing.",
       "validationEndAfterStart": "The end date must be after the start date.",
       "endIgnoredHelp": "Users will continue seeing this notification until they dismiss it.",
+      "recipientScopeCourse": "all users in this course",
+      "recipientScopeSystem": "all users on the system",
       "confirmCreateTitle": "Post notification?",
-      "confirmCreateMessage": "This notification will become visible to matching users at the selected start time.",
+      "confirmCreateMessage": "This notification will become visible to {{recipientScope}} at the selected start time.",
       "confirmUpdateTitle": "Save notification changes?",
-      "confirmUpdateMessage": "The notification will be updated for all matching users.",
+      "confirmUpdateMessage": "The notification will be updated for {{recipientScope}}.",
       "confirmDeleteTitle": "Delete notification?",
       "confirmDeleteMessage": "Delete \"{{title}}\" permanently? This cannot be undone."
     }

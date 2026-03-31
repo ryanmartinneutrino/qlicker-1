@@ -85,6 +85,11 @@ export default function ManageNotificationsDialog({
     }
     return params.toString();
   }, [courseId, scopeType]);
+  const recipientScopeLabel = useMemo(() => (
+    scopeType === 'course'
+      ? t('notifications.manage.recipientScopeCourse')
+      : t('notifications.manage.recipientScopeSystem')
+  ), [scopeType, t]);
 
   const loadNotifications = useCallback(async () => {
     if (!open) return;
@@ -295,11 +300,11 @@ export default function ManageNotificationsDialog({
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            {pendingAction?.type === 'delete'
-              ? t('notifications.manage.confirmDeleteMessage', { title: pendingAction?.notification?.title || '' })
-              : editingNotification
-                ? t('notifications.manage.confirmUpdateMessage')
-                : t('notifications.manage.confirmCreateMessage')}
+              {pendingAction?.type === 'delete'
+                ? t('notifications.manage.confirmDeleteMessage', { title: pendingAction?.notification?.title || '' })
+                : editingNotification
+                  ? t('notifications.manage.confirmUpdateMessage', { recipientScope: recipientScopeLabel })
+                  : t('notifications.manage.confirmCreateMessage', { recipientScope: recipientScopeLabel })}
           </Typography>
         </DialogContent>
         <DialogActions>

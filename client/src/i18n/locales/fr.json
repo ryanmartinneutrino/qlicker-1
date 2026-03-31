@@ -2131,10 +2131,12 @@
       "validationRequired": "Saisissez un titre, un message et des dates valides avant de continuer.",
       "validationEndAfterStart": "La date de fin doit être après la date de début.",
       "endIgnoredHelp": "Les utilisateurs continueront à voir cette notification jusqu’à ce qu’ils la ferment.",
+      "recipientScopeCourse": "tous les utilisateurs de ce cours",
+      "recipientScopeSystem": "tous les utilisateurs du système",
       "confirmCreateTitle": "Publier la notification?",
-      "confirmCreateMessage": "Cette notification deviendra visible pour les utilisateurs concernés à l’heure de début choisie.",
+      "confirmCreateMessage": "Cette notification deviendra visible pour {{recipientScope}} à l’heure de début choisie.",
       "confirmUpdateTitle": "Enregistrer les modifications?",
-      "confirmUpdateMessage": "La notification sera mise à jour pour tous les utilisateurs concernés.",
+      "confirmUpdateMessage": "La notification sera mise à jour pour {{recipientScope}}.",
       "confirmDeleteTitle": "Supprimer la notification?",
       "confirmDeleteMessage": "Supprimer définitivement « {{title}} »? Cette action est irréversible."
     }

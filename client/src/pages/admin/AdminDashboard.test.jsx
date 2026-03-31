@@ -609,6 +609,7 @@ describe('AdminDashboard', () => {
 
     expect(newPasswordField.getAttribute('autocomplete')).toContain('new-password');
     expect(confirmPasswordField.getAttribute('autocomplete')).toContain('new-password');
+    expect(newPasswordField.getAttribute('autocomplete')).not.toBe(confirmPasswordField.getAttribute('autocomplete'));
     expect(newPasswordField).toHaveAttribute('data-lpignore', 'true');
     expect(confirmPasswordField).toHaveAttribute('data-lpignore', 'true');
     expect(newPasswordField).toHaveAttribute('data-1p-ignore', 'true');
