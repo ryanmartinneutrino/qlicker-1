@@ -881,8 +881,8 @@ export default async function authRoutes(app) {
       const hashedPassword = await User.hashPassword(newPassword);
       if (!user.services.password) user.services.password = {};
       user.services.password.hash = hashedPassword;
-      user.services.password.bcrypt = undefined;
-      user.services.resetPassword = undefined;
+      user.set('services.password.bcrypt', undefined);
+      user.set('services.resetPassword', undefined);
       user.refreshTokenVersion = getRefreshTokenVersion(user) + 1;
       revokeAllRefreshSessions(user);
       await user.save();
