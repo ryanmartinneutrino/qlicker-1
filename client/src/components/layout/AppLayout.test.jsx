@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import i18n from '../../i18n';
 import AppLayout from './AppLayout';
 
-const { authState } = vi.hoisted(() => ({
+const { authState, apiClientMock } = vi.hoisted(() => ({
   authState: {
     user: {
       profile: {
@@ -16,6 +16,14 @@ const { authState } = vi.hoisted(() => ({
     },
     logout: vi.fn(),
   },
+  apiClientMock: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
+
+vi.mock('../../api/client', () => ({
+  default: apiClientMock,
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -48,6 +56,8 @@ function renderLayout(initialEntry = '/prof') {
 describe('AppLayout', () => {
   beforeEach(() => {
     authState.logout.mockReset();
+    apiClientMock.get.mockReset();
+    apiClientMock.post.mockReset();
     authState.user = {
       profile: {
         firstname: 'Prof',
@@ -55,6 +65,16 @@ describe('AppLayout', () => {
         roles: ['professor'],
       },
     };
+    apiClientMock.get.mockImplementation((url) => {
+      if (url === '/notifications/summary') {
+        return Promise.resolve({ data: { count: 0 } });
+      }
+      if (url === '/notifications') {
+        return Promise.resolve({ data: { notifications: [] } });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    apiClientMock.post.mockResolvedValue({ data: {} });
   });
 
   it('opens the account menu and routes professors to the professor manual', async () => {
@@ -102,6 +122,45 @@ describe('AppLayout', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Student dashboard destination')).toBeInTheDocument();
+    });
+  });
+
+  it('shows notifications in the account menu and allows dismissing them', async () => {
+    apiClientMock.get.mockImplementation((url) => {
+      if (url === '/notifications/summary') {
+        return Promise.resolve({ data: { count: 2 } });
+      }
+      if (url === '/notifications') {
+        return Promise.resolve({
+          data: {
+            notifications: [
+              {
+                _id: 'notification-1',
+                title: 'System update',
+                message: 'Please read this message.',
+                startAt: '2026-03-31T12:00:00.000Z',
+                endAt: '2026-03-31T18:00:00.000Z',
+                persistUntilDismissed: false,
+                source: { type: 'system' },
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    renderLayout('/prof');
+
+    fireEvent.click(screen.getByRole('button', { name: /open account menu/i }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /notifications/i }));
+
+    expect(await screen.findByRole('heading', { name: /notifications/i })).toBeInTheDocument();
+    expect(screen.getByText('System update')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }));
+
+    await waitFor(() => {
+      expect(apiClientMock.post).toHaveBeenCalledWith('/notifications/notification-1/dismiss');
     });
   });
 });

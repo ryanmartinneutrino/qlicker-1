@@ -157,6 +157,7 @@ async function selectMuiOption(element, optionName) {
 describe('AdminDashboard', () => {
   beforeEach(() => {
     vi.useRealTimers();
+    i18n.changeLanguage('en');
     apiClientMock.delete.mockReset();
     apiClientMock.get.mockReset();
     apiClientMock.patch.mockReset();
@@ -198,6 +199,10 @@ describe('AdminDashboard', () => {
     apiClientMock.get.mockImplementation((url, config = {}) => {
       if (url === '/settings') {
         return Promise.resolve({ data: settingsState });
+      }
+
+      if (url.startsWith('/notifications/manage')) {
+        return Promise.resolve({ data: { notifications: [] } });
       }
 
       if (url === '/users') {
@@ -623,6 +628,15 @@ describe('AdminDashboard', () => {
         newPassword: 'newpassword456',
       });
     });
+  });
+
+  it('opens the system notification manager from the Users tab', async () => {
+    renderDashboard();
+
+    fireEvent.click(await screen.findByRole('tab', { name: /^Users$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /notifications/i }));
+
+    expect(await screen.findByRole('heading', { name: /^manage system notifications$/i })).toBeInTheDocument();
   });
 
   it('shows the first 50 courses by default and searches across the full fetched course set', async () => {

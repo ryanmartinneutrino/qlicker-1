@@ -11,6 +11,7 @@ import {
   Add as AddIcon, Refresh as RefreshIcon, PersonRemove as PersonRemoveIcon,
   InfoOutlined as InfoOutlinedIcon,
   PlayArrow as LaunchIcon,
+  Notifications as NotificationsIcon,
   RateReview as ReviewIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
@@ -33,6 +34,7 @@ import StudentListItem from '../../components/common/StudentListItem';
 import StudentInfoModal from '../../components/common/StudentInfoModal';
 import CourseGradesPanel from '../../components/grades/CourseGradesPanel';
 import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
+import ManageNotificationsDialog from '../../components/notifications/ManageNotificationsDialog';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
 import { useTranslation } from 'react-i18next';
 
@@ -279,6 +281,7 @@ export default function CourseDetail() {
   const [addInstructorOpen, setAddInstructorOpen] = useState(false);
   const [instructorUserId, setInstructorUserId] = useState('');
   const [addingInstructor, setAddingInstructor] = useState(false);
+  const [manageNotificationsOpen, setManageNotificationsOpen] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1043,6 +1046,9 @@ export default function CourseDetail() {
   const selectedCopyTargetCourse = instructorCourses.find((courseItem) => String(courseItem._id) === String(copySessionTargetCourseId))
     || instructorCourses.find((courseItem) => String(courseItem._id) === String(id))
     || null;
+  const use24HourNotifications = (course?.quizTimeFormat && course.quizTimeFormat !== 'inherit'
+    ? course.quizTimeFormat
+    : adminTimeFormat) !== '12h';
 
   const handleTabChange = (nextTab) => {
     setTab(nextTab);
@@ -1516,9 +1522,16 @@ export default function CourseDetail() {
       <TabPanel value={tab} index={3}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6">{t('professor.course.students')}</Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
-            {t('professor.course.addStudent')}
-          </Button>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Tooltip title={t('notifications.manage.tooltip')}>
+              <Button variant="outlined" startIcon={<NotificationsIcon />} onClick={() => setManageNotificationsOpen(true)}>
+                {t('notifications.manage.button')}
+              </Button>
+            </Tooltip>
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddStudentOpen(true)}>
+              {t('professor.course.addStudent')}
+            </Button>
+          </Stack>
         </Box>
         <TextField
           label={t('grades.coursePanel.searchStudents')}
@@ -1551,11 +1564,18 @@ export default function CourseDetail() {
 
       {/* Instructors Tab */}
       <TabPanel value={tab} index={4}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6">{t('professor.course.instructors')}</Typography>
-          <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
-            {t('professor.course.addInstructor')}
-          </Button>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            <Tooltip title={t('notifications.manage.tooltip')}>
+              <Button variant="outlined" startIcon={<NotificationsIcon />} onClick={() => setManageNotificationsOpen(true)}>
+                {t('notifications.manage.button')}
+              </Button>
+            </Tooltip>
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setAddInstructorOpen(true)}>
+              {t('professor.course.addInstructor')}
+            </Button>
+          </Stack>
         </Box>
         {instructors.length === 0 ? (
           <Typography variant="body2" color="text.secondary">{t('professor.course.noInstructors')}</Typography>
@@ -1913,6 +1933,15 @@ export default function CourseDetail() {
           <Button onClick={() => setImageViewUrl(null)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
+
+      <ManageNotificationsDialog
+        open={manageNotificationsOpen}
+        onClose={() => setManageNotificationsOpen(false)}
+        scopeType="course"
+        courseId={id}
+        title={t('notifications.manage.courseDialogTitle', { course: headerTitle })}
+        use24Hour={use24HourNotifications}
+      />
 
       {/* Create Session Dialog */}
       <Dialog

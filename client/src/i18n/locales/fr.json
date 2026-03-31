@@ -60,7 +60,8 @@
     "deleteSession": "Supprimer la session",
     "option": "Option {{letter}}",
     "ta": "AC",
-    "redirecting": "Redirection…"
+    "redirecting": "Redirection…",
+    "confirm": "Confirmer"
   },
   "autoSave": {
     "errorNotSaved": "Les modifications n'ont pas pu être enregistrées. Votre dernière modification n'a pas été enregistrée.",
@@ -1757,7 +1758,8 @@
             "Lorsque le SSO institutionnel est activé, les utilisateurs non administrateurs ont besoin de l'exception de connexion par courriel avant que la connexion locale et le courriel de réinitialisation deviennent disponibles.",
             "Révisez les cours et les détails utilisateur pour confirmer les appartenances étudiantes, TA et enseignantes, le libellé de la session, l'état d'activité et la préparation à l'inscription avant de dépanner un flux professeur.",
             "Les utilisateurs au rôle global étudiant qui enseignent un cours apparaissent comme TA dans l'interface administrateur, mais il s'agit seulement d'un libellé d'affichage et non d'un nouveau rôle stocké.",
-            "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue."
+            "Les administrateurs peuvent ouvrir directement les guides professeur et étudiant à partir du sélecteur de guide affiché sur ces pages, ce qui aide à reproduire un problème depuis un autre point de vue.",
+            "Utilisez Gérer les notifications dans l’onglet Utilisateurs pour publier des avis de connexion à l’échelle du système que tous les utilisateurs verront dans la barre d’application jusqu’à leur expiration ou leur rejet."
           ],
           "warning": "Les changements de rôle et les approbations de connexion SSO prennent effet immédiatement; confirmez donc la demande avant l'enregistrement."
         }
@@ -1780,7 +1782,8 @@
             "La boîte de création combine une saison et une année en un seul libellé de session, que vous pouvez modifier ensuite si vous avez besoin d'un format personnalisé ou hérité.",
             "Utilisez les réglages du cours pour gérer le titre, les règles d'inscription, l'affichage de l'heure des quiz, l'état actif et l'accès des étudiants aux questions de pratique, à la bibliothèque du cours et aux séances de pratique.",
             "Ajoutez tôt les sujets de cours afin que vos propres questions restent organisées et que les étudiants puissent rechercher le matériel rendu visible lorsque l'accès à la pratique est activé.",
-            "Chaque cours possède un code d'inscription que les étudiants saisissent depuis leur tableau de bord pour rejoindre ce cours précis. Partagez le code actuel avec votre classe et modifiez-le dans les réglages du cours si vous devez empêcher la réutilisation d'un ancien code."
+            "Chaque cours possède un code d'inscription que les étudiants saisissent depuis leur tableau de bord pour rejoindre ce cours précis. Partagez le code actuel avec votre classe et modifiez-le dans les réglages du cours si vous devez empêcher la réutilisation d'un ancien code.",
+            "Utilisez Gérer les notifications dans les onglets Étudiants ou Instructeurs pour publier des avis de connexion Qlicker à tout le cours sans envoyer de courriel."
           ],
           "note": "Si vous enseignez des cours semblables à chaque session, gardez une convention de nommage stable afin que le matériel copié reste facile à repérer.",
           "screenshot": {
@@ -1891,7 +1894,8 @@
             "La page du cours sépare les cours interactifs, les quiz, les séances de pratique, les notes et le contenu de bibliothèque afin que vous trouviez rapidement le bon flux. Dans les cours où l'accès à la pratique est désactivé, les onglets de pratique et de bibliothèque restent cachés.",
             "Les listes de séances gardent la recherche, les filtres et la pagination dans une zone Rechercher des séances repliable afin que vous n'ouvriez les contrôles que lorsque nécessaire.",
             "Si votre établissement exige une vérification de courriel ou un SSO, terminez cette configuration avant de supposer que le code d'inscription est mauvais.",
-            "En général, vous n'avez besoin du code d'inscription qu'une seule fois par cours. Une fois accepté, le cours reste sur votre tableau de bord jusqu'à ce que vous en soyez retiré ou qu'il soit archivé pour votre compte."
+            "En général, vous n'avez besoin du code d'inscription qu'une seule fois par cours. Une fois accepté, le cours reste sur votre tableau de bord jusqu'à ce que vous en soyez retiré ou qu'il soit archivé pour votre compte.",
+            "Surveillez l’indicateur sur votre avatar dans la barre d’application pour repérer les notifications actives, puis ouvrez Notifications dans le menu du compte pour les lire ou les rejeter."
           ],
           "screenshot": {
             "variant": "studentCourse",
@@ -2086,5 +2090,53 @@
     "peut",
     "cela",
     "chaque"
-  ]
+  ],
+  "notifications": {
+    "title": "Notifications",
+    "none": "Vous n’avez aucune notification active.",
+    "systemWide": "À l’échelle du système",
+    "unknownTime": "Heure inconnue",
+    "emittedAtValue": "Envoyée le {{value}}",
+    "expiresAtValue": "Expire le {{value}}",
+    "expiresIgnoredValue": "Expire le {{value}} (ignorée tant qu’elle est persistante)",
+    "persistUntilDismissed": "Conserver jusqu’au rejet",
+    "dismiss": "Retirer la notification",
+    "edit": "Modifier la notification",
+    "delete": "Supprimer la notification",
+    "fields": {
+      "title": "Titre",
+      "message": "Message",
+      "startAt": "Date et heure de début",
+      "endAt": "Date et heure de fin"
+    },
+    "manage": {
+      "button": "Gérer les notifications",
+      "tooltip": "Afficher des notifications de connexion Qlicker aux utilisateurs. Ces notifications apparaissent dans l’application et ne sont pas envoyées par courriel.",
+      "systemDialogTitle": "Gérer les notifications système",
+      "courseDialogTitle": "Gérer les notifications pour {{course}}",
+      "createHeading": "Publier une notification",
+      "editHeading": "Modifier la notification",
+      "formHelp": "Les notifications apparaissent dans le menu de la barre d’application pour les utilisateurs concernés à partir de l’heure de début.",
+      "existingHeading": "Notifications existantes",
+      "listHelp": "Consultez, modifiez ou supprimez les notifications existantes ci-dessous.",
+      "none": "Aucune notification n’a encore été publiée.",
+      "postNotification": "Publier la notification",
+      "saveChanges": "Enregistrer les modifications",
+      "cancelEdit": "Annuler la modification",
+      "loadFailed": "Échec du chargement des notifications",
+      "saveFailed": "Échec de l’enregistrement de la notification",
+      "created": "Notification publiée",
+      "updated": "Notification mise à jour",
+      "deleted": "Notification supprimée",
+      "validationRequired": "Saisissez un titre, un message et des dates valides avant de continuer.",
+      "validationEndAfterStart": "La date de fin doit être après la date de début.",
+      "endIgnoredHelp": "Les utilisateurs continueront à voir cette notification jusqu’à ce qu’ils la ferment.",
+      "confirmCreateTitle": "Publier la notification?",
+      "confirmCreateMessage": "Cette notification deviendra visible pour les utilisateurs concernés à l’heure de début choisie.",
+      "confirmUpdateTitle": "Enregistrer les modifications?",
+      "confirmUpdateMessage": "La notification sera mise à jour pour tous les utilisateurs concernés.",
+      "confirmDeleteTitle": "Supprimer la notification?",
+      "confirmDeleteMessage": "Supprimer définitivement « {{title}} »? Cette action est irréversible."
+    }
+  }
 }

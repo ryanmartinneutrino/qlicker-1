@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
-  AppBar, Toolbar, IconButton, Menu, MenuItem, Avatar, Box, Container, Button, Tooltip,
+  AppBar, Toolbar, IconButton, Menu, MenuItem, Avatar, Box, Container, Button, Tooltip, Badge,
 } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,6 +10,7 @@ import ConnectionStatus from '../common/ConnectionStatus';
 import QlickerWordmark from '../common/QlickerWordmark';
 import { getManualPath, getPreferredManualRole } from '../../utils/userManuals';
 import { getDashboardPath } from '../../utils/dashboard';
+import NotificationsDialog from '../notifications/NotificationsDialog';
 
 export default function AppLayout() {
   const { t } = useTranslation();
@@ -17,6 +18,10 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const mainContentRef = useRef(null);
   const roles = user?.profile?.roles || [];
   const isAdmin = roles.includes('admin');
@@ -24,6 +29,30 @@ export default function AppLayout() {
 
   const handleMenuOpen = (event) => setAnchorEl(event.currentTarget);
   const handleMenuClose = () => setAnchorEl(null);
+
+  const refreshNotificationSummary = async () => {
+    try {
+      const { data } = await apiClient.get('/notifications/summary');
+      setNotificationCount(Number(data?.count) || 0);
+    } catch {
+      setNotificationCount(0);
+    }
+  };
+
+  const loadNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const { data } = await apiClient.get('/notifications');
+      const nextNotifications = data?.notifications || [];
+      setNotifications(nextNotifications);
+      setNotificationCount(nextNotifications.length);
+    } catch {
+      setNotifications([]);
+      setNotificationCount(0);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     handleMenuClose();
@@ -50,6 +79,22 @@ export default function AppLayout() {
     navigate('/profile');
   };
 
+  const handleNotificationsOpen = async () => {
+    handleMenuClose();
+    setNotificationsOpen(true);
+    await loadNotifications();
+  };
+
+  const handleDismissNotification = async (notification) => {
+    try {
+      await apiClient.post(`/notifications/${notification._id}/dismiss`);
+      setNotifications((current) => current.filter((entry) => entry._id !== notification._id));
+      setNotificationCount((current) => Math.max(0, current - 1));
+    } catch {
+      await loadNotifications();
+    }
+  };
+
   const getInitials = () => {
     if (!user?.profile) return '?';
     const f = user.profile.firstname?.[0] || '';
@@ -67,6 +112,10 @@ export default function AppLayout() {
     });
     return () => window.cancelAnimationFrame(rafId);
   }, [currentPath]);
+
+  useEffect(() => {
+    refreshNotificationSummary();
+  }, []);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -117,25 +166,43 @@ export default function AppLayout() {
           </Box>
           <Box sx={{ flexGrow: 1 }} />
           <Tooltip title={t('nav.openAccountMenuTooltip')} arrow>
-            <IconButton onClick={handleMenuOpen} color="inherit" aria-label={t('nav.openAccountMenu')}>
-              <Avatar
-                alt={`${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar'}
-                src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
-                slotProps={{
-                  img: {
-                    alt: `${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar',
-                  },
-                }}
-                sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
+            <IconButton
+              onClick={(event) => {
+                handleMenuOpen(event);
+                refreshNotificationSummary();
+              }}
+              color="inherit"
+              aria-label={t('nav.openAccountMenu')}
+            >
+              <Badge
+                color="error"
+                badgeContent={notificationCount}
+                invisible={notificationCount <= 0}
+                overlap="circular"
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
               >
-                {getInitials()}
-              </Avatar>
+                <Avatar
+                  alt={`${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar'}
+                  src={user?.profile?.profileThumbnail || user?.profile?.profileImage}
+                  slotProps={{
+                    img: {
+                      alt: `${user?.profile?.firstname || ''} ${user?.profile?.lastname || ''}`.trim() || 'User avatar',
+                    },
+                  }}
+                  sx={{ width: 40, height: 40, bgcolor: 'secondary.main', fontSize: '1rem' }}
+                >
+                  {getInitials()}
+                </Avatar>
+              </Badge>
             </IconButton>
           </Tooltip>
           <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
             <MenuItem disabled>
               {user?.profile?.firstname} {user?.profile?.lastname}
             </MenuItem>
+            {notificationCount > 0 && (
+              <MenuItem onClick={handleNotificationsOpen}>{t('notifications.title')}</MenuItem>
+            )}
             {currentPath !== dashboardPath && (
               <MenuItem onClick={() => { handleMenuClose(); navigate(dashboardPath); }}>{t('nav.dashboard')}</MenuItem>
             )}
@@ -162,6 +229,13 @@ export default function AppLayout() {
       >
         <Outlet />
       </Container>
+      <NotificationsDialog
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
+        notifications={notifications}
+        loading={notificationsLoading}
+        onDismiss={handleDismissNotification}
+      />
     </Box>
   );
 }
