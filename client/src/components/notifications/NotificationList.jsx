@@ -24,6 +24,12 @@ function getSourceLabel(notification, t) {
   return t('notifications.systemWide');
 }
 
+function getAudienceLabel(notification, t) {
+  const scopeKey = notification?.scopeType === 'course' ? 'course' : 'system';
+  const recipientType = notification?.recipientType || 'all';
+  return t(`notifications.audience.${scopeKey}.${recipientType}`);
+}
+
 export default function NotificationList({
   notifications = [],
   loading = false,
@@ -57,6 +63,7 @@ export default function NotificationList({
         const emittedAt = formatDisplayDateTime(notification.startAt);
         const expiresAt = formatDisplayDateTime(notification.endAt);
         const sourceLabel = getSourceLabel(notification, t);
+        const audienceLabel = getAudienceLabel(notification, t);
 
         return (
           <Paper key={notification._id} variant="outlined" sx={{ p: 1.5 }}>
@@ -68,6 +75,7 @@ export default function NotificationList({
                   </Typography>
                   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mt: 0.75 }}>
                     <Chip size="small" label={sourceLabel} variant="outlined" />
+                    <Chip size="small" label={audienceLabel} variant="outlined" />
                     <Chip
                       size="small"
                       label={t('notifications.emittedAtValue', { value: emittedAt || t('notifications.unknownTime') })}
