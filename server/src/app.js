@@ -24,6 +24,7 @@ import questionRoutes from './routes/questions.js';
 import gradeRoutes from './routes/grades.js';
 import groupRoutes from './routes/groups.js';
 import videoRoutes from './routes/video.js';
+import notificationRoutes from './routes/notifications.js';
 import { transformApiDocs } from './utils/apiDocs.js';
 import { guessImageContentTypeFromKey, normalizeRequestedStorageKey } from './utils/storageUrls.js';
 import { ensureSettingsSingleton } from './utils/settingsSingleton.js';
@@ -227,6 +228,7 @@ export async function buildApp(opts = {}) {
   await app.register(gradeRoutes, { prefix: '/api/v1' });
   await app.register(groupRoutes, { prefix: '/api/v1/courses' });
   await app.register(videoRoutes, { prefix: '/api/v1/courses' });
+  await app.register(notificationRoutes, { prefix: '/api/v1/notifications' });
 
   return app;
 }
