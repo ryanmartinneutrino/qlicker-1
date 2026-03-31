@@ -54,7 +54,7 @@ describe('ManageNotificationsDialog', () => {
     fireEvent.mouseDown(screen.getByLabelText(/send to/i));
     fireEvent.click(await screen.findByRole('option', { name: /all instructors in this course/i }));
     fireEvent.click(screen.getByRole('button', { name: /post notification/i }));
-    expect(await screen.findByText(/all instructors in this course/i)).toBeInTheDocument();
+    expect(await screen.findByText(/become visible to all instructors in this course/i)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: /^confirm$/i }));
 
     await waitFor(() => {
@@ -77,7 +77,7 @@ describe('ManageNotificationsDialog', () => {
     fireEvent.click(await screen.findByRole('option', { name: /all profs/i }));
     fireEvent.click(screen.getByRole('button', { name: /post notification/i }));
 
-    expect(await screen.findByText(/all profs/i)).toBeInTheDocument();
+    expect(await screen.findByText(/visible to all profs/i)).toBeInTheDocument();
   });
 
   it('edits and deletes existing notifications', async () => {
@@ -86,6 +86,8 @@ describe('ManageNotificationsDialog', () => {
         notifications: [
             {
               _id: 'notification-1',
+              scopeType: 'course',
+              courseId: 'course-1',
               recipientType: 'students',
               title: 'Original title',
               message: 'Original message',

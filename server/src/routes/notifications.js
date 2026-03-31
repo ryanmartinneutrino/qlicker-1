@@ -95,29 +95,27 @@ async function loadViewerNotificationAccess(user = {}) {
     };
   }
 
-  const memberships = await Course.find({
-    _id: { $in: courseIds },
-    $or: [
-      { students: userId },
-      { instructors: userId },
-    ],
-  })
-    .select('_id students instructors')
-    .lean();
+  const [studentMemberships, instructorMemberships] = await Promise.all([
+    Course.find({
+      _id: { $in: courseIds },
+      students: userId,
+    })
+      .select('_id')
+      .lean(),
+    Course.find({
+      _id: { $in: courseIds },
+      instructors: userId,
+    })
+      .select('_id')
+      .lean(),
+  ]);
 
-  const studentCourseIds = [];
-  const instructorCourseIds = [];
-
-  memberships.forEach((course) => {
-    const courseId = String(course._id || '');
-    if (!courseId) return;
-    if ((course.students || []).includes(userId)) {
-      studentCourseIds.push(courseId);
-    }
-    if ((course.instructors || []).includes(userId)) {
-      instructorCourseIds.push(courseId);
-    }
-  });
+  const studentCourseIds = studentMemberships
+    .map((course) => String(course._id || ''))
+    .filter(Boolean);
+  const instructorCourseIds = instructorMemberships
+    .map((course) => String(course._id || ''))
+    .filter(Boolean);
 
   return {
     courseIds,
