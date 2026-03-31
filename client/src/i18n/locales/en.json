@@ -60,7 +60,8 @@
     "deleteSession": "Delete session",
     "option": "Option {{letter}}",
     "ta": "TA",
-    "redirecting": "Redirecting…"
+    "redirecting": "Redirecting…",
+    "confirm": "Confirm"
   },
   "autoSave": {
     "errorNotSaved": "Changes could not be saved. Your last change was not recorded.",
@@ -1757,7 +1758,8 @@
             "When institution-wide SSO is enabled, non-admin users need the per-account allow-email-login exception before local email sign-in and password-reset email become available.",
             "Review courses and user details to confirm the correct student, TA, and instructor memberships, term labels, activity state, and enrollment readiness before troubleshooting a professor workflow.",
             "Student-only users who teach a course appear as TAs in the admin UI, but that is presentation-only wording rather than a new stored role.",
-            "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view."
+            "Admins can open the professor and student manuals directly from the manual switcher on these pages, which is helpful when reproducing a reported issue from another role's point of view.",
+            "Use Manage notifications in the Users tab to post system-wide login notices that every user sees in the app bar until they expire or are dismissed."
           ],
           "warning": "Role changes and SSO login approvals take effect immediately, so confirm the request before saving."
         }
@@ -1780,7 +1782,8 @@
             "The course creation dialog combines a semester season and year into one label, which you can edit later if you need a custom or legacy format.",
             "Use course settings to manage the title, enrollment rules, quiz time display, active state, and whether students may access practice questions, the course question library, and practice sessions.",
             "Add course topics early so your own questions stay organized and students can search the library material you make visible to them when practice-question access is enabled.",
-            "Each course has an enrollment or join code that students enter from their dashboard to join that specific course. Share the current code with your class and update it in course settings if you need to stop an old code from being reused."
+            "Each course has an enrollment or join code that students enter from their dashboard to join that specific course. Share the current code with your class and update it in course settings if you need to stop an old code from being reused.",
+            "Use Manage notifications in the Students or Instructors tabs to publish Qlicker login notices for everyone in the course without sending email."
           ],
           "note": "If you teach similar courses each term, use the same naming convention so copied material remains easy to identify.",
           "screenshot": {
@@ -1891,7 +1894,8 @@
             "The course page separates lectures or live sessions, quizzes, practice sessions, grades, and question-library material so you can find the right workflow quickly. In courses where practice-question access is disabled, the practice and library tabs stay hidden.",
             "Session lists keep search, filters, and pagination inside a collapsible Search sessions area so you can expand controls only when you need them.",
             "If your institution requires verified email or SSO, finish that setup first before assuming the enrollment code is wrong.",
-            "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account."
+            "You usually only need the join code once per course. After it works, the course stays on your dashboard until you are removed or the course is archived for your account.",
+            "Watch the badge on your avatar in the app bar for active notifications, then open Notifications from the account menu to read or dismiss them."
           ],
           "screenshot": {
             "variant": "studentCourse",
@@ -2101,5 +2105,55 @@
     "until",
     "up",
     "while"
-  ]
+  ],
+  "notifications": {
+    "title": "Notifications",
+    "none": "You have no active notifications.",
+    "systemWide": "System-wide",
+    "unknownTime": "Unknown time",
+    "emittedAtValue": "Sent {{value}}",
+    "expiresAtValue": "Expires {{value}}",
+    "expiresIgnoredValue": "Expires {{value}} (ignored while persistent)",
+    "persistUntilDismissed": "Persist until dismissed",
+    "dismiss": "Dismiss notification",
+    "edit": "Edit notification",
+    "delete": "Delete notification",
+    "fields": {
+      "title": "Title",
+      "message": "Message",
+      "startAt": "Start date and time",
+      "endAt": "End date and time"
+    },
+    "manage": {
+      "button": "Manage notifications",
+      "tooltip": "Show Qlicker login notifications for users. These notifications are shown in-app and are not emailed.",
+      "systemDialogTitle": "Manage system notifications",
+      "courseDialogTitle": "Manage notifications for {{course}}",
+      "createHeading": "Post a notification",
+      "editHeading": "Edit notification",
+      "formHelp": "Notifications appear in the app bar menu for eligible users after the start time.",
+      "existingHeading": "Existing notifications",
+      "listHelp": "Review, edit, or delete existing notifications below.",
+      "none": "No notifications have been posted yet.",
+      "postNotification": "Post notification",
+      "saveChanges": "Save changes",
+      "cancelEdit": "Cancel edit",
+      "loadFailed": "Failed to load notifications",
+      "saveFailed": "Failed to save notification",
+      "created": "Notification posted",
+      "updated": "Notification updated",
+      "deleted": "Notification deleted",
+      "validationRequired": "Enter a title, a message, and valid dates before continuing.",
+      "validationEndAfterStart": "The end date must be after the start date.",
+      "endIgnoredHelp": "Users will continue seeing this notification until they dismiss it.",
+      "recipientScopeCourse": "all users in this course",
+      "recipientScopeSystem": "all users on the system",
+      "confirmCreateTitle": "Post notification?",
+      "confirmCreateMessage": "This notification will become visible to {{recipientScope}} at the selected start time.",
+      "confirmUpdateTitle": "Save notification changes?",
+      "confirmUpdateMessage": "The notification will be updated for {{recipientScope}}.",
+      "confirmDeleteTitle": "Delete notification?",
+      "confirmDeleteMessage": "Delete \"{{title}}\" permanently? This cannot be undone."
+    }
+  }
 }

@@ -5,6 +5,8 @@ import Session from '../../src/models/Session.js';
 import Question from '../../src/models/Question.js';
 import Response from '../../src/models/Response.js';
 import Grade from '../../src/models/Grade.js';
+import Notification from '../../src/models/Notification.js';
+import NotificationDismissal from '../../src/models/NotificationDismissal.js';
 
 // ---------- Course ----------
 describe('Course model', () => {
@@ -206,5 +208,59 @@ describe('Grade model', () => {
     expect(grade.courseId).toBe('');
     expect(grade.sessionId).toBe('');
     expect(grade.name).toBe('');
+  });
+});
+
+// ---------- Notification ----------
+describe('Notification model', () => {
+  it('creates with required fields', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const notification = await Notification.create({
+      scopeType: 'system',
+      title: 'Notice',
+      message: 'A notification body',
+      startAt: new Date('2026-03-31T12:00:00.000Z'),
+      endAt: new Date('2026-03-31T18:00:00.000Z'),
+      createdBy: 'admin123',
+    });
+
+    expect(notification._id).toBeDefined();
+    expect(notification.scopeType).toBe('system');
+    expect(notification.title).toBe('Notice');
+    expect(notification.message).toBe('A notification body');
+    expect(notification.createdBy).toBe('admin123');
+  });
+
+  it('sets defaults correctly', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const notification = await Notification.create({
+      scopeType: 'course',
+      courseId: 'course123',
+      title: 'Course notice',
+      message: 'Read chapter 5',
+      startAt: new Date('2026-03-31T12:00:00.000Z'),
+      endAt: new Date('2026-03-31T18:00:00.000Z'),
+      createdBy: 'prof123',
+    });
+
+    expect(notification.courseId).toBe('course123');
+    expect(notification.persistUntilDismissed).toBe(false);
+    expect(notification.createdAt).toBeInstanceOf(Date);
+    expect(notification.updatedAt).toBeInstanceOf(Date);
+  });
+});
+
+// ---------- Notification dismissal ----------
+describe('NotificationDismissal model', () => {
+  it('creates with required fields and defaults', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const dismissal = await NotificationDismissal.create({
+      notificationId: 'notification123',
+      userId: 'user123',
+    });
+
+    expect(dismissal.notificationId).toBe('notification123');
+    expect(dismissal.userId).toBe('user123');
+    expect(dismissal.dismissedAt).toBeInstanceOf(Date);
   });
 });

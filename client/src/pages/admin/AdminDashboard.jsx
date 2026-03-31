@@ -16,6 +16,7 @@ import {
   CheckCircle,
   Delete as DeleteIcon,
   InfoOutlined as InfoOutlinedIcon,
+  Notifications as NotificationsIcon,
   Restore as RestoreIcon,
   Search as SearchIcon,
 } from '@mui/icons-material';
@@ -33,6 +34,7 @@ import {
 import AutoSaveStatus from '../../components/common/AutoSaveStatus';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import SessionListCard from '../../components/common/SessionListCard';
+import ManageNotificationsDialog from '../../components/notifications/ManageNotificationsDialog';
 import { SUPPORTED_LOCALES, DATE_FORMATS, TIME_FORMATS } from '../../i18n';
 import i18n from '../../i18n';
 import {
@@ -883,6 +885,8 @@ function UsersTab({ currentUserId }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
   const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [timeFormat, setTimeFormat] = useState('24h');
+  const [manageNotificationsOpen, setManageNotificationsOpen] = useState(false);
 
   // Create user dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -899,7 +903,6 @@ function UsersTab({ currentUserId }) {
   const [resetPasswordValues, setResetPasswordValues] = useState({ password: '', confirmPassword: '' });
   const [resetPasswordSaving, setResetPasswordSaving] = useState(false);
   const adminResetPasswordInputProps = useMemo(() => ({
-    autoComplete: 'section-admin-user-password new-password',
     autoCapitalize: 'none',
     autoCorrect: 'off',
     spellCheck: 'false',
@@ -962,10 +965,12 @@ function UsersTab({ currentUserId }) {
     apiClient.get('/settings').then(({ data }) => {
       if (mounted) {
         setSsoEnabled(!!data?.SSO_enabled);
+        setTimeFormat(data?.timeFormat === '12h' ? '12h' : '24h');
       }
     }).catch(() => {
       if (mounted) {
         setSsoEnabled(false);
+        setTimeFormat('24h');
       }
     });
     return () => {
@@ -1180,6 +1185,11 @@ function UsersTab({ currentUserId }) {
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>
           {t('admin.users.createUser')}
         </Button>
+        <Tooltip title={t('notifications.manage.tooltip')}>
+          <Button variant="outlined" startIcon={<NotificationsIcon />} onClick={() => setManageNotificationsOpen(true)}>
+            {t('notifications.manage.button')}
+          </Button>
+        </Tooltip>
         <Typography variant="body2" sx={{ ml: 'auto' }}>{t('admin.users.totalCount', { total })}</Typography>
       </Box>
 
@@ -1591,8 +1601,13 @@ function UsersTab({ currentUserId }) {
                   name="admin-user-local-password"
                   value={resetPasswordValues.password}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, password: event.target.value }))}
-                  autoComplete="new-password"
-                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
+                  autoComplete="section-admin-user-password-new new-password"
+                  slotProps={{
+                    htmlInput: {
+                      ...adminResetPasswordInputProps,
+                      autoComplete: 'section-admin-user-password-new new-password',
+                    },
+                  }}
                   fullWidth
                 />
                 <TextField
@@ -1601,8 +1616,13 @@ function UsersTab({ currentUserId }) {
                   name="admin-user-local-password-confirmation"
                   value={resetPasswordValues.confirmPassword}
                   onChange={(event) => setResetPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}
-                  autoComplete="new-password"
-                  slotProps={{ htmlInput: adminResetPasswordInputProps }}
+                  autoComplete="section-admin-user-password-confirm new-password"
+                  slotProps={{
+                    htmlInput: {
+                      ...adminResetPasswordInputProps,
+                      autoComplete: 'section-admin-user-password-confirm new-password',
+                    },
+                  }}
                   fullWidth
                 />
                 <Typography variant="caption" color="text.secondary">
@@ -1634,6 +1654,14 @@ function UsersTab({ currentUserId }) {
       <Snackbar open={!!msg} autoHideDuration={4000} onClose={() => setMsg(null)}>
         {msg ? <Alert severity={msg.severity} onClose={() => setMsg(null)}>{msg.text}</Alert> : undefined}
       </Snackbar>
+
+      <ManageNotificationsDialog
+        open={manageNotificationsOpen}
+        onClose={() => setManageNotificationsOpen(false)}
+        scopeType="system"
+        title={t('notifications.manage.systemDialogTitle')}
+        use24Hour={timeFormat !== '12h'}
+      />
     </Box>
   );
 }
