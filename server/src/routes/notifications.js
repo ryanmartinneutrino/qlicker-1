@@ -272,7 +272,13 @@ const notificationIdParamsSchema = {
 export default async function notificationRoutes(app) {
   const { authenticate } = app;
 
-  app.get('/summary', { preHandler: authenticate }, async (request) => {
+  app.get('/summary', {
+    preHandler: authenticate,
+    rateLimit: { max: 120, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
+  }, async (request) => {
     const courseIds = await loadViewerCourseIds(request.user.userId);
     const notifications = await Notification.find(buildVisibleNotificationsFilter(courseIds))
       .select('_id')
@@ -289,7 +295,13 @@ export default async function notificationRoutes(app) {
     };
   });
 
-  app.get('/', { preHandler: authenticate }, async (request) => {
+  app.get('/', {
+    preHandler: authenticate,
+    rateLimit: { max: 120, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
+  }, async (request) => {
     const courseIds = await loadViewerCourseIds(request.user.userId);
     const notifications = await Notification.find(buildVisibleNotificationsFilter(courseIds))
       .select('_id scopeType courseId title message startAt endAt persistUntilDismissed createdAt updatedAt')
@@ -315,7 +327,14 @@ export default async function notificationRoutes(app) {
     };
   });
 
-  app.post('/manage', { preHandler: authenticate, schema: notificationMutationSchema }, async (request, reply) => {
+  app.post('/manage', {
+    preHandler: authenticate,
+    schema: notificationMutationSchema,
+    rateLimit: { max: 30, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.body;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
     if (!access) return;
@@ -341,7 +360,14 @@ export default async function notificationRoutes(app) {
     });
   });
 
-  app.get('/manage', { preHandler: authenticate, schema: notificationManageQuerySchema }, async (request, reply) => {
+  app.get('/manage', {
+    preHandler: authenticate,
+    schema: notificationManageQuerySchema,
+    rateLimit: { max: 120, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.query;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
     if (!access) return;
@@ -362,7 +388,14 @@ export default async function notificationRoutes(app) {
     };
   });
 
-  app.patch('/:id', { preHandler: authenticate, schema: { ...notificationIdParamsSchema, ...notificationUpdateSchema } }, async (request, reply) => {
+  app.patch('/:id', {
+    preHandler: authenticate,
+    schema: { ...notificationIdParamsSchema, ...notificationUpdateSchema },
+    rateLimit: { max: 30, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
 
@@ -404,7 +437,14 @@ export default async function notificationRoutes(app) {
     };
   });
 
-  app.delete('/:id', { preHandler: authenticate, schema: notificationIdParamsSchema }, async (request, reply) => {
+  app.delete('/:id', {
+    preHandler: authenticate,
+    schema: notificationIdParamsSchema,
+    rateLimit: { max: 30, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
 
@@ -416,7 +456,14 @@ export default async function notificationRoutes(app) {
     return reply.code(204).send();
   });
 
-  app.post('/:id/dismiss', { preHandler: authenticate, schema: notificationIdParamsSchema }, async (request, reply) => {
+  app.post('/:id/dismiss', {
+    preHandler: authenticate,
+    schema: notificationIdParamsSchema,
+    rateLimit: { max: 30, timeWindow: '1 minute' },
+    config: {
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     const notification = await loadVisibleNotificationForDismissal(request, reply, request.params.id);
     if (!notification) return;
 
