@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest, csrfHeaders } from '../helpers.js';
 import Settings from '../../src/models/Settings.js';
 import User from '../../src/models/User.js';
+import Course from '../../src/models/Course.js';
 
 let app;
 
@@ -244,6 +245,28 @@ describe('POST /api/v1/auth/login', () => {
     expect(body.user.canAccessProfessorDashboard).toBe(false);
     expect(body.user.profile.roles).toContain('student');
     expect(body.user.profile.roles).not.toContain('professor');
+  });
+
+  it('skips instructor-course lookups for plain student logins', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    await createTestUser({ email: 'plain-student-login@example.com', password: 'password123', roles: ['student'] });
+
+    const existsSpy = vi.spyOn(Course, 'exists');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'plain-student-login@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().user.hasInstructorCourses).toBe(false);
+    expect(res.json().user.canAccessProfessorDashboard).toBe(false);
+    expect(existsSpy).not.toHaveBeenCalled();
   });
 
   it('rejects wrong password', async (ctx) => {

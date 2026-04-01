@@ -831,18 +831,44 @@ function getChatAuthorRole(course, user) {
   return 'student';
 }
 
-function getChatCurrentQuestionNumber(session) {
-  if (!session?.currentQuestion) return null;
-  const questionIndex = (session.questions || []).findIndex((id) => String(id) === String(session.currentQuestion));
-  return questionIndex >= 0 ? questionIndex + 1 : null;
-}
-
 function buildQuickPostBody(questionNumber) {
   return `I didn't understand question ${questionNumber}`;
 }
 
-async function ensureSessionQuickPosts(session) {
-  const questionCount = Array.isArray(session?.questions) ? session.questions.length : 0;
+async function loadSessionChatQuestionMetadata(session) {
+  const orderedQuestions = await loadOrderedQuestions(session?.questions || []);
+  const currentQuestionId = normalizeAnswerValue(session?.currentQuestion);
+  const responseQuestionEntries = [];
+  let questionsBeforeCurrentPage = 0;
+  let currentQuestionNumber = null;
+
+  orderedQuestions.forEach((question, index) => {
+    const questionId = normalizeAnswerValue(question?._id);
+    if (currentQuestionId && questionId === currentQuestionId) {
+      currentQuestionNumber = questionsBeforeCurrentPage + 1;
+    }
+
+    if (!isQuestionResponseCollectionEnabled(question)) return;
+
+    const questionNumber = responseQuestionEntries.length + 1;
+    responseQuestionEntries.push({
+      questionId,
+      pageNumber: index + 1,
+      questionNumber,
+    });
+    questionsBeforeCurrentPage += 1;
+  });
+
+  return {
+    currentQuestionNumber,
+    totalQuestionCount: responseQuestionEntries.length,
+    responseQuestionEntries,
+  };
+}
+
+async function ensureSessionQuickPosts(session, questionMetadata = null) {
+  const metadata = questionMetadata || await loadSessionChatQuestionMetadata(session);
+  const questionCount = Number(metadata?.totalQuestionCount || 0);
   if (!session?._id || !session?.courseId || questionCount <= 0) return;
 
   const existingQuickPosts = await Post.find({
@@ -850,10 +876,67 @@ async function ensureSessionQuickPosts(session) {
     sessionId: String(session._id),
     isQuickPost: true,
   })
-    .select('_id quickPostQuestionNumber')
+    .select('_id quickPostQuestionNumber body')
     .lean();
+  const existingPositiveNumbers = existingQuickPosts
+    .map((post) => Number(post?.quickPostQuestionNumber))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const hasLegacyPageBasedQuickPosts = existingPositiveNumbers.length > questionCount
+    || existingPositiveNumbers.some((value) => value > questionCount);
+
+  if (hasLegacyPageBasedQuickPosts) {
+    const now = new Date();
+    const questionNumberByPageNumber = new Map(
+      (metadata?.responseQuestionEntries || []).map((entry) => [entry.pageNumber, entry.questionNumber])
+    );
+    const updates = existingQuickPosts.map((post) => {
+      const pageNumber = Number(post?.quickPostQuestionNumber);
+      const nextQuestionNumber = questionNumberByPageNumber.get(pageNumber);
+
+      if (nextQuestionNumber) {
+        return {
+          updateOne: {
+            filter: { _id: post._id },
+            update: {
+              $set: {
+                quickPostQuestionNumber: nextQuestionNumber,
+                body: buildQuickPostBody(nextQuestionNumber),
+                updatedAt: now,
+              },
+            },
+          },
+        };
+      }
+
+      return {
+        updateOne: {
+          filter: { _id: post._id },
+          update: {
+            $set: {
+              quickPostQuestionNumber: 0,
+              updatedAt: now,
+            },
+          },
+        },
+      };
+    });
+
+    if (updates.length > 0) {
+      await Post.bulkWrite(updates, { ordered: false }).catch(() => {});
+    }
+  }
+
+  const refreshedQuickPosts = hasLegacyPageBasedQuickPosts
+    ? await Post.find({
+      scopeType: 'session',
+      sessionId: String(session._id),
+      isQuickPost: true,
+    })
+      .select('_id quickPostQuestionNumber')
+      .lean()
+    : existingQuickPosts;
   const existingNumbers = new Set(
-    existingQuickPosts
+    refreshedQuickPosts
       .map((post) => Number(post?.quickPostQuestionNumber))
       .filter((value) => Number.isInteger(value) && value > 0)
   );
@@ -908,7 +991,7 @@ function getChatPermissionFlags({ session, course, request, viewMode }) {
     canViewLive,
     canWrite,
     canModerate: isInstructorView && viewMode === 'live' && isRunning,
-    canViewNames: isInstructorView,
+    canViewNames: isInstructorView && viewMode !== 'presentation',
   };
 }
 
@@ -917,8 +1000,14 @@ async function buildChatAuthorNameMap(posts, { includeAllAuthors = false } = {})
 
   posts.forEach((post) => {
     if (!post) return;
-    if (includeAllAuthors || ['admin', 'instructor'].includes(post.authorRole)) {
-      if (post.authorId) userIds.add(String(post.authorId));
+    const displayAuthor = getChatPostDisplayAuthor(post);
+    if (includeAllAuthors || ['admin', 'instructor'].includes(displayAuthor.authorRole)) {
+      if (displayAuthor.authorId) userIds.add(String(displayAuthor.authorId));
+    }
+    if (includeAllAuthors) {
+      (post.upvoteUserIds || []).forEach((userId) => {
+        if (userId) userIds.add(String(userId));
+      });
     }
     (post.comments || []).forEach((comment) => {
       if (includeAllAuthors || ['admin', 'instructor'].includes(comment.authorRole)) {
@@ -940,6 +1029,22 @@ async function buildChatAuthorNameMap(posts, { includeAllAuthors = false } = {})
 function shouldExposeChatAuthorName(authorRole, includeNames) {
   if (includeNames) return true;
   return authorRole === 'admin' || authorRole === 'instructor';
+}
+
+function getChatPostDisplayAuthor(post) {
+  const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+  if (post?.isQuickPost) {
+    const firstUpvoterId = upvoteUserIds[0] || '';
+    return {
+      authorId: firstUpvoterId,
+      authorRole: firstUpvoterId ? 'student' : 'system',
+    };
+  }
+
+  return {
+    authorId: normalizeAnswerValue(post?.authorId),
+    authorRole: normalizeAnswerValue(post?.authorRole) || 'student',
+  };
 }
 
 function serializeChatComment(comment, {
@@ -969,11 +1074,12 @@ function serializeChatPost(post, {
   viewerUserId = '',
   authorNameMap = new Map(),
 }) {
-  const authorId = normalizeAnswerValue(post?.authorId);
-  const authorRole = normalizeAnswerValue(post?.authorRole) || 'student';
   const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
   const upvoteCount = Number(post?.upvoteCount);
   const comments = Array.isArray(post?.comments) ? post.comments : [];
+  const displayAuthor = getChatPostDisplayAuthor(post);
+  const authorId = displayAuthor.authorId;
+  const authorRole = displayAuthor.authorRole;
   return {
     _id: String(post?._id || ''),
     body: normalizeAnswerValue(post?.body),
@@ -991,6 +1097,12 @@ function serializeChatPost(post, {
     authorName: shouldExposeChatAuthorName(authorRole, includeNames)
       ? (authorNameMap.get(authorId) || null)
       : null,
+    upvoterUserIds: includeNames ? upvoteUserIds : undefined,
+    upvoterNames: includeNames
+      ? upvoteUserIds
+        .map((userId) => authorNameMap.get(userId) || null)
+        .filter(Boolean)
+      : undefined,
     comments: comments.map((comment) => serializeChatComment(comment, {
       includeNames,
       viewerUserId,
@@ -1016,7 +1128,8 @@ async function loadSessionChatPayload({ session, course, request }) {
     return { forbidden: true };
   }
 
-  await ensureSessionQuickPosts(session);
+  const questionMetadata = await loadSessionChatQuestionMetadata(session);
+  await ensureSessionQuickPosts(session, questionMetadata);
 
   const query = {
     scopeType: 'session',
@@ -1045,7 +1158,7 @@ async function loadSessionChatPayload({ session, course, request }) {
   const authorNameMap = await buildChatAuthorNameMap(visiblePosts, {
     includeAllAuthors: flags.canViewNames,
   });
-  const currentQuestionNumber = getChatCurrentQuestionNumber(session);
+  const currentQuestionNumber = questionMetadata.currentQuestionNumber;
   const viewerUserId = String(request.user?.userId || '');
   const serializedPosts = visiblePosts.map((post) => serializeChatPost(post, {
     includeNames: flags.canViewNames,
@@ -1066,7 +1179,28 @@ async function loadSessionChatPayload({ session, course, request }) {
     .filter((post) => Number(post.questionNumber) > 0 && (
       currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
     ))
-    .sort((a, b) => a.questionNumber - b.questionNumber);
+    .sort((a, b) => b.questionNumber - a.questionNumber);
+  const quickPostOptions = posts
+    .filter((post) => {
+      if (!post?.isQuickPost) return false;
+      if (!includeDismissed && post?.dismissedAt) return false;
+      return true;
+    })
+    .map((post) => {
+      const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+      const upvoteCount = Number(post?.upvoteCount);
+      return {
+        postId: String(post?._id || ''),
+        questionNumber: Number(post?.quickPostQuestionNumber) || null,
+        label: normalizeAnswerValue(post?.body),
+        upvoteCount: Number.isFinite(upvoteCount) ? upvoteCount : upvoteUserIds.length,
+        viewerHasUpvoted: upvoteUserIds.includes(viewerUserId),
+      };
+    })
+    .filter((post) => Number(post.questionNumber) > 0 && (
+      currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
+    ))
+    .sort((a, b) => b.questionNumber - a.questionNumber);
 
   return {
     enabled: !!session?.chatEnabled,
@@ -1080,6 +1214,7 @@ async function loadSessionChatPayload({ session, course, request }) {
     canViewNames: flags.canViewNames,
     posts: serializedPosts,
     quickPosts,
+    quickPostOptions,
   };
 }
 
@@ -5842,7 +5977,8 @@ export default async function sessionRoutes(app) {
       }
 
       const questionNumber = Number.parseInt(request.params.questionNumber, 10);
-      const currentQuestionNumber = getChatCurrentQuestionNumber(session);
+      const questionMetadata = await loadSessionChatQuestionMetadata(session);
+      const currentQuestionNumber = questionMetadata.currentQuestionNumber;
       if (!Number.isInteger(questionNumber) || questionNumber <= 0) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Invalid quick-post question number' });
       }
@@ -5850,7 +5986,7 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Quick posts are only available for earlier questions' });
       }
 
-      await ensureSessionQuickPosts(session);
+      await ensureSessionQuickPosts(session, questionMetadata);
       const post = await Post.findOne({
         scopeType: 'session',
         sessionId: String(session._id),
@@ -5948,7 +6084,8 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'You cannot vote on your own post' });
       }
 
-      const currentQuestionNumber = getChatCurrentQuestionNumber(session);
+      const questionMetadata = await loadSessionChatQuestionMetadata(session);
+      const currentQuestionNumber = questionMetadata.currentQuestionNumber;
       if (post.isQuickPost && currentQuestionNumber != null && Number(post.quickPostQuestionNumber) >= currentQuestionNumber) {
         return reply.code(400).send({ error: 'Bad Request', message: 'This quick post is not available yet' });
       }

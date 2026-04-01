@@ -8,6 +8,7 @@ import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import SessionChatPanel from '../../components/live/SessionChatPanel';
+import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import {
@@ -506,6 +507,10 @@ function LiveSessionContent() {
     showStats ? t('student.liveSession.statsVisible') : null,
     showCorrect ? t('student.liveSession.correctVisible') : null,
   ].filter(Boolean).join(' ');
+  const panelTabs = [
+    { value: 'question', label: t('student.liveSession.currentQuestion') },
+    ...(chatEnabled ? [{ value: 'chat', label: t('sessionChat.chat') }] : []),
+  ];
 
   // --------------------------------------------------
   // Render: loading state
@@ -725,28 +730,12 @@ function LiveSessionContent() {
             {session.name || t('student.liveSession.liveSessionFallback')}
           </Typography>
         </Box>
-        <Paper variant="outlined" sx={{ p: 0.75, mb: 2 }}>
-          <Box
-            role="tablist"
-            aria-label={t('sessionChat.chat')}
-            sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.75 }}
-          >
-            <Button
-              variant={activePanel === 'question' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('question')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('student.liveSession.currentQuestion')}
-            </Button>
-            <Button
-              variant={activePanel === 'chat' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('chat')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('sessionChat.chat')}
-            </Button>
-          </Box>
-        </Paper>
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={panelTabs}
+          ariaLabel={t('student.liveSession.panelsLabel')}
+        />
         {activePanel === 'chat' ? (
           <SessionChatPanel
             sessionId={sessionId}
@@ -833,32 +822,12 @@ function LiveSessionContent() {
       </Box>
 
       {chatEnabled ? (
-        <Paper variant="outlined" sx={{ p: 0.75, mb: 2 }}>
-          <Box
-            role="tablist"
-            aria-label={t('sessionChat.chat')}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 0.75,
-            }}
-          >
-            <Button
-              variant={activePanel === 'question' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('question')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('professor.liveSession.controlsTab')}
-            </Button>
-            <Button
-              variant={activePanel === 'chat' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('chat')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('sessionChat.chat')}
-            </Button>
-          </Box>
-        </Paper>
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={panelTabs}
+          ariaLabel={t('student.liveSession.panelsLabel')}
+        />
       ) : null}
 
       {activePanel === 'chat' ? (

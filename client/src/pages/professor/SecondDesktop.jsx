@@ -23,6 +23,7 @@ import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 import SessionChatPanel from '../../components/live/SessionChatPanel';
+import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
@@ -532,6 +533,10 @@ export default function PresentationWindow() {
   const inlineDistributionTotal = Number(responseStats?.total) > 0
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const waitingPanelTabs = [
+    { value: 'question', label: t('professor.secondDesktop.currentQuestion') },
+    ...(chatEnabled ? [{ value: 'chat', label: t('sessionChat.chat') }] : []),
+  ];
 
   // ---- Auto-close popup window when session ends ----
 
@@ -706,28 +711,12 @@ export default function PresentationWindow() {
         }}
       >
         {renderHeader({ compact: true })}
-        <Paper variant="outlined" sx={{ p: 0.75, mb: 2 }}>
-          <Box
-            role="tablist"
-            aria-label={t('sessionChat.chat')}
-            sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 0.75 }}
-          >
-            <Button
-              variant={activePanel === 'question' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('question')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('professor.secondDesktop.currentQuestion')}
-            </Button>
-            <Button
-              variant={activePanel === 'chat' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('chat')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('sessionChat.chat')}
-            </Button>
-          </Box>
-        </Paper>
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={waitingPanelTabs}
+          ariaLabel={t('professor.secondDesktop.panelsLabel')}
+        />
         {activePanel === 'chat' ? (
           <SessionChatPanel
             sessionId={sessionId}
@@ -762,32 +751,12 @@ export default function PresentationWindow() {
       {renderHeader({ compact: true })}
 
       {chatEnabled ? (
-        <Paper variant="outlined" sx={{ p: 0.75, mb: 2 }}>
-          <Box
-            role="tablist"
-            aria-label={t('sessionChat.chat')}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 0.75,
-            }}
-          >
-            <Button
-              variant={activePanel === 'question' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('question')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('professor.secondDesktop.currentQuestion')}
-            </Button>
-            <Button
-              variant={activePanel === 'chat' ? 'contained' : 'text'}
-              onClick={() => setActivePanel('chat')}
-              sx={{ textTransform: 'none', fontWeight: 700 }}
-            >
-              {t('sessionChat.chat')}
-            </Button>
-          </Box>
-        </Paper>
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={waitingPanelTabs}
+          ariaLabel={t('professor.secondDesktop.panelsLabel')}
+        />
       ) : null}
 
       {activePanel === 'chat' ? (

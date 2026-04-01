@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { createApp, createTestUser, getAuthToken, authenticatedRequest } from '../helpers.js';
 import Course from '../../src/models/Course.js';
 import Grade from '../../src/models/Grade.js';
+import Post from '../../src/models/Post.js';
 import Question from '../../src/models/Question.js';
 import Response from '../../src/models/Response.js';
 import Session from '../../src/models/Session.js';
@@ -3922,6 +3923,302 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
     expect(afterUpdate.statusCode).toBe(200);
     const afterUpdateSession = afterUpdate.json().sessions.find((row) => row._id === session._id);
     expect(afterUpdateSession.hasNewFeedback).toBe(true);
+  });
+});
+
+// ---------- Session chat quick posts ----------
+describe('session chat quick posts', () => {
+  it('keeps zero-vote quick posts hidden while exposing them as shared prior-question options', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Chat Session' });
+    const session = sessionRes.json().session;
+
+    const questionOne = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 1</p>',
+      plainText: 'Question 1',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const questionTwo = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 2</p>',
+      plainText: 'Question 2',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+
+    const enableChatRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    expect(enableChatRes.statusCode).toBe(200);
+
+    const startRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    expect(startRes.statusCode).toBe(200);
+
+    const setQuestionRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/current`, {
+      token: profToken,
+      payload: { questionId: questionTwo._id },
+    });
+    expect(setQuestionRes.statusCode).toBe(200);
+
+    const joinRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    expect(joinRes.statusCode).toBe(200);
+
+    const initialChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: studentToken,
+    });
+    expect(initialChatRes.statusCode).toBe(200);
+    expect(initialChatRes.json().currentQuestionNumber).toBe(2);
+    expect(initialChatRes.json().posts).toHaveLength(0);
+    expect(initialChatRes.json().quickPostOptions).toEqual([
+      expect.objectContaining({
+        questionNumber: 1,
+        upvoteCount: 0,
+        viewerHasUpvoted: false,
+      }),
+    ]);
+
+    const toggleQuickPostRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/quick-posts/1/toggle`, {
+      token: studentToken,
+    });
+    expect(toggleQuickPostRes.statusCode).toBe(200);
+    expect(toggleQuickPostRes.json().viewerHasUpvoted).toBe(true);
+    expect(toggleQuickPostRes.json().upvoteCount).toBe(1);
+
+    const quickPosts = await Post.find({
+      scopeType: 'session',
+      sessionId: String(session._id),
+      isQuickPost: true,
+    }).lean();
+    expect(quickPosts).toHaveLength(2);
+    const questionOneQuickPost = quickPosts.find((post) => Number(post.quickPostQuestionNumber) === 1);
+    expect(questionOneQuickPost).toBeTruthy();
+    expect(Number(questionOneQuickPost.upvoteCount)).toBe(1);
+    expect((questionOneQuickPost.upvoteUserIds || []).map(String)).toContain(String(student._id));
+    expect(questionOneQuickPost.body).toBe("I didn't understand question 1");
+
+    const updatedChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: studentToken,
+    });
+    expect(updatedChatRes.statusCode).toBe(200);
+    expect(updatedChatRes.json().posts).toEqual([
+      expect.objectContaining({
+        isQuickPost: true,
+        quickPostQuestionNumber: 1,
+        upvoteCount: 1,
+        viewerHasUpvoted: true,
+      }),
+    ]);
+    expect(updatedChatRes.json().quickPostOptions).toEqual([
+      expect.objectContaining({
+        questionNumber: 1,
+        upvoteCount: 1,
+        viewerHasUpvoted: true,
+      }),
+    ]);
+
+    expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
+  });
+
+  it('numbers quick-post options by questions only and ignores slides in the cutoff', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Slides Chat Session' });
+    const session = sessionRes.json().session;
+
+    const slideOne = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 6,
+      content: '<p>Slide 1</p>',
+      plainText: 'Slide 1',
+    });
+    const questionOne = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 1</p>',
+      plainText: 'Question 1',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const questionTwo = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 2</p>',
+      plainText: 'Question 2',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const slideTwo = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 6,
+      content: '<p>Slide 2</p>',
+      plainText: 'Slide 2',
+    });
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 6,
+      content: '<p>Slide 3</p>',
+      plainText: 'Slide 3',
+    });
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 3</p>',
+      plainText: 'Question 3',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 6,
+      content: '<p>Slide 4</p>',
+      plainText: 'Slide 4',
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/current`, {
+      token: profToken,
+      payload: { questionId: slideTwo._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const chatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: studentToken,
+    });
+    expect(chatRes.statusCode).toBe(200);
+    expect(chatRes.json().currentQuestionNumber).toBe(3);
+    expect(chatRes.json().quickPostOptions.map((post) => post.questionNumber)).toEqual([2, 1]);
+
+    const quickPosts = await Post.find({
+      scopeType: 'session',
+      sessionId: String(session._id),
+      isQuickPost: true,
+    }).lean();
+    expect(quickPosts).toHaveLength(3);
+    expect(quickPosts.map((post) => Number(post.quickPostQuestionNumber)).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+
+    expect(String(slideOne._id)).not.toBe(String(questionOne._id));
+    expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
+  });
+
+  it('shows quick-post authors as the first upvoter to professors and anonymous students elsewhere', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Quick Post Author Session' });
+    const session = sessionRes.json().session;
+
+    const questionOne = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 1</p>',
+      plainText: 'Question 1',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const questionTwo = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 2</p>',
+      plainText: 'Question 2',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/current`, {
+      token: profToken,
+      payload: { questionId: questionTwo._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/quick-posts/1/toggle`, {
+      token: studentToken,
+    });
+
+    const profChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: profToken,
+    });
+    expect(profChatRes.statusCode).toBe(200);
+    expect(profChatRes.json().posts).toEqual([
+      expect.objectContaining({
+        isQuickPost: true,
+        authorRole: 'student',
+        authorName: expect.stringContaining(student.profile.firstname),
+        upvoterUserIds: [String(student._id)],
+      }),
+    ]);
+    expect(profChatRes.json().posts[0].upvoterNames).toEqual([
+      expect.stringContaining(student.profile.firstname),
+    ]);
+
+    const presentationChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat?view=presentation`, {
+      token: profToken,
+    });
+    expect(presentationChatRes.statusCode).toBe(200);
+    expect(presentationChatRes.json().posts).toEqual([
+      expect.objectContaining({
+        isQuickPost: true,
+        authorRole: 'student',
+        authorName: null,
+      }),
+    ]);
+
+    expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
   });
 });
 

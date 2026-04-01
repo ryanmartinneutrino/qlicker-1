@@ -9,8 +9,10 @@ import {
   CircularProgress,
   Collapse,
   Divider,
+  MenuItem,
   Paper,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import {
@@ -57,6 +59,7 @@ function getAuthorLabel({ authorName, authorRole, canViewNames, t }) {
   if (authorName) return authorName;
   if (authorRole === 'student') return t('sessionChat.anonymousStudent');
   if (authorRole === 'instructor' || authorRole === 'admin') return t('sessionChat.instructor');
+  if (authorRole === 'system') return t('sessionChat.system');
   if (canViewNames) return t('sessionChat.unknownAuthor');
   return t('sessionChat.system');
 }
@@ -186,25 +189,32 @@ export default function SessionChatPanel({
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentDrafts, setCommentDrafts] = useState({});
   const [pendingCommentId, setPendingCommentId] = useState('');
+  const [selectedQuickPostQuestionNumber, setSelectedQuickPostQuestionNumber] = useState('');
+  const [submittingQuickPost, setSubmittingQuickPost] = useState(false);
+  const chatDataRef = useRef(initialData);
 
   useEffect(() => {
+    chatDataRef.current = initialData;
     setChatData(initialData);
     setLoading(!initialData);
   }, [initialData]);
 
   const fetchChat = useCallback(async () => {
     if (!enabled) {
+      chatDataRef.current = null;
       setChatData(null);
+      setError(null);
       setLoading(false);
       return;
     }
 
-    setLoading(!chatData);
+    setLoading(!chatDataRef.current);
     try {
       const params = {};
       if (view === 'presentation') params.view = 'presentation';
       if (view === 'review') params.view = 'review';
       const { data } = await apiClient.get(`/sessions/${sessionId}/chat`, { params });
+      chatDataRef.current = data;
       setChatData(data);
       setError(null);
     } catch (err) {
@@ -212,10 +222,10 @@ export default function SessionChatPanel({
     } finally {
       setLoading(false);
     }
-  }, [chatData, enabled, sessionId, t, view]);
+  }, [enabled, sessionId, t, view]);
 
   useEffect(() => {
-    fetchChat();
+    void fetchChat();
   }, [fetchChat, refreshToken]);
 
   const canCompose = !!chatData?.canPost && view === 'live';
@@ -224,6 +234,35 @@ export default function SessionChatPanel({
   const canComment = !!chatData?.canComment && view === 'live';
   const canViewNames = !!chatData?.canViewNames;
   const draftHasContent = normalizeDraftPlainText(draftHtml).length > 0 || (draftHtml || '').trim().length > 0;
+  const quickPostOptions = useMemo(() => {
+    const options = Array.isArray(chatData?.quickPostOptions) && chatData.quickPostOptions.length > 0
+      ? chatData.quickPostOptions
+      : Array.isArray(chatData?.quickPosts)
+        ? chatData.quickPosts
+        : [];
+    return [...options]
+      .filter((option) => Number(option?.questionNumber) > 0)
+      .sort((a, b) => Number(b?.questionNumber || 0) - Number(a?.questionNumber || 0));
+  }, [chatData?.quickPostOptions, chatData?.quickPosts]);
+  const selectedQuickPost = useMemo(
+    () => quickPostOptions.find((option) => String(option.questionNumber) === String(selectedQuickPostQuestionNumber))
+      || quickPostOptions[0]
+      || null,
+    [quickPostOptions, selectedQuickPostQuestionNumber]
+  );
+
+  useEffect(() => {
+    if (quickPostOptions.length === 0) {
+      setSelectedQuickPostQuestionNumber('');
+      return;
+    }
+
+    setSelectedQuickPostQuestionNumber((prev) => (
+      quickPostOptions.some((option) => String(option.questionNumber) === String(prev))
+        ? prev
+        : String(quickPostOptions[0].questionNumber)
+    ));
+  }, [quickPostOptions]);
 
   const handleSubmitPost = useCallback(async () => {
     if (!draftHasContent || submittingPost) return;
@@ -244,13 +283,17 @@ export default function SessionChatPanel({
   }, [draftHasContent, draftHtml, fetchChat, role, sessionId, submittingPost, t]);
 
   const handleQuickPostToggle = useCallback(async (questionNumber) => {
+    if (!questionNumber || submittingQuickPost) return;
+    setSubmittingQuickPost(true);
     try {
       await apiClient.post(`/sessions/${sessionId}/chat/quick-posts/${questionNumber}/toggle`);
       await fetchChat();
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToSend'));
+    } finally {
+      setSubmittingQuickPost(false);
     }
-  }, [fetchChat, sessionId, t]);
+  }, [fetchChat, sessionId, submittingQuickPost, t]);
 
   const handleVote = useCallback(async (postId, upvoted) => {
     try {
@@ -323,23 +366,62 @@ export default function SessionChatPanel({
         </Alert>
       ) : null}
 
-      {role === 'student' && canVote && chatData?.quickPosts?.length > 0 ? (
+      {role === 'student' && canVote && quickPostOptions.length > 0 ? (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
-            {t('sessionChat.quickPosts')}
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+            {t('sessionChat.quickPostPrompt')}
           </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {chatData.quickPosts.map((quickPost) => (
-              <Button
-                key={quickPost.postId}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {t('sessionChat.quickPostHelper')}
+          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              flexWrap: 'wrap',
+              gap: 1,
+              alignItems: { sm: 'center' },
+            }}
+          >
+            <TextField
+              select
+              size="small"
+              fullWidth
+              label={t('sessionChat.quickPostQuestionLabel')}
+              value={selectedQuickPost ? String(selectedQuickPost.questionNumber) : ''}
+              onChange={(event) => setSelectedQuickPostQuestionNumber(event.target.value)}
+              sx={{ flex: '1 1 240px' }}
+            >
+              {quickPostOptions.map((quickPost) => (
+                <MenuItem
+                  key={quickPost.postId}
+                  value={String(quickPost.questionNumber)}
+                >
+                  {t('sessionChat.quickPostLabel', { questionNumber: quickPost.questionNumber })}
+                </MenuItem>
+              ))}
+            </TextField>
+            {selectedQuickPost ? (
+              <Chip
                 size="small"
-                variant={quickPost.viewerHasUpvoted ? 'contained' : 'outlined'}
-                onClick={() => handleQuickPostToggle(quickPost.questionNumber)}
-                startIcon={quickPost.viewerHasUpvoted ? <RemoveIcon /> : <AddIcon />}
-              >
-                {t('sessionChat.quickPostLabel', { questionNumber: quickPost.questionNumber })}
-              </Button>
-            ))}
+                variant="outlined"
+                label={t('sessionChat.upvotes', { count: selectedQuickPost.upvoteCount })}
+                sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}
+              />
+            ) : null}
+            <Button
+              variant={selectedQuickPost?.viewerHasUpvoted ? 'outlined' : 'contained'}
+              onClick={() => handleQuickPostToggle(selectedQuickPost?.questionNumber)}
+              disabled={!selectedQuickPost || submittingQuickPost}
+              startIcon={selectedQuickPost?.viewerHasUpvoted ? <RemoveIcon /> : <AddIcon />}
+              sx={{ width: { xs: '100%', sm: 'auto' }, flexShrink: 0 }}
+            >
+              {submittingQuickPost
+                ? t('sessionChat.sending')
+                : selectedQuickPost?.viewerHasUpvoted
+                  ? t('sessionChat.undoQuickPost')
+                  : t('sessionChat.requestQuickPost')}
+            </Button>
           </Box>
         </Paper>
       ) : null}
