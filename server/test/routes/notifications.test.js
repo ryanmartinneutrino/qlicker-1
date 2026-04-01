@@ -66,6 +66,7 @@ describe('notification routes', () => {
     expect(createRes.statusCode).toBe(201);
     const createdNotification = createRes.json().notification;
     expect(createdNotification.scopeType).toBe('system');
+    expect(createdNotification.recipientType).toBe('all');
 
     const listRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/manage?scopeType=system', { token });
     expect(listRes.statusCode).toBe(200);
@@ -92,13 +93,116 @@ describe('notification routes', () => {
     expect(await NotificationDismissal.findOne({ notificationId: createdNotification._id }).lean()).toBeNull();
   });
 
-  it('shows active system and course notifications to course members and supports dismissal', async (ctx) => {
+  it('routes system and course notifications to the requested recipients', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const admin = await createTestUser({ email: 'admin-visible@example.com', roles: ['admin'] });
     const adminToken = await getAuthToken(app, admin);
     const professor = await createTestUser({ email: 'prof-visible@example.com', roles: ['professor'] });
     const professorToken = await getAuthToken(app, professor);
     const student = await createTestUser({ email: 'student-visible@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const ta = await createTestUser({ email: 'ta-visible@example.com', roles: ['student'] });
+    const taToken = await getAuthToken(app, ta);
+
+    const course = await createCourseAsProfessor(professorToken);
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: professorToken,
+      payload: { userId: ta._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const systemPayloads = [
+      { title: 'System everyone', recipientType: 'all' },
+      { title: 'System students', recipientType: 'students' },
+      { title: 'System professors', recipientType: 'instructors' },
+    ];
+    const coursePayloads = [
+      { title: 'Course everyone', recipientType: 'all' },
+      { title: 'Course students', recipientType: 'students' },
+      { title: 'Course instructors', recipientType: 'instructors' },
+    ];
+
+    for (const payload of systemPayloads) {
+      const response = await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
+        token: adminToken,
+        payload: {
+          scopeType: 'system',
+          message: `${payload.title} body.`,
+          persistUntilDismissed: false,
+          ...buildWindow(-20, 60),
+          ...payload,
+        },
+      });
+      expect(response.statusCode).toBe(201);
+    }
+
+    for (const payload of coursePayloads) {
+      const response = await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
+        token: professorToken,
+        payload: {
+          scopeType: 'course',
+          courseId: course._id,
+          message: `${payload.title} body.`,
+          persistUntilDismissed: false,
+          ...buildWindow(-10, 120),
+          ...payload,
+        },
+      });
+      expect(response.statusCode).toBe(201);
+    }
+
+    const studentSummaryRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/summary', { token: studentToken });
+    expect(studentSummaryRes.statusCode).toBe(200);
+    expect(studentSummaryRes.json().count).toBe(4);
+
+    const professorSummaryRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/summary', { token: professorToken });
+    expect(professorSummaryRes.statusCode).toBe(200);
+    expect(professorSummaryRes.json().count).toBe(4);
+
+    const taSummaryRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/summary', { token: taToken });
+    expect(taSummaryRes.statusCode).toBe(200);
+    expect(taSummaryRes.json().count).toBe(4);
+
+    const studentListRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications', { token: studentToken });
+    expect(studentListRes.statusCode).toBe(200);
+    expect(studentListRes.json().notifications.map((notification) => notification.title).sort()).toEqual([
+      'Course everyone',
+      'Course students',
+      'System everyone',
+      'System students',
+    ]);
+
+    const professorListRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications', { token: professorToken });
+    expect(professorListRes.statusCode).toBe(200);
+    expect(professorListRes.json().notifications.map((notification) => notification.title).sort()).toEqual([
+      'Course everyone',
+      'Course instructors',
+      'System everyone',
+      'System professors',
+    ]);
+
+    const taListRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications', { token: taToken });
+    expect(taListRes.statusCode).toBe(200);
+    expect(taListRes.json().notifications.map((notification) => notification.title).sort()).toEqual([
+      'Course everyone',
+      'Course instructors',
+      'System everyone',
+      'System students',
+    ]);
+  });
+
+  it('supports dismissal while respecting targeted recipients', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const admin = await createTestUser({ email: 'admin-dismiss-visible@example.com', roles: ['admin'] });
+    const adminToken = await getAuthToken(app, admin);
+    const professor = await createTestUser({ email: 'prof-dismiss-visible@example.com', roles: ['professor'] });
+    const professorToken = await getAuthToken(app, professor);
+    const student = await createTestUser({ email: 'student-dismiss-visible@example.com', roles: ['student'] });
     const studentToken = await getAuthToken(app, student);
 
     const course = await createCourseAsProfessor(professorToken);
@@ -113,7 +217,8 @@ describe('notification routes', () => {
       payload: {
         scopeType: 'course',
         courseId: course._id,
-        title: 'Course notice',
+        recipientType: 'students',
+        title: 'Course students only',
         message: 'Read chapter 5 before class.',
         persistUntilDismissed: false,
         ...buildWindow(-10, 120),
@@ -122,60 +227,19 @@ describe('notification routes', () => {
     expect(courseNotificationRes.statusCode).toBe(201);
     const courseNotificationId = courseNotificationRes.json().notification._id;
 
-    await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
+    const systemNotificationRes = await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
       token: adminToken,
       payload: {
         scopeType: 'system',
+        recipientType: 'all',
         title: 'System notice',
         message: 'Welcome back.',
         persistUntilDismissed: false,
         ...buildWindow(-20, 60),
       },
     });
-    await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
-      token: adminToken,
-      payload: {
-        scopeType: 'system',
-        title: 'Persistent notice',
-        message: 'Please review the handbook.',
-        persistUntilDismissed: true,
-        ...buildWindow(-180, -60),
-      },
-    });
-    await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
-      token: adminToken,
-      payload: {
-        scopeType: 'system',
-        title: 'Expired notice',
-        message: 'Old news.',
-        persistUntilDismissed: false,
-        ...buildWindow(-180, -60),
-      },
-    });
-    await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
-      token: adminToken,
-      payload: {
-        scopeType: 'system',
-        title: 'Future notice',
-        message: 'Starts later.',
-        persistUntilDismissed: false,
-        ...buildWindow(60, 180),
-      },
-    });
-
-    const summaryRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/summary', { token: studentToken });
-    expect(summaryRes.statusCode).toBe(200);
-    expect(summaryRes.json().count).toBe(3);
-
-    const listRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications', { token: studentToken });
-    expect(listRes.statusCode).toBe(200);
-    expect(listRes.json().notifications.map((notification) => notification.title)).toEqual([
-      'Course notice',
-      'System notice',
-      'Persistent notice',
-    ]);
-    expect(listRes.json().notifications[0].source.type).toBe('course');
-    expect(listRes.json().notifications[0].source.course._id).toBe(course._id);
+    expect(systemNotificationRes.statusCode).toBe(201);
+    const systemNotificationId = systemNotificationRes.json().notification._id;
 
     const dismissRes = await authenticatedRequest(app, 'POST', `/api/v1/notifications/${courseNotificationId}/dismiss`, {
       token: studentToken,
@@ -183,15 +247,24 @@ describe('notification routes', () => {
     expect(dismissRes.statusCode).toBe(204);
 
     const refreshedSummaryRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications/summary', { token: studentToken });
-    expect(refreshedSummaryRes.json().count).toBe(2);
+    expect(refreshedSummaryRes.json().count).toBe(1);
     const refreshedListRes = await authenticatedRequest(app, 'GET', '/api/v1/notifications', { token: studentToken });
     expect(refreshedListRes.json().notifications.map((notification) => notification.title)).toEqual([
       'System notice',
-      'Persistent notice',
     ]);
+
+    const forbiddenDismissRes = await authenticatedRequest(app, 'POST', `/api/v1/notifications/${courseNotificationId}/dismiss`, {
+      token: professorToken,
+    });
+    expect(forbiddenDismissRes.statusCode).toBe(403);
+
+    const systemDismissRes = await authenticatedRequest(app, 'POST', `/api/v1/notifications/${systemNotificationId}/dismiss`, {
+      token: studentToken,
+    });
+    expect(systemDismissRes.statusCode).toBe(204);
   });
 
-  it('prevents student-only instructor accounts from creating course notifications', async (ctx) => {
+  it('allows student-only instructor accounts to create course notifications', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const professor = await createTestUser({ email: 'prof-ta@example.com', roles: ['professor'] });
     const professorToken = await getAuthToken(app, professor);
@@ -210,14 +283,52 @@ describe('notification routes', () => {
       payload: {
         scopeType: 'course',
         courseId: course._id,
+        recipientType: 'instructors',
         title: 'TA notice',
+        message: 'Allowed for instructors.',
+        persistUntilDismissed: false,
+        ...buildWindow(-10, 60),
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    expect(createRes.json().notification.recipientType).toBe('instructors');
+
+    const listRes = await authenticatedRequest(app, 'GET', `/api/v1/notifications/manage?scopeType=course&courseId=${course._id}`, {
+      token: taToken,
+    });
+    expect(listRes.statusCode).toBe(200);
+    expect(listRes.json().notifications).toHaveLength(1);
+    expect(listRes.json().notifications[0].title).toBe('TA notice');
+  });
+
+  it('prevents non-instructor students from creating course notifications', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const professor = await createTestUser({ email: 'prof-student-only@example.com', roles: ['professor'] });
+    const professorToken = await getAuthToken(app, professor);
+    const student = await createTestUser({ email: 'student-only@example.com', roles: ['student'] });
+    const studentToken = await getAuthToken(app, student);
+    const course = await createCourseAsProfessor(professorToken);
+
+    const enrollRes = await authenticatedRequest(app, 'POST', '/api/v1/courses/enroll', {
+      token: studentToken,
+      payload: { enrollmentCode: course.enrollmentCode },
+    });
+    expect(enrollRes.statusCode).toBe(200);
+
+    const createRes = await authenticatedRequest(app, 'POST', '/api/v1/notifications/manage', {
+      token: studentToken,
+      payload: {
+        scopeType: 'course',
+        courseId: course._id,
+        recipientType: 'all',
+        title: 'Student notice',
         message: 'Not allowed.',
         persistUntilDismissed: false,
         ...buildWindow(-10, 60),
       },
     });
     expect(createRes.statusCode).toBe(403);
-    expect(createRes.json().message).toMatch(/professors or admins/i);
+    expect(createRes.json().message).toMatch(/course instructors or admins/i);
   });
 
   it('prevents professors from creating system notifications', async (ctx) => {

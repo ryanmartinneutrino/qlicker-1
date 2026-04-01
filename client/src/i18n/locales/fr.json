@@ -2103,6 +2103,18 @@
     "dismiss": "Retirer la notification",
     "edit": "Modifier la notification",
     "delete": "Supprimer la notification",
+    "audience": {
+      "system": {
+        "all": "tous les utilisateurs du système",
+        "students": "tous les étudiants",
+        "instructors": "tous les professeurs"
+      },
+      "course": {
+        "all": "toutes les personnes de ce cours",
+        "students": "tous les étudiants de ce cours",
+        "instructors": "tous les instructeurs de ce cours"
+      }
+    },
     "fields": {
       "title": "Titre",
       "message": "Message",
@@ -2123,6 +2135,7 @@
       "postNotification": "Publier la notification",
       "saveChanges": "Enregistrer les modifications",
       "cancelEdit": "Annuler la modification",
+      "recipientTypeLabel": "Envoyer à",
       "loadFailed": "Échec du chargement des notifications",
       "saveFailed": "Échec de l’enregistrement de la notification",
       "created": "Notification publiée",
