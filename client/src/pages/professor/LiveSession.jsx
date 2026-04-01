@@ -30,6 +30,7 @@ import {
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import SessionChatPanel from '../../components/live/SessionChatPanel';
 import StudentIdentity from '../../components/common/StudentIdentity';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
@@ -392,6 +393,7 @@ function LiveSessionContent() {
 
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
   const [activePanel, setActivePanel] = useState('question');
+  const [chatRefreshToken, setChatRefreshToken] = useState(0);
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -515,6 +517,21 @@ function LiveSessionContent() {
           success: true,
           transportOverride: syncContext?.transport,
         });
+        break;
+      case 'session:chat-settings-changed':
+        setLiveData((prev) => prev ? mergeSessionUpdate(prev, {
+          _id: prev.session?._id,
+          chatEnabled: data?.chatEnabled ?? prev.session?.chatEnabled,
+        }) : prev);
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
+        break;
+      case 'session:chat-updated':
+        setChatRefreshToken((prev) => prev + 1);
         break;
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
@@ -810,6 +827,22 @@ function LiveSessionContent() {
     );
   }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
+  const handleToggleSessionChat = useCallback((enabled) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/chat-settings`, { chatEnabled: enabled }),
+      enabled ? t('sessionChat.enableSessionChat') : t('sessionChat.disabled'),
+      {
+        pendingKey: 'session-chat:enabled',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
+    );
+  }, [doAction, sessionId, t]);
+
   // Presentation window
   const presentationWindowRef = useRef(null);
 
@@ -884,6 +917,7 @@ function LiveSessionContent() {
   // --------------------------------------------------
 
   const session = liveData?.session;
+  const chatEnabled = !!session?.chatEnabled;
   const courseTitle = useMemo(() => (
     liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
   ), [liveData?.course]);
@@ -937,11 +971,18 @@ function LiveSessionContent() {
   const joinCodeActiveBusy = pendingActionKey === 'join-code:active';
   const joinCodeRefreshBusy = pendingActionKey === 'join-code:refresh';
   const joinCodeIntervalBusy = pendingActionKey === 'join-code:interval';
+  const sessionChatBusy = pendingActionKey === 'session-chat:enabled';
   const visibleToggleBusy = pendingActionKey === 'question-toggle:hidden';
   const statsToggleBusy = pendingActionKey === 'question-toggle:stats';
   const correctToggleBusy = pendingActionKey === 'question-toggle:correct';
   const responseListToggleBusy = pendingActionKey === 'question-toggle:response-list';
   const responsesToggleBusy = pendingActionKey === 'question-responses:toggle';
+
+  useEffect(() => {
+    if (!chatEnabled && activePanel === 'chat') {
+      setActivePanel('question');
+    }
+  }, [activePanel, chatEnabled]);
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'
     ? responseStats.distribution || []
@@ -1077,12 +1118,28 @@ function LiveSessionContent() {
           </Button>
         </Box>
 
+        <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.25 } }}>
+          <FormControlLabel
+            labelPlacement="start"
+            sx={CONTROL_TOGGLE_LABEL_SX}
+            control={(
+              <Switch
+                checked={chatEnabled}
+                onChange={(event) => handleToggleSessionChat(event.target.checked)}
+                disabled={globalActionLoading || sessionChatBusy}
+                size={mobileControlSize}
+              />
+            )}
+            label={t('sessionChat.enableSessionChat')}
+          />
+        </Paper>
+
         <Box
           role="tablist"
           aria-label={t('professor.liveSession.panelsLabel')}
           sx={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gridTemplateColumns: `repeat(${chatEnabled ? 3 : 2}, minmax(0, 1fr))`,
             gap: 0.75,
             width: '100%',
             p: 0.5,
@@ -1120,6 +1177,20 @@ function LiveSessionContent() {
           >
             {t('professor.liveSession.studentsTab')}
           </Button>
+          {chatEnabled ? (
+            <Button
+              size={isMobile ? 'medium' : 'small'}
+              variant={activePanel === 'chat' ? 'contained' : 'text'}
+              onClick={() => setActivePanel('chat')}
+              sx={{
+                ...TOP_PANEL_TAB_BUTTON_SX,
+                boxShadow: activePanel === 'chat' ? 1 : 'none',
+                color: activePanel === 'chat' ? undefined : 'text.primary',
+              }}
+            >
+              {t('sessionChat.chat')}
+            </Button>
+          ) : null}
         </Box>
 
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, width: '100%' }}>
@@ -1624,6 +1695,13 @@ function LiveSessionContent() {
             )}
           </Box>
         </>
+      ) : activePanel === 'chat' ? (
+        <SessionChatPanel
+          sessionId={sessionId}
+          enabled={chatEnabled}
+          role="professor"
+          refreshToken={chatRefreshToken}
+        />
       ) : (
         <Paper
           variant="outlined"

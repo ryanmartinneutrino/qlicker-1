@@ -74,6 +74,8 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 | `session:attempt-changed` | Server → Client | Delta: `{ questionId, currentAttempt, stats, correct, resetResponses }` |
 | `session:participant-joined` | Server → Instructors | Delta: `{ joinedCount, joinedStudent }` |
 | `session:join-code-changed` | Server → Client | Delta: `{ joinCodeEnabled, joinCodeActive, ... }` with student-safe payloads |
+| `session:chat-settings-changed` | Server → Client | Delta: `{ chatEnabled }` so live tabs can appear/disappear without refetching unrelated data |
+| `session:chat-updated` | Server → Client | Delta: `{ postId, changeType }` prompting chat-only refreshes in the active chat tab |
 | `session:status-changed` | Server → Client | Delta: `{ status }` |
 | `session:visibility-changed` | Server → Client | Delta: `{ questionId, hidden, stats, correct }` |
 | `session:updated` | Server → Client | Generic fallback for non-live mutations or targeted single-user refreshes |
@@ -147,6 +149,11 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 - Course quiz cards now show date-and-time context directly in the list: **Quiz starts at**, **Quiz ends at**, or **Quiz ended at**, depending on status.
 - Blank short-answer responses no longer keep professor review pages or course session lists flagged as **Needs grading**; they still count toward participation with an accepted score of `0`.
 - Ending a live session from the live controls now stamps the session `date` with the actual end time instead of leaving the original draft timestamp in place.
+
+### Recent 2026-04-01 Fixes
+
+- Added session-scoped live chat with anonymous student posting, instructor moderation, quick-post upvotes, inline comments, and professor-only review visibility for dismissed posts.
+- Session chat now uses its own lean REST payloads plus delta-only WebSocket events so live question traffic does not need to refetch chat data unless the active chat tab changes.
 
 ---
 

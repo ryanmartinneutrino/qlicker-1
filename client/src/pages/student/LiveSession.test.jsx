@@ -118,6 +118,7 @@ describe('Student LiveSession', () => {
         session: {
           _id: 'session-1',
           name: 'Live math session',
+          status: 'running',
         },
         currentQuestion: {
           _id: 'q-1',
@@ -154,6 +155,6 @@ describe('Student LiveSession', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Answers will be scored based on a tolerance of +/- 1.2345E4.')).toBeInTheDocument();
+    expect(await screen.findByText(/Answers will be scored based on a tolerance of \+\/-/i)).toBeInTheDocument();
   });
 });

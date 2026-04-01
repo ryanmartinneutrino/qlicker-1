@@ -16,7 +16,7 @@ The current app exposes route groups for:
 - **Auth**: registration, login, logout, refresh, forgot/reset password, email verification, SSO
 - **Users**: profile, password changes, avatar thumbnail regeneration, admin user management, admin password reset
 - **Courses**: CRUD, enrollment, instructors, students, course settings, session listing
-- **Sessions**: CRUD, live sessions, quiz payloads, review payloads, join-code settings, question ordering, import/export
+- **Sessions**: CRUD, live sessions, quiz payloads, session chat payloads, review payloads, join-code settings, question ordering, import/export
 - **Questions**: library CRUD, visibility, copying, import/export helpers
 - **Grades**: course grades, session grades, recalculation, feedback and manual overrides, CSV export
 - **Groups**: group categories, membership, CSV import/export
@@ -37,6 +37,8 @@ Important event families include:
 - `session:attempt-changed`
 - `session:participant-joined`
 - `session:join-code-changed`
+- `session:chat-settings-changed`
+- `session:chat-updated`
 - `session:status-changed`
 - `session:visibility-changed`
 - `session:updated`
@@ -68,6 +70,7 @@ Recent auth/storage-specific route additions worth checking in Swagger:
 - `PATCH /api/v1/users/:id/password` lets admins reset a user's local password.
 - `GET /api/v1/settings/public` now includes `maxImageWidth` and `avatarThumbnailSize` so clients can normalize uploads and generate sharp profile thumbnails before sending them.
 - `GET /api/v1/courses/:courseId/sessions` supports opt-in `page` / `limit` pagination, returns `sessionTypeCounts` alongside paginated totals so course pages can reserve stable session-list controls before background hydration completes, and session rows now include `hasResponses` so professor course pages can show review affordances without scanning the `responses` collection on every load.
+- Session chat routes now live under `/api/v1/sessions/:id/chat*`, with lean live payloads for student, professor, presentation, and review views plus separate write endpoints for posts, comments, votes, quick posts, moderation, and the professor-only `PATCH /api/v1/sessions/:id/chat-settings` toggle.
 
 ## Local verification workflow
 
