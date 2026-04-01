@@ -19,6 +19,22 @@ import { prepareRichTextInput, renderKatexInElement } from './richTextUtils';
 const questionRichContentSx = {
   '& p': { my: 0.5 },
   '& ul, & ol': { my: 0.5, pl: 3 },
+  '& [data-video-embed]': {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    my: 0.75,
+  },
+  '& iframe': {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    aspectRatio: '16 / 9',
+    height: 'auto',
+    border: 0,
+    boxSizing: 'border-box',
+    borderRadius: 0,
+  },
   '& img': {
     display: 'block',
     maxWidth: '90% !important',
@@ -122,6 +138,22 @@ function QuestionDisplay({ question, allowVideoEmbeds = true }) {
                   '& p': { my: 0 },
                   '& ul, & ol': { my: 0, pl: 2.5 },
                   '& li': { my: 0 },
+                  '& [data-video-embed]': {
+                    display: 'block',
+                    width: '100%',
+                    maxWidth: '100%',
+                    my: 0.5,
+                  },
+                  '& iframe': {
+                    display: 'block',
+                    width: '100%',
+                    maxWidth: '100%',
+                    aspectRatio: '16 / 9',
+                    height: 'auto',
+                    border: 0,
+                    boxSizing: 'border-box',
+                    borderRadius: 0,
+                  },
                   '& img': {
                     display: 'block',
                     maxWidth: '90% !important',
