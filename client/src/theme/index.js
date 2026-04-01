@@ -8,7 +8,7 @@ const theme = createTheme({
     secondary: { main: '#FF9800' },
     success: { main: '#4CAF50' },
     error: { main: '#F44336' },
-    background: { default: '#FAFAFA', paper: '#FFFFFF' },
+    background: { default: '#f9fdfe', paper: '#FFFFFF' },
   },
   typography: {
     fontFamily: '"Helvetica Neue", "Helvetica", "Arial", sans-serif',
