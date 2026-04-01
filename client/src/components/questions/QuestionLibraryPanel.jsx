@@ -366,7 +366,7 @@ function ImportQuestionsDialog({
                             />
                             <Chip size="small" variant="outlined" label={t('questionLibrary.import.importedTag', { defaultValue: 'imported tag will be added' })} />
                           </Box>
-                          <QuestionDisplay question={question} />
+                          <QuestionDisplay question={question} allowVideoEmbeds={false} />
                         </Box>
                       </CardContent>
                     </Card>
@@ -1482,7 +1482,7 @@ function QuestionLibraryPanel({
                               })}
                             </Typography>
                             <Box sx={{ position: 'relative', maxHeight: expanded ? 'none' : 220, overflow: 'hidden' }}>
-                              <QuestionDisplay question={question} />
+                              <QuestionDisplay question={question} allowVideoEmbeds={false} />
                               {!expanded ? (
                                 <Box
                                   sx={{
