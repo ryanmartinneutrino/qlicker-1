@@ -19,6 +19,18 @@ import SessionListCard from '../../components/common/SessionListCard';
 
 const INACTIVE_COURSE_ERROR_CODE = 'COURSE_INACTIVE';
 
+const LIVE_SESSION_GRID_SX = {
+  display: 'grid',
+  gap: 1.25,
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+};
+
+const COURSE_GRID_SX = {
+  display: 'grid',
+  gap: 2,
+  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+};
+
 function buildWebsocketUrl(token) {
   const encodedToken = encodeURIComponent(token);
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -244,11 +256,7 @@ export default function StudentDashboard() {
         {sectionTitle}
       </Typography>
       <Box
-        sx={{
-          display: 'grid',
-          gap: 2,
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
-        }}
+        sx={COURSE_GRID_SX}
       >
         {sectionCourses.map((course) => {
           const isTa = taCourseIds.has(String(course._id));
@@ -306,7 +314,7 @@ export default function StudentDashboard() {
             <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
             {t('dashboard.liveSessions')}
           </Typography>
-          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+          <Box sx={LIVE_SESSION_GRID_SX}>
             {visibleLiveSessions.map((ls) => {
               const matchedCourse = courseById.get(String(ls.courseId));
               const action = getStudentSessionAction(ls, ls.courseId, 0);
@@ -321,19 +329,14 @@ export default function StudentDashboard() {
                   onClick={action.clickable ? () => navigate(action.path) : undefined}
                   title={ls.name}
                   subtitle={subtitle}
-                  badges={(
-                    <>
-                      <Chip label={t('sessionStatus.live')} size="small" color="success" />
-                      {action.label ? (
-                        <Chip
-                          label={t(action.label)}
-                          size="small"
-                          color={action.chipColor}
-                          variant={action.chipVariant}
-                        />
-                      ) : null}
-                    </>
-                  )}
+                  badges={action.label ? (
+                    <Chip
+                      label={t(action.label)}
+                      size="small"
+                      color={action.chipColor}
+                      variant={action.chipVariant}
+                    />
+                  ) : null}
                 />
               );
             })}
@@ -356,6 +359,9 @@ export default function StudentDashboard() {
         </Box>
       ) : (
         <>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+            {t('dashboard.courses')}
+          </Typography>
           {taOnlyCourses.length > 0
             ? renderCourseSection(t('student.dashboard.taCourses', { defaultValue: 'TA Courses' }), taOnlyCourses, { showTaChip: true })
             : null}
