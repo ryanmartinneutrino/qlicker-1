@@ -30,6 +30,8 @@ import {
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import SessionChatPanel from '../../components/live/SessionChatPanel';
+import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import StudentIdentity from '../../components/common/StudentIdentity';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
@@ -81,14 +83,29 @@ const CONTROL_TOGGLE_LABEL_SX = {
   },
 };
 
-const TOP_PANEL_TAB_BUTTON_SX = {
+const SESSION_CHAT_TOGGLE_LABEL_SX = {
   minHeight: { xs: 44, sm: 40 },
-  borderRadius: 1.4,
-  width: '100%',
-  justifyContent: 'center',
-  textTransform: 'none',
-  fontWeight: 700,
-  px: { xs: 1, sm: 1.5 },
+  m: 0,
+  width: { xs: '100%', sm: 'fit-content' },
+  maxWidth: '100%',
+  px: 1.15,
+  py: { xs: 0.25, sm: 0.1 },
+  borderRadius: 1,
+  justifyContent: 'flex-start',
+  alignItems: 'center',
+  columnGap: 1,
+  '& .MuiFormControlLabel-label': {
+    fontSize: { xs: '0.9rem', sm: '0.875rem' },
+    lineHeight: 1.2,
+    fontWeight: 600,
+    marginRight: 0,
+    overflowWrap: 'anywhere',
+  },
+  '& .MuiSwitch-root': {
+    mr: 0,
+    ml: 0,
+    flexShrink: 0,
+  },
 };
 
 const SR_ONLY_SX = {
@@ -392,6 +409,7 @@ function LiveSessionContent() {
 
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
   const [activePanel, setActivePanel] = useState('question');
+  const [chatRefreshToken, setChatRefreshToken] = useState(0);
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -515,6 +533,21 @@ function LiveSessionContent() {
           success: true,
           transportOverride: syncContext?.transport,
         });
+        break;
+      case 'session:chat-settings-changed':
+        setLiveData((prev) => prev ? mergeSessionUpdate(prev, {
+          _id: prev.session?._id,
+          chatEnabled: data?.chatEnabled ?? prev.session?.chatEnabled,
+        }) : prev);
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
+        break;
+      case 'session:chat-updated':
+        setChatRefreshToken((prev) => prev + 1);
         break;
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
@@ -810,6 +843,22 @@ function LiveSessionContent() {
     );
   }, [doAction, joinCodeIntervalInput, liveData?.session?.joinCodeInterval, sessionId]);
 
+  const handleToggleSessionChat = useCallback((enabled) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/chat-settings`, { chatEnabled: enabled }),
+      enabled ? t('sessionChat.enableSessionChat') : t('sessionChat.disabled'),
+      {
+        pendingKey: 'session-chat:enabled',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
+    );
+  }, [doAction, sessionId, t]);
+
   // Presentation window
   const presentationWindowRef = useRef(null);
 
@@ -884,6 +933,7 @@ function LiveSessionContent() {
   // --------------------------------------------------
 
   const session = liveData?.session;
+  const chatEnabled = !!session?.chatEnabled;
   const courseTitle = useMemo(() => (
     liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
   ), [liveData?.course]);
@@ -937,11 +987,18 @@ function LiveSessionContent() {
   const joinCodeActiveBusy = pendingActionKey === 'join-code:active';
   const joinCodeRefreshBusy = pendingActionKey === 'join-code:refresh';
   const joinCodeIntervalBusy = pendingActionKey === 'join-code:interval';
+  const sessionChatBusy = pendingActionKey === 'session-chat:enabled';
   const visibleToggleBusy = pendingActionKey === 'question-toggle:hidden';
   const statsToggleBusy = pendingActionKey === 'question-toggle:stats';
   const correctToggleBusy = pendingActionKey === 'question-toggle:correct';
   const responseListToggleBusy = pendingActionKey === 'question-toggle:response-list';
   const responsesToggleBusy = pendingActionKey === 'question-responses:toggle';
+
+  useEffect(() => {
+    if (!chatEnabled && activePanel === 'chat') {
+      setActivePanel('question');
+    }
+  }, [activePanel, chatEnabled]);
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'
     ? responseStats.distribution || []
@@ -969,6 +1026,25 @@ function LiveSessionContent() {
     gap: 1,
     width: '100%',
   };
+  const panelTabs = [
+    {
+      value: 'question',
+      label: t('professor.liveSession.controlsTab'),
+      tabProps: {
+        'aria-label': pageProgress
+          ? t('professor.liveSession.pageControlsLabel', pageProgress)
+          : t('professor.liveSession.questionControls'),
+      },
+    },
+    {
+      value: 'students',
+      label: t('professor.liveSession.studentsTab'),
+      tabProps: {
+        'aria-label': t('professor.liveSession.showStudentsPanel', { count: joinedCount }),
+      },
+    },
+    ...(chatEnabled ? [{ value: 'chat', label: t('sessionChat.chat') }] : []),
+  ];
 
   // --------------------------------------------------
   // Render: loading / error / ended states
@@ -1077,50 +1153,21 @@ function LiveSessionContent() {
           </Button>
         </Box>
 
-        <Box
-          role="tablist"
-          aria-label={t('professor.liveSession.panelsLabel')}
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 0.75,
-            width: '100%',
-            p: 0.5,
-            border: 1,
-            borderColor: 'divider',
-            borderRadius: 2,
-            bgcolor: 'action.hover',
-          }}
-        >
-          <Button
-            size={isMobile ? 'medium' : 'small'}
-            variant={activePanel === 'question' ? 'contained' : 'text'}
-            onClick={() => setActivePanel('question')}
-            aria-label={pageProgress
-              ? t('professor.liveSession.pageControlsLabel', pageProgress)
-              : t('professor.liveSession.questionControls')}
-            sx={{
-              ...TOP_PANEL_TAB_BUTTON_SX,
-              boxShadow: activePanel === 'question' ? 1 : 'none',
-              color: activePanel === 'question' ? undefined : 'text.primary',
-            }}
-          >
-            {t('professor.liveSession.controlsTab')}
-          </Button>
-          <Button
-            size={isMobile ? 'medium' : 'small'}
-            variant={activePanel === 'students' ? 'contained' : 'text'}
-            onClick={() => setActivePanel('students')}
-            aria-label={t('professor.liveSession.showStudentsPanel', { count: joinedCount })}
-            sx={{
-              ...TOP_PANEL_TAB_BUTTON_SX,
-              boxShadow: activePanel === 'students' ? 1 : 'none',
-              color: activePanel === 'students' ? undefined : 'text.primary',
-            }}
-          >
-            {t('professor.liveSession.studentsTab')}
-          </Button>
-        </Box>
+        <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.25 }, display: 'flex', justifyContent: 'flex-start' }}>
+          <FormControlLabel
+            labelPlacement="start"
+            sx={SESSION_CHAT_TOGGLE_LABEL_SX}
+            control={(
+              <Switch
+                checked={chatEnabled}
+                onChange={(event) => handleToggleSessionChat(event.target.checked)}
+                disabled={globalActionLoading || sessionChatBusy}
+                size={mobileControlSize}
+              />
+            )}
+            label={t('sessionChat.enableSessionChat')}
+          />
+        </Paper>
 
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, width: '100%' }}>
           <Chip
@@ -1160,6 +1207,15 @@ function LiveSessionContent() {
               gap: 1.25,
             }}
           >
+            <LiveSessionPanelNavigation
+              value={activePanel}
+              onChange={setActivePanel}
+              tabs={panelTabs}
+              ariaLabel={t('professor.liveSession.panelsLabel')}
+              disablePaper
+              sx={{ mb: 0.5 }}
+            />
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
               <Box sx={toggleColumnsSx}>
                 <FormControlLabel
@@ -1436,6 +1492,15 @@ function LiveSessionContent() {
                       variant="outlined"
                       sx={COMPACT_CHIP_SX}
                     />
+                    {!isSlide && (
+                      <Chip
+                        label={t('professor.liveSession.respondedSummary', { responded: responseCount, total: joinedCount })}
+                        size="small"
+                        variant="outlined"
+                        color={responseCount >= joinedCount && joinedCount > 0 ? 'success' : 'default'}
+                        sx={COMPACT_CHIP_SX}
+                      />
+                    )}
                     {isHidden && (
                       <Chip label={t('professor.liveSession.hidden')} size="small" color="warning" sx={COMPACT_CHIP_SX} />
                     )}
@@ -1624,51 +1689,74 @@ function LiveSessionContent() {
             )}
           </Box>
         </>
+      ) : activePanel === 'chat' ? (
+        <>
+          <LiveSessionPanelNavigation
+            value={activePanel}
+            onChange={setActivePanel}
+            tabs={panelTabs}
+            ariaLabel={t('professor.liveSession.panelsLabel')}
+          />
+          <SessionChatPanel
+            sessionId={sessionId}
+            enabled={chatEnabled}
+            role="professor"
+            refreshToken={chatRefreshToken}
+          />
+        </>
       ) : (
-        <Paper
-          variant="outlined"
-          sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}
-          aria-label={t('professor.liveSession.studentsCurrently')}
-        >
-          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
-            {t('professor.liveSession.studentsInSession', { count: joinedCount })}
-          </Typography>
-
-          {sortedJoinedStudents.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {t('professor.liveSession.noStudentsJoined')}
+        <>
+          <LiveSessionPanelNavigation
+            value={activePanel}
+            onChange={setActivePanel}
+            tabs={panelTabs}
+            ariaLabel={t('professor.liveSession.panelsLabel')}
+          />
+          <Paper
+            variant="outlined"
+            sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}
+            aria-label={t('professor.liveSession.studentsCurrently')}
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+              {t('professor.liveSession.studentsInSession', { count: joinedCount })}
             </Typography>
-          ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {sortedJoinedStudents.map((student) => (
-                <Paper
-                  key={student._id}
-                  variant="outlined"
-                  sx={{
-                    p: 1.1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 1,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <StudentIdentity
-                    student={student}
-                    avatarSize={34}
-                    nameVariant="body2"
-                    emailVariant="caption"
-                    nameWeight={600}
-                    sx={{ flex: '1 1 220px', minWidth: 0 }}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {formatJoinedTimestamp(student.joinedAt, t('professor.liveSession.joinTimeUnavailable'))}
-                  </Typography>
-                </Paper>
-              ))}
-            </Box>
-          )}
-        </Paper>
+
+            {sortedJoinedStudents.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t('professor.liveSession.noStudentsJoined')}
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {sortedJoinedStudents.map((student) => (
+                  <Paper
+                    key={student._id}
+                    variant="outlined"
+                    sx={{
+                      p: 1.1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <StudentIdentity
+                      student={student}
+                      avatarSize={34}
+                      nameVariant="body2"
+                      emailVariant="caption"
+                      nameWeight={600}
+                      sx={{ flex: '1 1 220px', minWidth: 0 }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {formatJoinedTimestamp(student.joinedAt, t('professor.liveSession.joinTimeUnavailable'))}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Box>
+            )}
+          </Paper>
+        </>
       )}
 
       {/* ============================================================ */}

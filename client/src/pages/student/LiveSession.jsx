@@ -7,6 +7,8 @@ import {
 import apiClient from '../../api/client';
 import StudentRichTextEditor, { MathPreview } from '../../components/questions/StudentRichTextEditor';
 import BackLinkButton from '../../components/common/BackLinkButton';
+import SessionChatPanel from '../../components/live/SessionChatPanel';
+import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import {
@@ -208,6 +210,8 @@ function LiveSessionContent() {
   const [answerWysiwyg, setAnswerWysiwyg] = useState(''); // rich text HTML for SA
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [activePanel, setActivePanel] = useState('question');
+  const [chatRefreshToken, setChatRefreshToken] = useState(0);
 
   // Track current question/attempt to detect changes
   const prevQuestionRef = useRef(null);
@@ -308,6 +312,24 @@ function LiveSessionContent() {
           success: true,
           transportOverride: syncContext?.transport,
         });
+        break;
+      case 'session:chat-settings-changed':
+        setLiveData((prev) => prev ? {
+          ...prev,
+          session: {
+            ...prev.session,
+            chatEnabled: data?.chatEnabled ?? prev.session?.chatEnabled,
+          },
+        } : prev);
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
+        });
+        break;
+      case 'session:chat-updated':
+        setChatRefreshToken((prev) => prev + 1);
         break;
       case 'session:word-cloud-updated':
       case 'session:histogram-updated':
@@ -426,6 +448,7 @@ function LiveSessionContent() {
   const studentResponse = liveData?.studentResponse;
   const isJoined = liveData?.isJoined;
   const showStats = liveData?.showStats;
+  const chatEnabled = !!session?.chatEnabled;
   const showResponseList = liveData?.showResponseList !== false;
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
@@ -450,6 +473,12 @@ function LiveSessionContent() {
   const hasSlidesInSession = !!(pageProgress && questionProgress && pageProgress.total !== questionProgress.total);
   const liveSolutionHtml = currentQ?.solution || currentQ?.solutionHtml || '';
   const liveSolutionPlainText = currentQ?.solution_plainText || currentQ?.solutionPlainText || currentQ?.solutionText || '';
+
+  useEffect(() => {
+    if (!chatEnabled && activePanel === 'chat') {
+      setActivePanel('question');
+    }
+  }, [activePanel, chatEnabled]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;
   const isSlide = isSlideType(qType);
@@ -478,6 +507,10 @@ function LiveSessionContent() {
     showStats ? t('student.liveSession.statsVisible') : null,
     showCorrect ? t('student.liveSession.correctVisible') : null,
   ].filter(Boolean).join(' ');
+  const panelTabs = [
+    { value: 'question', label: t('student.liveSession.currentQuestion') },
+    ...(chatEnabled ? [{ value: 'chat', label: t('sessionChat.chat') }] : []),
+  ];
 
   // --------------------------------------------------
   // Render: loading state
@@ -639,46 +672,87 @@ function LiveSessionContent() {
   // --------------------------------------------------
 
   if (questionHidden || !currentQ) {
-    return (
-      <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
-        <BackLinkButton
-          variant="outlined"
-          label={t('student.liveSession.backToCourse')}
-          onClick={() => navigate(courseBackLink)}
-          sx={{ mb: 2 }}
-        />
-        <Paper variant="outlined" sx={{ p: 4 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-            {session.name || t('student.liveSession.liveSessionFallback')}
-          </Typography>
+    if (!chatEnabled) {
+      return (
+        <Box sx={{ p: 4, maxWidth: 600, mx: 'auto', textAlign: 'center' }}>
+          <BackLinkButton
+            variant="outlined"
+            label={t('student.liveSession.backToCourse')}
+            onClick={() => navigate(courseBackLink)}
+            sx={{ mb: 2 }}
+          />
+          <Paper variant="outlined" sx={{ p: 4 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              {session.name || t('student.liveSession.liveSessionFallback')}
+            </Typography>
 
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              my: 4,
-            }}
-          >
             <Box
               sx={{
-                width: 16,
-                height: 16,
-                borderRadius: '50%',
-                bgcolor: 'primary.main',
-                animation: 'pulse 1.5s ease-in-out infinite',
-                '@keyframes pulse': {
-                  '0%, 100%': { opacity: 0.4, transform: 'scale(1)' },
-                  '50%': { opacity: 1, transform: 'scale(1.3)' },
-                },
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                my: 4,
               }}
-            />
-          </Box>
+            >
+              <Box
+                sx={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  animation: 'pulse 1.5s ease-in-out infinite',
+                  '@keyframes pulse': {
+                    '0%, 100%': { opacity: 0.4, transform: 'scale(1)' },
+                    '50%': { opacity: 1, transform: 'scale(1.3)' },
+                  },
+                }}
+              />
+            </Box>
 
-          <Typography variant="body1" color="text.secondary">
-            {t('student.liveSession.waitingForQuestion')}
+            <Typography variant="body1" color="text.secondary">
+              {t('student.liveSession.waitingForQuestion')}
+            </Typography>
+          </Paper>
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ p: { xs: 1.5, sm: 2.5 }, maxWidth: 600, mx: 'auto' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          <BackLinkButton
+            variant="outlined"
+            label={t('student.liveSession.backToCourse')}
+            onClick={() => navigate(courseBackLink)}
+            sx={{ flexShrink: 0 }}
+          />
+          <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1, minWidth: 0 }} noWrap>
+            {session.name || t('student.liveSession.liveSessionFallback')}
           </Typography>
-        </Paper>
+        </Box>
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={panelTabs}
+          ariaLabel={t('student.liveSession.panelsLabel')}
+        />
+        {activePanel === 'chat' ? (
+          <SessionChatPanel
+            sessionId={sessionId}
+            enabled={chatEnabled}
+            role="student"
+            refreshToken={chatRefreshToken}
+          />
+        ) : (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+              {session.name || t('student.liveSession.liveSessionFallback')}
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              {t('student.liveSession.waitingForQuestion')}
+            </Typography>
+          </Paper>
+        )}
       </Box>
     );
   }
@@ -747,6 +821,24 @@ function LiveSessionContent() {
         </Box>
       </Box>
 
+      {chatEnabled ? (
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={panelTabs}
+          ariaLabel={t('student.liveSession.panelsLabel')}
+        />
+      ) : null}
+
+      {activePanel === 'chat' ? (
+        <SessionChatPanel
+          sessionId={sessionId}
+          enabled={chatEnabled}
+          role="student"
+          refreshToken={chatRefreshToken}
+        />
+      ) : (
+        <>
       {/* ============================================================ */}
       {/* Question content                                             */}
       {/* ============================================================ */}
@@ -1161,6 +1253,8 @@ function LiveSessionContent() {
           </Typography>
           <RichContent html={liveSolutionHtml} fallback={liveSolutionPlainText} />
         </Paper>
+      )}
+        </>
       )}
     </Box>
   );

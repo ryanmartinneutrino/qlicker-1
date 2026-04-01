@@ -227,7 +227,21 @@ k6_runner() {
   local -a docker_env=()
   local -a k6_env=()
   local pass_through_key=""
-  for pass_through_key in ANSWER_WINDOW_S STATS_PAUSE_S CORRECT_PAUSE_S JOIN_GRACE_S RESPONSE_ADDED_REFRESH_MS; do
+  for pass_through_key in \
+    ANSWER_WINDOW_S \
+    STATS_PAUSE_S \
+    CORRECT_PAUSE_S \
+    JOIN_GRACE_S \
+    RESPONSE_ADDED_REFRESH_MS \
+    STUDENT_LOGIN_SPREAD_S \
+    CHAT_ACTIVITY_EVERY_N_QUESTIONS \
+    CHAT_VIEWER_STUDENT_FRACTION \
+    CHAT_QUICK_POST_STUDENT_FRACTION \
+    CHAT_RANDOM_POST_STUDENT_FRACTION \
+    CHAT_RANDOM_UPVOTE_STUDENT_FRACTION \
+    CHAT_ACTION_JITTER_MS \
+    CHAT_REPLY_PROFESSOR_LIMIT \
+    PROFESSOR_REPLY_DELAY_MS; do
     if [[ -n "${!pass_through_key:-}" ]]; then
       docker_env+=(-e "$pass_through_key=${!pass_through_key}")
       k6_env+=(--env "$pass_through_key=${!pass_through_key}")

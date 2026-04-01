@@ -28,6 +28,7 @@ import {
   renderKatexInElement,
 } from '../../components/questions/richTextUtils';
 import SessionQuestionGradingPanel from '../../components/grades/SessionQuestionGradingPanel';
+import SessionChatPanel from '../../components/live/SessionChatPanel';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import BackLinkButton from '../../components/common/BackLinkButton';
@@ -581,6 +582,7 @@ export default function SessionReview() {
   const [course, setCourse] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [studentResults, setStudentResults] = useState([]);
+  const [chatPosts, setChatPosts] = useState([]);
   const [tab, setTab] = useState(0);
   const [togglingReviewable, setTogglingReviewable] = useState(false);
   const [reviewableWarning, setReviewableWarning] = useState('');
@@ -619,6 +621,7 @@ export default function SessionReview() {
       setCourse(courseResponse?.data?.course || courseResponse?.data || null);
       setQuestions(data.questions || []);
       setStudentResults(data.studentResults || []);
+      setChatPosts(data.chatPosts || []);
 
       try {
         const gradesRes = await apiClient.get(`/sessions/${sessionId}/grades`);
@@ -680,6 +683,7 @@ export default function SessionReview() {
 
   const hasOutstandingManualGrading = gradingNeedsSummary.marks > 0;
   const liveInteractiveSession = session?.status === 'running' && !session?.quiz && !session?.practiceQuiz;
+  const sessionChatAvailable = !!session?.chatEnabled || chatPosts.length > 0;
 
   // ---- Group-filtered student results for grading tab ----
   const selectedGroupCat = groupCategories[selectedCatIdx] || null;
@@ -1166,6 +1170,7 @@ export default function SessionReview() {
               sx: hasOutstandingManualGrading ? { color: 'error.main !important', fontWeight: 700 } : undefined,
             },
           },
+          ...(sessionChatAvailable ? [{ value: 3, label: t('sessionChat.chat') }] : []),
         ]}
       />
 
@@ -1602,6 +1607,27 @@ export default function SessionReview() {
           ) : null}
         />
       </TabPanel>
+
+      {sessionChatAvailable ? (
+        <TabPanel value={tab} index={3}>
+          <SessionChatPanel
+            sessionId={sessionId}
+            enabled={sessionChatAvailable}
+            role="professor"
+            view="review"
+            initialData={{
+              enabled: sessionChatAvailable,
+              canPost: false,
+              canComment: false,
+              canVote: false,
+              canDismiss: false,
+              canViewNames: true,
+              posts: chatPosts,
+              quickPosts: [],
+            }}
+          />
+        </TabPanel>
+      ) : null}
     </Box>
   );
 }

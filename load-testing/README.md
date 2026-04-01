@@ -7,6 +7,10 @@ interactive classroom flow:
 - one professor launches and drives the session
 - hundreds of students authenticate, join, keep WebSockets open, refresh live
   state on deltas, and submit responses
+- a professor observer window and a slice of student chat viewers keep the chat
+  panel in sync over websocket-driven refreshes
+- quick-post requests, student discussion posts, upvotes, and professor replies
+  are exercised during the session
 - question changes, attempt changes, stats visibility, answer reveals, and
   short-answer / numerical stat refreshes are all exercised
 
@@ -100,37 +104,109 @@ the real live-session update path used by the browser:
 7. The professor closes responses, shows stats, generates short-answer word
    clouds and numerical histograms, reveals correct answers, and advances to the
    next question.
-8. The session ends and connected clients observe the final state transition.
+8. Chat is enabled, student quick-post waves fire after selected questions,
+   random student posts are created and upvoted, and the professor replies to a
+   few of the visible posts.
+9. The session ends and connected clients observe the final state transition.
+
+## Scenario Knobs
+
+These optional environment variables let you tune the realism profile without
+editing the script. Export them before `./run.sh`, or prefix them on the
+command line.
+
+Timing and sync variables:
+
+- `ANSWER_WINDOW_S`: how long each question stays open for answers.
+- `STATS_PAUSE_S`: how long stats stay visible before the correct-answer phase.
+- `CORRECT_PAUSE_S`: how long the correct-answer phase remains visible.
+- `JOIN_GRACE_S`: delay after the professor starts the session before the
+  question loop begins, giving students time to join.
+- `RESPONSE_ADDED_REFRESH_MS`: debounce used before refreshing `/live` after a
+  `session:response-added` websocket event.
+- `STUDENT_LOGIN_SPREAD_S`: maximum login jitter applied across student VUs.
+  `0` means everyone hits `/auth/login` immediately; higher values spread the
+  startup wave and usually produce a more realistic class arrival pattern.
+
+Chat-behavior variables:
+
+- `CHAT_ACTIVITY_EVERY_N_QUESTIONS`: after every Nth question starting at
+  question 2, the scenario schedules a chat activity wave.
+- `CHAT_VIEWER_STUDENT_FRACTION`: fraction of students who keep the chat panel
+  open and refetch `/chat` on `session:chat-updated`.
+- `CHAT_QUICK_POST_STUDENT_FRACTION`: fraction of students in each chat wave
+  who request more explanation for an earlier question.
+- `CHAT_RANDOM_POST_STUDENT_FRACTION`: fraction of students in each chat wave
+  who create a regular discussion post.
+- `CHAT_RANDOM_UPVOTE_STUDENT_FRACTION`: fraction of students in each chat wave
+  who upvote a visible regular discussion post.
+- `CHAT_ACTION_JITTER_MS`: max delay before a scheduled student chat action
+  fires, to avoid an unrealistic same-millisecond burst.
+- `CHAT_REPLY_PROFESSOR_LIMIT`: maximum number of professor replies during a
+  run.
+- `PROFESSOR_REPLY_DELAY_MS`: delay before the professor reviews and replies to
+  chat during a question wave.
+
+Example:
+
+```bash
+STUDENT_LOGIN_SPREAD_S=20 \
+CHAT_VIEWER_STUDENT_FRACTION=0.25 \
+CHAT_QUICK_POST_STUDENT_FRACTION=0.18 \
+./run.sh --students 300
+```
 
 ## Metrics
 
 The scenario tracks and thresholds these key signals:
 
-- `login_success`
+- `login_success{role:student}`
+- `login_success{role:professor}`
 - `join_success`
 - `respond_success`
-- `live_refresh_success`
-- `event_sync_success`
-- `ws_connect_success`
+- `live_refresh_success{role:student}`
+- `live_refresh_success{role:professor}`
+- `event_sync_success{role:student}`
+- `event_sync_success{role:professor}`
+- `ws_connect_success{role:student}`
+- `ws_connect_success{role:professor}`
 - `session_completion`
-- `login_duration`
+- `chat_action_success`
+- `chat_refresh_success{role:student}`
+- `chat_refresh_success{role:professor}`
+- `chat_event_sync_success{role:student}`
+- `chat_event_sync_success{role:professor}`
+- `login_duration{role:student}`
+- `login_duration{role:professor}`
 - `join_duration`
 - `respond_duration`
-- `live_refresh_duration`
-- `event_sync_duration`
+- `live_refresh_duration{role:student}`
+- `live_refresh_duration{role:professor}`
+- `event_sync_duration{role:student}`
+- `event_sync_duration{role:professor}`
+- `chat_refresh_duration{role:student}`
+- `chat_refresh_duration{role:professor}`
+- `chat_event_sync_duration{role:student}`
+- `chat_event_sync_duration{role:professor}`
 
 Additional counters include:
 
 - `ws_connections`
 - `ws_errors`
 - `response_added_refreshes`
+- `chat_quick_post_toggles`
+- `chat_posts_created`
+- `chat_votes_applied`
+- `chat_replies_created`
 
 ## Interpreting Progress Output
 
 While the run is active, k6 may show `0 complete` for several minutes. That is
 expected for this scenario. Each VU runs one full-class iteration:
 
-- one professor iteration lasts for the entire session
+- one professor driver iteration lasts for the entire session
+- one professor viewer iteration tracks websocket-driven UI freshness for the
+  instructor side
 - each student iteration lasts from login through session end
 
 The default timing profile is roughly:
@@ -154,16 +230,36 @@ k6 reports custom `Trend` metrics in milliseconds.
 - `rate==0` means no failures at all
 - `count==0` means the counter must stay at zero
 
+Many thresholds are role-tagged, for example
+`chat_refresh_duration{role:student}` or `login_success{role:professor}`. Those
+sub-metrics let the report distinguish student-facing latency from
+professor-facing latency without needing separate metric names.
+
 The current acceptance bar is intentionally strict for classroom use:
 
 - `http_req_failed` must stay at `0%`
 - `ws_errors` must stay at `0`
-- `login_success`, `join_success`, `respond_success`, `live_refresh_success`,
-  `event_sync_success`, `ws_connect_success`, `professor_action_success`, and
-  `session_completion` must all be `100%`
-- `login_duration`, `join_duration`, and `respond_duration` must have
+- `login_success{role:student}`, `login_success{role:professor}`,
+  `join_success`, `respond_success`,
+  `live_refresh_success{role:student}`,
+  `live_refresh_success{role:professor}`,
+  `event_sync_success{role:student}`,
+  `event_sync_success{role:professor}`,
+  `ws_connect_success{role:student}`,
+  `ws_connect_success{role:professor}`,
+  `professor_action_success`, `chat_action_success`, and `session_completion`
+  must all be `100%`
+- `login_duration{role:student}`, `login_duration{role:professor}`,
+  `join_duration`, and `respond_duration` must have
   `p(95)<3000`
-- `live_refresh_duration` and `event_sync_duration` must have `p(99)<3000`
+- `live_refresh_duration{role:student}`,
+  `live_refresh_duration{role:professor}`,
+  `event_sync_duration{role:student}`,
+  `event_sync_duration{role:professor}`,
+  `chat_refresh_duration{role:student}`,
+  `chat_refresh_duration{role:professor}`,
+  `chat_event_sync_duration{role:student}`, and
+  `chat_event_sync_duration{role:professor}` must have `p(99)<3000`
 
 This means the pass/fail summary is checking both correctness and a classroom
 freshness target of "essentially everyone stays under 3 seconds" for the
@@ -189,22 +285,37 @@ What each section means:
 
 For live-session correctness, the most important lines are:
 
-- `login_success`
+- `login_success{role:student}`
+- `login_success{role:professor}`
 - `join_success`
-- `ws_connect_success`
+- `ws_connect_success{role:student}`
+- `ws_connect_success{role:professor}`
 - `professor_action_success`
+- `chat_action_success`
 - `session_completion`
-- `live_refresh_success`
-- `event_sync_success`
+- `live_refresh_success{role:student}`
+- `live_refresh_success{role:professor}`
+- `event_sync_success{role:student}`
+- `event_sync_success{role:professor}`
 - `http_req_failed`
 - `ws_errors`
 
 For "do student screens stay fresh enough?", focus on:
 
-- `live_refresh_duration`: time to fetch `/sessions/:id/live`
-- `event_sync_duration`: time from the server-emitted websocket event
+- `live_refresh_duration{role:student}`: time to fetch `/sessions/:id/live`
+- `event_sync_duration{role:student}`: time from the server-emitted websocket event
   (`emittedAt`) to completing the follow-up live refresh and validating the new
   state; if `emittedAt` is unavailable, it falls back to receive-to-refresh time
+- `chat_refresh_duration{role:student}`: time to fetch `/sessions/:id/chat`
+- `chat_event_sync_duration{role:student}`: time from a
+  `session:chat-updated` emit to the refreshed chat payload completing
+
+For "does the instructor side stay current too?", focus on:
+
+- `live_refresh_duration{role:professor}`
+- `event_sync_duration{role:professor}`
+- `chat_refresh_duration{role:professor}`
+- `chat_event_sync_duration{role:professor}`
 
 If these stay under 3 seconds at `p(99)`, the load-test contract is saying the
 tail of the class still stayed within the sync target.
@@ -237,10 +348,19 @@ student screen visibly caught up."
 
 Different metrics point to different bottlenecks:
 
-- Slow `login_duration` with healthy in-session metrics usually means startup
-  authentication load is the bottleneck, not the live session itself.
-- Slow `live_refresh_duration` or `event_sync_duration` means students may see
-  stale screens after professor actions.
+- Slow `login_duration{role:student}` with healthy in-session metrics usually
+  means startup authentication load is the bottleneck, not the live session
+  itself. If this is the only recurring failure, check whether
+  `STUDENT_LOGIN_SPREAD_S` is too low for the class size you are simulating.
+  This metric measures the `/auth/login` request itself, not the full browser
+  boot sequence.
+- Slow `live_refresh_duration{role:student}` or
+  `event_sync_duration{role:student}` means students may see stale screens
+  after professor actions.
+- Slow `chat_refresh_duration{role:student}` or
+  `chat_event_sync_duration{role:student}` means the chat panel is lagging
+  behind the live conversation even if question-state refreshes still look
+  healthy.
 - A healthy `p(95)` with a much larger `max` means the system is usually fast
   enough but still has tail-latency spikes worth investigating.
 

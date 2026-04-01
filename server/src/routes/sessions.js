@@ -3,6 +3,7 @@ import Session from '../models/Session.js';
 import Course from '../models/Course.js';
 import Grade from '../models/Grade.js';
 import LiveSessionTelemetry from '../models/LiveSessionTelemetry.js';
+import Post from '../models/Post.js';
 import Question from '../models/Question.js';
 import Response from '../models/Response.js';
 import User from '../models/User.js';
@@ -45,6 +46,7 @@ import {
   sessionResponseTrackingNeedsHydration,
 } from '../utils/sessionResponseTracking.js';
 import { getUserAccessFlags } from '../utils/userAccess.js';
+import { generateMeteorId } from '../utils/meteorId.js';
 
 const createSessionSchema = {
   body: {
@@ -90,6 +92,7 @@ const updateSessionSchema = {
       status: { type: 'string', enum: ['hidden', 'visible', 'running', 'done'] },
       date: { type: 'string', format: 'date-time' },
       joinCodeEnabled: { type: 'boolean' },
+      chatEnabled: { type: 'boolean' },
       joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
       msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
       tags: {
@@ -383,6 +386,7 @@ function sanitizeExportedSession(session, orderedQuestions = []) {
       practiceQuiz: !!session?.practiceQuiz,
       reviewable: !!session?.reviewable,
       joinCodeEnabled: !!session?.joinCodeEnabled,
+      chatEnabled: !!session?.chatEnabled,
       joinCodeInterval: Number(session?.joinCodeInterval) || 10,
       msScoringMethod: session?.msScoringMethod || 'right-minus-wrong',
       tags: normalizeTags(session?.tags || []),
@@ -418,6 +422,7 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
     hasResponses: false,
     questionResponseCounts: {},
     joinCodeEnabled: !!sourceSession?.joinCodeEnabled,
+    chatEnabled: !!sourceSession?.chatEnabled,
     joinCodeInterval: Number(sourceSession?.joinCodeInterval) || 10,
     msScoringMethod: sourceSession?.msScoringMethod || 'right-minus-wrong',
     tags: normalizeTags(sourceSession?.tags || []),
@@ -792,6 +797,432 @@ function formatUserDisplayName(user) {
   const fullName = `${first} ${last}`.trim();
   if (fullName) return fullName;
   return user?.emails?.[0]?.address || user?.email || 'Unknown Student';
+}
+
+function stripHtmlToPlainText(value) {
+  const input = normalizeAnswerValue(value);
+  if (!input) return '';
+
+  let result = '';
+  let insideTag = false;
+  for (const char of input) {
+    if (char === '<') {
+      insideTag = true;
+      result += ' ';
+      continue;
+    }
+    if (char === '>') {
+      insideTag = false;
+      result += ' ';
+      continue;
+    }
+    if (!insideTag) {
+      result += char;
+    }
+  }
+
+  return result.replace(/\s+/g, ' ').trim();
+}
+
+function getChatAuthorRole(course, user) {
+  if (!course || !user) return 'student';
+  if ((user.roles || []).includes('admin')) return 'admin';
+  if ((course.instructors || []).includes(user.userId)) return 'instructor';
+  return 'student';
+}
+
+function buildQuickPostBody(questionNumber) {
+  return `I didn't understand question ${questionNumber}`;
+}
+
+async function loadSessionChatQuestionMetadata(session) {
+  const orderedQuestions = await loadOrderedQuestions(session?.questions || []);
+  const currentQuestionId = normalizeAnswerValue(session?.currentQuestion);
+  const responseQuestionEntries = [];
+  let questionsBeforeCurrentPage = 0;
+  let currentQuestionNumber = null;
+
+  orderedQuestions.forEach((question, index) => {
+    const questionId = normalizeAnswerValue(question?._id);
+    if (currentQuestionId && questionId === currentQuestionId) {
+      currentQuestionNumber = questionsBeforeCurrentPage + 1;
+    }
+
+    if (!isQuestionResponseCollectionEnabled(question)) return;
+
+    const questionNumber = responseQuestionEntries.length + 1;
+    responseQuestionEntries.push({
+      questionId,
+      pageNumber: index + 1,
+      questionNumber,
+    });
+    questionsBeforeCurrentPage += 1;
+  });
+
+  return {
+    currentQuestionNumber,
+    totalQuestionCount: responseQuestionEntries.length,
+    responseQuestionEntries,
+  };
+}
+
+async function ensureSessionQuickPosts(session, questionMetadata = null) {
+  const metadata = questionMetadata || await loadSessionChatQuestionMetadata(session);
+  const questionCount = Number(metadata?.totalQuestionCount || 0);
+  if (!session?._id || !session?.courseId || questionCount <= 0) return;
+
+  const existingQuickPosts = await Post.find({
+    scopeType: 'session',
+    sessionId: String(session._id),
+    isQuickPost: true,
+  })
+    .select('_id quickPostQuestionNumber body')
+    .lean();
+  const existingPositiveNumbers = existingQuickPosts
+    .map((post) => Number(post?.quickPostQuestionNumber))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const hasLegacyPageBasedQuickPosts = existingPositiveNumbers.length > questionCount
+    || existingPositiveNumbers.some((value) => value > questionCount);
+
+  if (hasLegacyPageBasedQuickPosts) {
+    const now = new Date();
+    const questionNumberByPageNumber = new Map(
+      (metadata?.responseQuestionEntries || []).map((entry) => [entry.pageNumber, entry.questionNumber])
+    );
+    const updates = existingQuickPosts.map((post) => {
+      const pageNumber = Number(post?.quickPostQuestionNumber);
+      const nextQuestionNumber = questionNumberByPageNumber.get(pageNumber);
+
+      if (nextQuestionNumber) {
+        return {
+          updateOne: {
+            filter: { _id: post._id },
+            update: {
+              $set: {
+                quickPostQuestionNumber: nextQuestionNumber,
+                body: buildQuickPostBody(nextQuestionNumber),
+                updatedAt: now,
+              },
+            },
+          },
+        };
+      }
+
+      return {
+        updateOne: {
+          filter: { _id: post._id },
+          update: {
+            $set: {
+              quickPostQuestionNumber: 0,
+              updatedAt: now,
+            },
+          },
+        },
+      };
+    });
+
+    if (updates.length > 0) {
+      await Post.bulkWrite(updates, { ordered: false }).catch(() => {});
+    }
+  }
+
+  const refreshedQuickPosts = hasLegacyPageBasedQuickPosts
+    ? await Post.find({
+      scopeType: 'session',
+      sessionId: String(session._id),
+      isQuickPost: true,
+    })
+      .select('_id quickPostQuestionNumber')
+      .lean()
+    : existingQuickPosts;
+  const existingNumbers = new Set(
+    refreshedQuickPosts
+      .map((post) => Number(post?.quickPostQuestionNumber))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  );
+
+  const missingPosts = [];
+  for (let questionNumber = 1; questionNumber <= questionCount; questionNumber += 1) {
+    if (existingNumbers.has(questionNumber)) continue;
+    missingPosts.push({
+      scopeType: 'session',
+      courseId: String(session.courseId),
+      sessionId: String(session._id),
+      authorId: '',
+      authorRole: 'system',
+      body: buildQuickPostBody(questionNumber),
+      bodyWysiwyg: '',
+      isQuickPost: true,
+      quickPostQuestionNumber: questionNumber,
+      upvoteUserIds: [],
+      upvoteCount: 0,
+      comments: [],
+      dismissedAt: null,
+      dismissedBy: '',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  if (missingPosts.length > 0) {
+    await Post.insertMany(missingPosts, { ordered: false }).catch(() => {});
+  }
+}
+
+function getChatViewMode(request, isInstructorView) {
+  const requestedView = normalizeAnswerValue(request.query?.view).toLowerCase();
+  if (requestedView === 'presentation' && isInstructorView) return 'presentation';
+  if (requestedView === 'review' && isInstructorView) return 'review';
+  return 'live';
+}
+
+function getChatPermissionFlags({ session, course, request, viewMode }) {
+  const isInstructorView = isInstructorOrAdmin(course, request.user);
+  const userId = String(request.user?.userId || '');
+  const isJoined = (session?.joined || []).some((joinedId) => String(joinedId) === userId);
+  const isRunning = session?.status === 'running';
+
+  const canViewLive = isInstructorView || (viewMode === 'live' && isRunning && isJoined);
+  const canWrite = viewMode === 'live' && session?.chatEnabled && canViewLive && isRunning;
+
+  return {
+    isInstructorView,
+    isJoined,
+    canViewLive,
+    canWrite,
+    canModerate: isInstructorView && viewMode === 'live' && isRunning,
+    canViewNames: isInstructorView && viewMode !== 'presentation',
+  };
+}
+
+async function buildChatAuthorNameMap(posts, { includeAllAuthors = false } = {}) {
+  const userIds = new Set();
+
+  posts.forEach((post) => {
+    if (!post) return;
+    const displayAuthor = getChatPostDisplayAuthor(post);
+    if (includeAllAuthors || ['admin', 'instructor'].includes(displayAuthor.authorRole)) {
+      if (displayAuthor.authorId) userIds.add(String(displayAuthor.authorId));
+    }
+    if (includeAllAuthors) {
+      (post.upvoteUserIds || []).forEach((userId) => {
+        if (userId) userIds.add(String(userId));
+      });
+    }
+    (post.comments || []).forEach((comment) => {
+      if (includeAllAuthors || ['admin', 'instructor'].includes(comment.authorRole)) {
+        if (comment.authorId) userIds.add(String(comment.authorId));
+      }
+    });
+  });
+
+  const ids = [...userIds];
+  if (ids.length === 0) return new Map();
+
+  const users = await User.find({ _id: { $in: ids } })
+    .select('_id profile emails email')
+    .lean();
+
+  return new Map(users.map((user) => [String(user._id), formatUserDisplayName(user)]));
+}
+
+function shouldExposeChatAuthorName(authorRole, includeNames) {
+  if (includeNames) return true;
+  return authorRole === 'admin' || authorRole === 'instructor';
+}
+
+function getChatPostDisplayAuthor(post) {
+  const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+  if (post?.isQuickPost) {
+    const firstUpvoterId = upvoteUserIds[0] || '';
+    return {
+      authorId: firstUpvoterId,
+      authorRole: firstUpvoterId ? 'student' : 'system',
+    };
+  }
+
+  return {
+    authorId: normalizeAnswerValue(post?.authorId),
+    authorRole: normalizeAnswerValue(post?.authorRole) || 'student',
+  };
+}
+
+function serializeChatComment(comment, {
+  includeNames = false,
+  viewerUserId = '',
+  authorNameMap = new Map(),
+}) {
+  const authorRole = normalizeAnswerValue(comment?.authorRole) || 'student';
+  const authorId = normalizeAnswerValue(comment?.authorId);
+  return {
+    _id: String(comment?._id || ''),
+    body: normalizeAnswerValue(comment?.body),
+    bodyWysiwyg: normalizeAnswerValue(comment?.bodyWysiwyg),
+    createdAt: comment?.createdAt || null,
+    updatedAt: comment?.updatedAt || null,
+    isOwnComment: authorId && authorId === viewerUserId,
+    authorRole,
+    authorName: shouldExposeChatAuthorName(authorRole, includeNames)
+      ? (authorNameMap.get(authorId) || null)
+      : null,
+  };
+}
+
+function serializeChatPost(post, {
+  includeNames = false,
+  includeDismissed = false,
+  viewerUserId = '',
+  authorNameMap = new Map(),
+}) {
+  const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+  const upvoteCount = Number(post?.upvoteCount);
+  const comments = Array.isArray(post?.comments) ? post.comments : [];
+  const displayAuthor = getChatPostDisplayAuthor(post);
+  const authorId = displayAuthor.authorId;
+  const authorRole = displayAuthor.authorRole;
+  return {
+    _id: String(post?._id || ''),
+    body: normalizeAnswerValue(post?.body),
+    bodyWysiwyg: normalizeAnswerValue(post?.bodyWysiwyg),
+    createdAt: post?.createdAt || null,
+    updatedAt: post?.updatedAt || null,
+    upvoteCount: Number.isFinite(upvoteCount) ? upvoteCount : upvoteUserIds.length,
+    viewerHasUpvoted: upvoteUserIds.includes(viewerUserId),
+    isOwnPost: authorId && authorId === viewerUserId,
+    isQuickPost: !!post?.isQuickPost,
+    quickPostQuestionNumber: Number(post?.quickPostQuestionNumber) || null,
+    dismissed: !!post?.dismissedAt,
+    dismissedAt: includeDismissed ? (post?.dismissedAt || null) : null,
+    authorRole,
+    authorName: shouldExposeChatAuthorName(authorRole, includeNames)
+      ? (authorNameMap.get(authorId) || null)
+      : null,
+    upvoterUserIds: includeNames ? upvoteUserIds : undefined,
+    upvoterNames: includeNames
+      ? upvoteUserIds
+        .map((userId) => authorNameMap.get(userId) || null)
+        .filter(Boolean)
+      : undefined,
+    comments: comments.map((comment) => serializeChatComment(comment, {
+      includeNames,
+      viewerUserId,
+      authorNameMap,
+    })),
+  };
+}
+
+async function loadSessionChatPayload({ session, course, request }) {
+  const flags = getChatPermissionFlags({
+    session,
+    course,
+    request,
+    viewMode: getChatViewMode(request, isInstructorOrAdmin(course, request.user)),
+  });
+  const viewMode = getChatViewMode(request, flags.isInstructorView);
+
+  if (viewMode === 'review' && !flags.isInstructorView) {
+    return { forbidden: true };
+  }
+
+  if (viewMode !== 'review' && !flags.canViewLive) {
+    return { forbidden: true };
+  }
+
+  const questionMetadata = await loadSessionChatQuestionMetadata(session);
+  await ensureSessionQuickPosts(session, questionMetadata);
+
+  const query = {
+    scopeType: 'session',
+    sessionId: String(session._id),
+  };
+
+  const posts = await Post.find(query)
+    .select('authorId authorRole body bodyWysiwyg isQuickPost quickPostQuestionNumber upvoteUserIds upvoteCount comments dismissedAt createdAt updatedAt')
+    .lean();
+
+  const includeDismissed = viewMode === 'review' || flags.isInstructorView;
+  const visiblePosts = posts
+    .filter((post) => {
+      if (!includeDismissed && post?.dismissedAt) return false;
+      if (post?.isQuickPost && Number(post?.upvoteCount || 0) <= 0) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+      if (voteDiff !== 0) return voteDiff;
+      const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+      if (createdDiff !== 0) return createdDiff;
+      return String(a?._id || '').localeCompare(String(b?._id || ''));
+    });
+
+  const authorNameMap = await buildChatAuthorNameMap(visiblePosts, {
+    includeAllAuthors: flags.canViewNames,
+  });
+  const currentQuestionNumber = questionMetadata.currentQuestionNumber;
+  const viewerUserId = String(request.user?.userId || '');
+  const serializedPosts = visiblePosts.map((post) => serializeChatPost(post, {
+    includeNames: flags.canViewNames,
+    includeDismissed,
+    viewerUserId,
+    authorNameMap,
+  }));
+
+  const quickPosts = serializedPosts
+    .filter((post) => post.isQuickPost)
+    .map((post) => ({
+      postId: post._id,
+      questionNumber: post.quickPostQuestionNumber,
+      label: post.body,
+      upvoteCount: post.upvoteCount,
+      viewerHasUpvoted: post.viewerHasUpvoted,
+    }))
+    .filter((post) => Number(post.questionNumber) > 0 && (
+      currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
+    ))
+    .sort((a, b) => b.questionNumber - a.questionNumber);
+  const quickPostOptions = posts
+    .filter((post) => {
+      if (!post?.isQuickPost) return false;
+      if (!includeDismissed && post?.dismissedAt) return false;
+      return true;
+    })
+    .map((post) => {
+      const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+      const upvoteCount = Number(post?.upvoteCount);
+      return {
+        postId: String(post?._id || ''),
+        questionNumber: Number(post?.quickPostQuestionNumber) || null,
+        label: normalizeAnswerValue(post?.body),
+        upvoteCount: Number.isFinite(upvoteCount) ? upvoteCount : upvoteUserIds.length,
+        viewerHasUpvoted: upvoteUserIds.includes(viewerUserId),
+      };
+    })
+    .filter((post) => Number(post.questionNumber) > 0 && (
+      currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
+    ))
+    .sort((a, b) => b.questionNumber - a.questionNumber);
+
+  return {
+    enabled: !!session?.chatEnabled,
+    viewMode,
+    currentQuestionNumber,
+    canPost: flags.canWrite,
+    canComment: flags.canWrite,
+    canVote: flags.canWrite && !flags.isInstructorView,
+    canDeleteOwnPost: flags.canWrite,
+    canDismiss: flags.canModerate,
+    canViewNames: flags.canViewNames,
+    posts: serializedPosts,
+    quickPosts,
+    quickPostOptions,
+  };
+}
+
+async function loadSessionChatContext(sessionId) {
+  const session = await Session.findById(sessionId).lean();
+  if (!session) return { session: null, course: null };
+  const course = await Course.findById(session.courseId).lean();
+  return { session, course };
 }
 
 function collectCorrectAnswerHints(question) {
@@ -2008,6 +2439,31 @@ function notifyJoinCodeChanged(app, course, session) {
   });
 }
 
+function notifyChatSettingsChanged(app, course, session) {
+  if (!session?._id) return;
+  sendToInstructors(app, course, 'session:chat-settings-changed', {
+    courseId: String(course._id),
+    sessionId: String(session._id),
+    chatEnabled: !!session?.chatEnabled,
+  });
+  sendToJoinedStudents(app, session, 'session:chat-settings-changed', {
+    courseId: String(course._id),
+    sessionId: String(session._id),
+    chatEnabled: !!session?.chatEnabled,
+  });
+}
+
+function notifyChatUpdated(app, course, session, payload = {}) {
+  if (!session?._id) return;
+  const basePayload = {
+    courseId: String(course._id),
+    sessionId: String(session._id),
+    ...payload,
+  };
+  sendToInstructors(app, course, 'session:chat-updated', basePayload);
+  sendToJoinedStudents(app, session, 'session:chat-updated', basePayload);
+}
+
 async function seedSessionGradesIfNeeded(session, course, { visibleToStudents = null } = {}) {
   if (!session || session.status !== 'done') return null;
   const gradingResult = await recalculateSessionGrades({
@@ -2632,7 +3088,7 @@ export default async function sessionRoutes(app) {
 
       const allowed = isStudentOwner
         ? ['name', 'description']
-        : ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
+        : ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'chatEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
@@ -4362,6 +4818,7 @@ export default async function sessionRoutes(app) {
             joinedCount: (session.joined || []).length,
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
+            chatEnabled: session.chatEnabled,
             reviewable: session.reviewable,
           }
           : {
@@ -4370,6 +4827,7 @@ export default async function sessionRoutes(app) {
             status: session.status,
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
+            chatEnabled: session.chatEnabled,
           },
         currentQuestion: null,
         currentAttempt,
@@ -5347,10 +5805,521 @@ export default async function sessionRoutes(app) {
     }
   );
 
+  app.patch(
+    '/sessions/:id/chat-settings',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      schema: {
+        body: {
+          type: 'object',
+          required: ['chatEnabled'],
+          properties: {
+            chatEnabled: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      const updated = await Session.findByIdAndUpdate(
+        request.params.id,
+        { $set: { chatEnabled: !!request.body.chatEnabled } },
+        { returnDocument: 'after' }
+      ).lean();
+
+      if (updated?.chatEnabled) {
+        await ensureSessionQuickPosts(updated);
+      }
+
+      notifyChatSettingsChanged(app, course, updated);
+
+      return {
+        session: {
+          _id: updated?._id,
+          chatEnabled: !!updated?.chatEnabled,
+        },
+      };
+    }
+  );
+
+  app.get(
+    '/sessions/:id/chat',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 90, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 90, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const payload = await loadSessionChatPayload({ session, course, request });
+      if (payload?.forbidden) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session chat is not available' });
+      }
+      return payload;
+    }
+  );
+
+  app.post(
+    '/sessions/:id/chat/posts',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            body: { type: 'string' },
+            bodyWysiwyg: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite || !session.chatEnabled) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Session chat is not available' });
+      }
+
+      const bodyWysiwyg = normalizeAnswerValue(request.body?.bodyWysiwyg);
+      const body = normalizeAnswerValue(request.body?.body || stripHtmlToPlainText(bodyWysiwyg));
+      if (!body && !bodyWysiwyg) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Post content is required' });
+      }
+
+      const created = await Post.create({
+        scopeType: 'session',
+        courseId: String(course._id),
+        sessionId: String(session._id),
+        authorId: String(request.user.userId),
+        authorRole: getChatAuthorRole(course, request.user),
+        body,
+        bodyWysiwyg,
+        isQuickPost: false,
+        quickPostQuestionNumber: null,
+        upvoteUserIds: [],
+        upvoteCount: 0,
+        comments: [],
+        dismissedAt: null,
+        dismissedBy: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      notifyChatUpdated(app, course, session, {
+        changeType: 'post-created',
+        postId: String(created._id),
+      });
+
+      return { success: true, postId: String(created._id) };
+    }
+  );
+
+  app.post(
+    '/sessions/:id/chat/quick-posts/:questionNumber/toggle',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite || flags.isInstructorView || !session.chatEnabled) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quick posts are not available' });
+      }
+
+      const questionNumber = Number.parseInt(request.params.questionNumber, 10);
+      const questionMetadata = await loadSessionChatQuestionMetadata(session);
+      const currentQuestionNumber = questionMetadata.currentQuestionNumber;
+      if (!Number.isInteger(questionNumber) || questionNumber <= 0) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Invalid quick-post question number' });
+      }
+      if (currentQuestionNumber != null && questionNumber >= currentQuestionNumber) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Quick posts are only available for earlier questions' });
+      }
+
+      await ensureSessionQuickPosts(session, questionMetadata);
+      const post = await Post.findOne({
+        scopeType: 'session',
+        sessionId: String(session._id),
+        isQuickPost: true,
+        quickPostQuestionNumber: questionNumber,
+      }).lean();
+
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Quick post not found' });
+      }
+      if (post.dismissedAt) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'This post was dismissed by the instructor' });
+      }
+
+      const userId = String(request.user.userId);
+      const upvoteUserIds = Array.isArray(post.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+      const hasUpvoted = upvoteUserIds.includes(userId);
+      const nextUpvoteUserIds = hasUpvoted
+        ? upvoteUserIds.filter((id) => id !== userId)
+        : [...upvoteUserIds, userId];
+
+      const updated = await Post.findByIdAndUpdate(
+        post._id,
+        {
+          $set: {
+            upvoteUserIds: nextUpvoteUserIds,
+            upvoteCount: nextUpvoteUserIds.length,
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' }
+      ).lean();
+
+      notifyChatUpdated(app, course, session, {
+        changeType: 'quick-post-toggled',
+        postId: String(post._id),
+      });
+
+      return {
+        success: true,
+        postId: String(post._id),
+        viewerHasUpvoted: !hasUpvoted,
+        upvoteCount: Number(updated?.upvoteCount || 0),
+      };
+    }
+  );
+
+  app.patch(
+    '/sessions/:id/chat/posts/:postId/vote',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+      schema: {
+        body: {
+          type: 'object',
+          required: ['upvoted'],
+          properties: {
+            upvoted: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite || flags.isInstructorView || !session.chatEnabled) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Voting is not available' });
+      }
+
+      const post = await Post.findOne({
+        _id: request.params.postId,
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }).lean();
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Post not found' });
+      }
+      if (post.dismissedAt) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'This post was dismissed by the instructor' });
+      }
+      if (post.authorId && String(post.authorId) === String(request.user.userId)) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'You cannot vote on your own post' });
+      }
+
+      const questionMetadata = await loadSessionChatQuestionMetadata(session);
+      const currentQuestionNumber = questionMetadata.currentQuestionNumber;
+      if (post.isQuickPost && currentQuestionNumber != null && Number(post.quickPostQuestionNumber) >= currentQuestionNumber) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'This quick post is not available yet' });
+      }
+
+      const userId = String(request.user.userId);
+      const upvoteUserIds = Array.isArray(post.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+      const hasUpvoted = upvoteUserIds.includes(userId);
+      const nextUpvoteUserIds = request.body.upvoted
+        ? (hasUpvoted ? upvoteUserIds : [...upvoteUserIds, userId])
+        : upvoteUserIds.filter((id) => id !== userId);
+
+      const updated = await Post.findByIdAndUpdate(
+        post._id,
+        {
+          $set: {
+            upvoteUserIds: [...new Set(nextUpvoteUserIds)],
+            upvoteCount: [...new Set(nextUpvoteUserIds)].length,
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' }
+      ).lean();
+
+      notifyChatUpdated(app, course, session, {
+        changeType: 'post-voted',
+        postId: String(post._id),
+      });
+
+      return {
+        success: true,
+        postId: String(post._id),
+        viewerHasUpvoted: !!request.body.upvoted,
+        upvoteCount: Number(updated?.upvoteCount || 0),
+      };
+    }
+  );
+
+  app.post(
+    '/sessions/:id/chat/posts/:postId/comments',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            body: { type: 'string' },
+            bodyWysiwyg: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite || !session.chatEnabled) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Comments are not available' });
+      }
+
+      const post = await Post.findOne({
+        _id: request.params.postId,
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }).lean();
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Post not found' });
+      }
+      if (post.dismissedAt && !flags.isInstructorView) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'This post was dismissed by the instructor' });
+      }
+
+      const bodyWysiwyg = normalizeAnswerValue(request.body?.bodyWysiwyg);
+      const body = normalizeAnswerValue(request.body?.body || stripHtmlToPlainText(bodyWysiwyg));
+      if (!body && !bodyWysiwyg) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'Comment content is required' });
+      }
+
+      const comment = {
+        _id: generateMeteorId(),
+        authorId: String(request.user.userId),
+        authorRole: getChatAuthorRole(course, request.user),
+        body,
+        bodyWysiwyg,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      await Post.findByIdAndUpdate(
+        post._id,
+        {
+          $push: { comments: comment },
+          $set: { updatedAt: new Date() },
+        },
+        { returnDocument: 'after' }
+      ).lean();
+
+      notifyChatUpdated(app, course, session, {
+        changeType: 'comment-added',
+        postId: String(post._id),
+      });
+
+      return { success: true, postId: String(post._id), commentId: comment._id };
+    }
+  );
+
+  app.patch(
+    '/sessions/:id/chat/posts/:postId/dismiss',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+      if (session.status !== 'running') {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Posts can only be dismissed during a live session' });
+      }
+
+      const post = await Post.findOne({
+        _id: request.params.postId,
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }).lean();
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Post not found' });
+      }
+
+      const updated = await Post.findByIdAndUpdate(
+        post._id,
+        {
+          $set: {
+            dismissedAt: post.dismissedAt || new Date(),
+            dismissedBy: String(request.user.userId),
+            updatedAt: new Date(),
+          },
+        },
+        { returnDocument: 'after' }
+      ).lean();
+
+      notifyChatUpdated(app, course, session, {
+        changeType: 'post-dismissed',
+        postId: String(post._id),
+      });
+
+      return {
+        success: true,
+        postId: String(post._id),
+        dismissed: !!updated?.dismissedAt,
+      };
+    }
+  );
+
+  app.delete(
+    '/sessions/:id/chat/posts/:postId',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite && !flags.isInstructorView) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Post deletion is not available' });
+      }
+
+      const post = await Post.findOne({
+        _id: request.params.postId,
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }).lean();
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Post not found' });
+      }
+
+      const ownsPost = String(post.authorId || '') === String(request.user.userId || '');
+      if (!flags.isInstructorView && !ownsPost) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'You can only delete your own posts' });
+      }
+      if (post.isQuickPost && !flags.isInstructorView) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Quick posts cannot be deleted' });
+      }
+
+      await Post.deleteOne({ _id: post._id });
+      notifyChatUpdated(app, course, session, {
+        changeType: 'post-deleted',
+        postId: String(post._id),
+      });
+
+      return { success: true };
+    }
+  );
+
   // GET /sessions/:id/results - Get full session results (prof only) for review/CSV
   app.get(
     '/sessions/:id/results',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       let session = await Session.findById(request.params.id).lean();
       if (!session) {
@@ -5445,6 +6414,37 @@ export default async function sessionRoutes(app) {
       });
 
       const questionsWithPoints = orderedQuestions.filter((q) => getParticipationQuestionPoints(q) > 0);
+      const chatDataExists = !!session.chatEnabled || !!(await Post.exists({
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }));
+      if (chatDataExists) {
+        await ensureSessionQuickPosts(session);
+      }
+
+      let chatPosts = [];
+      if (chatDataExists) {
+        const posts = await Post.find({
+          scopeType: 'session',
+          sessionId: String(session._id),
+        })
+          .select('authorId authorRole body bodyWysiwyg isQuickPost quickPostQuestionNumber upvoteUserIds upvoteCount comments dismissedAt createdAt updatedAt')
+          .lean();
+        const visiblePosts = posts
+          .filter((post) => !(post?.isQuickPost && Number(post?.upvoteCount || 0) <= 0))
+          .sort((a, b) => {
+            const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+            if (voteDiff !== 0) return voteDiff;
+            return getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+          });
+        const authorNameMap = await buildChatAuthorNameMap(visiblePosts, { includeAllAuthors: true });
+        chatPosts = visiblePosts.map((post) => serializeChatPost(post, {
+          includeNames: true,
+          includeDismissed: true,
+          viewerUserId: String(request.user.userId || ''),
+          authorNameMap,
+        }));
+      }
 
       // Build per-student results (include all course students plus extra responders/joined users).
       const studentResults = resultUserIds.map((studentId) => {
@@ -5501,6 +6501,7 @@ export default async function sessionRoutes(app) {
         session,
         questions: orderedQuestions,
         studentResults,
+        chatPosts,
       };
     }
   );

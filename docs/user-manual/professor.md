@@ -206,6 +206,15 @@ Interactive sessions are designed for instructor-paced teaching.
 6. Start a new attempt if students should answer again.
 7. End the session when the activity is complete.
 
+### Session chat during live teaching
+
+- Use **Enable session chat** above the live-session tabs when you want students to send live feedback.
+- The live controls, the presentation window, and the student interface each gain a **Chat** tab while chat is enabled.
+- Students can write rich-text posts and comments with the same math and image support used in short-answer responses.
+- Student posts stay anonymous to the class, but the professor view and the session review tab still show the student names.
+- Students can use quick posts for **I didn't understand question i** on earlier questions; repeated quick posts raise the same post's upvote count instead of creating duplicates.
+- In the professor chat tab, use **Dismiss** to remove a post from the student and presentation views while still keeping it in the professor-only session review tab.
+
 ### Live teaching tips
 
 - Watch for whether the active item is a **slide** or a **question**. Slides do not collect answers.
@@ -230,6 +239,7 @@ Session review also includes a few recent usability improvements:
 - the results tab shows the student's actual session grade before the participation column
 - clicking a student's avatar in the Students tab opens the larger profile photo
 - question entries opened from the course-grade table now show `Q1(MC)`, `Q2(SA)`, and similar type labels with visual cues for whether grading is still required
+- sessions that used live chat now include a **Chat** review tab with the full post and comment history, including dismissed posts and upvote counts
 
 Qlicker supports both automatic and manual grading.
 

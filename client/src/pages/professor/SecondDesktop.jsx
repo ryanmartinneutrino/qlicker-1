@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Box, Typography, Paper, Alert, CircularProgress, Chip } from '@mui/material';
+import {
+  Box, Typography, Paper, Alert, CircularProgress, Chip, Button,
+} from '@mui/material';
 import apiClient, { getAccessToken } from '../../api/client';
 import {
   QUESTION_TYPES,
@@ -20,6 +22,8 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
 import HistogramPanel from '../../components/questions/HistogramPanel';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
+import SessionChatPanel from '../../components/live/SessionChatPanel';
+import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import { sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
@@ -239,6 +243,8 @@ export default function PresentationWindow() {
   const [error, setError] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [liveTransport, setLiveTransport] = useState('unknown');
+  const [activePanel, setActivePanel] = useState('question');
+  const [chatRefreshToken, setChatRefreshToken] = useState(0);
   const {
     recordEventReceipt,
     recordLiveFetch,
@@ -435,6 +441,18 @@ export default function PresentationWindow() {
             case 'session:metadata-changed':
               fetchLive(syncContext);
               break;
+            case 'session:chat-settings-changed':
+              setLiveData((prev) => prev ? {
+                ...prev,
+                session: {
+                  ...prev.session,
+                  chatEnabled: d?.chatEnabled ?? prev.session?.chatEnabled,
+                },
+              } : prev);
+              break;
+            case 'session:chat-updated':
+              setChatRefreshToken((prev) => prev + 1);
+              break;
             default:
               break;
           }
@@ -496,6 +514,7 @@ export default function PresentationWindow() {
   const showStats = !!currentQ?.sessionOptions?.stats;
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const showResponseList = currentQ?.sessionOptions?.responseListVisible !== false;
+  const chatEnabled = !!session?.chatEnabled;
   const showShortAnswerStats = showStats && responseStats?.type === 'shortAnswer'
     && (!!showResponseList || !!wordCloudData?.wordFrequencies?.length);
   const questionIds = session?.questions || [];
@@ -514,8 +533,18 @@ export default function PresentationWindow() {
   const inlineDistributionTotal = Number(responseStats?.total) > 0
     ? Number(responseStats.total)
     : inlineDistribution.reduce((sum, d) => sum + (d.count || 0), 0);
+  const waitingPanelTabs = [
+    { value: 'question', label: t('professor.secondDesktop.currentQuestion') },
+    ...(chatEnabled ? [{ value: 'chat', label: t('sessionChat.chat') }] : []),
+  ];
 
   // ---- Auto-close popup window when session ends ----
+
+  useEffect(() => {
+    if (!chatEnabled && activePanel === 'chat') {
+      setActivePanel('question');
+    }
+  }, [activePanel, chatEnabled]);
 
   useEffect(() => {
     if (!sessionEnded) return;
@@ -651,21 +680,61 @@ export default function PresentationWindow() {
   // ---- Render: waiting for question ----
 
   if (!currentQ || isHidden) {
+    if (!chatEnabled) {
+      return (
+        <Box
+          sx={{
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            alignItems: 'center', minHeight: '100vh', bgcolor: 'background.default',
+            p: 4, textAlign: 'center',
+          }}
+        >
+          {renderHeader({ showSessionName: false })}
+          <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
+            {session?.name || t('professor.secondDesktop.liveSession')}
+          </Typography>
+          <Typography variant="h5" sx={{ color: 'text.secondary' }}>
+            {t('professor.secondDesktop.waitingForQuestion')}
+          </Typography>
+        </Box>
+      );
+    }
+
     return (
       <Box
         sx={{
-          display: 'flex', flexDirection: 'column', justifyContent: 'center',
-          alignItems: 'center', minHeight: '100vh', bgcolor: 'background.default',
-          p: 4, textAlign: 'center',
+          minHeight: '100vh',
+          bgcolor: 'background.default',
+          display: 'flex',
+          flexDirection: 'column',
+          p: { xs: 2, sm: 4 },
         }}
       >
-        {renderHeader({ showSessionName: false })}
-        <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
-          {session?.name || t('professor.secondDesktop.liveSession')}
-        </Typography>
-        <Typography variant="h5" sx={{ color: 'text.secondary' }}>
-          {t('professor.secondDesktop.waitingForQuestion')}
-        </Typography>
+        {renderHeader({ compact: true })}
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={waitingPanelTabs}
+          ariaLabel={t('professor.secondDesktop.panelsLabel')}
+        />
+        {activePanel === 'chat' ? (
+          <SessionChatPanel
+            sessionId={sessionId}
+            enabled={chatEnabled}
+            role="presentation"
+            view="presentation"
+            refreshToken={chatRefreshToken}
+          />
+        ) : (
+          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h3" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
+              {session?.name || t('professor.secondDesktop.liveSession')}
+            </Typography>
+            <Typography variant="h5" sx={{ color: 'text.secondary' }}>
+              {t('professor.secondDesktop.waitingForQuestion')}
+            </Typography>
+          </Paper>
+        )}
       </Box>
     );
   }
@@ -680,6 +749,26 @@ export default function PresentationWindow() {
       }}
     >
       {renderHeader({ compact: true })}
+
+      {chatEnabled ? (
+        <LiveSessionPanelNavigation
+          value={activePanel}
+          onChange={setActivePanel}
+          tabs={waitingPanelTabs}
+          ariaLabel={t('professor.secondDesktop.panelsLabel')}
+        />
+      ) : null}
+
+      {activePanel === 'chat' ? (
+        <SessionChatPanel
+          sessionId={sessionId}
+          enabled={chatEnabled}
+          role="presentation"
+          view="presentation"
+          refreshToken={chatRefreshToken}
+        />
+      ) : (
+        <>
 
       {/* Top info bar */}
       <Box
@@ -865,6 +954,8 @@ export default function PresentationWindow() {
           </Typography>
           <RichContent html={currentQ.solution} fallback={currentQ.solution_plainText} />
         </Paper>
+      )}
+        </>
       )}
     </Box>
   );

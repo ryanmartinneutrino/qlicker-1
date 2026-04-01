@@ -43,7 +43,15 @@ export async function getUserAccessFlags(userOrId) {
   const userId = normalizeUserId(userOrId);
   const roles = getUserRoles(userOrId);
   const canAccessProfessorDashboard = roles.includes('professor');
+  const mayNeedInstructorCourseLookup = roles.includes('professor') || roles.includes('admin');
   if (!userId) {
+    return {
+      hasInstructorCourses: false,
+      canAccessProfessorDashboard,
+    };
+  }
+
+  if (!mayNeedInstructorCourseLookup) {
     return {
       hasInstructorCourses: false,
       canAccessProfessorDashboard,

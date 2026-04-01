@@ -486,6 +486,21 @@ async function cleanup() {
     { _id: 1 },
   ).lean();
   const userIds = loadTestUsers.map((u) => u._id);
+  const loadTestCourses = await Course.find(
+    { deptCode: 'LT', courseNumber: '999' },
+    { _id: 1 },
+  ).lean();
+  const courseIds = loadTestCourses.map((course) => course._id);
+  const loadTestSessions = await Session.find(
+    {
+      $or: [
+        { description: new RegExp(LOAD_TEST_TAG) },
+        { name: 'Load Test Session' },
+      ],
+    },
+    { _id: 1, courseId: 1 },
+  ).lean();
+  const sessionIds = loadTestSessions.map((session) => session._id);
 
   // Remove users with loadtest emails
   await User.deleteMany({ 'emails.address': /^loadtest-/ });
@@ -502,12 +517,26 @@ async function cleanup() {
   });
 
   // Clean responses from load test students
-  if (userIds.length > 0) {
-    const db = mongoose.connection.db;
-    if (db) {
+  const db = mongoose.connection.db;
+  if (db) {
+    if (userIds.length > 0) {
       await db
         .collection('responses')
         .deleteMany({ studentUserId: { $in: userIds } })
+        .catch(() => {});
+    }
+    if (sessionIds.length > 0 || courseIds.length > 0 || userIds.length > 0) {
+      await db
+        .collection('posts')
+        .deleteMany({
+          $or: [
+            ...(sessionIds.length > 0 ? [{ sessionId: { $in: sessionIds } }] : []),
+            ...(courseIds.length > 0 ? [{ courseId: { $in: courseIds } }] : []),
+            { authorId: { $in: userIds } },
+            { upvoteUserIds: { $in: userIds } },
+            { 'comments.authorId': { $in: userIds } },
+          ],
+        })
         .catch(() => {});
     }
   }

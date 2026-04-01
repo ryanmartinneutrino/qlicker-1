@@ -96,6 +96,9 @@ Live sessions are used when an instructor is controlling the pace of the class.
 - Statistics and correct answers only become visible when the instructor turns them on.
 - When statistics include a word cloud or histogram, those visualizations should appear automatically as soon as the instructor reveals them.
 - For short-answer questions, your instructor can show or hide the shared response list separately from the word cloud, so you may see one without the other.
+- If your instructor enables session chat, a **Chat** tab appears during the live session. You can write posts and comments with math and image formatting, and you can upvote posts that are helpful to the class.
+- Student chat posts stay anonymous to classmates and the presentation screen, but they are still visible to the instructor.
+- Quick-post buttons let you send **I didn't understand question i** for earlier questions without typing the whole message each time.
 
 ## Take quizzes
 
@@ -130,6 +133,8 @@ Review pages are useful because they can show:
 - the instructor's explanation or solution
 - feedback on manually graded questions
 - points and participation information
+
+Live session chat stays out of the student review view. Posts and comments are only available while the live session is running.
 
 ### Best review habit
 
