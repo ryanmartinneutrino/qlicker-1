@@ -12,6 +12,12 @@ function normalizeCourseIds(value) {
   return [...new Set(value.map((courseId) => String(courseId || '')).filter(Boolean))];
 }
 
+function getNotificationUserRoles(user = {}) {
+  if (Array.isArray(user.roles)) return user.roles;
+  if (Array.isArray(user.profile?.roles)) return user.profile.roles;
+  return [];
+}
+
 function normalizeRecipientType(value = 'all') {
   const recipientType = String(value || 'all').trim() || 'all';
   if (!['all', 'students', 'instructors'].includes(recipientType)) {
@@ -76,11 +82,7 @@ async function loadViewerCourseIds(userId) {
 
 async function loadViewerNotificationAccess(user = {}) {
   const userId = String(user.userId || user._id || '');
-  const roles = Array.isArray(user.roles)
-    ? user.roles
-    : Array.isArray(user.profile?.roles)
-      ? user.profile.roles
-      : [];
+  const roles = getNotificationUserRoles(user);
   const courseIds = userId ? await loadViewerCourseIds(userId) : [];
 
   if (!userId || courseIds.length === 0) {
@@ -375,10 +377,6 @@ export default async function notificationRoutes(app) {
         timeWindow: '1 minute',
       }),
     ],
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
   }, async (request) => {
     const access = await loadViewerNotificationAccess(request.user);
     const notifications = await Notification.find(buildVisibleNotificationsFilter(access))
@@ -404,10 +402,6 @@ export default async function notificationRoutes(app) {
         timeWindow: '1 minute',
       }),
     ],
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
   }, async (request) => {
     const access = await loadViewerNotificationAccess(request.user);
     const notifications = await Notification.find(buildVisibleNotificationsFilter(access))
@@ -437,10 +431,6 @@ export default async function notificationRoutes(app) {
   app.post('/manage', {
     preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationMutationSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.body;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
@@ -476,10 +466,6 @@ export default async function notificationRoutes(app) {
       }),
     ],
     schema: notificationManageQuerySchema,
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.query;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
@@ -504,10 +490,6 @@ export default async function notificationRoutes(app) {
   app.patch('/:id', {
     preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: { ...notificationIdParamsSchema, ...notificationUpdateSchema },
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
@@ -555,10 +537,6 @@ export default async function notificationRoutes(app) {
   app.delete('/:id', {
     preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
@@ -574,10 +552,6 @@ export default async function notificationRoutes(app) {
   app.post('/:id/dismiss', {
     preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const notification = await loadVisibleNotificationForDismissal(request, reply, request.params.id);
     if (!notification) return;
