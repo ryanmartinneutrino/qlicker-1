@@ -3,6 +3,7 @@ import { alpha, createTheme } from '@mui/material/styles';
 const COMPACT_SMALL_INPUT_PADDING = '8.5px';
 
 const theme = createTheme({
+  shape: { borderRadius: 10 }, 
   palette: {
     primary: { main: '#30B0E7', contrastText: '#FFFFFF' },
     secondary: { main: '#FF9800' },
