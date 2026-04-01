@@ -362,9 +362,19 @@ const notificationIdParamsSchema = {
 
 export default async function notificationRoutes(app) {
   const { authenticate } = app;
+  const notificationWriteRateLimitPreHandler = app.rateLimit({
+    max: 30,
+    timeWindow: '1 minute',
+  });
 
   app.get('/summary', {
-    preHandler: authenticate,
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
     rateLimit: { max: 120, timeWindow: '1 minute' },
     config: {
       rateLimit: { max: 120, timeWindow: '1 minute' },
@@ -387,7 +397,13 @@ export default async function notificationRoutes(app) {
   });
 
   app.get('/', {
-    preHandler: authenticate,
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
     rateLimit: { max: 120, timeWindow: '1 minute' },
     config: {
       rateLimit: { max: 120, timeWindow: '1 minute' },
@@ -419,7 +435,7 @@ export default async function notificationRoutes(app) {
   });
 
   app.post('/manage', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationMutationSchema,
     rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
@@ -452,7 +468,13 @@ export default async function notificationRoutes(app) {
   });
 
   app.get('/manage', {
-    preHandler: authenticate,
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
     schema: notificationManageQuerySchema,
     rateLimit: { max: 120, timeWindow: '1 minute' },
     config: {
@@ -480,7 +502,7 @@ export default async function notificationRoutes(app) {
   });
 
   app.patch('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: { ...notificationIdParamsSchema, ...notificationUpdateSchema },
     rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
@@ -531,7 +553,7 @@ export default async function notificationRoutes(app) {
   });
 
   app.delete('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
     rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
@@ -550,7 +572,7 @@ export default async function notificationRoutes(app) {
   });
 
   app.post('/:id/dismiss', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
     rateLimit: { max: 30, timeWindow: '1 minute' },
     config: {
