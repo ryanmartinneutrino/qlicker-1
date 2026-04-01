@@ -57,6 +57,22 @@ const OPTION_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const richContentSx = {
   '& p': { my: 0.5 },
   '& ul, & ol': { my: 0.5, pl: 3 },
+  '& [data-video-embed]': {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    my: 0.75,
+  },
+  '& iframe': {
+    display: 'block',
+    width: '100%',
+    maxWidth: '100%',
+    aspectRatio: '16 / 9',
+    height: 'auto',
+    border: 0,
+    boxSizing: 'border-box',
+    borderRadius: 0,
+  },
   '& img': {
     display: 'block',
     maxWidth: '90% !important',
