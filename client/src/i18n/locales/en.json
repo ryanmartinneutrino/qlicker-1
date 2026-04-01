@@ -138,7 +138,8 @@
     "openAccountMenuTooltip": "Open account menu and quick links"
   },
   "dashboard": {
-    "liveSessions": "Live Sessions"
+    "liveSessions": "Live Sessions",
+    "courses": "Courses"
   },
   "sessionTiming": {
     "quizStartsAt": "Quiz starts at: {{dateTime}}",
@@ -2159,6 +2160,18 @@
     "dismiss": "Dismiss notification",
     "edit": "Edit notification",
     "delete": "Delete notification",
+    "audience": {
+      "system": {
+        "all": "all users on the system",
+        "students": "all students",
+        "instructors": "all profs"
+      },
+      "course": {
+        "all": "everyone in this course",
+        "students": "all students in this course",
+        "instructors": "all instructors in this course"
+      }
+    },
     "fields": {
       "title": "Title",
       "message": "Message",
@@ -2179,6 +2192,7 @@
       "postNotification": "Post notification",
       "saveChanges": "Save changes",
       "cancelEdit": "Cancel edit",
+      "recipientTypeLabel": "Send to",
       "loadFailed": "Failed to load notifications",
       "saveFailed": "Failed to save notification",
       "created": "Notification posted",

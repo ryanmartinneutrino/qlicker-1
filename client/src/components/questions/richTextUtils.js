@@ -11,7 +11,7 @@ const BASE_RICH_TEXT_ALLOWED_ATTRIBUTES = [
 ];
 const VIDEO_RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'data-video-embed', 'data-src',
-  'allowfullscreen', 'allow', 'loading', 'referrerpolicy', 'title',
+  'allowfullscreen', 'loading', 'referrerpolicy', 'title',
 ];
 const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
 const IFRAME_ALLOWED_ATTRIBUTES = new Set([
@@ -19,12 +19,10 @@ const IFRAME_ALLOWED_ATTRIBUTES = new Set([
   'width',
   'height',
   'allowfullscreen',
-  'allow',
   'loading',
   'referrerpolicy',
   'title',
 ]);
-const DEFAULT_IFRAME_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
 const DEFAULT_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
 let allowVideoEmbedsForCurrentSanitize = false;
@@ -89,7 +87,6 @@ if (typeof window !== 'undefined') {
 
       node.setAttribute('src', normalizedSrc);
       node.setAttribute('allowfullscreen', 'true');
-      node.setAttribute('allow', DEFAULT_IFRAME_ALLOW);
       node.setAttribute('loading', 'lazy');
       node.setAttribute('referrerpolicy', DEFAULT_IFRAME_REFERRER_POLICY);
       if (!node.getAttribute('title')) node.setAttribute('title', 'Embedded video');
@@ -366,9 +363,32 @@ export function hasRichTextContent(html, options = {}) {
   return /<img\b/i.test(normalized) || /<iframe\b/i.test(normalized);
 }
 
+function normalizeEmbeddedIframes(container) {
+  if (!container || typeof container.querySelectorAll !== 'function') return;
+
+  container.querySelectorAll('iframe').forEach((iframe) => {
+    const width = Number.parseFloat(iframe.getAttribute('width') || '');
+    const height = Number.parseFloat(iframe.getAttribute('height') || '');
+    const hasValidRatio = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+
+    iframe.style.display = 'block';
+    iframe.style.width = '100%';
+    iframe.style.maxWidth = '100%';
+    iframe.style.height = 'auto';
+    iframe.style.boxSizing = 'border-box';
+
+    if (hasValidRatio) {
+      iframe.style.aspectRatio = `${width} / ${height}`;
+    } else if (!iframe.style.aspectRatio) {
+      iframe.style.aspectRatio = '16 / 9';
+    }
+  });
+}
+
 export function renderKatexInElement(container) {
   if (!container) return;
 
+  normalizeEmbeddedIframes(container);
   normalizeBlockMathMarkupSafely(container);
   const restoreCurrency = maskCurrencyTokens(container);
   const renderOptions = {

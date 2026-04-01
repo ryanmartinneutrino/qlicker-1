@@ -3,12 +3,13 @@ import { alpha, createTheme } from '@mui/material/styles';
 const COMPACT_SMALL_INPUT_PADDING = '8.5px';
 
 const theme = createTheme({
+  shape: { borderRadius: 10 }, 
   palette: {
     primary: { main: '#30B0E7', contrastText: '#FFFFFF' },
     secondary: { main: '#FF9800' },
     success: { main: '#4CAF50' },
     error: { main: '#F44336' },
-    background: { default: '#FAFAFA', paper: '#FFFFFF' },
+    background: { default: '#f9fdfe', paper: '#FFFFFF' },
   },
   typography: {
     fontFamily: '"Helvetica Neue", "Helvetica", "Arial", sans-serif',

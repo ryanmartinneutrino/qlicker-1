@@ -29,6 +29,18 @@ const COMPACT_CHIP_SX = {
   },
 };
 
+const LIVE_SESSION_GRID_SX = {
+  display: 'grid',
+  gap: 1.25,
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+};
+
+const COURSE_GRID_SX = {
+  display: 'grid',
+  gap: 2,
+  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+};
+
 function getSuggestedSemester() {
   const now = new Date();
   const month = now.getMonth(); // 0-indexed
@@ -159,7 +171,7 @@ export default function ProfDashboard() {
             <LiveIcon sx={{ verticalAlign: 'middle', mr: 0.5, color: 'success.main' }} />
             {t('dashboard.liveSessions')}
           </Typography>
-          <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+          <Box sx={LIVE_SESSION_GRID_SX}>
             {liveSessions.map((ls) => (
               <SessionListCard
                 key={ls._id}
@@ -171,7 +183,6 @@ export default function ProfDashboard() {
                 )}
                 title={ls.name}
                 subtitle={ls.courseName}
-                badges={<Chip label={t('sessionStatus.live')} size="small" color="success" sx={COMPACT_CHIP_SX} />}
               />
             ))}
           </Box>
@@ -193,60 +204,59 @@ export default function ProfDashboard() {
           )}
         </Box>
       ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gap: 2,
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 280px))',
-          }}
-        >
-          {filtered.map((course) => (
-            <Box key={course._id}>
-              <Card
-                variant="outlined"
-                sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
-                onClick={() => navigate(`/prof/course/${course._id}`)}
-              >
-                <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
-                    {buildCourseTitle(course, 'short')}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {course.semester}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {buildCourseTitle(course, 'medium')}
-                  </Typography>
-                  {course.section && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                      {t('professor.dashboard.section', { section: course.section })}
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>
+            {t('dashboard.courses')}
+          </Typography>
+          <Box sx={COURSE_GRID_SX}>
+            {filtered.map((course) => (
+              <Box key={course._id}>
+                <Card
+                  variant="outlined"
+                  sx={{ height: '100%', display: 'flex', flexDirection: 'column', cursor: 'pointer', '&:hover': { boxShadow: 3 } }}
+                  onClick={() => navigate(`/prof/course/${course._id}`)}
+                >
+                  <CardContent sx={{ flexGrow: 1, minHeight: 160 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
+                      {buildCourseTitle(course, 'short')}
                     </Typography>
-                  )}
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
-                    <Chip
-                      label={course.inactive ? t('professor.dashboard.inactive') : t('professor.dashboard.active')}
-                      color={course.inactive ? 'default' : 'success'}
-                      size="small"
-                      sx={COMPACT_CHIP_SX}
-                    />
-                  </Box>
-                  {course.enrollmentCode && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
-                      <Typography variant="caption" color="text.secondary">{t('professor.dashboard.code')}</Typography>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                        {course.enrollmentCode}
+                    <Typography variant="body2" color="text.secondary">
+                      {course.semester}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {buildCourseTitle(course, 'medium')}
+                    </Typography>
+                    {course.section && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {t('professor.dashboard.section', { section: course.section })}
                       </Typography>
-                      <CopyIcon
-                        fontSize="small"
-                        sx={{ cursor: 'pointer', color: 'action.active', '&:hover': { color: 'primary.main' } }}
-                        onClick={(e) => { e.stopPropagation(); copyCode(course.enrollmentCode); }}
+                    )}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1.5 }}>
+                      <Chip
+                        label={course.inactive ? t('professor.dashboard.inactive') : t('professor.dashboard.active')}
+                        color={course.inactive ? 'default' : 'success'}
+                        size="small"
+                        sx={COMPACT_CHIP_SX}
                       />
                     </Box>
-                  )}
-                </CardContent>
-              </Card>
-            </Box>
-          ))}
+                    {course.enrollmentCode && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary">{t('professor.dashboard.code')}</Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                          {course.enrollmentCode}
+                        </Typography>
+                        <CopyIcon
+                          fontSize="small"
+                          sx={{ cursor: 'pointer', color: 'action.active', '&:hover': { color: 'primary.main' } }}
+                          onClick={(e) => { e.stopPropagation(); copyCode(course.enrollmentCode); }}
+                        />
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Box>
+            ))}
+          </Box>
         </Box>
       )}
 

@@ -7,13 +7,25 @@ function hasAdminRole(roles = []) {
   return roles.includes('admin');
 }
 
-function hasProfessorOrAdminRole(roles = []) {
-  return roles.includes('professor') || roles.includes('admin');
-}
-
 function normalizeCourseIds(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((courseId) => String(courseId || '')).filter(Boolean))];
+}
+
+function getNotificationUserRoles(user = {}) {
+  if (Array.isArray(user.roles)) return user.roles;
+  if (Array.isArray(user.profile?.roles)) return user.profile.roles;
+  return [];
+}
+
+function normalizeRecipientType(value = 'all') {
+  const recipientType = String(value || 'all').trim() || 'all';
+  if (!['all', 'students', 'instructors'].includes(recipientType)) {
+    const err = new Error('Notification recipient type is invalid');
+    err.statusCode = 400;
+    throw err;
+  }
+  return recipientType;
 }
 
 function parseIsoDate(value) {
@@ -55,6 +67,7 @@ function normalizeNotificationBody(body = {}) {
   return {
     title,
     message,
+    recipientType: normalizeRecipientType(body.recipientType),
     persistUntilDismissed: body.persistUntilDismissed === true,
     ...buildNotificationDates(body.startAt, body.endAt),
   };
@@ -67,10 +80,75 @@ async function loadViewerCourseIds(userId) {
   return normalizeCourseIds(user?.profile?.courses);
 }
 
-function buildVisibleNotificationsFilter(courseIds, now = new Date()) {
-  const scopeFilters = [{ scopeType: 'system' }];
-  if (courseIds.length > 0) {
-    scopeFilters.push({ scopeType: 'course', courseId: { $in: courseIds } });
+async function loadViewerNotificationAccess(user = {}) {
+  const userId = String(user.userId || user._id || '');
+  const roles = getNotificationUserRoles(user);
+  const courseIds = userId ? await loadViewerCourseIds(userId) : [];
+
+  if (!userId || courseIds.length === 0) {
+    return {
+      courseIds,
+      hasProfessorRole: roles.includes('professor'),
+      hasStudentRole: roles.includes('student'),
+      instructorCourseIds: [],
+      roles,
+      studentCourseIds: [],
+      userId,
+    };
+  }
+
+  const [studentMemberships, instructorMemberships] = await Promise.all([
+    Course.find({
+      _id: { $in: courseIds },
+      students: userId,
+    })
+      .select('_id')
+      .lean(),
+    Course.find({
+      _id: { $in: courseIds },
+      instructors: userId,
+    })
+      .select('_id')
+      .lean(),
+  ]);
+
+  const studentCourseIds = studentMemberships
+    .map((course) => String(course._id || ''))
+    .filter(Boolean);
+  const instructorCourseIds = instructorMemberships
+    .map((course) => String(course._id || ''))
+    .filter(Boolean);
+
+  return {
+    courseIds,
+    hasProfessorRole: roles.includes('professor'),
+    hasStudentRole: roles.includes('student'),
+    instructorCourseIds,
+    roles,
+    studentCourseIds,
+    userId,
+  };
+}
+
+function buildVisibleNotificationsFilter(access, now = new Date()) {
+  const scopeFilters = [
+    { scopeType: 'system', recipientType: 'all' },
+  ];
+
+  if (access.hasStudentRole) {
+    scopeFilters.push({ scopeType: 'system', recipientType: 'students' });
+  }
+  if (access.hasProfessorRole) {
+    scopeFilters.push({ scopeType: 'system', recipientType: 'instructors' });
+  }
+  if (access.courseIds.length > 0) {
+    scopeFilters.push({ scopeType: 'course', courseId: { $in: access.courseIds }, recipientType: 'all' });
+  }
+  if (access.studentCourseIds.length > 0) {
+    scopeFilters.push({ scopeType: 'course', courseId: { $in: access.studentCourseIds }, recipientType: 'students' });
+  }
+  if (access.instructorCourseIds.length > 0) {
+    scopeFilters.push({ scopeType: 'course', courseId: { $in: access.instructorCourseIds }, recipientType: 'instructors' });
   }
 
   return {
@@ -85,6 +163,25 @@ function buildVisibleNotificationsFilter(courseIds, now = new Date()) {
       },
     ],
   };
+}
+
+function isNotificationVisibleToUser(notification, access, now = new Date()) {
+  const recipientType = normalizeRecipientType(notification.recipientType);
+  const isVisibleByDate = notification.startAt <= now
+    && (notification.persistUntilDismissed === true || notification.endAt >= now);
+  if (!isVisibleByDate) return false;
+
+  if (notification.scopeType === 'system') {
+    if (recipientType === 'students') return access.hasStudentRole;
+    if (recipientType === 'instructors') return access.hasProfessorRole;
+    return true;
+  }
+
+  const courseId = String(notification.courseId || '');
+  if (!courseId) return false;
+  if (recipientType === 'students') return access.studentCourseIds.includes(courseId);
+  if (recipientType === 'instructors') return access.instructorCourseIds.includes(courseId);
+  return access.courseIds.includes(courseId);
 }
 
 async function loadDismissedNotificationIds(userId, notificationIds = []) {
@@ -115,6 +212,7 @@ function serializeNotification(notification, courseLookup) {
     _id: notification._id,
     scopeType: notification.scopeType,
     courseId: notification.courseId || '',
+    recipientType: normalizeRecipientType(notification.recipientType),
     title: notification.title,
     message: notification.message,
     startAt: notification.startAt,
@@ -150,11 +248,6 @@ async function ensureManagementScopeAccess(request, reply, scopeType, courseId =
     return null;
   }
 
-  if (!hasProfessorOrAdminRole(roles)) {
-    reply.code(403).send({ error: 'Forbidden', message: 'Only professors or admins can manage course notifications' });
-    return null;
-  }
-
   const course = await Course.findById(courseId)
     .select('_id name deptCode courseNumber section semester instructors')
     .lean();
@@ -165,7 +258,7 @@ async function ensureManagementScopeAccess(request, reply, scopeType, courseId =
 
   const instructorIds = Array.isArray(course.instructors) ? course.instructors.map(String) : [];
   if (!hasAdminRole(roles) && !instructorIds.includes(userId)) {
-    reply.code(403).send({ error: 'Forbidden', message: 'You can only manage notifications in your own courses' });
+    reply.code(403).send({ error: 'Forbidden', message: 'Only course instructors or admins can manage course notifications' });
     return null;
   }
 
@@ -174,7 +267,7 @@ async function ensureManagementScopeAccess(request, reply, scopeType, courseId =
 
 async function loadNotificationWithManagementAccess(request, reply, notificationId) {
   const notification = await Notification.findById(notificationId)
-    .select('_id scopeType courseId title message startAt endAt persistUntilDismissed createdAt updatedAt')
+    .select('_id scopeType courseId recipientType title message startAt endAt persistUntilDismissed createdAt updatedAt')
     .lean();
   if (!notification) {
     reply.code(404).send({ error: 'Not Found', message: 'Notification not found' });
@@ -188,7 +281,7 @@ async function loadNotificationWithManagementAccess(request, reply, notification
 
 async function loadVisibleNotificationForDismissal(request, reply, notificationId) {
   const notification = await Notification.findById(notificationId)
-    .select('_id scopeType courseId startAt endAt persistUntilDismissed')
+    .select('_id scopeType courseId recipientType startAt endAt persistUntilDismissed')
     .lean();
   if (!notification) {
     reply.code(404).send({ error: 'Not Found', message: 'Notification not found' });
@@ -203,10 +296,8 @@ async function loadVisibleNotificationForDismissal(request, reply, notificationI
     return null;
   }
 
-  if (notification.scopeType === 'system') return notification;
-
-  const courseIds = await loadViewerCourseIds(request.user.userId);
-  if (!courseIds.includes(String(notification.courseId || ''))) {
+  const access = await loadViewerNotificationAccess(request.user);
+  if (!isNotificationVisibleToUser(notification, access, now)) {
     reply.code(403).send({ error: 'Forbidden', message: 'Notification is not visible to this user' });
     return null;
   }
@@ -233,6 +324,7 @@ const notificationMutationSchema = {
     properties: {
       scopeType: { type: 'string', enum: ['system', 'course'] },
       courseId: { type: 'string', minLength: 1 },
+      recipientType: { type: 'string', enum: ['all', 'students', 'instructors'] },
       title: { type: 'string', minLength: 1 },
       message: { type: 'string', minLength: 1 },
       startAt: { type: 'string', format: 'date-time' },
@@ -248,6 +340,7 @@ const notificationUpdateSchema = {
     type: 'object',
     required: ['title', 'message', 'startAt', 'endAt'],
     properties: {
+      recipientType: { type: 'string', enum: ['all', 'students', 'instructors'] },
       title: { type: 'string', minLength: 1 },
       message: { type: 'string', minLength: 1 },
       startAt: { type: 'string', format: 'date-time' },
@@ -271,16 +364,22 @@ const notificationIdParamsSchema = {
 
 export default async function notificationRoutes(app) {
   const { authenticate } = app;
+  const notificationWriteRateLimitPreHandler = app.rateLimit({
+    max: 30,
+    timeWindow: '1 minute',
+  });
 
   app.get('/summary', {
-    preHandler: authenticate,
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
   }, async (request) => {
-    const courseIds = await loadViewerCourseIds(request.user.userId);
-    const notifications = await Notification.find(buildVisibleNotificationsFilter(courseIds))
+    const access = await loadViewerNotificationAccess(request.user);
+    const notifications = await Notification.find(buildVisibleNotificationsFilter(access))
       .select('_id')
       .lean();
     const dismissedIds = await loadDismissedNotificationIds(
@@ -296,15 +395,17 @@ export default async function notificationRoutes(app) {
   });
 
   app.get('/', {
-    preHandler: authenticate,
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
   }, async (request) => {
-    const courseIds = await loadViewerCourseIds(request.user.userId);
-    const notifications = await Notification.find(buildVisibleNotificationsFilter(courseIds))
-      .select('_id scopeType courseId title message startAt endAt persistUntilDismissed createdAt updatedAt')
+    const access = await loadViewerNotificationAccess(request.user);
+    const notifications = await Notification.find(buildVisibleNotificationsFilter(access))
+      .select('_id scopeType courseId recipientType title message startAt endAt persistUntilDismissed createdAt updatedAt')
       .sort({ startAt: -1, createdAt: -1 })
       .lean();
 
@@ -328,12 +429,8 @@ export default async function notificationRoutes(app) {
   });
 
   app.post('/manage', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationMutationSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.body;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
@@ -361,12 +458,14 @@ export default async function notificationRoutes(app) {
   });
 
   app.get('/manage', {
-    preHandler: authenticate,
+    preHandler: [
+      authenticate,
+      app.rateLimit({
+        max: 120,
+        timeWindow: '1 minute',
+      }),
+    ],
     schema: notificationManageQuerySchema,
-    rateLimit: { max: 120, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 120, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const { scopeType, courseId = '' } = request.query;
     const access = await ensureManagementScopeAccess(request, reply, scopeType, courseId);
@@ -376,7 +475,7 @@ export default async function notificationRoutes(app) {
       ? { scopeType: 'system' }
       : { scopeType: 'course', courseId: String(access.course._id) };
     const notifications = await Notification.find(filter)
-      .select('_id scopeType courseId title message startAt endAt persistUntilDismissed createdAt updatedAt')
+      .select('_id scopeType courseId recipientType title message startAt endAt persistUntilDismissed createdAt updatedAt')
       .sort({ startAt: -1, createdAt: -1 })
       .lean();
     const courseLookup = await buildCourseLookup(
@@ -389,12 +488,8 @@ export default async function notificationRoutes(app) {
   });
 
   app.patch('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: { ...notificationIdParamsSchema, ...notificationUpdateSchema },
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
@@ -403,6 +498,7 @@ export default async function notificationRoutes(app) {
     try {
       normalizedBody = normalizeNotificationBody({
         ...request.body,
+        recipientType: request.body.recipientType ?? loaded.notification.recipientType ?? 'all',
         scopeType: loaded.notification.scopeType,
       });
     } catch (err) {
@@ -415,6 +511,7 @@ export default async function notificationRoutes(app) {
         $set: {
           title: normalizedBody.title,
           message: normalizedBody.message,
+          recipientType: normalizedBody.recipientType,
           startAt: normalizedBody.startAt,
           endAt: normalizedBody.endAt,
           persistUntilDismissed: normalizedBody.persistUntilDismissed,
@@ -438,12 +535,8 @@ export default async function notificationRoutes(app) {
   });
 
   app.delete('/:id', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const loaded = await loadNotificationWithManagementAccess(request, reply, request.params.id);
     if (!loaded) return;
@@ -457,12 +550,8 @@ export default async function notificationRoutes(app) {
   });
 
   app.post('/:id/dismiss', {
-    preHandler: authenticate,
+    preHandler: [authenticate, notificationWriteRateLimitPreHandler],
     schema: notificationIdParamsSchema,
-    rateLimit: { max: 30, timeWindow: '1 minute' },
-    config: {
-      rateLimit: { max: 30, timeWindow: '1 minute' },
-    },
   }, async (request, reply) => {
     const notification = await loadVisibleNotificationForDismissal(request, reply, request.params.id);
     if (!notification) return;

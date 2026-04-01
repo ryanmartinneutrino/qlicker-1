@@ -67,8 +67,10 @@ describe('richTextUtils image attribute preservation', () => {
 
     expect(prepared).toContain('<iframe');
     expect(prepared).toContain('src="https://www.youtube.com/embed/dQw4w9WgXcQ?start=90"');
+    expect(prepared).not.toContain('allow="');
     expect(normalized).toContain('<iframe');
     expect(normalized).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+    expect(normalized).not.toContain('allow="');
   });
 
   it('drops disallowed iframe hosts even when video embeds are enabled', () => {

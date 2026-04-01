@@ -8,8 +8,12 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Snackbar,
   Stack,
   TextField,
@@ -35,6 +39,7 @@ function buildDefaultFormState() {
   startAt.setSeconds(0, 0);
   const endAt = new Date(startAt.getTime() + (12 * 60 * 60 * 1000));
   return {
+    recipientType: 'all',
     title: '',
     message: '',
     startAt: toLocalDateTimeValue(startAt),
@@ -53,6 +58,7 @@ function buildPayload(formState) {
   const endAt = toIsoOrNull(formState.endAt);
   if (!startAt || !endAt) return null;
   return {
+    recipientType: formState.recipientType || 'all',
     title: formState.title.trim(),
     message: formState.message.trim(),
     startAt,
@@ -86,10 +92,26 @@ export default function ManageNotificationsDialog({
     return params.toString();
   }, [courseId, scopeType]);
   const recipientScopeLabel = useMemo(() => (
-    scopeType === 'course'
-      ? t('notifications.manage.recipientScopeCourse')
-      : t('notifications.manage.recipientScopeSystem')
-  ), [scopeType, t]);
+    t(
+      scopeType === 'course'
+        ? `notifications.audience.course.${pendingAction?.payload?.recipientType || formState.recipientType || 'all'}`
+        : `notifications.audience.system.${pendingAction?.payload?.recipientType || formState.recipientType || 'all'}`
+    )
+  ), [formState.recipientType, pendingAction?.payload?.recipientType, scopeType, t]);
+  const recipientOptions = useMemo(() => ([
+    {
+      value: 'all',
+      label: t(scopeType === 'course' ? 'notifications.audience.course.all' : 'notifications.audience.system.all'),
+    },
+    {
+      value: 'students',
+      label: t(scopeType === 'course' ? 'notifications.audience.course.students' : 'notifications.audience.system.students'),
+    },
+    {
+      value: 'instructors',
+      label: t(scopeType === 'course' ? 'notifications.audience.course.instructors' : 'notifications.audience.system.instructors'),
+    },
+  ]), [scopeType, t]);
 
   const loadNotifications = useCallback(async () => {
     if (!open) return;
@@ -171,10 +193,11 @@ export default function ManageNotificationsDialog({
 
   const handleEdit = (notification) => {
     setEditingNotification(notification);
-    setFormState({
-      title: notification.title || '',
-      message: notification.message || '',
-      startAt: toLocalDateTimeValue(notification.startAt),
+      setFormState({
+        recipientType: notification.recipientType || 'all',
+        title: notification.title || '',
+        message: notification.message || '',
+        startAt: toLocalDateTimeValue(notification.startAt),
       endAt: toLocalDateTimeValue(notification.endAt),
       persistUntilDismissed: notification.persistUntilDismissed === true,
     });
@@ -217,6 +240,26 @@ export default function ManageNotificationsDialog({
                     multiline
                     minRows={4}
                   />
+                  <FormControl fullWidth>
+                    <InputLabel id="notification-recipient-type-label">
+                      {t('notifications.manage.recipientTypeLabel')}
+                    </InputLabel>
+                    <Select
+                      labelId="notification-recipient-type-label"
+                      value={formState.recipientType}
+                      label={t('notifications.manage.recipientTypeLabel')}
+                      onChange={(event) => setFormState((current) => ({
+                        ...current,
+                        recipientType: event.target.value,
+                      }))}
+                    >
+                      {recipientOptions.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                   <Stack spacing={2} direction={{ xs: 'column', md: 'row' }}>
                     <DateTimePreferenceField
                       label={t('notifications.fields.startAt')}
