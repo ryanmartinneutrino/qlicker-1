@@ -84,7 +84,7 @@ const CHAT_RANDOM_UPVOTE_STUDENT_FRACTION = clampFraction(__ENV.CHAT_RANDOM_UPVO
 const CHAT_ACTION_JITTER_MS = parseNonNegativeInt(__ENV.CHAT_ACTION_JITTER_MS || '1500', 1500);
 const CHAT_REPLY_PROFESSOR_LIMIT = parseNonNegativeInt(__ENV.CHAT_REPLY_PROFESSOR_LIMIT || '3', 3);
 const PROFESSOR_REPLY_DELAY_MS = parseNonNegativeInt(__ENV.PROFESSOR_REPLY_DELAY_MS || '1500', 1500);
-const CHAT_EVENT_REFRESH_DEBOUNCE_MS = 250;
+const CHAT_EVENT_REFRESH_DEBOUNCE_MS = 150;
 
 const state = JSON.parse(open(STATE_FILE));
 const students = new SharedArray('students', () => state.students);
@@ -289,6 +289,22 @@ function fetchLive(token, role, reason = 'live_refresh') {
   };
 }
 
+function readLiveVisibilityFlag(data, key) {
+  if (key === 'hidden') {
+    if (data?.questionHidden !== undefined) return Boolean(data.questionHidden);
+    return Boolean(data?.currentQuestion?.sessionOptions?.hidden);
+  }
+  if (key === 'stats') {
+    if (data?.showStats !== undefined) return Boolean(data.showStats);
+    return Boolean(data?.currentQuestion?.sessionOptions?.stats);
+  }
+  if (key === 'correct') {
+    if (data?.showCorrect !== undefined) return Boolean(data.showCorrect);
+    return Boolean(data?.currentQuestion?.sessionOptions?.correct);
+  }
+  return undefined;
+}
+
 function validateLiveState(data, expectation = {}) {
   if (!data) return false;
 
@@ -301,13 +317,13 @@ function validateLiveState(data, expectation = {}) {
   if (expectation.questionNumber !== undefined && Number(data?.questionNumber || 0) !== Number(expectation.questionNumber)) {
     return false;
   }
-  if (expectation.hidden !== undefined && Boolean(data?.questionHidden) !== Boolean(expectation.hidden)) {
+  if (expectation.hidden !== undefined && readLiveVisibilityFlag(data, 'hidden') !== Boolean(expectation.hidden)) {
     return false;
   }
-  if (expectation.stats !== undefined && Boolean(data?.showStats) !== Boolean(expectation.stats)) {
+  if (expectation.stats !== undefined && readLiveVisibilityFlag(data, 'stats') !== Boolean(expectation.stats)) {
     return false;
   }
-  if (expectation.correct !== undefined && Boolean(data?.showCorrect) !== Boolean(expectation.correct)) {
+  if (expectation.correct !== undefined && readLiveVisibilityFlag(data, 'correct') !== Boolean(expectation.correct)) {
     return false;
   }
   if (

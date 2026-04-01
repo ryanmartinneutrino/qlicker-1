@@ -45,7 +45,7 @@ const richContentSx = {
   },
 };
 
-const CHAT_REFRESH_DEBOUNCE_MS = 200;
+const CHAT_REFRESH_DEBOUNCE_MS = 150;
 
 function formatTimestamp(value) {
   if (!value) return '';

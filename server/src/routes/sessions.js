@@ -115,6 +115,10 @@ const updateSessionSchema = {
 };
 
 const liveTelemetryMetricNames = Object.keys(LIVE_TELEMETRY_METRIC_PATHS);
+const SESSION_CHAT_METADATA_CACHE_MAX = 200;
+const SESSION_CHAT_QUICK_POST_CACHE_MAX = 200;
+const sessionChatMetadataCache = new Map();
+const sessionChatQuickPostCache = new Map();
 
 const setCurrentQuestionSchema = {
   body: {
@@ -835,8 +839,52 @@ function buildQuickPostBody(questionNumber) {
   return `I didn't understand question ${questionNumber}`;
 }
 
+function setBoundedCacheEntry(cache, key, value, maxSize) {
+  if (!cache.has(key) && cache.size >= maxSize) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) {
+      cache.delete(oldestKey);
+    }
+  }
+  cache.set(key, value);
+}
+
+function getSessionQuestionListSignature(session) {
+  return Array.isArray(session?.questions)
+    ? session.questions.map((questionId) => String(questionId)).filter(Boolean).join(',')
+    : '';
+}
+
+function getSessionChatMetadataSignature(session) {
+  return `${getSessionQuestionListSignature(session)}::${normalizeAnswerValue(session?.currentQuestion)}`;
+}
+
+function getSessionQuickPostSignature(session, totalQuestionCount = null) {
+  const normalizedCount = Number(totalQuestionCount);
+  const countPart = Number.isFinite(normalizedCount) ? normalizedCount : '';
+  return `${getSessionQuestionListSignature(session)}::${countPart}`;
+}
+
 async function loadSessionChatQuestionMetadata(session) {
-  const orderedQuestions = await loadOrderedQuestions(session?.questions || []);
+  const sessionId = normalizeAnswerValue(session?._id);
+  const signature = getSessionChatMetadataSignature(session);
+  const cached = sessionId ? sessionChatMetadataCache.get(sessionId) : null;
+  if (cached?.signature === signature) {
+    return cached.metadata;
+  }
+
+  const orderedQuestionIds = Array.isArray(session?.questions)
+    ? session.questions.map((questionId) => String(questionId)).filter(Boolean)
+    : [];
+  const questionDocs = orderedQuestionIds.length > 0
+    ? await Question.find({ _id: { $in: orderedQuestionIds } })
+      .select('_id type')
+      .lean()
+    : [];
+  const questionById = new Map(questionDocs.map((question) => [String(question._id), question]));
+  const orderedQuestions = orderedQuestionIds
+    .map((questionId) => questionById.get(questionId))
+    .filter(Boolean);
   const currentQuestionId = normalizeAnswerValue(session?.currentQuestion);
   const responseQuestionEntries = [];
   let questionsBeforeCurrentPage = 0;
@@ -859,21 +907,35 @@ async function loadSessionChatQuestionMetadata(session) {
     questionsBeforeCurrentPage += 1;
   });
 
-  return {
+  const metadata = {
     currentQuestionNumber,
     totalQuestionCount: responseQuestionEntries.length,
     responseQuestionEntries,
   };
+  if (sessionId) {
+    setBoundedCacheEntry(
+      sessionChatMetadataCache,
+      sessionId,
+      { signature, metadata },
+      SESSION_CHAT_METADATA_CACHE_MAX
+    );
+  }
+  return metadata;
 }
 
 async function ensureSessionQuickPosts(session, questionMetadata = null) {
   const metadata = questionMetadata || await loadSessionChatQuestionMetadata(session);
   const questionCount = Number(metadata?.totalQuestionCount || 0);
   if (!session?._id || !session?.courseId || questionCount <= 0) return;
+  const sessionId = String(session._id);
+  const signature = getSessionQuickPostSignature(session, questionCount);
+  if (sessionChatQuickPostCache.get(sessionId) === signature) {
+    return;
+  }
 
   const existingQuickPosts = await Post.find({
     scopeType: 'session',
-    sessionId: String(session._id),
+    sessionId,
     isQuickPost: true,
   })
     .select('_id quickPostQuestionNumber body')
@@ -967,6 +1029,13 @@ async function ensureSessionQuickPosts(session, questionMetadata = null) {
   if (missingPosts.length > 0) {
     await Post.insertMany(missingPosts, { ordered: false }).catch(() => {});
   }
+
+  setBoundedCacheEntry(
+    sessionChatQuickPostCache,
+    sessionId,
+    signature,
+    SESSION_CHAT_QUICK_POST_CACHE_MAX
+  );
 }
 
 function getChatViewMode(request, isInstructorView) {
@@ -1219,9 +1288,13 @@ async function loadSessionChatPayload({ session, course, request }) {
 }
 
 async function loadSessionChatContext(sessionId) {
-  const session = await Session.findById(sessionId).lean();
+  const session = await Session.findById(sessionId)
+    .select('courseId status joined questions currentQuestion chatEnabled')
+    .lean();
   if (!session) return { session: null, course: null };
-  const course = await Course.findById(session.courseId).lean();
+  const course = await Course.findById(session.courseId)
+    .select('students instructors')
+    .lean();
   return { session, course };
 }
 
