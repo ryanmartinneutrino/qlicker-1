@@ -76,6 +76,7 @@ an external domain.
 |---------|-------------|
 | `./run.sh` | Seed + run the load test |
 | `./run.sh --students N` | Override the configured student count |
+| `./run.sh --session-chat on|off` | Run the same interactive session with chat enabled or disabled |
 | `./run.sh --seed-only` | Seed without running k6 |
 | `./run.sh --test-only` | Run k6 with the existing `state/state.json` |
 | `./run.sh --clean` | Delete load-test fixtures and `state/state.json` |
@@ -117,6 +118,9 @@ command line.
 
 Timing and sync variables:
 
+- `SESSION_CHAT_ENABLED`: set to `true`/`false` (or use
+  `./run.sh --session-chat on|off`) to run the interactive session with session
+  chat enabled or disabled.
 - `ANSWER_WINDOW_S`: how long each question stays open for answers.
 - `STATS_PAUSE_S`: how long stats stay visible before the correct-answer phase.
 - `CORRECT_PAUSE_S`: how long the correct-answer phase remains visible.
@@ -156,6 +160,13 @@ CHAT_QUICK_POST_STUDENT_FRACTION=0.18 \
 ./run.sh --students 300
 ```
 
+To compare the same session with and without chat:
+
+```bash
+./run.sh --students 300 --session-chat on
+./run.sh --test-only --session-chat off
+```
+
 ## Metrics
 
 The scenario tracks and thresholds these key signals:
@@ -188,6 +199,9 @@ The scenario tracks and thresholds these key signals:
 - `chat_refresh_duration{role:professor}`
 - `chat_event_sync_duration{role:student}`
 - `chat_event_sync_duration{role:professor}`
+
+When `SESSION_CHAT_ENABLED=false`, the chat-specific thresholds are skipped so
+the report focuses on core live-session responsiveness.
 
 Additional counters include:
 

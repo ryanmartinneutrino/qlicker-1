@@ -212,6 +212,7 @@ function LiveSessionContent() {
   const [submitError, setSubmitError] = useState(null);
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const pendingChatRefreshRef = useRef(false);
 
   // Track current question/attempt to detect changes
   const prevQuestionRef = useRef(null);
@@ -265,6 +266,16 @@ function LiveSessionContent() {
       fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
+
+  const queueChatRefresh = useCallback(() => {
+    if (activePanel === 'chat') {
+      pendingChatRefreshRef.current = false;
+      setChatRefreshToken((prev) => prev + 1);
+      return;
+    }
+
+    pendingChatRefreshRef.current = true;
+  }, [activePanel]);
 
   useEffect(() => {
     if (!lastEvent) return;
@@ -329,7 +340,7 @@ function LiveSessionContent() {
         });
         break;
       case 'session:chat-updated':
-        setChatRefreshToken((prev) => prev + 1);
+        queueChatRefresh();
         break;
       case 'session:word-cloud-updated':
       case 'session:histogram-updated':
@@ -341,6 +352,7 @@ function LiveSessionContent() {
   }, [
     fetchLive,
     lastEvent,
+    queueChatRefresh,
     recordEventReceipt,
     scheduleFetchLive,
     scheduleUiSyncMeasurement,
@@ -478,6 +490,17 @@ function LiveSessionContent() {
     if (!chatEnabled && activePanel === 'chat') {
       setActivePanel('question');
     }
+  }, [activePanel, chatEnabled]);
+
+  useEffect(() => {
+    if (!chatEnabled) {
+      pendingChatRefreshRef.current = false;
+      return;
+    }
+    if (activePanel !== 'chat' || !pendingChatRefreshRef.current) return;
+
+    pendingChatRefreshRef.current = false;
+    setChatRefreshToken((prev) => prev + 1);
   }, [activePanel, chatEnabled]);
 
   const qType = currentQ ? normalizeQuestionType(currentQ) : null;

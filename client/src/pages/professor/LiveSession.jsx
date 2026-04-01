@@ -410,6 +410,7 @@ function LiveSessionContent() {
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const pendingChatRefreshRef = useRef(false);
 
   // Join code refresh interval ref
   const joinCodeTimerRef = useRef(null);
@@ -466,6 +467,16 @@ function LiveSessionContent() {
       fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
+
+  const queueChatRefresh = useCallback(() => {
+    if (activePanel === 'chat') {
+      pendingChatRefreshRef.current = false;
+      setChatRefreshToken((prev) => prev + 1);
+      return;
+    }
+
+    pendingChatRefreshRef.current = true;
+  }, [activePanel]);
 
   useEffect(() => { fetchLive(); }, [fetchLive]);
   useEffect(() => registerRefreshHandler(fetchLive), [fetchLive, registerRefreshHandler]);
@@ -547,7 +558,7 @@ function LiveSessionContent() {
         });
         break;
       case 'session:chat-updated':
-        setChatRefreshToken((prev) => prev + 1);
+        queueChatRefresh();
         break;
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
@@ -592,6 +603,7 @@ function LiveSessionContent() {
     lastEvent,
     navigate,
     recordEventReceipt,
+    queueChatRefresh,
     scheduleFetchLive,
     scheduleUiSyncMeasurement,
   ]);
@@ -998,6 +1010,17 @@ function LiveSessionContent() {
     if (!chatEnabled && activePanel === 'chat') {
       setActivePanel('question');
     }
+  }, [activePanel, chatEnabled]);
+
+  useEffect(() => {
+    if (!chatEnabled) {
+      pendingChatRefreshRef.current = false;
+      return;
+    }
+    if (activePanel !== 'chat' || !pendingChatRefreshRef.current) return;
+
+    pendingChatRefreshRef.current = false;
+    setChatRefreshToken((prev) => prev + 1);
   }, [activePanel, chatEnabled]);
   const isOptionBasedQuestion = isOptionBasedQuestionType(qType) || qType === QUESTION_TYPES.TRUE_FALSE;
   const inlineDistribution = responseStats?.type === 'distribution'

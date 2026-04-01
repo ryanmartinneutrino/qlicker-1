@@ -5,6 +5,7 @@
 # Commands:
 #   ./run.sh                     Seed the database + run the k6 load test
 #   ./run.sh --students N        Override the configured number of students
+#   ./run.sh --session-chat MODE Run with session chat enabled or disabled
 #   ./run.sh --seed-only         Seed without running k6
 #   ./run.sh --test-only         Run k6 without reseeding
 #   ./run.sh --clean             Remove load-test seed data from MongoDB
@@ -56,6 +57,7 @@ MONGO_URL="${MONGO_URL:-}"
 BASE_URL="${BASE_URL:-}"
 NUM_STUDENTS="${NUM_STUDENTS:-500}"
 SEED_IMAGE="${SEED_IMAGE:-$DEFAULT_SEED_IMAGE}"
+SESSION_CHAT_ENABLED="${SESSION_CHAT_ENABLED:-true}"
 
 if [[ -z "$STACK_DIR" && -n "$TARGET_ENV_FILE" ]]; then
   STACK_DIR="$(dirname "$TARGET_ENV_FILE")"
@@ -71,10 +73,41 @@ fi
 
 ACTION="full"
 
+normalize_boolean_flag() {
+  local value="${1:-}"
+  value="${value,,}"
+  case "$value" in
+    1|true|yes|on|enabled)
+      printf 'true\n'
+      ;;
+    0|false|no|off|disabled)
+      printf 'false\n'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+if ! SESSION_CHAT_ENABLED="$(normalize_boolean_flag "$SESSION_CHAT_ENABLED")"; then
+  error "SESSION_CHAT_ENABLED must be one of: true/false, on/off, enabled/disabled."
+  exit 1
+fi
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --students)
       NUM_STUDENTS="$2"; shift 2 ;;
+    --session-chat)
+      if [[ $# -lt 2 ]]; then
+        error "--session-chat requires a value: on|off"
+        exit 1
+      fi
+      if ! SESSION_CHAT_ENABLED="$(normalize_boolean_flag "$2")"; then
+        error "Invalid --session-chat value '$2'. Use on|off, true|false, or enabled|disabled."
+        exit 1
+      fi
+      shift 2 ;;
     --seed-only)
       ACTION="seed-only"; shift ;;
     --test-only)
@@ -228,6 +261,7 @@ k6_runner() {
   local -a k6_env=()
   local pass_through_key=""
   for pass_through_key in \
+    SESSION_CHAT_ENABLED \
     ANSWER_WINDOW_S \
     STATS_PAUSE_S \
     CORRECT_PAUSE_S \
@@ -363,8 +397,13 @@ do_test() {
   local timestamp
   timestamp="$(date +%Y%m%d-%H%M%S)"
   local result_log="$RESULTS_DIR/k6-${timestamp}.log"
+  local session_chat_label="disabled"
+  if [[ "$SESSION_CHAT_ENABLED" == "true" ]]; then
+    session_chat_label="enabled"
+  fi
 
   info "Running k6 load test against $BASE_URL …"
+  info "Session chat: $session_chat_label"
   info "Results log: $result_log"
   echo ""
 

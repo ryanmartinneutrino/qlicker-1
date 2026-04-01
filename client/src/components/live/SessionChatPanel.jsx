@@ -45,6 +45,8 @@ const richContentSx = {
   },
 };
 
+const CHAT_REFRESH_DEBOUNCE_MS = 200;
+
 function formatTimestamp(value) {
   if (!value) return '';
   const parsed = new Date(value);
@@ -192,6 +194,8 @@ export default function SessionChatPanel({
   const [selectedQuickPostQuestionNumber, setSelectedQuickPostQuestionNumber] = useState('');
   const [submittingQuickPost, setSubmittingQuickPost] = useState(false);
   const chatDataRef = useRef(initialData);
+  const fetchInFlightRef = useRef(false);
+  const queuedRefreshRef = useRef(false);
 
   useEffect(() => {
     chatDataRef.current = initialData;
@@ -224,9 +228,34 @@ export default function SessionChatPanel({
     }
   }, [enabled, sessionId, t, view]);
 
+  const runFetchChat = useCallback(async () => {
+    if (fetchInFlightRef.current) {
+      queuedRefreshRef.current = true;
+      return;
+    }
+
+    fetchInFlightRef.current = true;
+    try {
+      await fetchChat();
+    } finally {
+      fetchInFlightRef.current = false;
+      if (queuedRefreshRef.current) {
+        queuedRefreshRef.current = false;
+        void runFetchChat();
+      }
+    }
+  }, [fetchChat]);
+
   useEffect(() => {
-    void fetchChat();
-  }, [fetchChat, refreshToken]);
+    const delayMs = chatDataRef.current ? CHAT_REFRESH_DEBOUNCE_MS : 0;
+    const timer = setTimeout(() => {
+      void runFetchChat();
+    }, delayMs);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [enabled, refreshToken, runFetchChat, sessionId, view]);
 
   const canCompose = !!chatData?.canPost && view === 'live';
   const canVote = !!chatData?.canVote && role === 'student';

@@ -245,6 +245,7 @@ export default function PresentationWindow() {
   const [liveTransport, setLiveTransport] = useState('unknown');
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const pendingChatRefreshRef = useRef(false);
   const {
     recordEventReceipt,
     recordLiveFetch,
@@ -300,6 +301,16 @@ export default function PresentationWindow() {
       fetchLive(syncContext);
     }, 2000);
   }, [fetchLive]);
+
+  const queueChatRefresh = useCallback(() => {
+    if (activePanel === 'chat') {
+      pendingChatRefreshRef.current = false;
+      setChatRefreshToken((prev) => prev + 1);
+      return;
+    }
+
+    pendingChatRefreshRef.current = true;
+  }, [activePanel]);
 
   // ---- WebSocket + polling ----
 
@@ -451,7 +462,7 @@ export default function PresentationWindow() {
               } : prev);
               break;
             case 'session:chat-updated':
-              setChatRefreshToken((prev) => prev + 1);
+              queueChatRefresh();
               break;
             default:
               break;
@@ -494,7 +505,7 @@ export default function PresentationWindow() {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [fetchLive, recordEventReceipt, scheduleFetchLive, scheduleUiSyncMeasurement, sessionId]);
+  }, [fetchLive, queueChatRefresh, recordEventReceipt, scheduleFetchLive, scheduleUiSyncMeasurement, sessionId]);
 
   // ---- Derived state ----
 
@@ -544,6 +555,17 @@ export default function PresentationWindow() {
     if (!chatEnabled && activePanel === 'chat') {
       setActivePanel('question');
     }
+  }, [activePanel, chatEnabled]);
+
+  useEffect(() => {
+    if (!chatEnabled) {
+      pendingChatRefreshRef.current = false;
+      return;
+    }
+    if (activePanel !== 'chat' || !pendingChatRefreshRef.current) return;
+
+    pendingChatRefreshRef.current = false;
+    setChatRefreshToken((prev) => prev + 1);
   }, [activePanel, chatEnabled]);
 
   useEffect(() => {

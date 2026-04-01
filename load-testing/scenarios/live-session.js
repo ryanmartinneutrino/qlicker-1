@@ -37,6 +37,14 @@ function parsePositiveFloat(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function parseBoolean(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
+  return fallback;
+}
+
 function clampFraction(value, fallback) {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -60,6 +68,7 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:3001';
 const API = `${BASE_URL}/api/v1`;
 const WS_URL = BASE_URL.replace(/^http/, 'ws') + '/ws';
 const STATE_FILE = __ENV.STATE_FILE || '../state.json';
+const SESSION_CHAT_ENABLED = parseBoolean(__ENV.SESSION_CHAT_ENABLED ?? 'true', true);
 
 const ANSWER_WINDOW_S = parseNonNegativeInt(__ENV.ANSWER_WINDOW_S || '30', 30);
 const STATS_PAUSE_S = parseNonNegativeInt(__ENV.STATS_PAUSE_S || '15', 15);
@@ -75,6 +84,7 @@ const CHAT_RANDOM_UPVOTE_STUDENT_FRACTION = clampFraction(__ENV.CHAT_RANDOM_UPVO
 const CHAT_ACTION_JITTER_MS = parseNonNegativeInt(__ENV.CHAT_ACTION_JITTER_MS || '1500', 1500);
 const CHAT_REPLY_PROFESSOR_LIMIT = parseNonNegativeInt(__ENV.CHAT_REPLY_PROFESSOR_LIMIT || '3', 3);
 const PROFESSOR_REPLY_DELAY_MS = parseNonNegativeInt(__ENV.PROFESSOR_REPLY_DELAY_MS || '1500', 1500);
+const CHAT_EVENT_REFRESH_DEBOUNCE_MS = 250;
 
 const state = JSON.parse(open(STATE_FILE));
 const students = new SharedArray('students', () => state.students);
@@ -107,6 +117,45 @@ const chatRefreshSuccess = new Rate('chat_refresh_success');
 const chatEventSyncSuccess = new Rate('chat_event_sync_success');
 const chatActionSuccess = new Rate('chat_action_success');
 
+const thresholds = {
+  http_req_failed: ['rate==0'],
+  ws_errors: ['count==0'],
+  'login_success{role:student}': ['rate==1'],
+  'login_success{role:professor}': ['rate==1'],
+  join_success: ['rate==1'],
+  respond_success: ['rate==1'],
+  'live_refresh_success{role:student}': ['rate==1'],
+  'live_refresh_success{role:professor}': ['rate==1'],
+  'event_sync_success{role:student}': ['rate==1'],
+  'event_sync_success{role:professor}': ['rate==1'],
+  'ws_connect_success{role:student}': ['rate==1'],
+  'ws_connect_success{role:professor}': ['rate==1'],
+  professor_action_success: ['rate==1'],
+  session_completion: ['rate==1'],
+  'login_duration{role:student}': ['p(95)<3000'],
+  'login_duration{role:professor}': ['p(95)<3000'],
+  join_duration: ['p(95)<3000'],
+  respond_duration: ['p(95)<3000'],
+  'live_refresh_duration{role:student}': ['p(99)<3000'],
+  'live_refresh_duration{role:professor}': ['p(99)<3000'],
+  'event_sync_duration{role:student}': ['p(99)<3000'],
+  'event_sync_duration{role:professor}': ['p(99)<3000'],
+};
+
+if (SESSION_CHAT_ENABLED) {
+  Object.assign(thresholds, {
+    chat_action_success: ['rate==1'],
+    'chat_refresh_success{role:student}': ['rate==1'],
+    'chat_refresh_success{role:professor}': ['rate==1'],
+    'chat_event_sync_success{role:student}': ['rate==1'],
+    'chat_event_sync_success{role:professor}': ['rate==1'],
+    'chat_refresh_duration{role:student}': ['p(99)<3000'],
+    'chat_refresh_duration{role:professor}': ['p(99)<3000'],
+    'chat_event_sync_duration{role:student}': ['p(99)<3000'],
+    'chat_event_sync_duration{role:professor}': ['p(99)<3000'],
+  });
+}
+
 export const options = {
   scenarios: {
     professor: {
@@ -133,39 +182,7 @@ export const options = {
       startTime: '3s',
     },
   },
-  thresholds: {
-    http_req_failed: ['rate==0'],
-    ws_errors: ['count==0'],
-    'login_success{role:student}': ['rate==1'],
-    'login_success{role:professor}': ['rate==1'],
-    join_success: ['rate==1'],
-    respond_success: ['rate==1'],
-    'live_refresh_success{role:student}': ['rate==1'],
-    'live_refresh_success{role:professor}': ['rate==1'],
-    'event_sync_success{role:student}': ['rate==1'],
-    'event_sync_success{role:professor}': ['rate==1'],
-    'ws_connect_success{role:student}': ['rate==1'],
-    'ws_connect_success{role:professor}': ['rate==1'],
-    professor_action_success: ['rate==1'],
-    session_completion: ['rate==1'],
-    chat_action_success: ['rate==1'],
-    'chat_refresh_success{role:student}': ['rate==1'],
-    'chat_refresh_success{role:professor}': ['rate==1'],
-    'chat_event_sync_success{role:student}': ['rate==1'],
-    'chat_event_sync_success{role:professor}': ['rate==1'],
-    'login_duration{role:student}': ['p(95)<3000'],
-    'login_duration{role:professor}': ['p(95)<3000'],
-    join_duration: ['p(95)<3000'],
-    respond_duration: ['p(95)<3000'],
-    'live_refresh_duration{role:student}': ['p(99)<3000'],
-    'live_refresh_duration{role:professor}': ['p(99)<3000'],
-    'event_sync_duration{role:student}': ['p(99)<3000'],
-    'event_sync_duration{role:professor}': ['p(99)<3000'],
-    'chat_refresh_duration{role:student}': ['p(99)<3000'],
-    'chat_refresh_duration{role:professor}': ['p(99)<3000'],
-    'chat_event_sync_duration{role:student}': ['p(99)<3000'],
-    'chat_event_sync_duration{role:professor}': ['p(99)<3000'],
-  },
+  thresholds,
 };
 
 function metricTags(role, extra = {}) {
@@ -416,6 +433,64 @@ function refreshChatAfterEvent(token, role, reason, expectation = {}, syncContex
   return result.ok ? result.data : null;
 }
 
+function mergeSyncContext(existing = null, next = null) {
+  if (!existing) return next;
+  if (!next) return existing;
+
+  const existingEmittedAtMs = parseTimestampMs(existing?.emittedAt);
+  const nextEmittedAtMs = parseTimestampMs(next?.emittedAt);
+  let emittedAt = existing?.emittedAt || next?.emittedAt || null;
+
+  if (existingEmittedAtMs != null && nextEmittedAtMs != null) {
+    emittedAt = new Date(Math.min(existingEmittedAtMs, nextEmittedAtMs)).toISOString();
+  } else if (nextEmittedAtMs != null) {
+    emittedAt = next.emittedAt;
+  }
+
+  const existingReceivedAtMs = Number(existing?.receivedAtMs || 0);
+  const nextReceivedAtMs = Number(next?.receivedAtMs || 0);
+  const validReceivedAtMs = [existingReceivedAtMs, nextReceivedAtMs]
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  return {
+    emittedAt,
+    receivedAtMs: validReceivedAtMs.length > 0 ? Math.min(...validReceivedAtMs) : undefined,
+  };
+}
+
+function createSocketDebouncer(socket, delayMs, callback) {
+  let scheduled = false;
+  let pendingReason = '';
+  let pendingExpectation = {};
+  let pendingSyncContext = null;
+  let pendingView = 'live';
+
+  return (reason, expectation = {}, syncContext = null, view = 'live') => {
+    pendingReason = reason || pendingReason;
+    pendingExpectation = { ...pendingExpectation, ...expectation };
+    pendingSyncContext = mergeSyncContext(pendingSyncContext, syncContext);
+    pendingView = view || pendingView;
+
+    if (scheduled) return;
+
+    scheduled = true;
+    socket.setTimeout(() => {
+      scheduled = false;
+      const nextReason = pendingReason;
+      const nextExpectation = pendingExpectation;
+      const nextSyncContext = pendingSyncContext;
+      const nextView = pendingView;
+
+      pendingReason = '';
+      pendingExpectation = {};
+      pendingSyncContext = null;
+      pendingView = 'live';
+
+      callback(nextReason, nextExpectation, nextSyncContext, nextView);
+    }, delayMs);
+  };
+}
+
 function recordChatAction(ok, role, action) {
   chatActionSuccess.add(ok, metricTags(role, { action }));
 }
@@ -570,6 +645,7 @@ function chooseVotableRegularPost(chatData = {}) {
 }
 
 function maybeProfessorReplyToChat(token, currentQuestionNumber, repliedPostIds) {
+  if (!SESSION_CHAT_ENABLED) return false;
   if (!isChatWave(currentQuestionNumber)) return false;
 
   sleep(PROFESSOR_REPLY_DELAY_MS / 1000);
@@ -622,15 +698,18 @@ export function professorFlow() {
 
   fetchLive(professorToken, role, 'professor_initial_live');
 
-  group('enable_chat', () => {
+  group('configure_chat', () => {
+    const chatSettingActionTag = SESSION_CHAT_ENABLED ? 'enable_chat' : 'disable_chat';
     professorRequest(
       'PATCH',
       `/sessions/${sessionId}/chat-settings`,
       professorToken,
-      { chatEnabled: true },
-      'enable_chat',
+      { chatEnabled: SESSION_CHAT_ENABLED },
+      chatSettingActionTag,
     );
-    fetchChat(professorToken, role, 'professor_initial_chat');
+    if (SESSION_CHAT_ENABLED) {
+      fetchChat(professorToken, role, 'professor_initial_chat');
+    }
   });
 
   group('start_session', () => {
@@ -761,7 +840,7 @@ export function professorViewerFlow() {
   if (!token) return;
 
   liveData = fetchLive(token, role, 'professor_viewer_initial_live').data;
-  chatEnabled = Boolean(liveData?.session?.chatEnabled);
+  chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
   if (chatEnabled) {
     chatData = fetchChat(token, role, 'professor_viewer_initial_chat').data;
   }
@@ -771,15 +850,26 @@ export function professorViewerFlow() {
       const refreshed = refreshLiveAfterEvent(token, role, reason, expectation, syncContext);
       if (refreshed) {
         liveData = refreshed;
-        chatEnabled = Boolean(refreshed?.session?.chatEnabled);
+        chatEnabled = SESSION_CHAT_ENABLED && Boolean(refreshed?.session?.chatEnabled);
       }
     };
+    const refreshChatObserver = (reason, expectation = {}, syncContext = null, view = 'live') => {
+      const refreshed = refreshChatAfterEvent(token, role, reason, expectation, syncContext, view);
+      if (refreshed) {
+        chatData = refreshed;
+      }
+    };
+    const scheduleChatObserver = createSocketDebouncer(
+      socket,
+      CHAT_EVENT_REFRESH_DEBOUNCE_MS,
+      refreshChatObserver,
+    );
 
     socket.on('open', () => {
       wsConnections.add(1, metricTags(role));
       wsConnectSuccess.add(true, metricTags(role));
       liveData = refreshLiveAfterEvent(token, role, 'professor_viewer_ws_open', {}, null) || liveData;
-      chatEnabled = Boolean(liveData?.session?.chatEnabled);
+      chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
       if (chatEnabled) {
         chatData = fetchChat(token, role, 'professor_viewer_ws_open_chat').data || chatData;
       }
@@ -851,14 +941,14 @@ export function professorViewerFlow() {
           refreshLiveObserver('professor_metadata_changed', {}, syncContext);
           break;
         case 'session:chat-settings-changed':
-          chatEnabled = Boolean(data?.chatEnabled);
+          chatEnabled = SESSION_CHAT_ENABLED && Boolean(data?.chatEnabled);
           if (chatEnabled) {
-            chatData = refreshChatAfterEvent(token, role, 'professor_chat_settings_changed', { enabled: true }, syncContext) || chatData;
+            scheduleChatObserver('professor_chat_settings_changed', { enabled: true }, syncContext);
           }
           break;
         case 'session:chat-updated':
           if (chatEnabled) {
-            chatData = refreshChatAfterEvent(token, role, 'professor_chat_updated', { postId: data.postId }, syncContext) || chatData;
+            scheduleChatObserver('professor_chat_updated', {}, syncContext);
           }
           break;
         default:
@@ -896,11 +986,12 @@ export function studentFlow() {
   const student = students[studentIndex];
   const sessionId = state.session.id;
   const role = 'student';
-  const watchesChat = shouldParticipate(CHAT_VIEWER_STUDENT_FRACTION, studentIndex, students.length, 11);
-  const usesChat = watchesChat
+  const watchesChat = SESSION_CHAT_ENABLED
+    && shouldParticipate(CHAT_VIEWER_STUDENT_FRACTION, studentIndex, students.length, 11);
+  const usesChat = SESSION_CHAT_ENABLED && (watchesChat
     || CHAT_QUICK_POST_STUDENT_FRACTION > 0
     || CHAT_RANDOM_POST_STUDENT_FRACTION > 0
-    || CHAT_RANDOM_UPVOTE_STUDENT_FRACTION > 0;
+    || CHAT_RANDOM_UPVOTE_STUDENT_FRACTION > 0);
   let token = null;
   let liveData = null;
   let chatData = null;
@@ -929,7 +1020,7 @@ export function studentFlow() {
   }
 
   liveData = fetchLive(token, role, 'student_initial_live').data;
-  chatEnabled = Boolean(liveData?.session?.chatEnabled);
+  chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
 
   let joined = false;
   group('student_join', () => {
@@ -948,14 +1039,14 @@ export function studentFlow() {
       }
 
       liveData = fetchLive(token, role, 'student_join_retry').data || liveData;
-      chatEnabled = Boolean(liveData?.session?.chatEnabled);
+      chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
       sleep(1);
     }
 
     if (joined) {
       liveData = refreshLiveAfterEvent(token, role, 'post_join', { isJoined: true, status: 'running' }) || liveData;
       joined = Boolean(liveData?.isJoined);
-      chatEnabled = Boolean(liveData?.session?.chatEnabled);
+      chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
       if (chatEnabled && watchesChat) {
         chatData = fetchChat(token, role, 'student_initial_chat').data;
       }
@@ -1007,7 +1098,7 @@ export function studentFlow() {
         socket.setTimeout(() => {
           const latest = fetchLive(token, role, 'pre_submit_live').data || snapshot;
           liveData = latest;
-          chatEnabled = Boolean(latest?.session?.chatEnabled);
+          chatEnabled = SESSION_CHAT_ENABLED && Boolean(latest?.session?.chatEnabled);
 
           if (
             !latest?.currentQuestion
@@ -1038,7 +1129,7 @@ export function studentFlow() {
         const refreshed = refreshLiveAfterEvent(token, role, reason, expectation, syncContext);
         if (refreshed) {
           liveData = refreshed;
-          chatEnabled = Boolean(refreshed?.session?.chatEnabled);
+          chatEnabled = SESSION_CHAT_ENABLED && Boolean(refreshed?.session?.chatEnabled);
         }
         maybeSubmitCurrentAttempt(liveData);
       };
@@ -1108,12 +1199,23 @@ export function studentFlow() {
           runChatWave(questionNumber);
         }, seededRatio(studentIndex, questionNumber, 71) * CHAT_ACTION_JITTER_MS);
       };
+      const refreshChatObserver = (reason, expectation = {}, syncContext = null, view = 'live') => {
+        const refreshed = refreshChatAfterEvent(token, role, reason, expectation, syncContext, view);
+        if (refreshed) {
+          chatData = refreshed;
+        }
+      };
+      const scheduleChatObserver = createSocketDebouncer(
+        socket,
+        CHAT_EVENT_REFRESH_DEBOUNCE_MS,
+        refreshChatObserver,
+      );
 
       socket.on('open', () => {
         wsConnections.add(1, metricTags(role));
         wsConnectSuccess.add(true, metricTags(role));
         liveData = refreshLiveAfterEvent(token, role, 'ws_open', { isJoined: true }) || liveData;
-        chatEnabled = Boolean(liveData?.session?.chatEnabled);
+        chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
         if (chatEnabled && watchesChat) {
           chatData = fetchChat(token, role, 'student_ws_open_chat').data || chatData;
         }
@@ -1151,7 +1253,7 @@ export function studentFlow() {
               { status: data.status },
               syncContext,
             ) || liveData;
-            chatEnabled = Boolean(liveData?.session?.chatEnabled);
+            chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
             if (data.status === 'done') {
               sessionEnded = true;
               socket.close();
@@ -1186,7 +1288,7 @@ export function studentFlow() {
               { requireWordCloud: true },
               syncContext,
             ) || liveData;
-            chatEnabled = Boolean(liveData?.session?.chatEnabled);
+            chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
             break;
 
           case 'session:histogram-updated':
@@ -1197,19 +1299,19 @@ export function studentFlow() {
               { requireHistogram: true },
               syncContext,
             ) || liveData;
-            chatEnabled = Boolean(liveData?.session?.chatEnabled);
+            chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
             break;
 
           case 'session:chat-settings-changed':
-            chatEnabled = Boolean(data?.chatEnabled);
+            chatEnabled = SESSION_CHAT_ENABLED && Boolean(data?.chatEnabled);
             if (chatEnabled && watchesChat) {
-              chatData = refreshChatAfterEvent(token, role, 'settings_changed', { enabled: true }, syncContext) || chatData;
+              scheduleChatObserver('settings_changed', { enabled: true }, syncContext);
             }
             break;
 
           case 'session:chat-updated':
             if (chatEnabled && watchesChat) {
-              chatData = refreshChatAfterEvent(token, role, 'updated', { postId: data.postId }, syncContext) || chatData;
+              scheduleChatObserver('updated', {}, syncContext);
             }
             break;
 
@@ -1220,7 +1322,7 @@ export function studentFlow() {
               responseRefreshScheduled = false;
               responseAddedRefreshes.add(1, metricTags(role));
               liveData = refreshLiveAfterEvent(token, role, 'response_added_live', {}, syncContext) || liveData;
-              chatEnabled = Boolean(liveData?.session?.chatEnabled);
+              chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
             }, RESPONSE_ADDED_REFRESH_MS);
             break;
 
