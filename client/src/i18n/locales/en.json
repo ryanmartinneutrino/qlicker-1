@@ -97,7 +97,8 @@
     "openAccountMenuTooltip": "Open account menu and quick links"
   },
   "dashboard": {
-    "liveSessions": "Live Sessions"
+    "liveSessions": "Live Sessions",
+    "courses": "Courses"
   },
   "sessionTiming": {
     "quizStartsAt": "Quiz starts at: {{dateTime}}",

@@ -97,7 +97,8 @@
     "openAccountMenuTooltip": "Ouvrir le menu du compte et les liens rapides"
   },
   "dashboard": {
-    "liveSessions": "Séances en direct"
+    "liveSessions": "Séances en direct",
+    "courses": "Cours"
   },
   "sessionTiming": {
     "quizStartsAt": "Le quiz commence à : {{dateTime}}",
