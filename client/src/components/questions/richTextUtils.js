@@ -11,7 +11,7 @@ const BASE_RICH_TEXT_ALLOWED_ATTRIBUTES = [
 ];
 const VIDEO_RICH_TEXT_ALLOWED_ATTRIBUTES = [
   'data-video-embed', 'data-src',
-  'allowfullscreen', 'allow', 'loading', 'referrerpolicy', 'title',
+  'allowfullscreen', 'loading', 'referrerpolicy', 'title',
 ];
 const URL_ATTRIBUTES = ['src', 'href', 'srcset', 'poster', 'data', 'xlink:href'];
 const IFRAME_ALLOWED_ATTRIBUTES = new Set([
@@ -19,12 +19,10 @@ const IFRAME_ALLOWED_ATTRIBUTES = new Set([
   'width',
   'height',
   'allowfullscreen',
-  'allow',
   'loading',
   'referrerpolicy',
   'title',
 ]);
-const DEFAULT_IFRAME_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
 const DEFAULT_IFRAME_REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
 let allowVideoEmbedsForCurrentSanitize = false;
@@ -89,7 +87,6 @@ if (typeof window !== 'undefined') {
 
       node.setAttribute('src', normalizedSrc);
       node.setAttribute('allowfullscreen', 'true');
-      node.setAttribute('allow', DEFAULT_IFRAME_ALLOW);
       node.setAttribute('loading', 'lazy');
       node.setAttribute('referrerpolicy', DEFAULT_IFRAME_REFERRER_POLICY);
       if (!node.getAttribute('title')) node.setAttribute('title', 'Embedded video');

@@ -251,7 +251,6 @@ const VideoEmbed = Node.create({
         mergeAttributes(
           {
             allowfullscreen: 'true',
-            allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
             loading: 'lazy',
             referrerpolicy: 'strict-origin-when-cross-origin',
             title: 'Embedded video',
@@ -301,10 +300,6 @@ const VideoEmbed = Node.create({
       iframe.setAttribute('loading', 'lazy');
       iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
       iframe.setAttribute('title', 'Embedded video');
-      iframe.setAttribute(
-        'allow',
-        'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
-      );
 
       // Delete button overlay (only in editable mode)
       const deleteBtn = document.createElement('button');
