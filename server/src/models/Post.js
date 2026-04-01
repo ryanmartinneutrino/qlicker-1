@@ -50,7 +50,13 @@ const PostSchema = new mongoose.Schema(
 
 PostSchema.index({ scopeType: 1, sessionId: 1, upvoteCount: -1, createdAt: 1 });
 PostSchema.index({ scopeType: 1, courseId: 1, createdAt: -1 });
-PostSchema.index({ scopeType: 1, sessionId: 1, isQuickPost: 1, quickPostQuestionNumber: 1 }, { unique: true });
+PostSchema.index(
+  { scopeType: 1, sessionId: 1, isQuickPost: 1, quickPostQuestionNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isQuickPost: true },
+  }
+);
 
 const Post = mongoose.model('Post', PostSchema);
 

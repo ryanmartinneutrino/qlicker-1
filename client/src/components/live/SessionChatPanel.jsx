@@ -53,6 +53,14 @@ function formatTimestamp(value) {
   }).format(parsed);
 }
 
+function getAuthorLabel({ authorName, authorRole, canViewNames, t }) {
+  if (authorName) return authorName;
+  if (authorRole === 'student') return t('sessionChat.anonymousStudent');
+  if (authorRole === 'instructor' || authorRole === 'admin') return t('sessionChat.instructor');
+  if (canViewNames) return t('sessionChat.unknownAuthor');
+  return t('sessionChat.system');
+}
+
 function normalizeDraftPlainText(html = '') {
   return extractPlainTextFromHtml(html || '').trim();
 }
@@ -114,13 +122,14 @@ function CommentThread({
               sx={{ p: 1.25, bgcolor: 'action.hover' }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
-                <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                  {comment.authorName || (canViewNames
-                    ? t('sessionChat.unknownAuthor')
-                    : comment.authorRole === 'student'
-                      ? t('sessionChat.anonymousStudent')
-                      : t('sessionChat.instructor'))}
-                </Typography>
+                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                    {getAuthorLabel({
+                      authorName: comment.authorName,
+                      authorRole: comment.authorRole,
+                      canViewNames,
+                      t,
+                    })}
+                  </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {formatTimestamp(comment.createdAt)}
                 </Typography>
@@ -190,7 +199,7 @@ export default function SessionChatPanel({
       return;
     }
 
-    setLoading((prev) => prev && !chatData);
+    setLoading(!chatData);
     try {
       const params = {};
       if (view === 'presentation') params.view = 'presentation';
@@ -375,11 +384,12 @@ export default function SessionChatPanel({
         <Stack spacing={1.5}>
           {chatData.posts.map((post) => {
             const expanded = !!expandedPosts[post._id];
-            const authorLabel = post.authorName || (
-              post.authorRole === 'student'
-                ? t('sessionChat.anonymousStudent')
-                : t('sessionChat.instructor')
-            );
+            const authorLabel = getAuthorLabel({
+              authorName: post.authorName,
+              authorRole: post.authorRole,
+              canViewNames,
+              t,
+            });
             return (
               <Paper
                 key={post._id}

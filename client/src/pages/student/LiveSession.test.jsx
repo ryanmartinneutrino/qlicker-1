@@ -155,6 +155,6 @@ describe('Student LiveSession', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText(/Answers will be scored based on a tolerance of \+\/-/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Answers will be scored based on a tolerance of \+\/- 1\.2345E4\./i)).toBeInTheDocument();
   });
 });

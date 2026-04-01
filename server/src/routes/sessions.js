@@ -800,7 +800,28 @@ function formatUserDisplayName(user) {
 }
 
 function stripHtmlToPlainText(value) {
-  return normalizeAnswerValue(value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const input = normalizeAnswerValue(value);
+  if (!input) return '';
+
+  let result = '';
+  let insideTag = false;
+  for (const char of input) {
+    if (char === '<') {
+      insideTag = true;
+      result += ' ';
+      continue;
+    }
+    if (char === '>') {
+      insideTag = false;
+      result += ' ';
+      continue;
+    }
+    if (!insideTag) {
+      result += char;
+    }
+  }
+
+  return result.replace(/\s+/g, ' ').trim();
 }
 
 function getChatAuthorRole(course, user) {
@@ -879,7 +900,7 @@ function getChatPermissionFlags({ session, course, request, viewMode }) {
   const isRunning = session?.status === 'running';
 
   const canViewLive = isInstructorView || (viewMode === 'live' && isRunning && isJoined);
-  const canWrite = viewMode === 'live' && session?.chatEnabled && canViewLive && isRunning && viewMode !== 'presentation';
+  const canWrite = viewMode === 'live' && session?.chatEnabled && canViewLive && isRunning;
 
   return {
     isInstructorView,
@@ -1043,7 +1064,7 @@ async function loadSessionChatPayload({ session, course, request }) {
       viewerHasUpvoted: post.viewerHasUpvoted,
     }))
     .filter((post) => Number(post.questionNumber) > 0 && (
-      currentQuestionNumber == null || post.questionNumber < currentQuestionNumber
+      currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
     ))
     .sort((a, b) => a.questionNumber - b.questionNumber);
 
@@ -5653,6 +5674,8 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/chat-settings',
     {
       preHandler: authenticate,
+      rateLimit: { max: 20, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
@@ -5699,7 +5722,11 @@ export default async function sessionRoutes(app) {
 
   app.get(
     '/sessions/:id/chat',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 90, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 90, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const { session, course } = await loadSessionChatContext(request.params.id);
       if (!session) {
@@ -5724,6 +5751,8 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/chat/posts',
     {
       preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
@@ -5789,7 +5818,11 @@ export default async function sessionRoutes(app) {
 
   app.post(
     '/sessions/:id/chat/quick-posts/:questionNumber/toggle',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const { session, course } = await loadSessionChatContext(request.params.id);
       if (!session) {
@@ -5869,6 +5902,8 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/chat/posts/:postId/vote',
     {
       preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
@@ -5955,6 +5990,8 @@ export default async function sessionRoutes(app) {
     '/sessions/:id/chat/posts/:postId/comments',
     {
       preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
       schema: {
         body: {
           type: 'object',
@@ -6032,7 +6069,11 @@ export default async function sessionRoutes(app) {
 
   app.patch(
     '/sessions/:id/chat/posts/:postId/dismiss',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const { session, course } = await loadSessionChatContext(request.params.id);
       if (!session) {
@@ -6084,7 +6125,11 @@ export default async function sessionRoutes(app) {
 
   app.delete(
     '/sessions/:id/chat/posts/:postId',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       const { session, course } = await loadSessionChatContext(request.params.id);
       if (!session) {
@@ -6133,7 +6178,11 @@ export default async function sessionRoutes(app) {
   // GET /sessions/:id/results - Get full session results (prof only) for review/CSV
   app.get(
     '/sessions/:id/results',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       let session = await Session.findById(request.params.id).lean();
       if (!session) {
