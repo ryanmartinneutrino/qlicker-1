@@ -40,7 +40,7 @@ import {
   useLiveSessionWebSocket,
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
-import { sortResponsesNewestFirst } from '../../utils/responses';
+import { applyLiveResponseAddedDelta, sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -410,6 +410,8 @@ function LiveSessionContent() {
   const [joinCodeIntervalInput, setJoinCodeIntervalInput] = useState('10');
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const [chatEvent, setChatEvent] = useState(null);
+  const activePanelRef = useRef('question');
   const pendingChatRefreshRef = useRef(false);
 
   // Join code refresh interval ref
@@ -423,7 +425,10 @@ function LiveSessionContent() {
     const startedAtMs = Date.now();
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
-        params: { includeStudentNames: true },
+        params: {
+          includeStudentNames: true,
+          includeJoinedStudents: activePanelRef.current === 'students',
+        },
       });
       const fetchMeasurement = recordLiveFetch({
         startedAtMs,
@@ -468,7 +473,16 @@ function LiveSessionContent() {
     }, 2000);
   }, [fetchLive]);
 
-  const queueChatRefresh = useCallback(() => {
+  const queueChatRefresh = useCallback((eventPayload = null) => {
+    if (activePanel === 'chat' && eventPayload) {
+      pendingChatRefreshRef.current = false;
+      setChatEvent((prev) => ({
+        id: (prev?.id || 0) + 1,
+        ...eventPayload,
+      }));
+      return;
+    }
+
     if (activePanel === 'chat') {
       pendingChatRefreshRef.current = false;
       setChatRefreshToken((prev) => prev + 1);
@@ -482,6 +496,10 @@ function LiveSessionContent() {
   useEffect(() => registerRefreshHandler(fetchLive), [fetchLive, registerRefreshHandler]);
 
   useEffect(() => {
+    activePanelRef.current = activePanel;
+  }, [activePanel]);
+
+  useEffect(() => {
     if (!lastEvent) return;
 
     const syncContext = recordEventReceipt({
@@ -492,18 +510,26 @@ function LiveSessionContent() {
     const { event, data } = lastEvent;
     switch (event) {
       case 'session:response-added':
-        setLiveData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            responseCount: data.responseCount ?? prev.responseCount,
-            session: {
-              ...prev.session,
-              joinedCount: data.joinedCount ?? prev.session?.joinedCount,
-            },
-          };
+        setLiveData((prev) => (
+          data?.responseStats || data?.response
+            ? applyLiveResponseAddedDelta(prev, data)
+            : prev
+              ? {
+                ...prev,
+                responseCount: data.responseCount ?? prev.responseCount,
+                session: {
+                  ...prev.session,
+                  joinedCount: data.joinedCount ?? prev.session?.joinedCount,
+                },
+              }
+              : prev
+        ));
+        scheduleUiSyncMeasurement({
+          emittedAtMs: syncContext?.emittedAtMs,
+          receivedAtMs: syncContext?.receivedAtMs,
+          success: true,
+          transportOverride: syncContext?.transport,
         });
-        scheduleFetchLive(syncContext);
         break;
       case 'session:participant-joined':
         setLiveData((prev) => applyParticipantJoined(prev, data));
@@ -558,7 +584,7 @@ function LiveSessionContent() {
         });
         break;
       case 'session:chat-updated':
-        queueChatRefresh();
+        queueChatRefresh(data);
         break;
       case 'session:visibility-changed':
         setLiveData((prev) => applyVisibilityChanged(prev, data));
@@ -946,6 +972,7 @@ function LiveSessionContent() {
 
   const session = liveData?.session;
   const chatEnabled = !!session?.chatEnabled;
+  const joinedStudentsLoaded = !!session?.joinedStudentsLoaded;
   const courseTitle = useMemo(() => (
     liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
   ), [liveData?.course]);
@@ -1011,6 +1038,12 @@ function LiveSessionContent() {
       setActivePanel('question');
     }
   }, [activePanel, chatEnabled]);
+
+  useEffect(() => {
+    if (activePanel !== 'students') return;
+    if (!session?._id || joinedStudentsLoaded) return;
+    fetchLive();
+  }, [activePanel, fetchLive, joinedStudentsLoaded, session?._id]);
 
   useEffect(() => {
     if (!chatEnabled) {
@@ -1724,7 +1757,9 @@ function LiveSessionContent() {
             sessionId={sessionId}
             enabled={chatEnabled}
             role="professor"
+            syncTransport={transport}
             refreshToken={chatRefreshToken}
+            chatEvent={chatEvent}
           />
         </>
       ) : (

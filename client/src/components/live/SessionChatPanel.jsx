@@ -47,6 +47,118 @@ const richContentSx = {
 
 const CHAT_REFRESH_DEBOUNCE_MS = 150;
 
+function getTimestampMs(value) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortChatPosts(posts = []) {
+  return [...posts].sort((a, b) => {
+    const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+    if (voteDiff !== 0) return voteDiff;
+    const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+    if (createdDiff !== 0) return createdDiff;
+    return String(a?._id || '').localeCompare(String(b?._id || ''));
+  });
+}
+
+function sortQuickPostOptions(options = []) {
+  return [...options]
+    .filter((option) => Number(option?.questionNumber) > 0)
+    .sort((a, b) => Number(b?.questionNumber || 0) - Number(a?.questionNumber || 0));
+}
+
+function buildQuickPostsFromOptions(options = []) {
+  return sortQuickPostOptions(options)
+    .filter((option) => Number(option?.upvoteCount || 0) > 0)
+    .map((option) => ({
+      postId: option.postId,
+      questionNumber: option.questionNumber,
+      label: option.label,
+      upvoteCount: option.upvoteCount,
+      viewerHasUpvoted: !!option.viewerHasUpvoted,
+    }));
+}
+
+function mergeChatPost(existingPost = {}, incomingPost = {}) {
+  return {
+    ...existingPost,
+    ...incomingPost,
+    comments: incomingPost?.comments ?? existingPost?.comments ?? [],
+    viewerHasUpvoted: incomingPost?.viewerHasUpvoted ?? existingPost?.viewerHasUpvoted ?? false,
+    isOwnPost: incomingPost?.isOwnPost ?? existingPost?.isOwnPost ?? false,
+  };
+}
+
+function mergeQuickPostOption(existingOption = {}, incomingOption = {}) {
+  return {
+    ...existingOption,
+    ...incomingOption,
+    viewerHasUpvoted: incomingOption?.viewerHasUpvoted ?? existingOption?.viewerHasUpvoted ?? false,
+  };
+}
+
+function applyChatEventData(previousData, eventPayload) {
+  if (!previousData || !eventPayload) return null;
+
+  const nextData = { ...previousData };
+  let posts = Array.isArray(previousData?.posts) ? [...previousData.posts] : [];
+  let quickPostOptions = Array.isArray(previousData?.quickPostOptions)
+    ? [...previousData.quickPostOptions]
+    : Array.isArray(previousData?.quickPosts)
+      ? [...previousData.quickPosts]
+      : [];
+
+  const postId = String(
+    eventPayload?.postId
+      || eventPayload?.post?._id
+      || eventPayload?.quickPostOption?.postId
+      || ''
+  );
+
+  if (eventPayload?.currentQuestionNumber !== undefined && eventPayload?.currentQuestionNumber !== null) {
+    nextData.currentQuestionNumber = eventPayload.currentQuestionNumber;
+  }
+
+  if (eventPayload?.post !== undefined) {
+    if (eventPayload.post) {
+      const incomingPost = eventPayload.post;
+      const existingIndex = posts.findIndex((post) => String(post?._id || '') === String(incomingPost?._id || ''));
+      if (existingIndex >= 0) {
+        posts[existingIndex] = mergeChatPost(posts[existingIndex], incomingPost);
+      } else {
+        posts.push(mergeChatPost({}, incomingPost));
+      }
+    } else if (postId) {
+      posts = posts.filter((post) => String(post?._id || '') !== postId);
+    }
+  }
+
+  if (eventPayload?.quickPostOption !== undefined) {
+    if (eventPayload.quickPostOption) {
+      const incomingOption = eventPayload.quickPostOption;
+      const existingIndex = quickPostOptions.findIndex((option) => String(option?.postId || '') === String(incomingOption?.postId || ''));
+      if (existingIndex >= 0) {
+        quickPostOptions[existingIndex] = mergeQuickPostOption(quickPostOptions[existingIndex], incomingOption);
+      } else {
+        quickPostOptions.push(mergeQuickPostOption({}, incomingOption));
+      }
+    } else if (postId) {
+      quickPostOptions = quickPostOptions.filter((option) => String(option?.postId || '') !== postId);
+    }
+  }
+
+  const currentQuestionNumber = nextData?.currentQuestionNumber ?? null;
+  nextData.posts = sortChatPosts(posts);
+  nextData.quickPostOptions = sortQuickPostOptions(quickPostOptions).filter((option) => (
+    currentQuestionNumber === null || Number(option?.questionNumber || 0) < Number(currentQuestionNumber)
+  ));
+  nextData.quickPosts = buildQuickPostsFromOptions(nextData.quickPostOptions);
+
+  return nextData;
+}
+
 function formatTimestamp(value) {
   if (!value) return '';
   const parsed = new Date(value);
@@ -178,7 +290,9 @@ export default function SessionChatPanel({
   enabled,
   view = 'live',
   role = 'student',
+  syncTransport = 'unknown',
   refreshToken = 0,
+  chatEvent = null,
   initialData = null,
 }) {
   const { t } = useTranslation();
@@ -257,11 +371,30 @@ export default function SessionChatPanel({
     };
   }, [enabled, refreshToken, runFetchChat, sessionId, view]);
 
+  useEffect(() => {
+    if (!enabled || !chatEvent) return;
+    if (!chatDataRef.current) {
+      void runFetchChat();
+      return;
+    }
+
+    const nextData = applyChatEventData(chatDataRef.current, chatEvent);
+    if (!nextData) {
+      void runFetchChat();
+      return;
+    }
+
+    chatDataRef.current = nextData;
+    setChatData(nextData);
+    setError(null);
+  }, [chatEvent, enabled, runFetchChat]);
+
   const canCompose = !!chatData?.canPost && view === 'live';
   const canVote = !!chatData?.canVote && role === 'student';
   const canDismiss = !!chatData?.canDismiss && role === 'professor';
   const canComment = !!chatData?.canComment && view === 'live';
   const canViewNames = !!chatData?.canViewNames;
+  const shouldRefetchAfterMutation = syncTransport !== 'websocket' || view === 'review';
   const draftHasContent = normalizeDraftPlainText(draftHtml).length > 0 || (draftHtml || '').trim().length > 0;
   const quickPostOptions = useMemo(() => {
     const options = Array.isArray(chatData?.quickPostOptions) && chatData.quickPostOptions.length > 0
@@ -303,53 +436,68 @@ export default function SessionChatPanel({
       });
       setDraftHtml('');
       setComposerOpen(role === 'professor');
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToSend'));
     } finally {
       setSubmittingPost(false);
     }
-  }, [draftHasContent, draftHtml, fetchChat, role, sessionId, submittingPost, t]);
+  }, [draftHasContent, draftHtml, fetchChat, role, sessionId, shouldRefetchAfterMutation, submittingPost, t]);
 
   const handleQuickPostToggle = useCallback(async (questionNumber) => {
     if (!questionNumber || submittingQuickPost) return;
     setSubmittingQuickPost(true);
     try {
       await apiClient.post(`/sessions/${sessionId}/chat/quick-posts/${questionNumber}/toggle`);
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToSend'));
     } finally {
       setSubmittingQuickPost(false);
     }
-  }, [fetchChat, sessionId, submittingQuickPost, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterMutation, submittingQuickPost, t]);
 
   const handleVote = useCallback(async (postId, upvoted) => {
     try {
       await apiClient.patch(`/sessions/${sessionId}/chat/posts/${postId}/vote`, { upvoted });
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToVote'));
     }
-  }, [fetchChat, sessionId, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterMutation, t]);
 
   const handleDismiss = useCallback(async (postId) => {
     try {
       await apiClient.patch(`/sessions/${sessionId}/chat/posts/${postId}/dismiss`);
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToDismiss'));
     }
-  }, [fetchChat, sessionId, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterMutation, t]);
 
   const handleDelete = useCallback(async (postId) => {
     try {
       await apiClient.delete(`/sessions/${sessionId}/chat/posts/${postId}`);
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToDelete'));
     }
-  }, [fetchChat, sessionId, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterMutation, t]);
 
   const handleSubmitComment = useCallback(async (postId) => {
     const draft = commentDrafts[postId] || '';
@@ -362,13 +510,16 @@ export default function SessionChatPanel({
       });
       setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
       setExpandedPosts((prev) => ({ ...prev, [postId]: true }));
-      await fetchChat();
+      setError(null);
+      if (shouldRefetchAfterMutation) {
+        await fetchChat();
+      }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToComment'));
     } finally {
       setPendingCommentId('');
     }
-  }, [commentDrafts, fetchChat, sessionId, t]);
+  }, [commentDrafts, fetchChat, sessionId, shouldRefetchAfterMutation, t]);
 
   if (!enabled) {
     return (

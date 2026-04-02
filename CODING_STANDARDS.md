@@ -314,10 +314,12 @@ WebSocket endpoint: `/ws?token=<JWT>`
 | `session:updated` | Server→Client | All members or a single affected user | `{ sessionId }` | Generic fallback for non-live mutations or targeted refetches when no finer delta exists |
 | `session:question-changed` | Server→Client | All members | `{ sessionId, questionId, questionIndex, questionNumber, questionCount }` | Professor navigated to a new question |
 | `session:question-updated` | Server→Client | All members | `{ sessionId, questionId, question? }` | Current question content edited; include only the minimal per-audience question delta clients need |
-| `session:response-added` | Server→Client | Instructors always; joined students when stats are visible | `{ sessionId, questionId, attempt, responseCount, joinedCount }` | New response submitted; clients that show live stats should throttle-refetch |
+| `session:response-added` | Server→Client | Instructors always; joined students when stats are visible | `{ sessionId, questionId, attempt, responseCount, joinedCount, responseStats?, response? }` | New response submitted; include per-audience stats/response deltas whenever the live view can patch locally instead of re-fetching |
 | `session:attempt-changed` | Server→Client | All members | `{ sessionId, questionId, currentAttempt, stats, correct, resetResponses }` | Current attempt opened/closed/reset for the live question |
 | `session:participant-joined` | Server→Instructors | Instructors only | `{ sessionId, joinedCount, joinedStudent }` | A student joined the live session; update instructor roster/count locally |
 | `session:join-code-changed` | Server→Client | All members | `{ sessionId, joinCodeEnabled, joinCodeActive, ... }` | Passcode requirement/join period changed; omit the actual code from student payloads |
+| `session:chat-settings-changed` | Server→Client | Live-session viewers | `{ sessionId, chatEnabled }` | Toggle live chat visibility without re-fetching unrelated live data |
+| `session:chat-updated` | Server→Client | Live-session chat viewers | `{ sessionId, postId, changeType, currentQuestionNumber?, post?, quickPostOption? }` | Patch chat state locally whenever possible; fall back to `/chat` only when the delta is insufficient |
 | `session:visibility-changed` | Server→Client | All members | `{ sessionId, questionId, hidden, stats, correct }` | Question visibility/stats/correct toggled |
 | `session:status-changed` | Server→Client | All members | `{ sessionId, status }` | Session started/ended |
 

@@ -24,7 +24,7 @@ import HistogramPanel from '../../components/questions/HistogramPanel';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 import SessionChatPanel from '../../components/live/SessionChatPanel';
 import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
-import { sortResponsesNewestFirst } from '../../utils/responses';
+import { applyLiveResponseAddedDelta, sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -245,6 +245,7 @@ export default function PresentationWindow() {
   const [liveTransport, setLiveTransport] = useState('unknown');
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const [chatEvent, setChatEvent] = useState(null);
   const pendingChatRefreshRef = useRef(false);
   const {
     recordEventReceipt,
@@ -258,7 +259,10 @@ export default function PresentationWindow() {
     const startedAtMs = Date.now();
     try {
       const { data } = await apiClient.get(`/sessions/${sessionId}/live`, {
-        params: { view: 'presentation' },
+        params: {
+          view: 'presentation',
+          includeJoinedStudents: false,
+        },
       });
       const fetchMeasurement = recordLiveFetch({
         startedAtMs,
@@ -302,7 +306,16 @@ export default function PresentationWindow() {
     }, 2000);
   }, [fetchLive]);
 
-  const queueChatRefresh = useCallback(() => {
+  const queueChatRefresh = useCallback((eventPayload = null) => {
+    if (activePanel === 'chat' && eventPayload) {
+      pendingChatRefreshRef.current = false;
+      setChatEvent((prev) => ({
+        id: (prev?.id || 0) + 1,
+        ...eventPayload,
+      }));
+      return;
+    }
+
     if (activePanel === 'chat') {
       pendingChatRefreshRef.current = false;
       setChatRefreshToken((prev) => prev + 1);
@@ -375,18 +388,26 @@ export default function PresentationWindow() {
 
           switch (evt) {
             case 'session:response-added':
-              setLiveData((prev) => {
-                if (!prev) return prev;
-                return {
-                  ...prev,
-                  responseCount: d.responseCount ?? prev.responseCount,
-                  session: {
-                    ...prev.session,
-                    joinedCount: d.joinedCount ?? prev.session?.joinedCount,
-                  },
-                };
+              setLiveData((prev) => (
+                d?.responseStats || d?.response
+                  ? applyLiveResponseAddedDelta(prev, d)
+                  : prev
+                    ? {
+                      ...prev,
+                      responseCount: d.responseCount ?? prev.responseCount,
+                      session: {
+                        ...prev.session,
+                        joinedCount: d.joinedCount ?? prev.session?.joinedCount,
+                      },
+                    }
+                    : prev
+              ));
+              scheduleUiSyncMeasurement({
+                emittedAtMs: syncContext?.emittedAtMs,
+                receivedAtMs: syncContext?.receivedAtMs,
+                success: true,
+                transportOverride: syncContext?.transport,
               });
-              scheduleFetchLive(syncContext);
               break;
             case 'session:question-changed':
               fetchLive(syncContext);
@@ -462,7 +483,7 @@ export default function PresentationWindow() {
               } : prev);
               break;
             case 'session:chat-updated':
-              queueChatRefresh();
+              queueChatRefresh(d);
               break;
             default:
               break;
@@ -745,7 +766,9 @@ export default function PresentationWindow() {
             enabled={chatEnabled}
             role="presentation"
             view="presentation"
+            syncTransport={liveTransport}
             refreshToken={chatRefreshToken}
+            chatEvent={chatEvent}
           />
         ) : (
           <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
@@ -787,7 +810,9 @@ export default function PresentationWindow() {
           enabled={chatEnabled}
           role="presentation"
           view="presentation"
+          syncTransport={liveTransport}
           refreshToken={chatRefreshToken}
+          chatEvent={chatEvent}
         />
       ) : (
         <>

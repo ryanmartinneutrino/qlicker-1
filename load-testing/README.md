@@ -6,9 +6,10 @@ interactive classroom flow:
 
 - one professor launches and drives the session
 - hundreds of students authenticate, join, keep WebSockets open, refresh live
-  state on deltas, and submit responses
+  state from websocket deltas when possible, and submit responses
 - a professor observer window and a slice of student chat viewers keep the chat
-  panel in sync over websocket-driven refreshes
+  panel in sync from websocket chat deltas, falling back to `/chat` refreshes
+  only when the payload is insufficient
 - quick-post requests, student discussion posts, upvotes, and professor replies
   are exercised during the session
 - question changes, attempt changes, stats visibility, answer reveals, and
@@ -99,8 +100,8 @@ the real live-session update path used by the browser:
 2. Students log in and fetch `/sessions/:id/live`.
 3. Students join the running session.
 4. Students open `/ws?token=...`.
-5. On `session:*` deltas, students re-fetch `/sessions/:id/live` the same way
-   the app does to stay current.
+5. On `session:*` deltas, students patch local live state when the payload is
+   sufficient and re-fetch `/sessions/:id/live` only for the remaining cases.
 6. Students submit responses only when the current attempt is open and visible.
 7. The professor closes responses, shows stats, generates short-answer word
    clouds and numerical histograms, reveals correct answers, and advances to the
@@ -126,8 +127,9 @@ Timing and sync variables:
 - `CORRECT_PAUSE_S`: how long the correct-answer phase remains visible.
 - `JOIN_GRACE_S`: delay after the professor starts the session before the
   question loop begins, giving students time to join.
-- `RESPONSE_ADDED_REFRESH_MS`: debounce used before refreshing `/live` after a
-  `session:response-added` websocket event.
+- `RESPONSE_ADDED_REFRESH_MS`: fallback debounce used before refreshing `/live`
+  after a `session:response-added` websocket event when the delta does not
+  carry enough state to patch locally.
 - `STUDENT_LOGIN_SPREAD_S`: maximum login jitter applied across student VUs.
   `0` means everyone hits `/auth/login` immediately; higher values spread the
   startup wave and usually produce a more realistic class arrival pattern.
@@ -137,7 +139,8 @@ Chat-behavior variables:
 - `CHAT_ACTIVITY_EVERY_N_QUESTIONS`: after every Nth question starting at
   question 2, the scenario schedules a chat activity wave.
 - `CHAT_VIEWER_STUDENT_FRACTION`: fraction of students who keep the chat panel
-  open and refetch `/chat` on `session:chat-updated`.
+  open and apply `session:chat-updated` deltas locally, falling back to
+  `/chat` only when needed.
 - `CHAT_QUICK_POST_STUDENT_FRACTION`: fraction of students in each chat wave
   who request more explanation for an earlier question.
 - `CHAT_RANDOM_POST_STUDENT_FRACTION`: fraction of students in each chat wave
@@ -317,12 +320,14 @@ For live-session correctness, the most important lines are:
 For "do student screens stay fresh enough?", focus on:
 
 - `live_refresh_duration{role:student}`: time to fetch `/sessions/:id/live`
-- `event_sync_duration{role:student}`: time from the server-emitted websocket event
-  (`emittedAt`) to completing the follow-up live refresh and validating the new
-  state; if `emittedAt` is unavailable, it falls back to receive-to-refresh time
+- `event_sync_duration{role:student}`: time from the server-emitted websocket
+  event (`emittedAt`) to validating the patched local state or completing the
+  fallback live refresh; if `emittedAt` is unavailable, it falls back to
+  receive-to-sync time
 - `chat_refresh_duration{role:student}`: time to fetch `/sessions/:id/chat`
 - `chat_event_sync_duration{role:student}`: time from a
-  `session:chat-updated` emit to the refreshed chat payload completing
+  `session:chat-updated` emit to the patched local chat state or fallback chat
+  refresh completing
 
 For "does the instructor side stay current too?", focus on:
 

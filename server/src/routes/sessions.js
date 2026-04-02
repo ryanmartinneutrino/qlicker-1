@@ -1100,6 +1100,21 @@ function shouldExposeChatAuthorName(authorRole, includeNames) {
   return authorRole === 'admin' || authorRole === 'instructor';
 }
 
+function isChatPostVisible(post, { includeDismissed = false } = {}) {
+  if (!post) return false;
+  if (!includeDismissed && post?.dismissedAt) return false;
+  if (post?.isQuickPost && Number(post?.upvoteCount || 0) <= 0) return false;
+  return true;
+}
+
+function isQuickPostOptionVisible(post, { includeDismissed = false, currentQuestionNumber = null } = {}) {
+  if (!post?.isQuickPost) return false;
+  if (!includeDismissed && post?.dismissedAt) return false;
+  const questionNumber = Number(post?.quickPostQuestionNumber) || 0;
+  if (questionNumber <= 0) return false;
+  return currentQuestionNumber === null || questionNumber < currentQuestionNumber;
+}
+
 function getChatPostDisplayAuthor(post) {
   const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
   if (post?.isQuickPost) {
@@ -1180,6 +1195,52 @@ function serializeChatPost(post, {
   };
 }
 
+function serializeQuickPostOption(post) {
+  const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
+  const upvoteCount = Number(post?.upvoteCount);
+  return {
+    postId: String(post?._id || ''),
+    questionNumber: Number(post?.quickPostQuestionNumber) || null,
+    label: normalizeAnswerValue(post?.body),
+    upvoteCount: Number.isFinite(upvoteCount) ? upvoteCount : upvoteUserIds.length,
+  };
+}
+
+function buildChatEventDelta(post, {
+  includeNames = false,
+  includeDismissed = false,
+  currentQuestionNumber = null,
+  authorNameMap = new Map(),
+} = {}) {
+  const delta = {};
+
+  if (post !== undefined) {
+    if (isChatPostVisible(post, { includeDismissed })) {
+      const serializedPost = serializeChatPost(post, {
+        includeNames,
+        includeDismissed,
+        viewerUserId: '',
+        authorNameMap,
+      });
+      delete serializedPost.viewerHasUpvoted;
+      delete serializedPost.isOwnPost;
+      delete serializedPost.upvoterUserIds;
+      delete serializedPost.upvoterNames;
+      delta.post = serializedPost;
+    } else {
+      delta.post = null;
+    }
+  }
+
+  if (post?.isQuickPost) {
+    delta.quickPostOption = isQuickPostOptionVisible(post, { includeDismissed, currentQuestionNumber })
+      ? serializeQuickPostOption(post)
+      : null;
+  }
+
+  return delta;
+}
+
 async function loadSessionChatPayload({ session, course, request }) {
   const flags = getChatPermissionFlags({
     session,
@@ -1211,11 +1272,7 @@ async function loadSessionChatPayload({ session, course, request }) {
 
   const includeDismissed = viewMode === 'review' || flags.isInstructorView;
   const visiblePosts = posts
-    .filter((post) => {
-      if (!includeDismissed && post?.dismissedAt) return false;
-      if (post?.isQuickPost && Number(post?.upvoteCount || 0) <= 0) return false;
-      return true;
-    })
+    .filter((post) => isChatPostVisible(post, { includeDismissed }))
     .sort((a, b) => {
       const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
       if (voteDiff !== 0) return voteDiff;
@@ -1250,25 +1307,13 @@ async function loadSessionChatPayload({ session, course, request }) {
     ))
     .sort((a, b) => b.questionNumber - a.questionNumber);
   const quickPostOptions = posts
-    .filter((post) => {
-      if (!post?.isQuickPost) return false;
-      if (!includeDismissed && post?.dismissedAt) return false;
-      return true;
-    })
-    .map((post) => {
-      const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
-      const upvoteCount = Number(post?.upvoteCount);
-      return {
-        postId: String(post?._id || ''),
-        questionNumber: Number(post?.quickPostQuestionNumber) || null,
-        label: normalizeAnswerValue(post?.body),
-        upvoteCount: Number.isFinite(upvoteCount) ? upvoteCount : upvoteUserIds.length,
-        viewerHasUpvoted: upvoteUserIds.includes(viewerUserId),
-      };
-    })
-    .filter((post) => Number(post.questionNumber) > 0 && (
-      currentQuestionNumber === null || post.questionNumber < currentQuestionNumber
-    ))
+    .filter((post) => isQuickPostOptionVisible(post, { includeDismissed, currentQuestionNumber }))
+    .map((post) => ({
+      ...serializeQuickPostOption(post),
+      viewerHasUpvoted: Array.isArray(post?.upvoteUserIds)
+        ? post.upvoteUserIds.map((id) => String(id)).includes(viewerUserId)
+        : false,
+    }))
     .sort((a, b) => b.questionNumber - a.questionNumber);
 
   return {
@@ -1870,6 +1915,88 @@ function formatStudentLiveResponseStats(responseStats) {
   return responseStats;
 }
 
+function serializeLiveResponseEntry(response, { studentName = null } = {}) {
+  if (!response) return null;
+
+  const entry = {
+    _id: response._id,
+    attempt: response.attempt,
+    questionId: response.questionId,
+    answer: response.answer,
+    answerWysiwyg: response.answerWysiwyg,
+    correct: response.correct,
+    mark: response.mark,
+    createdAt: response.createdAt || null,
+    updatedAt: response.updatedAt || null,
+    editable: response.editable,
+  };
+
+  if (studentName) {
+    entry.studentName = studentName;
+  }
+
+  return entry;
+}
+
+function buildResponseAddedStatsDelta(question, attemptNumber) {
+  if (!question?.sessionOptions?.stats) return null;
+
+  const entry = getAttemptStatsEntry(question, attemptNumber);
+  if (!entry) return null;
+
+  if (entry.type === 'distribution') {
+    return {
+      type: 'distribution',
+      distribution: (entry.distribution || []).map((item) => ({
+        index: Number(item?.index) || 0,
+        answer: item?.answer || '',
+        correct: !!item?.correct,
+        count: Number(item?.count || 0),
+      })),
+      total: Number(entry.total || 0),
+    };
+  }
+
+  if (entry.type === 'shortAnswer') {
+    return {
+      type: 'shortAnswer',
+      total: Number(entry.total || 0),
+    };
+  }
+
+  if (entry.type === 'numerical') {
+    const values = (entry.values || [])
+      .map((value) => Number(value))
+      .filter((value) => !Number.isNaN(value))
+      .sort((a, b) => a - b);
+    const total = Number(entry.total || values.length || 0);
+    const sum = Number.isFinite(Number(entry.sum))
+      ? Number(entry.sum)
+      : values.reduce((acc, value) => acc + value, 0);
+    const sumSquares = Number.isFinite(Number(entry.sumSquares))
+      ? Number(entry.sumSquares)
+      : values.reduce((acc, value) => acc + (value * value), 0);
+    const mean = total > 0 ? sum / total : 0;
+    const variance = total > 0 ? Math.max(0, (sumSquares / total) - (mean ** 2)) : 0;
+    const median = values.length > 0 ? values[Math.floor(values.length / 2)] : 0;
+
+    return {
+      type: 'numerical',
+      total,
+      mean: Math.round(mean * 100) / 100,
+      stdev: Math.round(Math.sqrt(variance) * 100) / 100,
+      median,
+      min: values.length > 0 ? Number(entry.min ?? values[0]) : 0,
+      max: values.length > 0 ? Number(entry.max ?? values[values.length - 1]) : 0,
+    };
+  }
+
+  return {
+    type: entry.type,
+    total: Number(entry.total || 0),
+  };
+}
+
 async function ensureQuestionAttemptStatsEntry(question, attemptNumber) {
   const normalizedAttemptNumber = Number(attemptNumber) || 1;
   if (!question?._id) return;
@@ -2392,16 +2519,51 @@ function notifySessionMetadataChanged(app, course, sessionId) {
 }
 
 /** Delta: new response submitted. Students only receive it when live stats are visible and they are joined. */
-function notifyResponseAdded(app, course, session, data, { includeStudents = false } = {}) {
+async function notifyResponseAdded(app, course, session, data, { includeStudents = false } = {}) {
   if (!session?._id) return;
+  const question = data?.question || null;
+  const response = data?.response || null;
+  const attempt = Number(data?.attempt || response?.attempt || 1);
+  const questionType = normalizeQuestionType(question);
+  const includesResponseEntry = [2, 4].includes(questionType);
+  const responseStats = buildResponseAddedStatsDelta(question, attempt);
+
+  let instructorResponse = null;
+  if (response && includesResponseEntry) {
+    let studentName = null;
+    const studentId = getResponseStudentId(response);
+    if (studentId) {
+      const student = await User.findById(studentId)
+        .select('_id profile emails email')
+        .lean();
+      studentName = formatUserDisplayName(student);
+    }
+    instructorResponse = serializeLiveResponseEntry(response, { studentName });
+  }
+
+  const studentResponse = response && includesResponseEntry
+    ? serializeLiveResponseEntry(response)
+    : null;
+
   const payload = {
     courseId: String(course._id),
     sessionId: String(session._id),
-    ...data,
+    questionId: String(data?.questionId || question?._id || response?.questionId || ''),
+    attempt,
+    responseCount: Number(data?.responseCount || 0),
+    joinedCount: Number(data?.joinedCount || 0),
   };
-  sendToInstructors(app, course, 'session:response-added', payload);
+  sendToInstructors(app, course, 'session:response-added', {
+    ...payload,
+    ...(responseStats ? { responseStats } : {}),
+    ...(instructorResponse ? { response: instructorResponse } : {}),
+  });
   if (includeStudents) {
-    sendToJoinedStudents(app, session, 'session:response-added', payload);
+    sendToJoinedStudents(app, session, 'session:response-added', {
+      ...payload,
+      ...(responseStats ? { responseStats } : {}),
+      ...(studentResponse ? { response: studentResponse } : {}),
+    });
   }
 }
 
@@ -2526,15 +2688,49 @@ function notifyChatSettingsChanged(app, course, session) {
   });
 }
 
-function notifyChatUpdated(app, course, session, payload = {}) {
+async function notifyChatUpdated(app, course, session, payload = {}) {
   if (!session?._id) return;
+  const post = payload?.post || null;
+  let currentQuestionNumber = payload?.currentQuestionNumber ?? null;
+  if (post?.isQuickPost && currentQuestionNumber == null) {
+    currentQuestionNumber = (await loadSessionChatQuestionMetadata(session)).currentQuestionNumber;
+  }
+
+  const authorNameMap = post
+    ? await buildChatAuthorNameMap([post], { includeAllAuthors: true })
+    : new Map();
   const basePayload = {
     courseId: String(course._id),
     sessionId: String(session._id),
     ...payload,
   };
-  sendToInstructors(app, course, 'session:chat-updated', basePayload);
-  sendToJoinedStudents(app, session, 'session:chat-updated', basePayload);
+
+  if (post) {
+    basePayload.postId = String(post._id || payload?.postId || '');
+  }
+  if (currentQuestionNumber !== undefined) {
+    basePayload.currentQuestionNumber = currentQuestionNumber;
+  }
+  delete basePayload.post;
+
+  sendToInstructors(app, course, 'session:chat-updated', {
+    ...basePayload,
+    ...buildChatEventDelta(post, {
+      includeNames: true,
+      includeDismissed: true,
+      currentQuestionNumber,
+      authorNameMap,
+    }),
+  });
+  sendToJoinedStudents(app, session, 'session:chat-updated', {
+    ...basePayload,
+    ...buildChatEventDelta(post, {
+      includeNames: false,
+      includeDismissed: false,
+      currentQuestionNumber,
+      authorNameMap,
+    }),
+  });
 }
 
 async function seedSessionGradesIfNeeded(session, course, { visibleToStudents = null } = {}) {
@@ -4708,6 +4904,9 @@ export default async function sessionRoutes(app) {
       const includeStudentNames = isInstrOrAdmin
         && !presentationView
         && parseBooleanQuery(request.query?.includeStudentNames);
+      const includeJoinedStudents = isInstrOrAdmin
+        && !presentationView
+        && parseBooleanQuery(request.query?.includeJoinedStudents);
       const userId = request.user.userId;
       let isJoined = (session.joined || []).includes(userId);
 
@@ -4824,7 +5023,7 @@ export default async function sessionRoutes(app) {
       }
 
       let joinedStudents = [];
-      if (isInstrOrAdmin && !presentationView) {
+      if (includeJoinedStudents) {
         const joinedIds = [...new Set((session.joined || []).map((id) => String(id)).filter(Boolean))];
         const joinedUsers = joinedIds.length > 0
           ? await User.find({ _id: { $in: joinedIds } })
@@ -4924,9 +5123,12 @@ export default async function sessionRoutes(app) {
           };
         }
         if (!presentationView) {
-          result.session.joined = session.joined;
-          result.session.joinRecords = session.joinRecords;
-          result.session.joinedStudents = joinedStudents;
+          result.session.joinedStudentsLoaded = includeJoinedStudents;
+          if (includeJoinedStudents) {
+            result.session.joined = session.joined;
+            result.session.joinRecords = session.joinRecords;
+            result.session.joinedStudents = joinedStudents;
+          }
         }
         result.session.joinCodeInterval = session.joinCodeInterval;
         result.session.currentJoinCode = session.currentJoinCode;
@@ -5219,8 +5421,10 @@ export default async function sessionRoutes(app) {
       const responseCount = Number(trackedQuestion?.sessionProperties?.lastAttemptResponseCount || 0);
 
       // Keep the response event minimal; joined students only receive it while live stats are visible.
-      notifyResponseAdded(app, course, updatedSession || session, {
+      await notifyResponseAdded(app, course, updatedSession || session, {
         questionId: String(questionId),
+        question: trackedQuestion || question,
+        response: response.toObject ? response.toObject() : { ...response },
         attempt: currentAttempt.number,
         responseCount,
         joinedCount: (updatedSession?.joined || session.joined || []).length,
@@ -6015,9 +6219,10 @@ export default async function sessionRoutes(app) {
         updatedAt: new Date(),
       });
 
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'post-created',
         postId: String(created._id),
+        post: created.toObject ? created.toObject() : { ...created },
       });
 
       return { success: true, postId: String(created._id) };
@@ -6093,9 +6298,11 @@ export default async function sessionRoutes(app) {
         { returnDocument: 'after' }
       ).lean();
 
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'quick-post-toggled',
         postId: String(post._id),
+        post: updated,
+        currentQuestionNumber,
       });
 
       return {
@@ -6182,9 +6389,11 @@ export default async function sessionRoutes(app) {
         { returnDocument: 'after' }
       ).lean();
 
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'post-voted',
         postId: String(post._id),
+        post: updated,
+        currentQuestionNumber: post.isQuickPost ? currentQuestionNumber : null,
       });
 
       return {
@@ -6259,7 +6468,7 @@ export default async function sessionRoutes(app) {
         updatedAt: new Date(),
       };
 
-      await Post.findByIdAndUpdate(
+      const updated = await Post.findByIdAndUpdate(
         post._id,
         {
           $push: { comments: comment },
@@ -6268,9 +6477,10 @@ export default async function sessionRoutes(app) {
         { returnDocument: 'after' }
       ).lean();
 
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'comment-added',
         postId: String(post._id),
+        post: updated,
       });
 
       return { success: true, postId: String(post._id), commentId: comment._id };
@@ -6320,9 +6530,10 @@ export default async function sessionRoutes(app) {
         { returnDocument: 'after' }
       ).lean();
 
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'post-dismissed',
         postId: String(post._id),
+        post: updated,
       });
 
       return {
@@ -6376,9 +6587,10 @@ export default async function sessionRoutes(app) {
       }
 
       await Post.deleteOne({ _id: post._id });
-      notifyChatUpdated(app, course, session, {
+      await notifyChatUpdated(app, course, session, {
         changeType: 'post-deleted',
         postId: String(post._id),
+        post,
       });
 
       return { success: true };

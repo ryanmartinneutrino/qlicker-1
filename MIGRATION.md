@@ -70,12 +70,12 @@ All routes prefixed with `/api/v1`. WebSocket at `/ws`. **30+ REST endpoints** c
 |-------|-----------|-------------|
 | `session:question-changed` | Server → Client | Delta: `{ questionId, questionIndex, questionNumber, questionCount }` |
 | `session:question-updated` | Server → Client | Delta: `{ questionId, question? }` for current-question content edits |
-| `session:response-added` | Server → Instructors + joined students when stats visible | Delta: `{ questionId, attempt, responseCount, joinedCount }` |
+| `session:response-added` | Server → Instructors + joined students when stats visible | Delta: `{ questionId, attempt, responseCount, joinedCount, responseStats?, response? }` so live views can patch counts, stats, and response lists locally |
 | `session:attempt-changed` | Server → Client | Delta: `{ questionId, currentAttempt, stats, correct, resetResponses }` |
 | `session:participant-joined` | Server → Instructors | Delta: `{ joinedCount, joinedStudent }` |
 | `session:join-code-changed` | Server → Client | Delta: `{ joinCodeEnabled, joinCodeActive, ... }` with student-safe payloads |
 | `session:chat-settings-changed` | Server → Client | Delta: `{ chatEnabled }` so live tabs can appear/disappear without refetching unrelated data |
-| `session:chat-updated` | Server → Client | Delta: `{ postId, changeType }` prompting chat-only refreshes in the active chat tab |
+| `session:chat-updated` | Server → Client | Delta: `{ postId, changeType, currentQuestionNumber?, post?, quickPostOption? }` so active chat tabs can patch local state before falling back to `/chat` |
 | `session:status-changed` | Server → Client | Delta: `{ status }` |
 | `session:visibility-changed` | Server → Client | Delta: `{ questionId, hidden, stats, correct }` |
 | `session:updated` | Server → Client | Generic fallback for non-live mutations or targeted single-user refreshes |
@@ -154,6 +154,7 @@ All core Qlicker functionality has been restored: authentication (local + SAML S
 
 - Added session-scoped live chat with anonymous student posting, instructor moderation, quick-post upvotes, inline comments, and professor-only review visibility for dismissed posts.
 - Session chat now uses its own lean REST payloads plus delta-only WebSocket events so live question traffic does not need to refetch chat data unless the active chat tab changes.
+- Live `session:response-added` events now carry per-audience response deltas where possible, so professor/student views can update response counts, stats, and visible answer lists without broad `/live` refreshes on every new submission.
 
 ---
 

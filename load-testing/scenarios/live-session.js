@@ -361,10 +361,235 @@ function refreshLiveAfterEvent(token, role, reason, expectation = {}, syncContex
   return result.ok ? result.data : null;
 }
 
+function syncLiveAfterEvent(currentData, role, updater, expectation = {}, syncContext = null) {
+  const startedAtMs = Date.now();
+  const nextData = updater(currentData);
+  const completedAtMs = Date.now();
+  const ok = Boolean(nextData) && validateLiveState(nextData, expectation);
+  const emittedAtMs = parseTimestampMs(syncContext?.emittedAt);
+  const receivedAtMs = Number(syncContext?.receivedAtMs || startedAtMs || Date.now());
+  const baselineMs = emittedAtMs != null && emittedAtMs <= completedAtMs
+    ? emittedAtMs
+    : receivedAtMs;
+  eventSyncDuration.add(Math.max(0, completedAtMs - baselineMs), metricTags(role));
+  eventSyncSuccess.add(ok, metricTags(role));
+  return nextData;
+}
+
 function buildQueryString(params = {}) {
   const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
   if (entries.length === 0) return '';
   return `?${entries.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&')}`;
+}
+
+function getTimestampMs(value) {
+  if (!value) return 0;
+  const parsed = new Date(value);
+  const time = parsed.getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function sortChatPosts(posts = []) {
+  return [...posts].sort((a, b) => {
+    const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+    if (voteDiff !== 0) return voteDiff;
+    const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+    if (createdDiff !== 0) return createdDiff;
+    return String(a?._id || '').localeCompare(String(b?._id || ''));
+  });
+}
+
+function sortQuickPostOptions(options = []) {
+  return [...options]
+    .filter((option) => Number(option?.questionNumber) > 0)
+    .sort((a, b) => {
+      const questionDiff = Number(b?.questionNumber || 0) - Number(a?.questionNumber || 0);
+      if (questionDiff !== 0) return questionDiff;
+      const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+      if (voteDiff !== 0) return voteDiff;
+      return String(a?.postId || '').localeCompare(String(b?.postId || ''));
+    });
+}
+
+function buildQuickPostsFromOptions(options = []) {
+  return sortQuickPostOptions(options)
+    .filter((option) => Number(option?.upvoteCount || 0) > 0)
+    .map((option) => ({
+      postId: option.postId,
+      questionNumber: option.questionNumber,
+      label: option.label,
+      upvoteCount: option.upvoteCount,
+      viewerHasUpvoted: !!option.viewerHasUpvoted,
+    }));
+}
+
+function mergeChatPost(existingPost = {}, incomingPost = {}) {
+  return {
+    ...existingPost,
+    ...incomingPost,
+    comments: incomingPost?.comments ?? existingPost?.comments ?? [],
+    viewerHasUpvoted: incomingPost?.viewerHasUpvoted ?? existingPost?.viewerHasUpvoted ?? false,
+    isOwnPost: incomingPost?.isOwnPost ?? existingPost?.isOwnPost ?? false,
+  };
+}
+
+function mergeQuickPostOption(existingOption = {}, incomingOption = {}) {
+  return {
+    ...existingOption,
+    ...incomingOption,
+    viewerHasUpvoted: incomingOption?.viewerHasUpvoted ?? existingOption?.viewerHasUpvoted ?? false,
+  };
+}
+
+function applyChatEventData(previousData, eventPayload) {
+  if (!previousData || !eventPayload) return null;
+
+  const nextData = { ...previousData };
+  let posts = Array.isArray(previousData?.posts) ? [...previousData.posts] : [];
+  let quickPostOptions = Array.isArray(previousData?.quickPostOptions)
+    ? [...previousData.quickPostOptions]
+    : Array.isArray(previousData?.quickPosts)
+      ? [...previousData.quickPosts]
+      : [];
+
+  const postId = String(
+    eventPayload?.postId
+      || eventPayload?.post?._id
+      || eventPayload?.quickPostOption?.postId
+      || ''
+  );
+
+  if (eventPayload?.currentQuestionNumber !== undefined && eventPayload?.currentQuestionNumber !== null) {
+    nextData.currentQuestionNumber = eventPayload.currentQuestionNumber;
+  }
+
+  if (eventPayload?.post !== undefined) {
+    if (eventPayload.post) {
+      const incomingPost = eventPayload.post;
+      const existingIndex = posts.findIndex((post) => String(post?._id || '') === String(incomingPost?._id || ''));
+      if (existingIndex >= 0) {
+        posts[existingIndex] = mergeChatPost(posts[existingIndex], incomingPost);
+      } else {
+        posts.push(mergeChatPost({}, incomingPost));
+      }
+    } else if (postId) {
+      posts = posts.filter((post) => String(post?._id || '') !== postId);
+    }
+  }
+
+  if (eventPayload?.quickPostOption !== undefined) {
+    if (eventPayload.quickPostOption) {
+      const incomingOption = eventPayload.quickPostOption;
+      const existingIndex = quickPostOptions.findIndex((option) => String(option?.postId || '') === String(incomingOption?.postId || ''));
+      if (existingIndex >= 0) {
+        quickPostOptions[existingIndex] = mergeQuickPostOption(quickPostOptions[existingIndex], incomingOption);
+      } else {
+        quickPostOptions.push(mergeQuickPostOption({}, incomingOption));
+      }
+    } else if (postId) {
+      quickPostOptions = quickPostOptions.filter((option) => String(option?.postId || '') !== postId);
+    }
+  }
+
+  const currentQuestionNumber = nextData?.currentQuestionNumber ?? null;
+  nextData.posts = sortChatPosts(posts);
+  nextData.quickPostOptions = sortQuickPostOptions(quickPostOptions).filter((option) => (
+    currentQuestionNumber === null || Number(option?.questionNumber || 0) < Number(currentQuestionNumber)
+  ));
+  nextData.quickPosts = buildQuickPostsFromOptions(nextData.quickPostOptions);
+
+  return nextData;
+}
+
+function getResponseMergeKey(response = {}) {
+  const responseId = String(response?._id || '').trim();
+  if (responseId) return `id:${responseId}`;
+
+  return [
+    Number(response?.attempt || 0),
+    String(response?.questionId || ''),
+    String(response?.studentName || ''),
+    String(response?.answer ?? ''),
+    String(response?.answerWysiwyg ?? ''),
+    getTimestampMs(response?.updatedAt || response?.createdAt),
+  ].join('|');
+}
+
+function sortResponsesNewestFirst(responses = []) {
+  return [...responses].sort((a, b) => {
+    const timestampDiff = getTimestampMs(b?.updatedAt || b?.createdAt) - getTimestampMs(a?.updatedAt || a?.createdAt);
+    if (timestampDiff !== 0) return timestampDiff;
+    return String(b?._id || '').localeCompare(String(a?._id || ''));
+  });
+}
+
+function mergeResponsesNewestFirst(existingResponses = [], incomingResponses = []) {
+  const mergedByKey = new Map();
+  [...(Array.isArray(existingResponses) ? existingResponses : []), ...(Array.isArray(incomingResponses) ? incomingResponses : [])]
+    .forEach((response) => {
+      if (!response) return;
+      mergedByKey.set(getResponseMergeKey(response), response);
+    });
+  return sortResponsesNewestFirst([...mergedByKey.values()]);
+}
+
+function applyLiveResponseAddedDelta(previousData, eventPayload = {}) {
+  if (!previousData) return previousData;
+
+  const currentQuestionId = String(previousData?.currentQuestion?._id || previousData?.session?.currentQuestion || '');
+  const payloadQuestionId = String(eventPayload?.questionId || '');
+  if (currentQuestionId && payloadQuestionId && payloadQuestionId !== currentQuestionId) {
+    return previousData;
+  }
+
+  const currentAttemptNumber = Number(previousData?.currentAttempt?.number || 0);
+  const payloadAttemptNumber = Number(eventPayload?.attempt || currentAttemptNumber || 0);
+  if (currentAttemptNumber > 0 && payloadAttemptNumber > 0 && payloadAttemptNumber !== currentAttemptNumber) {
+    return previousData;
+  }
+
+  const nextResponse = eventPayload?.response || null;
+  const nextAllResponses = nextResponse
+    ? mergeResponsesNewestFirst(previousData?.allResponses || [], [nextResponse])
+    : (Array.isArray(previousData?.allResponses) ? previousData.allResponses : []);
+
+  const currentStats = previousData?.responseStats;
+  let nextResponseStats = currentStats;
+
+  if (eventPayload?.responseStats && typeof eventPayload.responseStats === 'object') {
+    if (eventPayload.responseStats.type === 'distribution') {
+      nextResponseStats = eventPayload.responseStats;
+    } else {
+      const existingAnswers = Array.isArray(currentStats?.answers) ? currentStats.answers : [];
+      const mergedAnswers = nextResponse
+        ? mergeResponsesNewestFirst(existingAnswers, [nextResponse])
+        : existingAnswers;
+      nextResponseStats = {
+        ...(currentStats || {}),
+        ...eventPayload.responseStats,
+        ...(mergedAnswers.length > 0 ? { answers: mergedAnswers } : {}),
+      };
+    }
+  } else if (currentStats && nextResponse && ['shortAnswer', 'numerical'].includes(currentStats.type)) {
+    nextResponseStats = {
+      ...currentStats,
+      total: eventPayload?.responseCount ?? currentStats.total,
+      answers: mergeResponsesNewestFirst(currentStats.answers || [], [nextResponse]),
+    };
+  }
+
+  return {
+    ...previousData,
+    responseCount: eventPayload?.responseCount ?? previousData?.responseCount,
+    session: previousData?.session
+      ? {
+        ...previousData.session,
+        joinedCount: eventPayload?.joinedCount ?? previousData.session?.joinedCount,
+      }
+      : previousData?.session,
+    allResponses: nextAllResponses,
+    responseStats: nextResponseStats,
+  };
 }
 
 function collectChatPostIds(chatData = {}) {
@@ -447,6 +672,21 @@ function refreshChatAfterEvent(token, role, reason, expectation = {}, syncContex
   chatEventSyncDuration.add(Math.max(0, result.completedAtMs - baselineMs), metricTags(role));
   chatEventSyncSuccess.add(ok, metricTags(role));
   return result.ok ? result.data : null;
+}
+
+function syncChatAfterEvent(currentData, role, eventPayload, expectation = {}, syncContext = null) {
+  const startedAtMs = Date.now();
+  const nextData = applyChatEventData(currentData, eventPayload);
+  const completedAtMs = Date.now();
+  const ok = Boolean(nextData) && validateChatState(nextData, expectation);
+  const emittedAtMs = parseTimestampMs(syncContext?.emittedAt);
+  const receivedAtMs = Number(syncContext?.receivedAtMs || startedAtMs || Date.now());
+  const baselineMs = emittedAtMs != null && emittedAtMs <= completedAtMs
+    ? emittedAtMs
+    : receivedAtMs;
+  chatEventSyncDuration.add(Math.max(0, completedAtMs - baselineMs), metricTags(role));
+  chatEventSyncSuccess.add(ok, metricTags(role));
+  return nextData;
 }
 
 function mergeSyncContext(existing = null, next = null) {
@@ -840,7 +1080,6 @@ export function professorViewerFlow() {
   let chatData = null;
   let chatEnabled = false;
   let sessionEnded = false;
-  let responseRefreshScheduled = false;
 
   group('professor_viewer_login', () => {
     const start = Date.now();
@@ -874,6 +1113,14 @@ export function professorViewerFlow() {
       if (refreshed) {
         chatData = refreshed;
       }
+    };
+    const applyChatObserver = (eventPayload, reason, expectation = {}, syncContext = null, view = 'live') => {
+      const updated = chatData ? syncChatAfterEvent(chatData, role, eventPayload, expectation, syncContext) : null;
+      if (updated) {
+        chatData = updated;
+        return;
+      }
+      refreshChatObserver(reason, expectation, syncContext, view);
     };
     const scheduleChatObserver = createSocketDebouncer(
       socket,
@@ -944,13 +1191,14 @@ export function professorViewerFlow() {
           refreshLiveObserver('professor_histogram_updated', { requireHistogram: true }, syncContext);
           break;
         case 'session:response-added':
-          if (responseRefreshScheduled) break;
-          responseRefreshScheduled = true;
-          socket.setTimeout(() => {
-            responseRefreshScheduled = false;
-            responseAddedRefreshes.add(1, metricTags(role));
-            refreshLiveObserver('professor_response_added', {}, syncContext);
-          }, RESPONSE_ADDED_REFRESH_MS);
+          liveData = syncLiveAfterEvent(
+            liveData,
+            role,
+            (snapshot) => applyLiveResponseAddedDelta(snapshot, data),
+            {},
+            syncContext,
+          ) || liveData;
+          chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
           break;
         case 'session:metadata-changed':
         case 'session:join-code-changed':
@@ -964,7 +1212,11 @@ export function professorViewerFlow() {
           break;
         case 'session:chat-updated':
           if (chatEnabled) {
-            scheduleChatObserver('professor_chat_updated', {}, syncContext);
+            if (chatData && (data?.post !== undefined || data?.quickPostOption !== undefined)) {
+              applyChatObserver(data, 'professor_chat_updated', {}, syncContext);
+            } else {
+              scheduleChatObserver('professor_chat_updated', {}, syncContext);
+            }
           }
           break;
         default:
@@ -1084,7 +1336,6 @@ export function studentFlow() {
     const completedChatWaves = new Set();
     const ownPostIds = new Set();
     let createdRandomPostCount = 0;
-    let responseRefreshScheduled = false;
     let sessionEnded = false;
 
     const response = ws.connect(wsUrl, {}, (socket) => {
@@ -1221,6 +1472,14 @@ export function studentFlow() {
           chatData = refreshed;
         }
       };
+      const applyChatObserver = (eventPayload, reason, expectation = {}, syncContext = null, view = 'live') => {
+        const updated = chatData ? syncChatAfterEvent(chatData, role, eventPayload, expectation, syncContext) : null;
+        if (updated) {
+          chatData = updated;
+          return;
+        }
+        refreshChatObserver(reason, expectation, syncContext, view);
+      };
       const scheduleChatObserver = createSocketDebouncer(
         socket,
         CHAT_EVENT_REFRESH_DEBOUNCE_MS,
@@ -1327,19 +1586,29 @@ export function studentFlow() {
 
           case 'session:chat-updated':
             if (chatEnabled && watchesChat) {
-              scheduleChatObserver('updated', {}, syncContext);
+              if (chatData && (data?.post !== undefined || data?.quickPostOption !== undefined)) {
+                applyChatObserver(data, 'updated', {}, syncContext);
+              } else {
+                scheduleChatObserver('updated', {}, syncContext);
+              }
             }
             break;
 
           case 'session:response-added':
-            if (responseRefreshScheduled) break;
-            responseRefreshScheduled = true;
-            socket.setTimeout(() => {
-              responseRefreshScheduled = false;
-              responseAddedRefreshes.add(1, metricTags(role));
-              liveData = refreshLiveAfterEvent(token, role, 'response_added_live', {}, syncContext) || liveData;
+            if (data?.responseStats || data?.response || data?.responseCount !== undefined || data?.joinedCount !== undefined) {
+              liveData = syncLiveAfterEvent(
+                liveData,
+                role,
+                (snapshot) => applyLiveResponseAddedDelta(snapshot, data),
+                {},
+                syncContext,
+              ) || liveData;
               chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
-            }, RESPONSE_ADDED_REFRESH_MS);
+              break;
+            }
+            responseAddedRefreshes.add(1, metricTags(role));
+            liveData = refreshLiveAfterEvent(token, role, 'response_added_live', {}, syncContext) || liveData;
+            chatEnabled = SESSION_CHAT_ENABLED && Boolean(liveData?.session?.chatEnabled);
             break;
 
           default:

@@ -31,7 +31,7 @@ import {
 } from '../../contexts/LiveSessionWebSocketContext';
 import useLiveSessionTelemetry from '../../hooks/useLiveSessionTelemetry';
 import { formatToleranceValue } from '../../utils/numericalFormatting';
-import { sortResponsesNewestFirst } from '../../utils/responses';
+import { applyLiveResponseAddedDelta, sortResponsesNewestFirst } from '../../utils/responses';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -212,6 +212,7 @@ function LiveSessionContent() {
   const [submitError, setSubmitError] = useState(null);
   const [activePanel, setActivePanel] = useState('question');
   const [chatRefreshToken, setChatRefreshToken] = useState(0);
+  const [chatEvent, setChatEvent] = useState(null);
   const pendingChatRefreshRef = useRef(false);
 
   // Track current question/attempt to detect changes
@@ -267,7 +268,16 @@ function LiveSessionContent() {
     }, 2000);
   }, [fetchLive]);
 
-  const queueChatRefresh = useCallback(() => {
+  const queueChatRefresh = useCallback((eventPayload = null) => {
+    if (activePanel === 'chat' && eventPayload) {
+      pendingChatRefreshRef.current = false;
+      setChatEvent((prev) => ({
+        id: (prev?.id || 0) + 1,
+        ...eventPayload,
+      }));
+      return;
+    }
+
     if (activePanel === 'chat') {
       pendingChatRefreshRef.current = false;
       setChatRefreshToken((prev) => prev + 1);
@@ -289,7 +299,17 @@ function LiveSessionContent() {
     switch (event) {
       // Students receive this only while joined and live stats are visible.
       case 'session:response-added':
-        scheduleFetchLive(syncContext);
+        if (data?.responseStats || data?.response) {
+          setLiveData((prev) => applyLiveResponseAddedDelta(prev, data));
+          scheduleUiSyncMeasurement({
+            emittedAtMs: syncContext?.emittedAtMs,
+            receivedAtMs: syncContext?.receivedAtMs,
+            success: true,
+            transportOverride: syncContext?.transport,
+          });
+        } else {
+          scheduleFetchLive(syncContext);
+        }
         break;
       case 'session:question-changed':
       case 'session:visibility-changed':
@@ -340,7 +360,7 @@ function LiveSessionContent() {
         });
         break;
       case 'session:chat-updated':
-        queueChatRefresh();
+        queueChatRefresh(data);
         break;
       case 'session:word-cloud-updated':
       case 'session:histogram-updated':
@@ -764,7 +784,9 @@ function LiveSessionContent() {
             sessionId={sessionId}
             enabled={chatEnabled}
             role="student"
+            syncTransport={transport}
             refreshToken={chatRefreshToken}
+            chatEvent={chatEvent}
           />
         ) : (
           <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
@@ -858,7 +880,9 @@ function LiveSessionContent() {
           sessionId={sessionId}
           enabled={chatEnabled}
           role="student"
+          syncTransport={transport}
           refreshToken={chatRefreshToken}
+          chatEvent={chatEvent}
         />
       ) : (
         <>
