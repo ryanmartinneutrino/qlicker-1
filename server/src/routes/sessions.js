@@ -1115,6 +1115,18 @@ function isQuickPostOptionVisible(post, { includeDismissed = false, currentQuest
   return currentQuestionNumber === null || questionNumber < currentQuestionNumber;
 }
 
+function compareChatPosts(a, b) {
+  const aDismissed = !!a?.dismissedAt;
+  const bDismissed = !!b?.dismissedAt;
+  if (aDismissed !== bDismissed) return aDismissed ? 1 : -1;
+
+  const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+  if (voteDiff !== 0) return voteDiff;
+  const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+  if (createdDiff !== 0) return createdDiff;
+  return String(a?._id || '').localeCompare(String(b?._id || ''));
+}
+
 function getChatPostDisplayAuthor(post) {
   const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
   if (post?.isQuickPost) {
@@ -1270,16 +1282,10 @@ async function loadSessionChatPayload({ session, course, request }) {
     .select('authorId authorRole body bodyWysiwyg isQuickPost quickPostQuestionNumber upvoteUserIds upvoteCount comments dismissedAt createdAt updatedAt')
     .lean();
 
-  const includeDismissed = viewMode === 'review' || flags.isInstructorView;
+  const includeDismissed = viewMode === 'review' || (flags.isInstructorView && viewMode === 'live');
   const visiblePosts = posts
     .filter((post) => isChatPostVisible(post, { includeDismissed }))
-    .sort((a, b) => {
-      const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
-      if (voteDiff !== 0) return voteDiff;
-      const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
-      if (createdDiff !== 0) return createdDiff;
-      return String(a?._id || '').localeCompare(String(b?._id || ''));
-    });
+    .sort(compareChatPosts);
 
   const authorNameMap = await buildChatAuthorNameMap(visiblePosts, {
     includeAllAuthors: flags.canViewNames,

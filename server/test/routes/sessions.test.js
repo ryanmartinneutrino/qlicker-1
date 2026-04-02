@@ -4333,6 +4333,81 @@ describe('session chat quick posts', () => {
 
     expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
   });
+
+  it('shows dismissed posts last for professors but hides them from presentation view', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Dismissed Chat Session' });
+    const session = sessionRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const activePost = await Post.create({
+      scopeType: 'session',
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      authorId: String(student._id),
+      authorRole: 'student',
+      body: 'Active question',
+      bodyWysiwyg: '',
+      isQuickPost: false,
+      quickPostQuestionNumber: null,
+      upvoteUserIds: [],
+      upvoteCount: 1,
+      comments: [],
+      dismissedAt: null,
+      dismissedBy: '',
+      createdAt: new Date('2026-04-02T02:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T02:00:00.000Z'),
+    });
+    const dismissedPost = await Post.create({
+      scopeType: 'session',
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      authorId: String(student._id),
+      authorRole: 'student',
+      body: 'Dismissed question',
+      bodyWysiwyg: '',
+      isQuickPost: false,
+      quickPostQuestionNumber: null,
+      upvoteUserIds: [],
+      upvoteCount: 10,
+      comments: [],
+      dismissedAt: new Date('2026-04-02T02:02:00.000Z'),
+      dismissedBy: String(student._id),
+      createdAt: new Date('2026-04-02T02:01:00.000Z'),
+      updatedAt: new Date('2026-04-02T02:02:00.000Z'),
+    });
+
+    const profChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: profToken,
+    });
+    expect(profChatRes.statusCode).toBe(200);
+    expect(profChatRes.json().posts.map((post) => post.body)).toEqual([
+      activePost.body,
+      dismissedPost.body,
+    ]);
+    expect(profChatRes.json().posts[1].dismissed).toBe(true);
+
+    const presentationChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat?view=presentation`, {
+      token: profToken,
+    });
+    expect(presentationChatRes.statusCode).toBe(200);
+    expect(presentationChatRes.json().posts.map((post) => post.body)).toEqual([
+      activePost.body,
+    ]);
+  });
 });
 
 // ---------- Session question ordering integration tests ----------
