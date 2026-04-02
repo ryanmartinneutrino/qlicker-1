@@ -4408,6 +4408,78 @@ describe('session chat quick posts', () => {
       activePost.body,
     ]);
   });
+
+  it('broadcasts null post deltas when a student deletes their own post', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Delete Chat Session' });
+    const session = sessionRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const post = await Post.create({
+      scopeType: 'session',
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      authorId: String(student._id),
+      authorRole: 'student',
+      body: 'Delete me',
+      bodyWysiwyg: '',
+      isQuickPost: false,
+      quickPostQuestionNumber: null,
+      upvoteUserIds: [],
+      upvoteCount: 0,
+      comments: [],
+      dismissedAt: null,
+      dismissedBy: '',
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const deleteRes = await authenticatedRequest(app, 'DELETE', `/api/v1/sessions/${session._id}/chat/posts/${post._id}`, {
+      token: studentToken,
+    });
+
+    expect(deleteRes.statusCode).toBe(200);
+    expect(await Post.findById(post._id)).toBeNull();
+
+    const chatUpdatedCalls = wsSendToUsersSpy.mock.calls.filter(([, event]) => event === 'session:chat-updated');
+    expect(chatUpdatedCalls).toHaveLength(2);
+    expect(chatUpdatedCalls).toEqual(expect.arrayContaining([
+      [
+        [String(prof._id)],
+        'session:chat-updated',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          changeType: 'post-deleted',
+          postId: String(post._id),
+          post: null,
+        }),
+      ],
+      [
+        [String(student._id)],
+        'session:chat-updated',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          changeType: 'post-deleted',
+          postId: String(post._id),
+          post: null,
+        }),
+      ],
+    ]));
+  });
 });
 
 // ---------- Session question ordering integration tests ----------

@@ -6610,7 +6610,7 @@ export default async function sessionRoutes(app) {
       await notifyChatUpdated(app, course, session, {
         changeType: 'post-deleted',
         postId: String(post._id),
-        post,
+        post: null,
       });
 
       return { success: true };
