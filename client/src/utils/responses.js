@@ -92,13 +92,16 @@ export function applyLiveResponseAddedDelta(prev, payload = {}) {
       nextResponseStats = payload.responseStats;
     } else {
       const existingAnswers = Array.isArray(currentStats?.answers) ? currentStats.answers : [];
-      const mergedAnswers = nextResponse
-        ? mergeResponsesNewestFirst(existingAnswers, [nextResponse])
-        : existingAnswers;
+      const payloadAnswers = Array.isArray(payload.responseStats.answers) ? payload.responseStats.answers : null;
+      const mergedAnswers = payloadAnswers
+        ? payloadAnswers
+        : nextResponse
+          ? mergeResponsesNewestFirst(existingAnswers, [nextResponse])
+          : existingAnswers;
       nextResponseStats = {
         ...(currentStats || {}),
         ...payload.responseStats,
-        ...(mergedAnswers.length > 0 ? { answers: mergedAnswers } : {}),
+        ...(mergedAnswers.length > 0 || payloadAnswers ? { answers: mergedAnswers } : {}),
       };
     }
   } else if (currentStats && nextResponse && ['shortAnswer', 'numerical'].includes(currentStats.type)) {

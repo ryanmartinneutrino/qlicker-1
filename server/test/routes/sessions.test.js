@@ -2845,6 +2845,119 @@ describe('Live session websocket delta events', () => {
     expect(responseCalls.some(([userIds]) => userIds.includes(String(spectator._id)))).toBe(false);
   });
 
+  it('includes complete short-answer stats in response-added deltas', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 2,
+      content: '<p>Visible short answer stats question</p>',
+      plainText: 'Visible short answer stats question',
+      sessionId: session._id,
+      courseId: course._id,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: 'Delta answer', answerWysiwyg: '<p>Delta answer</p>' },
+    });
+
+    expect(respondRes.statusCode).toBe(201);
+    const instructorResponseCall = wsSendToUsersSpy.mock.calls.find(([userIds, event]) => (
+      event === 'session:response-added' && userIds.includes(String(prof._id))
+    ));
+    expect(instructorResponseCall).toBeDefined();
+
+    const [, , payload] = instructorResponseCall;
+    expect(payload.responseStats).toEqual(expect.objectContaining({
+      type: 'shortAnswer',
+      total: 1,
+      answers: [
+        expect.objectContaining({
+          answer: 'Delta answer',
+          answerWysiwyg: '<p>Delta answer</p>',
+        }),
+      ],
+    }));
+    expect(payload.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+    expect(payload.response).toEqual(expect.objectContaining({
+      answer: 'Delta answer',
+      studentName: expect.any(String),
+    }));
+  });
+
+  it('includes complete numerical stats in response-added deltas', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 4,
+      content: '<p>Visible numerical stats question</p>',
+      plainText: 'Visible numerical stats question',
+      sessionId: session._id,
+      courseId: course._id,
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: '7.5' },
+    });
+
+    expect(respondRes.statusCode).toBe(201);
+    const instructorResponseCall = wsSendToUsersSpy.mock.calls.find(([userIds, event]) => (
+      event === 'session:response-added' && userIds.includes(String(prof._id))
+    ));
+    expect(instructorResponseCall).toBeDefined();
+
+    const [, , payload] = instructorResponseCall;
+    expect(payload.responseStats).toEqual(expect.objectContaining({
+      type: 'numerical',
+      total: 1,
+      values: [7.5],
+      answers: [
+        expect.objectContaining({
+          answer: '7.5',
+        }),
+      ],
+      mean: 7.5,
+      stdev: 0,
+      median: 7.5,
+      min: 7.5,
+      max: 7.5,
+    }));
+    expect(payload.responseStats.answers[0]).not.toHaveProperty('studentUserId');
+  });
+
   it('tracks live response counts on the session and resets the question attempt counter on new attempts', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, studentToken } = await setupCourseWithStudent();

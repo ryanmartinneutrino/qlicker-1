@@ -1958,8 +1958,15 @@ function buildResponseAddedStatsDelta(question, attemptNumber) {
   }
 
   if (entry.type === 'shortAnswer') {
+    const answers = sortResponseEntriesNewestFirst(entry.answers || []);
     return {
       type: 'shortAnswer',
+      answers: answers.map((item) => ({
+        answer: item?.answer,
+        answerWysiwyg: item?.answerWysiwyg || '',
+        createdAt: item?.createdAt || null,
+        updatedAt: item?.updatedAt || null,
+      })),
       total: Number(entry.total || 0),
     };
   }
@@ -1982,6 +1989,12 @@ function buildResponseAddedStatsDelta(question, attemptNumber) {
 
     return {
       type: 'numerical',
+      values,
+      answers: sortResponseEntriesNewestFirst(entry.answers || []).map((item) => ({
+        answer: item?.answer,
+        createdAt: item?.createdAt || null,
+        updatedAt: item?.updatedAt || null,
+      })),
       total,
       mean: Math.round(mean * 100) / 100,
       stdev: Math.round(Math.sqrt(variance) * 100) / 100,
@@ -5088,6 +5101,7 @@ export default async function sessionRoutes(app) {
             questions: session.questions,
             currentQuestion: session.currentQuestion,
             joinedCount: (session.joined || []).length,
+            ...(!presentationView ? { joined: Array.isArray(session.joined) ? session.joined : [] } : {}),
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             chatEnabled: session.chatEnabled,
