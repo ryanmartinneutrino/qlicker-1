@@ -230,6 +230,64 @@ describe('SessionChatPanel', () => {
     });
   });
 
+  it('removes a post immediately when a delete chat event arrives', async () => {
+    const initialData = {
+      canPost: true,
+      canVote: true,
+      canDeleteOwnPost: true,
+      canDismiss: false,
+      canComment: true,
+      canViewNames: false,
+      quickPosts: [],
+      posts: [
+        {
+          _id: 'normal-own-post',
+          body: 'My normal post',
+          bodyWysiwyg: '',
+          createdAt: null,
+          updatedAt: null,
+          upvoteCount: 0,
+          viewerHasUpvoted: false,
+          isOwnPost: true,
+          isQuickPost: false,
+          dismissed: false,
+          authorRole: 'student',
+          authorName: null,
+          comments: [],
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+        initialData={initialData}
+      />
+    );
+
+    expect(screen.getByText('My normal post')).toBeInTheDocument();
+
+    rerender(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+        initialData={initialData}
+        chatEvent={{
+          changeType: 'post-deleted',
+          postId: 'normal-own-post',
+          post: null,
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('My normal post')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows delete and dismiss controls for professors on any live post', async () => {
     apiClient.get.mockResolvedValue({
       data: {
