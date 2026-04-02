@@ -5101,6 +5101,7 @@ export default async function sessionRoutes(app) {
             questions: session.questions,
             currentQuestion: session.currentQuestion,
             joinedCount: (session.joined || []).length,
+            ...(!presentationView ? { joined: Array.isArray(session.joined) ? session.joined : [] } : {}),
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             chatEnabled: session.chatEnabled,
