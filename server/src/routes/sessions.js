@@ -1064,24 +1064,20 @@ function getChatPermissionFlags({ session, course, request, viewMode }) {
   };
 }
 
-async function buildChatAuthorNameMap(posts, { includeAllAuthors = false } = {}) {
+async function buildChatAuthorMetadataMap(posts, { includeAllAuthors = false } = {}) {
   const userIds = new Set();
 
   posts.forEach((post) => {
     if (!post) return;
     const displayAuthor = getChatPostDisplayAuthor(post);
-    if (includeAllAuthors || ['admin', 'instructor'].includes(displayAuthor.authorRole)) {
-      if (displayAuthor.authorId) userIds.add(String(displayAuthor.authorId));
-    }
+    if (displayAuthor.authorId) userIds.add(String(displayAuthor.authorId));
     if (includeAllAuthors) {
       (post.upvoteUserIds || []).forEach((userId) => {
         if (userId) userIds.add(String(userId));
       });
     }
     (post.comments || []).forEach((comment) => {
-      if (includeAllAuthors || ['admin', 'instructor'].includes(comment.authorRole)) {
-        if (comment.authorId) userIds.add(String(comment.authorId));
-      }
+      if (comment.authorId) userIds.add(String(comment.authorId));
     });
   });
 
@@ -1089,15 +1085,27 @@ async function buildChatAuthorNameMap(posts, { includeAllAuthors = false } = {})
   if (ids.length === 0) return new Map();
 
   const users = await User.find({ _id: { $in: ids } })
-    .select('_id profile emails email')
+    .select('_id profile emails email roles')
     .lean();
 
-  return new Map(users.map((user) => [String(user._id), formatUserDisplayName(user)]));
+  return new Map(users.map((user) => [
+    String(user._id),
+    {
+      displayName: formatUserDisplayName(user),
+      canExposeName: (user.roles || []).some((role) => role === 'professor' || role === 'admin'),
+    },
+  ]));
 }
 
-function shouldExposeChatAuthorName(authorRole, includeNames) {
+function getChatAuthorDisplayName(authorMetadataMap, authorId) {
+  return authorMetadataMap.get(authorId)?.displayName || null;
+}
+
+function shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap) {
   if (includeNames) return true;
-  return authorRole === 'admin' || authorRole === 'instructor';
+  if (!authorId) return false;
+  if (authorId === viewerUserId) return true;
+  return !!authorMetadataMap.get(authorId)?.canExposeName;
 }
 
 function isChatPostVisible(post, { includeDismissed = false } = {}) {
@@ -1146,7 +1154,7 @@ function getChatPostDisplayAuthor(post) {
 function serializeChatComment(comment, {
   includeNames = false,
   viewerUserId = '',
-  authorNameMap = new Map(),
+  authorMetadataMap = new Map(),
 }) {
   const authorRole = normalizeAnswerValue(comment?.authorRole) || 'student';
   const authorId = normalizeAnswerValue(comment?.authorId);
@@ -1158,8 +1166,8 @@ function serializeChatComment(comment, {
     updatedAt: comment?.updatedAt || null,
     isOwnComment: authorId && authorId === viewerUserId,
     authorRole,
-    authorName: shouldExposeChatAuthorName(authorRole, includeNames)
-      ? (authorNameMap.get(authorId) || null)
+    authorName: shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap)
+      ? getChatAuthorDisplayName(authorMetadataMap, authorId)
       : null,
   };
 }
@@ -1168,7 +1176,7 @@ function serializeChatPost(post, {
   includeNames = false,
   includeDismissed = false,
   viewerUserId = '',
-  authorNameMap = new Map(),
+  authorMetadataMap = new Map(),
 }) {
   const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
   const upvoteCount = Number(post?.upvoteCount);
@@ -1190,19 +1198,19 @@ function serializeChatPost(post, {
     dismissed: !!post?.dismissedAt,
     dismissedAt: includeDismissed ? (post?.dismissedAt || null) : null,
     authorRole,
-    authorName: shouldExposeChatAuthorName(authorRole, includeNames)
-      ? (authorNameMap.get(authorId) || null)
+    authorName: shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap)
+      ? getChatAuthorDisplayName(authorMetadataMap, authorId)
       : null,
     upvoterUserIds: includeNames ? upvoteUserIds : undefined,
     upvoterNames: includeNames
       ? upvoteUserIds
-        .map((userId) => authorNameMap.get(userId) || null)
+        .map((userId) => getChatAuthorDisplayName(authorMetadataMap, userId))
         .filter(Boolean)
       : undefined,
     comments: comments.map((comment) => serializeChatComment(comment, {
       includeNames,
       viewerUserId,
-      authorNameMap,
+      authorMetadataMap,
     })),
   };
 }
@@ -1222,7 +1230,7 @@ function buildChatEventDelta(post, {
   includeNames = false,
   includeDismissed = false,
   currentQuestionNumber = null,
-  authorNameMap = new Map(),
+  authorMetadataMap = new Map(),
 } = {}) {
   const delta = {};
 
@@ -1232,7 +1240,7 @@ function buildChatEventDelta(post, {
         includeNames,
         includeDismissed,
         viewerUserId: '',
-        authorNameMap,
+        authorMetadataMap,
       });
       delete serializedPost.viewerHasUpvoted;
       delete serializedPost.isOwnPost;
@@ -1287,7 +1295,7 @@ async function loadSessionChatPayload({ session, course, request }) {
     .filter((post) => isChatPostVisible(post, { includeDismissed }))
     .sort(compareChatPosts);
 
-  const authorNameMap = await buildChatAuthorNameMap(visiblePosts, {
+  const authorMetadataMap = await buildChatAuthorMetadataMap(visiblePosts, {
     includeAllAuthors: flags.canViewNames,
   });
   const currentQuestionNumber = questionMetadata.currentQuestionNumber;
@@ -1296,7 +1304,7 @@ async function loadSessionChatPayload({ session, course, request }) {
     includeNames: flags.canViewNames,
     includeDismissed,
     viewerUserId,
-    authorNameMap,
+    authorMetadataMap,
   }));
 
   const quickPosts = serializedPosts
@@ -1330,6 +1338,8 @@ async function loadSessionChatPayload({ session, course, request }) {
     canComment: flags.canWrite,
     canVote: flags.canWrite && !flags.isInstructorView,
     canDeleteOwnPost: flags.canWrite,
+    canDeleteOwnComment: flags.canWrite,
+    canDeleteAnyComment: flags.canModerate,
     canDismiss: flags.canModerate,
     canViewNames: flags.canViewNames,
     posts: serializedPosts,
@@ -1944,27 +1954,20 @@ function serializeLiveResponseEntry(response, { studentName = null } = {}) {
   return entry;
 }
 
-function buildResponseAddedStatsDelta(question, attemptNumber) {
+async function buildResponseAddedStatsDelta(question, attemptNumber, responseCount = null) {
   if (!question?.sessionOptions?.stats) return null;
 
-  const entry = getAttemptStatsEntry(question, attemptNumber);
-  if (!entry) return null;
+  const normalizedAttemptNumber = Number(attemptNumber) || 1;
+  const cachedEntry = getAttemptStatsEntry(question, normalizedAttemptNumber);
+  const expectedCount = Number(responseCount);
+  const responseStats = cachedEntry
+    && (responseCount == null || isCanonicalAttemptStatsEntry(question, cachedEntry, expectedCount))
+    ? materializeAttemptStatsEntry(cachedEntry)
+    : await getQuestionAttemptStats(question, normalizedAttemptNumber);
+  if (!responseStats) return null;
 
-  if (entry.type === 'distribution') {
-    return {
-      type: 'distribution',
-      distribution: (entry.distribution || []).map((item) => ({
-        index: Number(item?.index) || 0,
-        answer: item?.answer || '',
-        correct: !!item?.correct,
-        count: Number(item?.count || 0),
-      })),
-      total: Number(entry.total || 0),
-    };
-  }
-
-  if (entry.type === 'shortAnswer') {
-    const answers = sortResponseEntriesNewestFirst(entry.answers || []);
+  if (responseStats.type === 'shortAnswer') {
+    const answers = sortResponseEntriesNewestFirst(responseStats.answers || []);
     return {
       type: 'shortAnswer',
       answers: answers.map((item) => ({
@@ -1973,47 +1976,22 @@ function buildResponseAddedStatsDelta(question, attemptNumber) {
         createdAt: item?.createdAt || null,
         updatedAt: item?.updatedAt || null,
       })),
-      total: Number(entry.total || 0),
+      total: Number(responseStats.total || 0),
     };
   }
 
-  if (entry.type === 'numerical') {
-    const values = (entry.values || [])
-      .map((value) => Number(value))
-      .filter((value) => !Number.isNaN(value))
-      .sort((a, b) => a - b);
-    const total = Number(entry.total || values.length || 0);
-    const sum = Number.isFinite(Number(entry.sum))
-      ? Number(entry.sum)
-      : values.reduce((acc, value) => acc + value, 0);
-    const sumSquares = Number.isFinite(Number(entry.sumSquares))
-      ? Number(entry.sumSquares)
-      : values.reduce((acc, value) => acc + (value * value), 0);
-    const mean = total > 0 ? sum / total : 0;
-    const variance = total > 0 ? Math.max(0, (sumSquares / total) - (mean ** 2)) : 0;
-    const median = values.length > 0 ? values[Math.floor(values.length / 2)] : 0;
-
+  if (responseStats.type === 'numerical') {
     return {
-      type: 'numerical',
-      values,
-      answers: sortResponseEntriesNewestFirst(entry.answers || []).map((item) => ({
+      ...responseStats,
+      answers: sortResponseEntriesNewestFirst(responseStats.answers || []).map((item) => ({
         answer: item?.answer,
         createdAt: item?.createdAt || null,
         updatedAt: item?.updatedAt || null,
       })),
-      total,
-      mean: Math.round(mean * 100) / 100,
-      stdev: Math.round(Math.sqrt(variance) * 100) / 100,
-      median,
-      min: values.length > 0 ? Number(entry.min ?? values[0]) : 0,
-      max: values.length > 0 ? Number(entry.max ?? values[values.length - 1]) : 0,
     };
   }
 
-  return {
-    type: entry.type,
-    total: Number(entry.total || 0),
-  };
+  return responseStats;
 }
 
 async function ensureQuestionAttemptStatsEntry(question, attemptNumber) {
@@ -2545,7 +2523,7 @@ async function notifyResponseAdded(app, course, session, data, { includeStudents
   const attempt = Number(data?.attempt || response?.attempt || 1);
   const questionType = normalizeQuestionType(question);
   const includesResponseEntry = [2, 4].includes(questionType);
-  const responseStats = buildResponseAddedStatsDelta(question, attempt);
+  const responseStats = await buildResponseAddedStatsDelta(question, attempt, data?.responseCount);
 
   let instructorResponse = null;
   if (response && includesResponseEntry) {
@@ -2715,8 +2693,8 @@ async function notifyChatUpdated(app, course, session, payload = {}) {
     currentQuestionNumber = (await loadSessionChatQuestionMetadata(session)).currentQuestionNumber;
   }
 
-  const authorNameMap = post
-    ? await buildChatAuthorNameMap([post], { includeAllAuthors: true })
+  const authorMetadataMap = post
+    ? await buildChatAuthorMetadataMap([post], { includeAllAuthors: true })
     : new Map();
   const basePayload = {
     courseId: String(course._id),
@@ -2738,7 +2716,7 @@ async function notifyChatUpdated(app, course, session, payload = {}) {
       includeNames: true,
       includeDismissed: true,
       currentQuestionNumber,
-      authorNameMap,
+      authorMetadataMap,
     }),
   });
   sendToJoinedStudents(app, session, 'session:chat-updated', {
@@ -2747,7 +2725,7 @@ async function notifyChatUpdated(app, course, session, payload = {}) {
       includeNames: false,
       includeDismissed: false,
       currentQuestionNumber,
-      authorNameMap,
+      authorMetadataMap,
     }),
   });
 }
@@ -5980,7 +5958,18 @@ export default async function sessionRoutes(app) {
   // POST /sessions/:id/refresh-join-code - Generate a new join code
   app.post(
     '/sessions/:id/refresh-join-code',
-    { preHandler: authenticate },
+    {
+      preHandler: authenticate,
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            force: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+    },
     async (request, reply) => {
       const session = await Session.findById(request.params.id).lean();
       if (!session) {
@@ -6006,22 +5995,66 @@ export default async function sessionRoutes(app) {
         return reply.code(400).send({ error: 'Bad Request', message: 'Join period is closed' });
       }
 
+      const force = !!request.body?.force;
       const now = new Date();
-      const code = generateJoinCode();
-      const updated = await Session.findByIdAndUpdate(
-        request.params.id,
+      const currentExpiryMs = new Date(session.joinCodeExpiresAt || 0).getTime();
+      if (!force && session.currentJoinCode && currentExpiryMs > now.getTime()) {
+        return { joinCode: session.currentJoinCode, expiresAt: session.joinCodeExpiresAt };
+      }
+
+      const updated = await Session.findOneAndUpdate(
+        force
+          ? {
+            _id: request.params.id,
+            status: 'running',
+            joinCodeEnabled: true,
+            joinCodeActive: true,
+            currentJoinCode: session.currentJoinCode || '',
+            joinCodeExpiresAt: session.joinCodeExpiresAt || null,
+          }
+          : {
+            _id: request.params.id,
+            status: 'running',
+            joinCodeEnabled: true,
+            joinCodeActive: true,
+            $or: [
+              { currentJoinCode: { $in: ['', null] } },
+              { joinCodeExpiresAt: null },
+              { joinCodeExpiresAt: { $lte: now } },
+            ],
+          },
         {
           $set: {
-            currentJoinCode: code,
+            currentJoinCode: generateJoinCode(),
             joinCodeExpiresAt: new Date(now.getTime() + (session.joinCodeInterval || 10) * 1000),
           },
         },
         { returnDocument: 'after' }
       );
 
+      if (!updated) {
+        const currentSession = await Session.findById(request.params.id).lean();
+        if (!currentSession) {
+          return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+        }
+        if (currentSession.status !== 'running') {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Session is not live' });
+        }
+        if (!currentSession.joinCodeEnabled) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Passcode is not required for this session' });
+        }
+        if (!currentSession.joinCodeActive) {
+          return reply.code(400).send({ error: 'Bad Request', message: 'Join period is closed' });
+        }
+        return {
+          joinCode: currentSession.currentJoinCode,
+          expiresAt: currentSession.joinCodeExpiresAt,
+        };
+      }
+
       notifyJoinCodeChanged(app, course, updated);
 
-      return { joinCode: code, expiresAt: updated.joinCodeExpiresAt };
+      return { joinCode: updated.currentJoinCode, expiresAt: updated.joinCodeExpiresAt };
     }
   );
 
@@ -6617,6 +6650,71 @@ export default async function sessionRoutes(app) {
     }
   );
 
+  app.delete(
+    '/sessions/:id/chat/posts/:postId/comments/:commentId',
+    {
+      preHandler: authenticate,
+      rateLimit: { max: 40, timeWindow: '1 minute' },
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const { session, course } = await loadSessionChatContext(request.params.id);
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+      if (!isCourseMember(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Not a member of this course' });
+      }
+
+      const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
+      const flags = getChatPermissionFlags({ session, course, request, viewMode });
+      if (!flags.canWrite && !flags.isInstructorView) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Comment deletion is not available' });
+      }
+
+      const post = await Post.findOne({
+        _id: request.params.postId,
+        scopeType: 'session',
+        sessionId: String(session._id),
+      }).lean();
+      if (!post) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Post not found' });
+      }
+
+      const comment = (post.comments || []).find(
+        (entry) => String(entry?._id || '') === String(request.params.commentId || '')
+      );
+      if (!comment) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Comment not found' });
+      }
+
+      const ownsComment = String(comment.authorId || '') === String(request.user.userId || '');
+      if (!flags.isInstructorView && !ownsComment) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'You can only delete your own comments' });
+      }
+
+      const updated = await Post.findByIdAndUpdate(
+        post._id,
+        {
+          $pull: { comments: { _id: String(comment._id) } },
+          $set: { updatedAt: new Date() },
+        },
+        { returnDocument: 'after' }
+      ).lean();
+
+      await notifyChatUpdated(app, course, session, {
+        changeType: 'comment-deleted',
+        postId: String(post._id),
+        post: updated,
+      });
+
+      return { success: true, postId: String(post._id), commentId: String(comment._id) };
+    }
+  );
+
   // GET /sessions/:id/results - Get full session results (prof only) for review/CSV
   app.get(
     '/sessions/:id/results',
@@ -6742,12 +6840,12 @@ export default async function sessionRoutes(app) {
             if (voteDiff !== 0) return voteDiff;
             return getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
           });
-        const authorNameMap = await buildChatAuthorNameMap(visiblePosts, { includeAllAuthors: true });
+        const authorMetadataMap = await buildChatAuthorMetadataMap(visiblePosts, { includeAllAuthors: true });
         chatPosts = visiblePosts.map((post) => serializeChatPost(post, {
           includeNames: true,
           includeDismissed: true,
           viewerUserId: String(request.user.userId || ''),
-          authorNameMap,
+          authorMetadataMap,
         }));
       }
 

@@ -33,7 +33,7 @@ vi.mock('../questions/richTextUtils', () => ({
 
 describe('SessionChatPanel', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     i18n.changeLanguage('en');
     apiClient.get.mockResolvedValue({
       data: {
@@ -228,6 +228,200 @@ describe('SessionChatPanel', () => {
     await waitFor(() => {
       expect(apiClient.delete).toHaveBeenCalledWith('/sessions/session-1/chat/posts/normal-own-post');
     });
+  });
+
+  it('refetches after a student creates a post over websocket transport so own names stay personalized', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({
+        data: {
+          canPost: true,
+          canVote: false,
+          canDeleteOwnPost: true,
+          canDeleteOwnComment: true,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: false,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          canPost: true,
+          canVote: false,
+          canDeleteOwnPost: true,
+          canDeleteOwnComment: true,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: false,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [
+            {
+              _id: 'own-post',
+              body: 'My named post',
+              bodyWysiwyg: '',
+              createdAt: null,
+              updatedAt: null,
+              upvoteCount: 0,
+              viewerHasUpvoted: false,
+              isOwnPost: true,
+              isQuickPost: false,
+              dismissed: false,
+              authorRole: 'student',
+              authorName: 'Student One',
+              comments: [],
+            },
+          ],
+        },
+      });
+    apiClient.post.mockResolvedValue({ data: { success: true, postId: 'own-post' } });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+        syncTransport="websocket"
+      />
+    );
+
+    expect(await screen.findByText('No posts yet.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Write a post' }));
+    fireEvent.change(screen.getByLabelText('Session chat post editor'), { target: { value: 'My named post' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Post' }));
+
+    await waitFor(() => {
+      expect(apiClient.post).toHaveBeenCalledWith('/sessions/session-1/chat/posts', {
+        body: 'My named post',
+        bodyWysiwyg: 'My named post',
+      });
+    });
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText('Student One')).toBeInTheDocument();
+  });
+
+  it('lets students delete their own comments', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({
+        data: {
+          canPost: false,
+          canVote: false,
+          canDeleteOwnPost: false,
+          canDeleteOwnComment: true,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: true,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [
+            {
+              _id: 'post-1',
+              body: 'Post with comments',
+              bodyWysiwyg: '',
+              createdAt: null,
+              updatedAt: null,
+              upvoteCount: 0,
+              viewerHasUpvoted: false,
+              isOwnPost: false,
+              isQuickPost: false,
+              dismissed: false,
+              authorRole: 'student',
+              authorName: null,
+              comments: [
+                {
+                  _id: 'comment-own',
+                  body: 'My comment',
+                  bodyWysiwyg: '',
+                  createdAt: null,
+                  updatedAt: null,
+                  isOwnComment: true,
+                  authorRole: 'student',
+                  authorName: 'Student One',
+                },
+                {
+                  _id: 'comment-other',
+                  body: 'Other comment',
+                  bodyWysiwyg: '',
+                  createdAt: null,
+                  updatedAt: null,
+                  isOwnComment: false,
+                  authorRole: 'student',
+                  authorName: null,
+                },
+              ],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          canPost: false,
+          canVote: false,
+          canDeleteOwnPost: false,
+          canDeleteOwnComment: true,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: true,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [
+            {
+              _id: 'post-1',
+              body: 'Post with comments',
+              bodyWysiwyg: '',
+              createdAt: null,
+              updatedAt: null,
+              upvoteCount: 0,
+              viewerHasUpvoted: false,
+              isOwnPost: false,
+              isQuickPost: false,
+              dismissed: false,
+              authorRole: 'student',
+              authorName: null,
+              comments: [
+                {
+                  _id: 'comment-other',
+                  body: 'Other comment',
+                  bodyWysiwyg: '',
+                  createdAt: null,
+                  updatedAt: null,
+                  isOwnComment: false,
+                  authorRole: 'student',
+                  authorName: null,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    apiClient.delete.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+      />
+    );
+
+    expect(await screen.findByText('Post with comments')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
+    expect(deleteButtons).toHaveLength(1);
+    fireEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(apiClient.delete).toHaveBeenCalledWith('/sessions/session-1/chat/posts/post-1/comments/comment-own');
+    });
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByText('My comment')).not.toBeInTheDocument();
   });
 
   it('removes a post immediately when a delete chat event arrives', async () => {
