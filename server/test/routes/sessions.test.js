@@ -2777,7 +2777,7 @@ describe('Live session websocket delta events', () => {
     expect(studentCall[2].currentJoinCode).toBeUndefined();
   });
 
-  it('reuses the same active join code for duplicate automatic refreshes', async (ctx) => {
+  it('returns the same join code for concurrent automatic refresh requests', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { prof, profToken, course, student } = await setupCourseWithStudent();
     const sessRes = await createSessionInCourse(profToken, course._id);

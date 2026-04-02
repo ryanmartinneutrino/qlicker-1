@@ -1092,9 +1092,13 @@ async function buildChatAuthorMetadataMap(posts, { includeAllAuthors = false } =
     String(user._id),
     {
       displayName: formatUserDisplayName(user),
-      canExposeName: (user.roles || []).some((role) => role === 'professor' || role === 'admin'),
+      canExposeName: userHasPublicChatAuthorRole(user),
     },
   ]));
+}
+
+function userHasPublicChatAuthorRole(user) {
+  return (user?.roles || []).some((role) => role === 'professor' || role === 'admin');
 }
 
 function getChatAuthorDisplayName(authorMetadataMap, authorId) {
