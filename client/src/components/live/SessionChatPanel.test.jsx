@@ -288,4 +288,182 @@ describe('SessionChatPanel', () => {
     expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2);
   });
+
+  it('keeps dismissed posts last in professor live chat updates', async () => {
+    vi.useFakeTimers();
+    apiClient.get.mockResolvedValue({
+      data: {
+        viewMode: 'live',
+        canPost: false,
+        canVote: false,
+        canDeleteOwnPost: false,
+        canDismiss: true,
+        canComment: false,
+        canViewNames: true,
+        quickPosts: [],
+        posts: [],
+      },
+    });
+
+    const initialData = {
+      viewMode: 'live',
+      canPost: false,
+      canVote: false,
+      canDeleteOwnPost: false,
+      canDismiss: true,
+      canComment: false,
+      canViewNames: true,
+      quickPosts: [],
+      posts: [
+        {
+          _id: 'active-post',
+          body: 'Active post',
+          bodyWysiwyg: '',
+          createdAt: '2026-04-02T02:00:00.000Z',
+          updatedAt: '2026-04-02T02:00:00.000Z',
+          upvoteCount: 1,
+          viewerHasUpvoted: false,
+          isOwnPost: false,
+          isQuickPost: false,
+          dismissed: false,
+          authorRole: 'student',
+          authorName: 'Student One',
+          comments: [],
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="professor"
+        initialData={initialData}
+      />
+    );
+
+    expect(screen.getByText('Active post')).toBeInTheDocument();
+
+    rerender(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="professor"
+        initialData={initialData}
+        chatEvent={{
+          postId: 'dismissed-post',
+          post: {
+            _id: 'dismissed-post',
+            body: 'Dismissed post',
+            bodyWysiwyg: '',
+            createdAt: '2026-04-02T02:01:00.000Z',
+            updatedAt: '2026-04-02T02:01:00.000Z',
+            upvoteCount: 10,
+            viewerHasUpvoted: false,
+            isOwnPost: false,
+            isQuickPost: false,
+            dismissed: true,
+            dismissedAt: '2026-04-02T02:02:00.000Z',
+            authorRole: 'student',
+            authorName: 'Student Two',
+            comments: [],
+          },
+        }}
+      />
+    );
+
+    const activePost = screen.getByText('Active post');
+    const dismissedPost = screen.getByText('Dismissed post');
+    expect(activePost.compareDocumentPosition(dismissedPost) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    vi.useRealTimers();
+  });
+
+  it('filters dismissed posts from presentation chat updates', async () => {
+    vi.useFakeTimers();
+    apiClient.get.mockResolvedValue({
+      data: {
+        viewMode: 'presentation',
+        canPost: false,
+        canVote: false,
+        canDeleteOwnPost: false,
+        canDismiss: false,
+        canComment: false,
+        canViewNames: false,
+        quickPosts: [],
+        posts: [],
+      },
+    });
+
+    const initialData = {
+      viewMode: 'presentation',
+      canPost: false,
+      canVote: false,
+      canDeleteOwnPost: false,
+      canDismiss: false,
+      canComment: false,
+      canViewNames: false,
+      quickPosts: [],
+      posts: [
+        {
+          _id: 'active-post',
+          body: 'Visible post',
+          bodyWysiwyg: '',
+          createdAt: '2026-04-02T02:00:00.000Z',
+          updatedAt: '2026-04-02T02:00:00.000Z',
+          upvoteCount: 1,
+          viewerHasUpvoted: false,
+          isOwnPost: false,
+          isQuickPost: false,
+          dismissed: false,
+          authorRole: 'student',
+          authorName: null,
+          comments: [],
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="presentation"
+        view="presentation"
+        initialData={initialData}
+      />
+    );
+
+    expect(screen.getByText('Visible post')).toBeInTheDocument();
+
+    rerender(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="presentation"
+        view="presentation"
+        initialData={initialData}
+        chatEvent={{
+          postId: 'dismissed-post',
+          post: {
+            _id: 'dismissed-post',
+            body: 'Hidden dismissed post',
+            bodyWysiwyg: '',
+            createdAt: '2026-04-02T02:01:00.000Z',
+            updatedAt: '2026-04-02T02:01:00.000Z',
+            upvoteCount: 20,
+            viewerHasUpvoted: false,
+            isOwnPost: false,
+            isQuickPost: false,
+            dismissed: true,
+            dismissedAt: '2026-04-02T02:02:00.000Z',
+            authorRole: 'student',
+            authorName: null,
+            comments: [],
+          },
+        }}
+      />
+    );
+
+    expect(screen.queryByText('Hidden dismissed post')).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
 });

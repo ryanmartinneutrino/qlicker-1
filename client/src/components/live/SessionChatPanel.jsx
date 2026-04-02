@@ -53,14 +53,24 @@ function getTimestampMs(value) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function compareChatPosts(a, b) {
+  const aDismissed = !!(a?.dismissed || a?.dismissedAt);
+  const bDismissed = !!(b?.dismissed || b?.dismissedAt);
+  if (aDismissed !== bDismissed) return aDismissed ? 1 : -1;
+
+  const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
+  if (voteDiff !== 0) return voteDiff;
+  const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
+  if (createdDiff !== 0) return createdDiff;
+  return String(a?._id || '').localeCompare(String(b?._id || ''));
+}
+
 function sortChatPosts(posts = []) {
-  return [...posts].sort((a, b) => {
-    const voteDiff = (Number(b?.upvoteCount) || 0) - (Number(a?.upvoteCount) || 0);
-    if (voteDiff !== 0) return voteDiff;
-    const createdDiff = getTimestampMs(a?.createdAt) - getTimestampMs(b?.createdAt);
-    if (createdDiff !== 0) return createdDiff;
-    return String(a?._id || '').localeCompare(String(b?._id || ''));
-  });
+  return [...posts].sort(compareChatPosts);
+}
+
+function shouldIncludeDismissedPosts(chatData = {}) {
+  return chatData?.viewMode === 'review' || !!chatData?.canDismiss;
 }
 
 function sortQuickPostOptions(options = []) {
@@ -103,6 +113,7 @@ function applyChatEventData(previousData, eventPayload) {
   if (!previousData || !eventPayload) return null;
 
   const nextData = { ...previousData };
+  const includeDismissedPosts = shouldIncludeDismissedPosts(previousData);
   let posts = Array.isArray(previousData?.posts) ? [...previousData.posts] : [];
   let quickPostOptions = Array.isArray(previousData?.quickPostOptions)
     ? [...previousData.quickPostOptions]
@@ -124,11 +135,19 @@ function applyChatEventData(previousData, eventPayload) {
   if (eventPayload?.post !== undefined) {
     if (eventPayload.post) {
       const incomingPost = eventPayload.post;
-      const existingIndex = posts.findIndex((post) => String(post?._id || '') === String(incomingPost?._id || ''));
-      if (existingIndex >= 0) {
-        posts[existingIndex] = mergeChatPost(posts[existingIndex], incomingPost);
-      } else {
-        posts.push(mergeChatPost({}, incomingPost));
+      const mergedPost = mergeChatPost(
+        posts.find((post) => String(post?._id || '') === String(incomingPost?._id || '')) || {},
+        incomingPost
+      );
+      if (includeDismissedPosts || !mergedPost?.dismissed) {
+        const existingIndex = posts.findIndex((post) => String(post?._id || '') === String(incomingPost?._id || ''));
+        if (existingIndex >= 0) {
+          posts[existingIndex] = mergedPost;
+        } else {
+          posts.push(mergedPost);
+        }
+      } else if (postId) {
+        posts = posts.filter((post) => String(post?._id || '') !== postId);
       }
     } else if (postId) {
       posts = posts.filter((post) => String(post?._id || '') !== postId);
