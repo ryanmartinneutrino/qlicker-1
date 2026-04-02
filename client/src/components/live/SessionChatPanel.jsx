@@ -394,6 +394,8 @@ export default function SessionChatPanel({
   const canDismiss = !!chatData?.canDismiss && role === 'professor';
   const canComment = !!chatData?.canComment && view === 'live';
   const canViewNames = !!chatData?.canViewNames;
+  const canDeleteOwnPost = !!chatData?.canDeleteOwnPost && view === 'live';
+  const canDeleteAnyPost = role === 'professor' && view !== 'presentation';
   const shouldRefetchAfterMutation = syncTransport !== 'websocket' || view === 'review';
   const draftHasContent = normalizeDraftPlainText(draftHtml).length > 0 || (draftHtml || '').trim().length > 0;
   const quickPostOptions = useMemo(() => {
@@ -708,7 +710,7 @@ export default function SessionChatPanel({
                         {t('sessionChat.comments')}
                       </Button>
                     ) : null}
-                    {post.isOwnPost && view === 'live' ? (
+                    {(canDeleteAnyPost || (canDeleteOwnPost && post.isOwnPost && !post.isQuickPost)) ? (
                       <Button
                         size="small"
                         color="error"

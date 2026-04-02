@@ -39,6 +39,7 @@ describe('SessionChatPanel', () => {
       data: {
         canPost: false,
         canVote: true,
+        canDeleteOwnPost: false,
         canDismiss: false,
         canComment: false,
         canViewNames: false,
@@ -85,6 +86,7 @@ describe('SessionChatPanel', () => {
         data: {
           canPost: false,
           canVote: true,
+          canDeleteOwnPost: false,
           canDismiss: false,
           canComment: false,
           canViewNames: false,
@@ -104,6 +106,7 @@ describe('SessionChatPanel', () => {
         data: {
           canPost: false,
           canVote: true,
+          canDeleteOwnPost: false,
           canDismiss: false,
           canComment: false,
           canViewNames: false,
@@ -159,5 +162,130 @@ describe('SessionChatPanel', () => {
     });
     expect(await screen.findByRole('button', { name: 'Undo request' })).toBeInTheDocument();
     expect(screen.getAllByText("I didn't understand question 3").length).toBeGreaterThan(0);
+  });
+
+  it('shows delete only for a student-owned non-quick post and calls the delete endpoint', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        canPost: true,
+        canVote: true,
+        canDeleteOwnPost: true,
+        canDismiss: false,
+        canComment: true,
+        canViewNames: false,
+        quickPosts: [],
+        posts: [
+          {
+            _id: 'normal-own-post',
+            body: 'My normal post',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 0,
+            viewerHasUpvoted: false,
+            isOwnPost: true,
+            isQuickPost: false,
+            dismissed: false,
+            authorRole: 'student',
+            authorName: null,
+            comments: [],
+          },
+          {
+            _id: 'quick-own-post',
+            body: 'Shared quick post',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 1,
+            viewerHasUpvoted: true,
+            isOwnPost: true,
+            isQuickPost: true,
+            quickPostQuestionNumber: 3,
+            dismissed: false,
+            authorRole: 'system',
+            authorName: null,
+            comments: [],
+          },
+        ],
+      },
+    });
+    apiClient.delete.mockResolvedValue({ data: { success: true } });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+      />
+    );
+
+    expect(await screen.findByText('My normal post')).toBeInTheDocument();
+    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
+    expect(deleteButtons).toHaveLength(1);
+
+    fireEvent.click(deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(apiClient.delete).toHaveBeenCalledWith('/sessions/session-1/chat/posts/normal-own-post');
+    });
+  });
+
+  it('shows delete and dismiss controls for professors on any live post', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        canPost: false,
+        canVote: false,
+        canDeleteOwnPost: false,
+        canDismiss: true,
+        canComment: false,
+        canViewNames: true,
+        quickPosts: [],
+        posts: [
+          {
+            _id: 'student-post',
+            body: 'Student post',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 2,
+            viewerHasUpvoted: false,
+            isOwnPost: false,
+            isQuickPost: false,
+            dismissed: false,
+            authorRole: 'student',
+            authorName: 'Student One',
+            comments: [],
+          },
+          {
+            _id: 'quick-post',
+            body: 'Shared quick post',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 3,
+            viewerHasUpvoted: false,
+            isOwnPost: false,
+            isQuickPost: true,
+            quickPostQuestionNumber: 2,
+            dismissed: false,
+            authorRole: 'system',
+            authorName: null,
+            comments: [],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="professor"
+      />
+    );
+
+    expect(await screen.findByText('Student post')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2);
   });
 });
