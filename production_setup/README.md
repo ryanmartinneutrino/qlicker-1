@@ -681,9 +681,11 @@ Recommended maintenance-window procedure:
    docker compose ps
    docker compose logs --tail=100 mongo redis server
    curl -k https://your-domain.example/api/v1/health
-   docker exec "$(docker compose ps -q redis | head -1)" redis-cli ping    # should return NOAUTH
+   docker exec "$(docker compose ps -q redis | head -1)" redis-cli ping    # should fail with NOAUTH
    ```
 5. Keep the generated backup archive and the `backups/auth-migration-<timestamp>/` directory until you are satisfied with the migration.
+
+The bundled CSP allowlist covers Qlicker itself, the default Jitsi SaaS domains (`meet.jit.si`, `*.jit.si`), and the built-in rich-text video embed providers. If you use a self-hosted Jitsi deployment or another external iframe/script source, extend `nginx/nginx.conf` before redeploying.
 
 If the migration is interrupted, use the saved `.env` / `docker-compose.yml` snapshots plus the fresh backup archive noted by the script to recover manually.
 

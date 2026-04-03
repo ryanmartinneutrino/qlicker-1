@@ -48,6 +48,7 @@ choose_token_value() {
 upsert_env_var() {
   local key="$1" value="$2" file_path="$3" tmp_file
   tmp_file="$(mktemp)"
+  chmod 600 "$tmp_file" 2>/dev/null || true
 
   awk -v key="$key" -v value="$value" '
     BEGIN { replaced = 0 }
@@ -79,6 +80,7 @@ detect_compose_project_name() {
     fi
   done
 
+  warn "Could not detect a running compose project label; falling back to the directory name."
   basename "$SCRIPT_DIR"
 }
 
