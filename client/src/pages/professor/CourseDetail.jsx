@@ -1924,6 +1924,7 @@ export default function CourseDetail() {
         open={!!studentInfoTarget}
         onClose={() => setStudentInfoTarget(null)}
         student={studentInfoTarget}
+        course={course}
         courseId={id}
         onRemoved={() => {
           setStudentInfoTarget(null);

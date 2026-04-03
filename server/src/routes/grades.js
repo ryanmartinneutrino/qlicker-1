@@ -752,6 +752,7 @@ export default async function gradeRoutes(app) {
 
       const instructorView = isInstructorOrAdmin(course, request.user);
       const requestedSessionIds = parseSessionIds(request.query?.sessionIds);
+      const requestedStudentId = normalizeAnswerValue(request.query?.studentId);
 
       const sessionQuery = { courseId: String(course._id) };
       if (requestedSessionIds.length > 0) {
@@ -766,7 +767,7 @@ export default async function gradeRoutes(app) {
       }
 
       const sessions = await Session.find(sessionQuery)
-        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz questions')
+        .select('_id name status date quizStart createdAt reviewable quiz practiceQuiz questions joined submittedQuiz')
         .lean();
 
       sessions.sort((a, b) => {
@@ -790,7 +791,17 @@ export default async function gradeRoutes(app) {
 
       let studentIds = Array.isArray(course.students) ? course.students.map((studentId) => String(studentId)) : [];
 
+      if (instructorView && requestedStudentId) {
+        if (!studentIds.includes(requestedStudentId)) {
+          return reply.code(404).send({ error: 'Not Found', message: 'Student not found in course' });
+        }
+        studentIds = [requestedStudentId];
+      }
+
       if (!instructorView) {
+        if (requestedStudentId && requestedStudentId !== request.user.userId) {
+          return reply.code(403).send({ error: 'Forbidden', message: 'Cannot view another student\'s grades' });
+        }
         studentIds = [request.user.userId];
         gradeQuery.userId = request.user.userId;
         gradeQuery.visibleToStudents = true;
@@ -845,11 +856,13 @@ export default async function gradeRoutes(app) {
           const sessionId = String(session._id);
           const key = `${studentId}::${sessionId}`;
           const grade = gradeByStudentAndSession.get(key);
+          const submitted = Array.isArray(session?.submittedQuiz) && session.submittedQuiz.includes(studentId);
 
           if (grade) {
             return {
               ...grade,
               name: grade.name || session.name,
+              submitted,
             };
           }
 
@@ -864,6 +877,7 @@ export default async function gradeRoutes(app) {
             outOf: 0,
             automatic: true,
             joined: false,
+            submitted,
             needsGrading: false,
             visibleToStudents: !!session.reviewable,
             marks: [],
@@ -914,6 +928,7 @@ export default async function gradeRoutes(app) {
           reviewable: !!session.reviewable,
           quiz: !!session.quiz,
           practiceQuiz: !!session.practiceQuiz,
+          joinedCount: Array.isArray(session.joined) ? session.joined.length : 0,
           date: session.date,
           quizStart: session.quizStart,
           studentsNeedingGrading: ungraded.studentsNeedingGrading,
