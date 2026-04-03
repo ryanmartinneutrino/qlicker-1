@@ -185,7 +185,10 @@
     "sending": "Envoi…",
     "sendResetLink": "Envoyer le lien de réinitialisation",
     "forgotPasswordSsoNotice": "Lorsque le SSO est activé, le courriel de réinitialisation du mot de passe n'est disponible que pour les comptes qu'un administrateur a explicitement autorisés à se connecter par courriel.",
-    "ssoDefault": "SSO"
+    "ssoDefault": "SSO",
+    "verifyBeforeLogin": "Account created. Please verify your email address before logging in.",
+    "selfRegistrationDisabled": "New accounts can only be created by an administrator.",
+    "goToLandingPage": "Go to the Qlicker landing page"
   },
   "resetPassword": {
     "title": "Réinitialiser le mot de passe",
@@ -272,7 +275,11 @@
       "timeFormatOptions": {
         "24h": "24 heures ({{example}})",
         "12h": "12 heures ({{example}})"
-      }
+      },
+      "allowedDomainsHelp": "Local self-registration is limited to these domains when SSO is off.",
+      "allowedDomainsRequireVerified": "Any listed domains automatically require verified email addresses for local sign-in.",
+      "allowedDomainsSsoIgnored": "Allowed email domains only affect local self-registration while SSO is disabled.",
+      "registrationDisabled": "Disable self-registration on the login page"
     },
     "users": {
       "searchPlaceholder": "Rechercher par nom ou courriel",

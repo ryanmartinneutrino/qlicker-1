@@ -528,7 +528,14 @@ describe('GET /api/v1/settings/public', () => {
 
     await Settings.findOneAndUpdate(
       { _id: 'settings' },
-      { $set: { timeFormat: '12h', maxImageWidth: 2400, avatarThumbnailSize: 640 } },
+      {
+        $set: {
+          timeFormat: '12h',
+          maxImageWidth: 2400,
+          avatarThumbnailSize: 640,
+          registrationDisabled: true,
+        },
+      },
       { upsert: true, returnDocument: 'after' }
     );
 
@@ -541,6 +548,7 @@ describe('GET /api/v1/settings/public', () => {
     expect(res.json().timeFormat).toBe('12h');
     expect(res.json().maxImageWidth).toBe(2400);
     expect(res.json().avatarThumbnailSize).toBe(640);
+    expect(res.json().registrationDisabled).toBe(true);
   });
 
   it('falls back to documented default image settings when values are missing or invalid', async (ctx) => {
@@ -593,5 +601,35 @@ describe('GET /api/v1/settings/public', () => {
     expect(body.backupRetentionDaily).toBe(7);
     expect(body.backupRetentionWeekly).toBe(4);
     expect(body.backupRetentionMonthly).toBe(12);
+  });
+
+  it('reports email-delivery status to admins and auto-enables verification when allowed domains are saved', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const admin = await createTestUser({
+      email: 'admin-domain-settings@example.com',
+      roles: ['admin'],
+    });
+    const token = await getAuthToken(app, admin);
+
+    const patchRes = await authenticatedRequest(app, 'PATCH', '/api/v1/settings', {
+      token,
+      payload: {
+        restrictDomain: false,
+        allowedDomains: ['allowed.edu'],
+        requireVerified: false,
+      },
+    });
+
+    expect(patchRes.statusCode).toBe(200);
+    expect(patchRes.json().restrictDomain).toBe(true);
+    expect(patchRes.json().requireVerified).toBe(true);
+    expect(patchRes.json().emailDeliveryStatus).toBeTruthy();
+    expect(typeof patchRes.json().emailDeliveryStatus.configured).toBe('boolean');
+
+    const getRes = await authenticatedRequest(app, 'GET', '/api/v1/settings', { token });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().emailDeliveryStatus).toBeTruthy();
+    expect(getRes.json().allowedDomains).toEqual(['allowed.edu']);
   });
 });

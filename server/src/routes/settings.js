@@ -1,6 +1,12 @@
 import Course from '../models/Course.js';
 import Settings from '../models/Settings.js';
-import { getBackupManagerHealth, normalizeSettingsPayload } from '../utils/authPolicy.js';
+import { getMailConfigurationStatus } from '../services/email.js';
+import {
+  getBackupManagerHealth,
+  normalizeAllowedDomains,
+  normalizeSettingsPayload,
+  isSsoEnabled,
+} from '../utils/authPolicy.js';
 import { stringParamsSchema } from '../utils/apiDocs.js';
 import { getOrCreateSettingsDocument } from '../utils/settingsSingleton.js';
 
@@ -17,7 +23,7 @@ const BACKUP_STATE_RESET_MESSAGE = 'Backup request state was reset by an admin.'
 // Whitelist of fields that may be updated via the admin settings PATCH endpoint.
 // Prevents injection of unexpected fields into the settings document.
 const ALLOWED_SETTINGS_FIELDS = new Set([
-  'restrictDomain', 'allowedDomains', 'requireVerified', 'adminEmail', 'email',
+  'restrictDomain', 'allowedDomains', 'requireVerified', 'registrationDisabled', 'adminEmail', 'email',
   'SSO_enabled', 'SSO_entrypoint', 'SSO_cert', 'SSO_privCert', 'SSO_privKey',
   'SSO_EntityId', 'SSO_logoutUrl', 'SSO_identifierFormat', 'SSO_emailIdentifier',
   'SSO_firstNameIdentifier', 'SSO_lastNameIdentifier', 'SSO_studentNumberIdentifier',
@@ -57,6 +63,7 @@ const updateSettingsSchema = {
       restrictDomain: { type: 'boolean' },
       allowedDomains: { type: 'array', items: { type: 'string' } },
       requireVerified: { type: 'boolean' },
+      registrationDisabled: { type: 'boolean' },
       adminEmail: { type: 'string' },
       email: { type: 'string' },
       SSO_enabled: { type: 'boolean' },
@@ -120,6 +127,46 @@ const courseIdParamsSchema = {
   params: stringParamsSchema(['courseId']),
 };
 
+function buildSettingsResponse(settings = {}) {
+  return {
+    ...normalizeSettingsPayload(settings),
+    emailDeliveryStatus: getMailConfigurationStatus(),
+  };
+}
+
+function buildSettingsUpdatePayload(currentSettings = {}, updates = {}) {
+  const allowedDomains = normalizeAllowedDomains(
+    updates.allowedDomains !== undefined ? updates.allowedDomains : currentSettings.allowedDomains
+  );
+  const nextSsoEnabled = updates.SSO_enabled !== undefined
+    ? updates.SSO_enabled === true
+    : isSsoEnabled(currentSettings);
+  const nextRequireVerified = Boolean(
+    (updates.requireVerified !== undefined
+      ? updates.requireVerified
+      : currentSettings.requireVerified)
+    || (!nextSsoEnabled && allowedDomains.length > 0)
+  );
+  const nextRestrictDomain = Boolean(
+    !nextSsoEnabled && (
+      (updates.restrictDomain !== undefined
+        ? updates.restrictDomain
+        : currentSettings.restrictDomain)
+      || allowedDomains.length > 0
+    )
+  );
+
+  return {
+    ...updates,
+    allowedDomains,
+    requireVerified: nextRequireVerified,
+    restrictDomain: nextRestrictDomain,
+    registrationDisabled: updates.registrationDisabled !== undefined
+      ? updates.registrationDisabled === true
+      : currentSettings.registrationDisabled === true,
+  };
+}
+
 export default async function settingsRoutes(app) {
   const { authenticate, requireRole } = app;
   const settingsRateLimitPreHandler = app.rateLimit({
@@ -136,7 +183,7 @@ export default async function settingsRoutes(app) {
   // GET / (admin only)
   app.get('/', { preHandler: requireRole(['admin']) }, async (request, reply) => {
     const settings = await getOrCreateSettings();
-    return normalizeSettingsPayload(settings.toObject());
+    return buildSettingsResponse(settings.toObject());
   });
 
   // PATCH / (admin only)
@@ -154,18 +201,20 @@ export default async function settingsRoutes(app) {
       const updates = request.body || {};
 
       try {
+        const currentSettings = await getOrCreateSettings({ lean: true });
         const settings = await getOrCreateSettings({ select: '_id' });
+        const normalizedUpdates = buildSettingsUpdatePayload(currentSettings, updates);
 
         const updatedSettings = await Settings.findByIdAndUpdate(
           settings._id,
-          { $set: updates },
+          { $set: normalizedUpdates },
           {
             returnDocument: 'after',
             runValidators: true,
           }
         );
 
-        return normalizeSettingsPayload(updatedSettings.toObject());
+        return buildSettingsResponse(updatedSettings.toObject());
       } catch (err) {
         request.log.error({ err }, 'Failed to update settings');
         return reply.code(400).send({
@@ -216,7 +265,7 @@ export default async function settingsRoutes(app) {
           }
         );
 
-        return normalizeSettingsPayload(updatedSettings.toObject());
+        return buildSettingsResponse(updatedSettings.toObject());
       } catch (err) {
         request.log.error({ err }, 'Failed to queue manual backup');
         return reply.code(400).send({
@@ -257,7 +306,7 @@ export default async function settingsRoutes(app) {
           }
         );
 
-        return normalizeSettingsPayload(updatedSettings.toObject());
+        return buildSettingsResponse(updatedSettings.toObject());
       } catch (err) {
         request.log.error({ err }, 'Failed to reset backup state');
         return reply.code(400).send({
@@ -277,6 +326,7 @@ export default async function settingsRoutes(app) {
       SSO_institutionName: normalizedSettings.SSO_institutionName || '',
       restrictDomain: normalizedSettings.restrictDomain || false,
       requireVerified: normalizedSettings.requireVerified || false,
+      registrationDisabled: normalizedSettings.registrationDisabled || false,
       Jitsi_Enabled: normalizedSettings.Jitsi_Enabled || false,
       timeFormat: normalizedSettings.timeFormat || '24h',
       maxImageWidth: normalizedSettings.maxImageWidth,

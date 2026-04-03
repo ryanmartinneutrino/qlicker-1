@@ -178,6 +178,7 @@
     "lastName": "Last Name",
     "creatingAccount": "Creating account…",
     "createAccount": "Create Account",
+    "verifyBeforeLogin": "Account created. Please verify your email address before logging in.",
     "forgotPasswordTitle": "Forgot Password",
     "forgotPasswordMessage": "Enter your email address and we'll send you a link to reset your password.",
     "resetLinkSent": "If that email is registered, a reset link has been sent. Please check your spam/junk folder if you don't see it in your inbox.",
@@ -185,6 +186,8 @@
     "sending": "Sending…",
     "sendResetLink": "Send Reset Link",
     "forgotPasswordSsoNotice": "When SSO is enabled, password-reset email is available only for accounts that an administrator has explicitly allowed to sign in by email.",
+    "selfRegistrationDisabled": "New accounts can only be created by an administrator.",
+    "goToLandingPage": "Go to the Qlicker landing page",
     "ssoDefault": "SSO"
   },
   "resetPassword": {
@@ -260,7 +263,11 @@
     "settings": {
       "restrictDomain": "Restrict email domain",
       "allowedDomains": "Allowed Domains (comma-separated)",
+      "allowedDomainsHelp": "Local self-registration is limited to these domains when SSO is off.",
+      "allowedDomainsRequireVerified": "Any listed domains automatically require verified email addresses for local sign-in.",
+      "allowedDomainsSsoIgnored": "Allowed email domains only affect local self-registration while SSO is disabled.",
       "requireVerified": "Require verified email",
+      "registrationDisabled": "Disable self-registration on the login page",
       "adminEmail": "Admin Email",
       "tokenExpiry": "Login Token Expiry (minutes)",
       "tokenExpiryHelp": "How long login tokens remain valid (default: 120 minutes = 2 hours, minimum: 5)",

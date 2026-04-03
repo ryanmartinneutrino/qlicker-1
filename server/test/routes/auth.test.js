@@ -168,6 +168,122 @@ describe('POST /api/v1/auth/register', () => {
     expect(body.message).toMatch(/already registered/i);
   });
 
+  it('rejects self-registration when disabled in settings', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { registrationDisabled: true } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'blocked@example.com',
+        password: 'password123',
+        firstname: 'Blocked',
+        lastname: 'User',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('SELF_REGISTRATION_DISABLED');
+  });
+
+  it('rejects unapproved email domains when allowed domains are configured', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { restrictDomain: false, allowedDomains: ['allowed.edu'], requireVerified: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'student@other.edu',
+        password: 'password123',
+        firstname: 'Other',
+        lastname: 'Domain',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toMatch(/domain not allowed/i);
+  });
+
+  it('requires email verification for local signups when allowed domains are configured', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await createTestUser({ email: 'admin@example.com', roles: ['admin'] });
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { restrictDomain: false, allowedDomains: ['allowed.edu'], requireVerified: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'student@allowed.edu',
+        password: 'password123',
+        firstname: 'Allowed',
+        lastname: 'Student',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().requiresEmailVerification).toBe(true);
+    expect(res.json().token).toBeUndefined();
+
+    const stored = await User.findOne({ 'emails.address': 'student@allowed.edu' });
+    expect(stored).toBeTruthy();
+    expect(stored.emails[0].verified).toBe(false);
+    expect(stored.services?.email?.verificationTokens).toHaveLength(1);
+    expect(stored.services?.resume?.loginTokens || []).toHaveLength(0);
+  });
+
+  it('ignores local domain restrictions when institution-wide SSO is enabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    await createTestUser({ email: 'admin@example.com', roles: ['admin'] });
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      {
+        $set: {
+          SSO_enabled: true,
+          restrictDomain: true,
+          allowedDomains: ['allowed.edu'],
+          requireVerified: false,
+        },
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'student@other.edu',
+        password: 'password123',
+        firstname: 'Sso',
+        lastname: 'Ignored',
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(typeof res.json().token).toBe('string');
+  });
+
   it('rejects missing required fields', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const res = await app.inject({
@@ -303,6 +419,34 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.statusCode).toBe(401);
     const body = res.json();
     expect(body.message).toMatch(/invalid/i);
+  });
+
+  it('rejects unverified email logins when verified email is required', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const user = await createTestUser({ email: 'needs-verify@example.com', password: 'password123' });
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { 'emails.0.verified': false } }
+    );
+    await Settings.findOneAndUpdate(
+      { _id: 'settings' },
+      { $set: { requireVerified: true } },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { ...csrfHeaders },
+      payload: {
+        email: 'needs-verify@example.com',
+        password: 'password123',
+      },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('EMAIL_NOT_VERIFIED');
   });
 
   it('rejects disabled accounts', async (ctx) => {

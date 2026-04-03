@@ -31,11 +31,14 @@ vi.mock('react-i18next', () => ({
       'auth.loggingIn': 'Logging in',
       'auth.creatingAccount': 'Creating account',
       'auth.createAccount': 'Create Account',
+      'auth.verifyBeforeLogin': 'Account created. Please verify your email address before logging in.',
       'auth.firstName': 'First Name',
       'auth.lastName': 'Last Name',
       'auth.forgotPassword': 'Forgot Password?',
       'auth.backToSSO': 'Back to SSO login',
       'auth.haveEmailAccount': 'Have an email-based account',
+      'auth.selfRegistrationDisabled': 'New accounts can only be created by an administrator.',
+      'auth.goToLandingPage': 'Go to the Qlicker landing page',
       'auth.forgotPasswordTitle': 'Forgot Password',
       'auth.forgotPasswordMessage': 'Reset your password',
       'auth.forgotPasswordSsoNotice': 'When SSO is enabled, password reset is limited to approved email-login accounts.',
@@ -52,6 +55,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
   Navigate: ({ to }) => <div data-testid="redirect-target">{to}</div>,
+  Link: ({ to, children, ...props }) => <a href={to} {...props}>{children}</a>,
 }));
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -107,6 +111,7 @@ describe('Login', () => {
     apiClientMock.get.mockResolvedValue({
       data: {
         SSO_enabled: false,
+        registrationDisabled: false,
       },
     });
 
@@ -151,6 +156,7 @@ describe('Login', () => {
     apiClientMock.get.mockResolvedValue({
       data: {
         SSO_enabled: false,
+        registrationDisabled: false,
       },
     });
     loginMock.mockResolvedValue({
@@ -173,5 +179,41 @@ describe('Login', () => {
       expect(loginMock).toHaveBeenCalledWith('mix@example.com', 'password123');
       expect(navigateMock).toHaveBeenCalledWith('/student', { replace: true });
     });
+  });
+
+  it('hides self-registration when public settings disable it', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: false,
+        registrationDisabled: true,
+      },
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    expect(screen.getByText('New accounts can only be created by an administrator.')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Register' })).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Login' })).toBeInTheDocument();
+  });
+
+  it('links the Qlicker wordmark to the landing page', async () => {
+    apiClientMock.get.mockResolvedValue({
+      data: {
+        SSO_enabled: false,
+        registrationDisabled: false,
+      },
+    });
+
+    render(<Login />);
+
+    await waitFor(() => {
+      expect(apiClientMock.get).toHaveBeenCalledWith('/settings/public');
+    });
+
+    expect(screen.getByRole('link', { name: 'Go to the Qlicker landing page' })).toHaveAttribute('href', '/');
   });
 });
