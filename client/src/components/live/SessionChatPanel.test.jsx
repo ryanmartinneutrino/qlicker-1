@@ -360,7 +360,7 @@ describe('SessionChatPanel', () => {
       />
     );
 
-    expect(await screen.findByText('Rich text chat is off. Quick posts still work for students.')).toBeInTheDocument();
+    expect(await screen.findByText('Rich text chat is off. New posts and comments are disabled.')).toBeInTheDocument();
     expect(screen.queryByText('New post')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Session chat post editor')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Post' })).not.toBeInTheDocument();
