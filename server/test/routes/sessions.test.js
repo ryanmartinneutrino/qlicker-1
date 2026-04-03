@@ -860,6 +860,40 @@ describe('GET /api/v1/sessions/live', () => {
     expect(sessionIds).not.toContain(String(studentPracticeSession._id));
   });
 
+  it('student-only instructor accounts can fetch instructor-view live sessions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'prof-live-mixed@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const course = (await createCourseAsProf(profToken, { name: 'Mixed Instructor Live Course' })).json().course;
+
+    const mixed = await createTestUser({ email: 'mixed-live@example.com', roles: ['student'] });
+    const mixedToken = await getAuthToken(app, mixed);
+
+    const addInstructorRes = await authenticatedRequest(app, 'POST', `/api/v1/courses/${course._id}/instructors`, {
+      token: profToken,
+      payload: { userId: mixed._id.toString() },
+    });
+    expect(addInstructorRes.statusCode).toBe(200);
+
+    const createSessionRes = await createSessionInCourse(profToken, course._id, {
+      name: 'Mixed Instructor Live Session',
+    });
+    expect(createSessionRes.statusCode).toBe(201);
+    const instructorSession = createSessionRes.json().session;
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${instructorSession._id}`, {
+      token: profToken,
+      payload: { status: 'running' },
+    });
+
+    const res = await authenticatedRequest(app, 'GET', '/api/v1/sessions/live?view=instructor', {
+      token: mixedToken,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const sessionIds = (res.json().liveSessions || []).map((row) => String(row._id));
+    expect(sessionIds).toContain(String(instructorSession._id));
+  });
+
   it('rejects instructor-view live sessions for students without instructor courses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const student = await createTestUser({ email: 'plain-student-live@example.com', roles: ['student'] });

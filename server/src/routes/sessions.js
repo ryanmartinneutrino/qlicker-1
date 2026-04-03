@@ -2851,7 +2851,7 @@ export default async function sessionRoutes(app) {
         const { hasInstructorCourses } = await getUserAccessFlags({
           _id: userId,
           profile: { roles },
-        });
+        }, { forceInstructorLookup: true });
         if (!hasInstructorCourses) {
           return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
         }
