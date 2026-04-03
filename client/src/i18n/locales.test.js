@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import de from './locales/de.json';
-import en from './locales/en.json';
-import es from './locales/es.json';
-import fr from './locales/fr.json';
-import it from './locales/it.json';
-import pir from './locales/pir.json';
-import ru from './locales/ru.json';
-import zh from './locales/zh.json';
+import deLocale from './locales/de.json';
+import enLocale from './locales/en.json';
+import esLocale from './locales/es.json';
+import frLocale from './locales/fr.json';
+import itLocale from './locales/it.json';
+import pirLocale from './locales/pir.json';
+import ruLocale from './locales/ru.json';
+import zhLocale from './locales/zh.json';
 
 const LOCALES = {
-  de,
-  en,
-  es,
-  fr,
-  it,
-  pir,
-  ru,
-  zh,
+  de: deLocale,
+  en: enLocale,
+  es: esLocale,
+  fr: frLocale,
+  it: itLocale,
+  pir: pirLocale,
+  ru: ruLocale,
+  zh: zhLocale,
 };
 
 function getNestedValue(obj, path) {
@@ -41,15 +41,15 @@ describe('locale files', () => {
     ];
 
     sections.forEach((section) => {
-      expect(getNestedValue(en, section)).toBeTruthy();
+      expect(getNestedValue(enLocale, section)).toBeTruthy();
 
       Object.entries(LOCALES).forEach(([localeCode, localeMessages]) => {
         expect(getNestedValue(localeMessages, section), `Missing ${section} in ${localeCode}`).toBeTruthy();
-        expect(flattenKeys(getNestedValue(localeMessages, section))).toEqual(flattenKeys(getNestedValue(en, section)));
+        expect(flattenKeys(getNestedValue(localeMessages, section))).toEqual(flattenKeys(getNestedValue(enLocale, section)));
       });
     });
 
-    expect(getNestedValue(en, 'questionLibrary.filters.sessionsButton')).toBe('Sessions');
-    expect(getNestedValue(en, 'questionLibrary.filters.sessionsDialogTitle')).toBe('Filter by sessions');
+    expect(getNestedValue(enLocale, 'questionLibrary.filters.sessionsButton')).toBe('Sessions');
+    expect(getNestedValue(enLocale, 'questionLibrary.filters.sessionsDialogTitle')).toBe('Filter by sessions');
   });
 });
