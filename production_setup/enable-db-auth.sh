@@ -189,9 +189,6 @@ MONGO_INITDB_ROOT_USERNAME="${MONGO_USERNAME_INPUT:-$DEFAULT_MONGO_USERNAME}"
 choose_token_value "MONGO_INITDB_ROOT_PASSWORD" "${MONGO_INITDB_ROOT_PASSWORD:-}" MONGO_INITDB_ROOT_PASSWORD
 choose_token_value "REDIS_PASSWORD" "${REDIS_PASSWORD:-}" REDIS_PASSWORD
 
-MONGO_URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/qlicker?authSource=admin"
-REDIS_URL="redis://:${REDIS_PASSWORD}@redis:6379"
-
 echo ""
 warn "The application will be unavailable during this migration."
 read -r -p "Type 'migrate' to continue: " CONFIRM
@@ -201,13 +198,16 @@ if [ "$CONFIRM" != "migrate" ]; then
 fi
 
 info "Creating a pre-migration backup..."
-"$SCRIPT_DIR/backup.sh" --label manual
+BACKUP_RUNTIME=host "$SCRIPT_DIR/backup.sh" --label manual
 BACKUP_FILE="$(latest_backup_for_pattern 'qlicker_backup_*_manual.tar.gz')"
 if [ -z "$BACKUP_FILE" ]; then
   error "Could not locate the manual backup archive created by backup.sh."
   exit 1
 fi
 info "Backup archive: $BACKUP_FILE"
+
+MONGO_URI="mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/qlicker?authSource=admin"
+REDIS_URL="redis://:${REDIS_PASSWORD}@redis:6379"
 
 info "Updating .env with authenticated MongoDB and Redis settings..."
 upsert_env_var "MONGO_INITDB_ROOT_USERNAME" "$MONGO_INITDB_ROOT_USERNAME" "$ENV_FILE"

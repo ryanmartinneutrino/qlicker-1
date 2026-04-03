@@ -175,7 +175,11 @@ case "$BACKUP_LABEL" in
 esac
 
 if [ -z "$RUNTIME" ]; then
-  if [ -n "$MONGO_URI" ]; then
+  # When invoked from a production_setup checkout on the host, prefer the
+  # sibling .env even if the parent shell has MONGO_URI exported already.
+  if [ -f "$SCRIPT_DIR/.env" ]; then
+    RUNTIME="host"
+  elif [ -n "$MONGO_URI" ]; then
     RUNTIME="container"
   else
     RUNTIME="host"
