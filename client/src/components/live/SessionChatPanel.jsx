@@ -230,10 +230,14 @@ function CommentThread({
   expanded,
   onToggle,
   canComment,
+  canDeleteOwnComment,
+  canDeleteAnyComment,
   canViewNames,
   commentDraft,
   onCommentDraftChange,
   onSubmitComment,
+  onDeleteComment,
+  deletingCommentId,
   submitting,
 }) {
   const { t } = useTranslation();
@@ -258,17 +262,30 @@ function CommentThread({
               sx={{ p: 1.25, bgcolor: 'action.hover' }}
             >
               <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                    {getAuthorLabel({
-                      authorName: comment.authorName,
-                      authorRole: comment.authorRole,
-                      canViewNames,
-                      t,
-                    })}
-                  </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {formatTimestamp(comment.createdAt)}
+                <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                  {getAuthorLabel({
+                    authorName: comment.authorName,
+                    authorRole: comment.authorRole,
+                    canViewNames,
+                    t,
+                  })}
                 </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatTimestamp(comment.createdAt)}
+                  </Typography>
+                  {(canDeleteAnyComment || (canDeleteOwnComment && comment.isOwnComment)) ? (
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => onDeleteComment(comment._id)}
+                      startIcon={<DeleteIcon />}
+                      disabled={deletingCommentId === comment._id}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  ) : null}
+                </Box>
               </Box>
               <RichContent html={comment.bodyWysiwyg} fallback={comment.body} />
             </Paper>
@@ -324,6 +341,7 @@ export default function SessionChatPanel({
   const [expandedPosts, setExpandedPosts] = useState({});
   const [commentDrafts, setCommentDrafts] = useState({});
   const [pendingCommentId, setPendingCommentId] = useState('');
+  const [deletingCommentId, setDeletingCommentId] = useState('');
   const [selectedQuickPostQuestionNumber, setSelectedQuickPostQuestionNumber] = useState('');
   const [submittingQuickPost, setSubmittingQuickPost] = useState(false);
   const chatDataRef = useRef(initialData);
@@ -415,7 +433,10 @@ export default function SessionChatPanel({
   const canViewNames = !!chatData?.canViewNames;
   const canDeleteOwnPost = !!chatData?.canDeleteOwnPost && view === 'live';
   const canDeleteAnyPost = role === 'professor' && view !== 'presentation';
+  const canDeleteOwnComment = !!chatData?.canDeleteOwnComment && view === 'live';
+  const canDeleteAnyComment = !!chatData?.canDeleteAnyComment && view !== 'presentation';
   const shouldRefetchAfterMutation = syncTransport !== 'websocket' || view === 'review';
+  const shouldRefetchAfterStudentMutation = shouldRefetchAfterMutation || role === 'student';
   const draftHasContent = normalizeDraftPlainText(draftHtml).length > 0 || (draftHtml || '').trim().length > 0;
   const quickPostOptions = useMemo(() => {
     const options = Array.isArray(chatData?.quickPostOptions) && chatData.quickPostOptions.length > 0
@@ -458,7 +479,7 @@ export default function SessionChatPanel({
       setDraftHtml('');
       setComposerOpen(role === 'professor');
       setError(null);
-      if (shouldRefetchAfterMutation) {
+      if (shouldRefetchAfterStudentMutation) {
         await fetchChat();
       }
     } catch (err) {
@@ -466,7 +487,7 @@ export default function SessionChatPanel({
     } finally {
       setSubmittingPost(false);
     }
-  }, [draftHasContent, draftHtml, fetchChat, role, sessionId, shouldRefetchAfterMutation, submittingPost, t]);
+  }, [draftHasContent, draftHtml, fetchChat, role, sessionId, shouldRefetchAfterStudentMutation, submittingPost, t]);
 
   const handleQuickPostToggle = useCallback(async (questionNumber) => {
     if (!questionNumber || submittingQuickPost) return;
@@ -474,7 +495,7 @@ export default function SessionChatPanel({
     try {
       await apiClient.post(`/sessions/${sessionId}/chat/quick-posts/${questionNumber}/toggle`);
       setError(null);
-      if (shouldRefetchAfterMutation) {
+      if (shouldRefetchAfterStudentMutation) {
         await fetchChat();
       }
     } catch (err) {
@@ -482,19 +503,19 @@ export default function SessionChatPanel({
     } finally {
       setSubmittingQuickPost(false);
     }
-  }, [fetchChat, sessionId, shouldRefetchAfterMutation, submittingQuickPost, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterStudentMutation, submittingQuickPost, t]);
 
   const handleVote = useCallback(async (postId, upvoted) => {
     try {
       await apiClient.patch(`/sessions/${sessionId}/chat/posts/${postId}/vote`, { upvoted });
       setError(null);
-      if (shouldRefetchAfterMutation) {
+      if (shouldRefetchAfterStudentMutation) {
         await fetchChat();
       }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToVote'));
     }
-  }, [fetchChat, sessionId, shouldRefetchAfterMutation, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterStudentMutation, t]);
 
   const handleDismiss = useCallback(async (postId) => {
     try {
@@ -512,13 +533,13 @@ export default function SessionChatPanel({
     try {
       await apiClient.delete(`/sessions/${sessionId}/chat/posts/${postId}`);
       setError(null);
-      if (shouldRefetchAfterMutation) {
+      if (shouldRefetchAfterStudentMutation) {
         await fetchChat();
       }
     } catch (err) {
       setError(err.response?.data?.message || t('sessionChat.failedToDelete'));
     }
-  }, [fetchChat, sessionId, shouldRefetchAfterMutation, t]);
+  }, [fetchChat, sessionId, shouldRefetchAfterStudentMutation, t]);
 
   const handleSubmitComment = useCallback(async (postId) => {
     const draft = commentDrafts[postId] || '';
@@ -532,7 +553,7 @@ export default function SessionChatPanel({
       setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
       setExpandedPosts((prev) => ({ ...prev, [postId]: true }));
       setError(null);
-      if (shouldRefetchAfterMutation) {
+      if (shouldRefetchAfterStudentMutation) {
         await fetchChat();
       }
     } catch (err) {
@@ -540,7 +561,22 @@ export default function SessionChatPanel({
     } finally {
       setPendingCommentId('');
     }
-  }, [commentDrafts, fetchChat, sessionId, shouldRefetchAfterMutation, t]);
+  }, [commentDrafts, fetchChat, sessionId, shouldRefetchAfterStudentMutation, t]);
+
+  const handleDeleteComment = useCallback(async (postId, commentId) => {
+    setDeletingCommentId(commentId);
+    try {
+      await apiClient.delete(`/sessions/${sessionId}/chat/posts/${postId}/comments/${commentId}`);
+      setError(null);
+      if (shouldRefetchAfterStudentMutation) {
+        await fetchChat();
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || t('sessionChat.failedToDelete'));
+    } finally {
+      setDeletingCommentId('');
+    }
+  }, [fetchChat, sessionId, shouldRefetchAfterStudentMutation, t]);
 
   if (!enabled) {
     return (
@@ -757,10 +793,14 @@ export default function SessionChatPanel({
                   expanded={expanded}
                   onToggle={() => setExpandedPosts((prev) => ({ ...prev, [post._id]: !prev[post._id] }))}
                   canComment={canComment && !post.dismissed}
+                  canDeleteOwnComment={canDeleteOwnComment}
+                  canDeleteAnyComment={canDeleteAnyComment}
                   canViewNames={canViewNames}
                   commentDraft={commentDrafts[post._id] || ''}
                   onCommentDraftChange={(value) => setCommentDrafts((prev) => ({ ...prev, [post._id]: value }))}
                   onSubmitComment={() => handleSubmitComment(post._id)}
+                  onDeleteComment={(commentId) => handleDeleteComment(post._id, commentId)}
+                  deletingCommentId={deletingCommentId}
                   submitting={pendingCommentId === post._id}
                 />
               </Paper>

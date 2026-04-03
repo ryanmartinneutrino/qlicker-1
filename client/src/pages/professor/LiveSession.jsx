@@ -655,7 +655,7 @@ function LiveSessionContent() {
     const interval = (session.joinCodeInterval || 10) * 1000;
     joinCodeTimerRef.current = setInterval(async () => {
       try {
-        await apiClient.post(`/sessions/${sessionId}/refresh-join-code`);
+        await apiClient.post(`/sessions/${sessionId}/refresh-join-code`, { force: false });
       } catch { /* ignore */ }
     }, interval);
 
@@ -845,7 +845,7 @@ function LiveSessionContent() {
 
   const handleRefreshJoinCode = useCallback(() => {
     doAction(
-      () => apiClient.post(`/sessions/${sessionId}/refresh-join-code`),
+      () => apiClient.post(`/sessions/${sessionId}/refresh-join-code`, { force: true }),
       t('professor.liveSession.joinCodeRefreshed'),
       { pendingKey: 'join-code:refresh' }
     );

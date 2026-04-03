@@ -2777,6 +2777,49 @@ describe('Live session websocket delta events', () => {
     expect(studentCall[2].currentJoinCode).toBeUndefined();
   });
 
+  it('returns the same join code for concurrent automatic refresh requests', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const openRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/join-code-settings`, {
+      token: profToken,
+      payload: { joinCodeEnabled: true, joinCodeActive: true },
+    });
+    expect(openRes.statusCode).toBe(200);
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: { joinCodeExpiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const firstRefreshRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/refresh-join-code`, {
+      token: profToken,
+      payload: { force: false },
+    });
+    const secondRefreshRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/refresh-join-code`, {
+      token: profToken,
+      payload: { force: false },
+    });
+
+    expect(firstRefreshRes.statusCode).toBe(200);
+    expect(secondRefreshRes.statusCode).toBe(200);
+    expect(secondRefreshRes.json().joinCode).toBe(firstRefreshRes.json().joinCode);
+
+    const joinCodeCalls = wsSendToUsersSpy.mock.calls.filter(([, event]) => event === 'session:join-code-changed');
+    expect(joinCodeCalls).toHaveLength(2);
+
+    const instructorCall = joinCodeCalls.find(([userIds]) => userIds.includes(String(prof._id)));
+    const studentCall = joinCodeCalls.find(([userIds]) => userIds.includes(String(student._id)));
+    expect(instructorCall[2].currentJoinCode).toBe(firstRefreshRes.json().joinCode);
+    expect(studentCall[2].currentJoinCode).toBeUndefined();
+  });
+
   it('sends response-added deltas only to joined students when live stats are visible', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
@@ -2843,6 +2886,78 @@ describe('Live session websocket delta events', () => {
       ],
     ]));
     expect(responseCalls.some(([userIds]) => userIds.includes(String(spectator._id)))).toBe(false);
+  });
+
+  it('includes canonical distribution stats in response-added deltas for multiple-select questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    const question = await createQuestionInSession(profToken, {
+      type: 1,
+      content: '<p>Select both correct answers</p>',
+      plainText: 'Select both correct answers',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: true },
+        { content: 'C', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+    await Question.findByIdAndUpdate(question._id, {
+      $set: {
+        'sessionOptions.attemptStats': [
+          {
+            number: 1,
+            type: 'distribution',
+            total: 999,
+            distribution: [
+              { index: 0, answer: 'A', correct: true, count: 999 },
+              { index: 1, answer: 'B', correct: true, count: 999 },
+              { index: 2, answer: 'C', correct: false, count: 999 },
+            ],
+          },
+        ],
+      },
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: ['0', '1'] },
+    });
+
+    expect(respondRes.statusCode).toBe(201);
+    const instructorResponseCall = wsSendToUsersSpy.mock.calls.find(([userIds, event]) => (
+      event === 'session:response-added' && userIds.includes(String(prof._id))
+    ));
+    expect(instructorResponseCall).toBeDefined();
+
+    const [, , payload] = instructorResponseCall;
+    expect(payload.responseCount).toBe(1);
+    expect(payload.responseStats).toEqual(expect.objectContaining({
+      type: 'distribution',
+      total: 1,
+    }));
+    expect(payload.responseStats.distribution).toEqual([
+      expect.objectContaining({ count: 1 }),
+      expect.objectContaining({ count: 1 }),
+      expect.objectContaining({ count: 0 }),
+    ]);
   });
 
   it('includes complete short-answer stats in response-added deltas', async (ctx) => {
@@ -4334,6 +4449,78 @@ describe('session chat quick posts', () => {
     expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
   });
 
+  it('keeps mixed-role student instructor names private in presentation chat while preserving self-view names', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course } = await setupCourseWithStudent();
+    const hybridStudentInstructor = await createTestUser({
+      email: 'hybrid-student-instructor@example.com',
+      roles: ['student'],
+      firstname: 'Hybrid',
+      lastname: 'Student',
+    });
+    const hybridToken = await getAuthToken(app, hybridStudentInstructor);
+    await Course.findByIdAndUpdate(course._id, {
+      $addToSet: { instructors: String(hybridStudentInstructor._id) },
+    });
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Mixed Role Chat Session' });
+    const session = sessionRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const postRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/posts`, {
+      token: hybridToken,
+      payload: { body: 'Hybrid post' },
+    });
+    expect(postRes.statusCode).toBe(200);
+
+    const commentRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/posts/${postRes.json().postId}/comments`, {
+      token: hybridToken,
+      payload: { body: 'Hybrid comment' },
+    });
+    expect(commentRes.statusCode).toBe(200);
+
+    const presentationChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat?view=presentation`, {
+      token: profToken,
+    });
+    expect(presentationChatRes.statusCode).toBe(200);
+    expect(presentationChatRes.json().posts).toEqual([
+      expect.objectContaining({
+        authorRole: 'instructor',
+        authorName: null,
+        comments: [
+          expect.objectContaining({
+            authorRole: 'instructor',
+            authorName: null,
+          }),
+        ],
+      }),
+    ]);
+
+    const ownChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: hybridToken,
+    });
+    expect(ownChatRes.statusCode).toBe(200);
+    expect(ownChatRes.json().posts).toEqual([
+      expect.objectContaining({
+        authorRole: 'instructor',
+        authorName: expect.stringContaining('Hybrid'),
+        comments: [
+          expect.objectContaining({
+            authorRole: 'instructor',
+            authorName: expect.stringContaining('Hybrid'),
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('shows dismissed posts last for professors but hides them from presentation view', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course, student, studentToken } = await setupCourseWithStudent();
@@ -4476,6 +4663,107 @@ describe('session chat quick posts', () => {
           changeType: 'post-deleted',
           postId: String(post._id),
           post: null,
+        }),
+      ],
+    ]));
+  });
+
+  it('broadcasts updated post deltas when a student deletes their own comment', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Delete Chat Comment Session' });
+    const session = sessionRes.json().session;
+
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const post = await Post.create({
+      scopeType: 'session',
+      courseId: String(course._id),
+      sessionId: String(session._id),
+      authorId: String(prof._id),
+      authorRole: 'instructor',
+      body: 'Comment target',
+      bodyWysiwyg: '',
+      isQuickPost: false,
+      quickPostQuestionNumber: null,
+      upvoteUserIds: [],
+      upvoteCount: 0,
+      comments: [
+        {
+          _id: 'comment-own',
+          authorId: String(student._id),
+          authorRole: 'student',
+          body: 'Delete this comment',
+          bodyWysiwyg: '',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          _id: 'comment-keep',
+          authorId: String(prof._id),
+          authorRole: 'instructor',
+          body: 'Keep this comment',
+          bodyWysiwyg: '',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ],
+      dismissedAt: null,
+      dismissedBy: '',
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const deleteRes = await authenticatedRequest(
+      app,
+      'DELETE',
+      `/api/v1/sessions/${session._id}/chat/posts/${post._id}/comments/comment-own`,
+      { token: studentToken }
+    );
+
+    expect(deleteRes.statusCode).toBe(200);
+    const updatedPost = await Post.findById(post._id).lean();
+    expect(updatedPost.comments).toHaveLength(1);
+    expect(updatedPost.comments[0]._id).toBe('comment-keep');
+
+    const chatUpdatedCalls = wsSendToUsersSpy.mock.calls.filter(([, event]) => event === 'session:chat-updated');
+    expect(chatUpdatedCalls).toHaveLength(2);
+    expect(chatUpdatedCalls).toEqual(expect.arrayContaining([
+      [
+        [String(prof._id)],
+        'session:chat-updated',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          changeType: 'comment-deleted',
+          postId: String(post._id),
+          post: expect.objectContaining({
+            comments: [
+              expect.objectContaining({
+                _id: 'comment-keep',
+              }),
+            ],
+          }),
+        }),
+      ],
+      [
+        [String(student._id)],
+        'session:chat-updated',
+        expect.objectContaining({
+          courseId: course._id,
+          sessionId: session._id,
+          changeType: 'comment-deleted',
+          postId: String(post._id),
         }),
       ],
     ]));
