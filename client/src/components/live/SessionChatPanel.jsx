@@ -243,7 +243,7 @@ function CommentThread({
 }) {
   const { t } = useTranslation();
   const hasCommentDraft = normalizeDraftPlainText(commentDraft).length > 0 || (commentDraft || '').trim().length > 0;
-  const commentFormEnabled = canComment && richTextChatEnabled;
+  const shouldShowCommentForm = canComment && richTextChatEnabled;
 
   return (
     <Box sx={{ mt: 1.5 }}>
@@ -297,7 +297,7 @@ function CommentThread({
               {t('sessionChat.commentsDisabledNotice')}
             </Alert>
           ) : null}
-          {canComment && (
+          {shouldShowCommentForm && (
             <Paper variant="outlined" sx={{ p: 1.25 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                 {t('sessionChat.addComment')}
@@ -308,7 +308,6 @@ function CommentThread({
                 showMathHint={false}
                 placeholder={t('sessionChat.commentPlaceholder')}
                 ariaLabel={t('sessionChat.commentEditorAria')}
-                disabled={!commentFormEnabled}
               />
               <MathPreview html={commentDraft} showLabel={false} />
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
@@ -316,7 +315,7 @@ function CommentThread({
                   variant="contained"
                   size="small"
                   onClick={onSubmitComment}
-                  disabled={!commentFormEnabled || !hasCommentDraft || submitting}
+                  disabled={!hasCommentDraft || submitting}
                 >
                   {submitting ? t('sessionChat.sending') : t('sessionChat.comment')}
                 </Button>
@@ -686,7 +685,7 @@ export default function SessionChatPanel({
         </Paper>
       ) : null}
 
-      {canCompose ? (
+      {canCompose && resolvedRichTextChatEnabled ? (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', mb: composerOpen ? 1.25 : 0 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
