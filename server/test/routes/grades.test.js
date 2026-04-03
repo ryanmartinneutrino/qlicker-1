@@ -1558,4 +1558,55 @@ describe('Grading routes', () => {
     expect(grades.every((grade) => grade.visibleToStudents === true)).toBe(true);
     expect(grades.every((grade) => grade.marks[0]?.outOf === 0)).toBe(true);
   });
+
+  it('warns about no-response questions before making an ended session reviewable and can zero them out', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'reviewable-no-response',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Reviewable no-response session' });
+    const question = await createMcQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 3,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: false,
+        joined: [students[0]._id],
+        questions: [question._id],
+      },
+    });
+
+    const warningRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(warningRes.statusCode).toBe(200);
+    expect(warningRes.json().grading).toBeNull();
+    expect(warningRes.json().nonAutoGradeableWarning.noResponseCount).toBe(1);
+    expect(warningRes.json().nonAutoGradeableWarning.nonAutoGradeableCount).toBe(0);
+
+    const confirmRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+      token: profToken,
+      payload: {
+        reviewable: true,
+        acknowledgeNonAutoGradeable: true,
+        zeroNonAutoGradeable: true,
+      },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    expect(confirmRes.json().session.reviewable).toBe(true);
+
+    const zeroedQuestion = await Question.findById(question._id).lean();
+    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+  });
 });

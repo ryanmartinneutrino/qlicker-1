@@ -26,7 +26,7 @@ export async function copyQuestionToSession({
   targetCourseId,
   userId,
   addToSession = true,
-  preservePoints = false,
+  preservePoints,
 }) {
   if (!sourceQuestion) {
     throw new Error('Source question is required');
@@ -41,7 +41,9 @@ export async function copyQuestionToSession({
   delete copiedPayload.__v;
   delete copiedPayload.updatedAt;
   delete copiedPayload.sessionProperties;
-  copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions, { preservePoints });
+  copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions, {
+    preservePoints: preservePoints !== false,
+  });
 
   const copy = await Question.create({
     ...copiedPayload,

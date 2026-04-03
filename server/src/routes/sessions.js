@@ -3841,17 +3841,24 @@ export default async function sessionRoutes(app) {
       }
 
       if (request.body.reviewable === true && !session.reviewable) {
-        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
-        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+        const [nonAutoGradeable, noResponseQuestions] = await Promise.all([
+          getNonAutoGradeableQuestions(session),
+          getNoResponseQuestions(session),
+        ]);
+        const needsReviewableWarning = nonAutoGradeable.length > 0 || noResponseQuestions.length > 0;
+        if (needsReviewableWarning && !request.body.acknowledgeNonAutoGradeable) {
           return {
             session,
             grading: null,
-            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+            nonAutoGradeableWarning: buildReviewableWarning({
+              nonAutoGradeable,
+              noResponses: noResponseQuestions,
+            }),
           };
         }
 
         if (request.body.zeroNonAutoGradeable) {
-          await zeroQuestionPoints(nonAutoGradeable);
+          await zeroQuestionPoints([...nonAutoGradeable, ...noResponseQuestions]);
         }
       }
 

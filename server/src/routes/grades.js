@@ -407,6 +407,10 @@ export default async function gradeRoutes(app) {
     {
       preHandler: authenticate,
       schema: bulkMarkUpdateSchema,
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 120, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const session = await Session.findById(request.params.id).lean();
