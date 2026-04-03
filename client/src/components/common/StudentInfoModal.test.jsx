@@ -120,7 +120,7 @@ describe('StudentInfoModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Group A' }));
 
     expect(await screen.findByText('Lab Teams — Group A')).toBeInTheDocument();
-    expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(screen.getAllByText('Ada Lovelace').length).toBeGreaterThan(1);
     expect(screen.getByText('grace@example.com')).toBeInTheDocument();
   });
 });
