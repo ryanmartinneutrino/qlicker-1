@@ -3,7 +3,13 @@ import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import en from './locales/en.json';
+import de from './locales/de.json';
+import es from './locales/es.json';
 import fr from './locales/fr.json';
+import it from './locales/it.json';
+import pir from './locales/pir.json';
+import ru from './locales/ru.json';
+import zh from './locales/zh.json';
 
 i18n
   .use(LanguageDetector)
@@ -11,7 +17,13 @@ i18n
   .init({
     resources: {
       en: { translation: en },
+      de: { translation: de },
+      es: { translation: es },
       fr: { translation: fr },
+      it: { translation: it },
+      pir: { translation: pir },
+      ru: { translation: ru },
+      zh: { translation: zh },
     },
     fallbackLng: 'en',
     showSupportNotice: false,
@@ -33,7 +45,13 @@ export default i18n;
  */
 export const SUPPORTED_LOCALES = [
   { code: 'en', label: 'English' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'es', label: 'Español' },
   { code: 'fr', label: 'Français' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'pir', label: 'Pirate' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'zh', label: '中文' },
 ];
 
 /**
