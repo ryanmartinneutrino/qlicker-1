@@ -2019,8 +2019,8 @@ function serializeLiveResponseEntry(response, { studentName = null } = {}) {
   return entry;
 }
 
-async function buildResponseAddedStatsDelta(question, attemptNumber, responseCount = null) {
-  if (!question?.sessionOptions?.stats) return null;
+async function buildResponseAddedStatsDelta(question, attemptNumber, responseCount = null, { force = false } = {}) {
+  if (!force && !question?.sessionOptions?.stats) return null;
 
   const normalizedAttemptNumber = Number(attemptNumber) || 1;
   const cachedEntry = getAttemptStatsEntry(question, normalizedAttemptNumber);
@@ -2588,7 +2588,14 @@ async function notifyResponseAdded(app, course, session, data, { includeStudents
   const attempt = Number(data?.attempt || response?.attempt || 1);
   const questionType = normalizeQuestionType(question);
   const includesResponseEntry = [2, 4].includes(questionType);
-  const responseStats = await buildResponseAddedStatsDelta(question, attempt, data?.responseCount);
+
+  // Instructors always receive response stats so distribution bars update in
+  // real-time regardless of whether live stats are shown to students.
+  const instructorStats = await buildResponseAddedStatsDelta(question, attempt, data?.responseCount, { force: true });
+  // Students only receive stats when the instructor has enabled live stats.
+  const studentStats = includeStudents
+    ? await buildResponseAddedStatsDelta(question, attempt, data?.responseCount)
+    : null;
 
   let instructorResponse = null;
   if (response && includesResponseEntry) {
@@ -2617,13 +2624,13 @@ async function notifyResponseAdded(app, course, session, data, { includeStudents
   };
   sendToInstructors(app, course, 'session:response-added', {
     ...payload,
-    ...(responseStats ? { responseStats } : {}),
+    ...(instructorStats ? { responseStats: instructorStats } : {}),
     ...(instructorResponse ? { response: instructorResponse } : {}),
   });
   if (includeStudents) {
     sendToJoinedStudents(app, session, 'session:response-added', {
       ...payload,
-      ...(responseStats ? { responseStats } : {}),
+      ...(studentStats ? { responseStats: studentStats } : {}),
       ...(studentResponse ? { response: studentResponse } : {}),
     });
   }

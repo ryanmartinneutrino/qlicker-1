@@ -2995,6 +2995,70 @@ describe('Live session websocket delta events', () => {
     ]);
   });
 
+  it('includes distribution stats for instructors even when live stats are disabled for students', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
+    const sessRes = await createSessionInCourse(profToken, course._id);
+    const session = sessRes.json().session;
+
+    await createQuestionInSession(profToken, {
+      type: 0,
+      content: '<p>MC question without live stats</p>',
+      plainText: 'MC question without live stats',
+      sessionId: session._id,
+      courseId: course._id,
+      options: [
+        { content: 'Option A', correct: true },
+        { content: 'Option B', correct: false },
+      ],
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    // Make the question visible but do NOT enable stats for students.
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/question-visibility`, {
+      token: profToken,
+      payload: { hidden: false, stats: false },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const wsSendToUsersSpy = vi.spyOn(app, 'wsSendToUsers');
+    const respondRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/respond`, {
+      token: studentToken,
+      payload: { answer: '0' },
+    });
+
+    expect(respondRes.statusCode).toBe(201);
+
+    // Instructor should receive responseStats even though stats are not enabled for students.
+    const instructorCall = wsSendToUsersSpy.mock.calls.find(([userIds, event]) => (
+      event === 'session:response-added' && userIds.includes(String(prof._id))
+    ));
+    expect(instructorCall).toBeDefined();
+    const [, , instructorPayload] = instructorCall;
+    expect(instructorPayload.responseStats).toEqual(expect.objectContaining({
+      type: 'distribution',
+      total: 1,
+    }));
+    expect(instructorPayload.responseStats.distribution).toEqual([
+      expect.objectContaining({ count: 1 }),
+      expect.objectContaining({ count: 0 }),
+    ]);
+
+    // Student should NOT receive responseStats because stats are disabled.
+    const studentCall = wsSendToUsersSpy.mock.calls.find(([userIds, event]) => (
+      event === 'session:response-added' && userIds.includes(String(student._id))
+    ));
+    // Student may or may not receive the event, but if they do, no responseStats.
+    if (studentCall) {
+      expect(studentCall[2]).not.toHaveProperty('responseStats');
+    }
+  });
+
   it('includes complete short-answer stats in response-added deltas', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { prof, profToken, course, student, studentToken } = await setupCourseWithStudent();
