@@ -1,11 +1,35 @@
 import i18n from '../i18n';
 import { DEFAULT_DATE_FORMAT } from '../i18n';
 
-const MONTH_SHORT_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTH_SHORT_FR = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juill.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const FALLBACK_LOCALE = 'en';
+const MONTH_SHORT_CACHE = new Map();
+
+function getSupportedLocale(lang) {
+  if (!lang) return FALLBACK_LOCALE;
+
+  try {
+    return Intl.DateTimeFormat.supportedLocalesOf([lang])[0] || FALLBACK_LOCALE;
+  } catch {
+    return FALLBACK_LOCALE;
+  }
+}
 
 function getMonthShort(lang) {
-  return lang?.startsWith('fr') ? MONTH_SHORT_FR : MONTH_SHORT_EN;
+  const locale = getSupportedLocale(lang);
+  if (MONTH_SHORT_CACHE.has(locale)) {
+    return MONTH_SHORT_CACHE.get(locale);
+  }
+
+  const formatter = new Intl.DateTimeFormat(locale, {
+    month: 'short',
+    timeZone: 'UTC',
+  });
+  const months = Array.from({ length: 12 }, (_, index) => (
+    formatter.format(new Date(Date.UTC(2026, index, 1)))
+  ));
+
+  MONTH_SHORT_CACHE.set(locale, months);
+  return months;
 }
 
 /**
@@ -43,7 +67,7 @@ export function formatDisplayDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return '';
 
-  const lang = i18n.language || 'en';
+  const lang = i18n.language || FALLBACK_LOCALE;
   const months = getMonthShort(lang);
   const day = String(date.getDate()).padStart(2, '0');
   const month = months[date.getMonth()];
@@ -72,7 +96,7 @@ export function formatDisplayDateTime(value) {
 
   const datePart = formatDisplayDate(date);
   if (getTimeFormat() === '12h') {
-    const localizedTime = new Intl.DateTimeFormat(i18n.language || 'en', {
+    const localizedTime = new Intl.DateTimeFormat(getSupportedLocale(i18n.language), {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
