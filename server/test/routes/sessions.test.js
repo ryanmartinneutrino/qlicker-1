@@ -2116,6 +2116,61 @@ describe('POST /api/v1/sessions/:id/end', () => {
     expect(grades[0].marks).toHaveLength(1);
     expect(grades[0].marks[0].outOf).toBe(0);
   });
+
+  it('warns about no-response questions before ending with reviewable grades and can zero them out', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, students } = await setupCourseWithStudents({ studentCount: 1 });
+    const session = await createSessionInCourse(profToken, course._id, { name: 'No response warning session' });
+
+    const question = await createQuestionInSession(profToken, {
+      type: 0,
+      sessionId: session._id,
+      courseId: course._id,
+      plainText: 'Unanswered question',
+      content: '<p>Unanswered question</p>',
+      sessionOptions: {
+        points: 3,
+      },
+      options: [
+        { content: 'A', correct: true },
+        { content: 'B', correct: false },
+      ],
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [question._id],
+        status: 'running',
+        joined: [students[0]._id],
+      },
+    });
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+
+    const warningRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(warningRes.statusCode).toBe(200);
+    expect(warningRes.json().nonAutoGradeableWarning.noResponseCount).toBe(1);
+    expect(warningRes.json().nonAutoGradeableWarning.nonAutoGradeableCount).toBe(0);
+
+    const confirmRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/end`, {
+      token: profToken,
+      payload: {
+        reviewable: true,
+        acknowledgeNonAutoGradeable: true,
+        zeroNonAutoGradeable: true,
+      },
+    });
+
+    expect(confirmRes.statusCode).toBe(200);
+    const zeroedQuestion = await Question.findById(question._id).lean();
+    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+  });
 });
 
 // ---------- Student quiz routes ----------
@@ -3691,6 +3746,53 @@ describe('POST /api/v1/sessions/:id/copy', () => {
       expect(copiedQuestion.originalQuestion).toBe(sourceQuestionId);
       expect(copiedQuestion._id).not.toBe(sourceQuestionId);
     });
+  });
+
+  it('defaults copied question points to 1 unless preservePoints is requested', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'copy-points@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Points source session' });
+    const session = sessRes.json().session;
+
+    const questionRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Question with custom points</p>',
+        plainText: 'Question with custom points',
+        sessionId: session._id,
+        courseId: course._id,
+        sessionOptions: {
+          points: 0,
+          maxAttempts: 2,
+        },
+      },
+    });
+    const sourceQuestion = questionRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: sourceQuestion._id },
+    });
+
+    const defaultCopyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+    });
+    expect(defaultCopyRes.statusCode).toBe(201);
+    const defaultCopyQuestion = await Question.findById(defaultCopyRes.json().session.questions[0]).lean();
+    expect(defaultCopyQuestion.sessionOptions.points).toBe(1);
+    expect(defaultCopyQuestion.sessionOptions.maxAttempts).toBe(2);
+
+    const preservedCopyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+      payload: { preservePoints: true },
+    });
+    expect(preservedCopyRes.statusCode).toBe(201);
+    const preservedCopyQuestion = await Question.findById(preservedCopyRes.json().session.questions[0]).lean();
+    expect(preservedCopyQuestion.sessionOptions.points).toBe(0);
   });
 });
 

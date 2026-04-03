@@ -154,6 +154,21 @@ async function createSaQuestion({ creatorId, sessionId, courseId, points = 1 }) 
   });
 }
 
+async function createSlideQuestion({ creatorId, sessionId, courseId, points = 0 }) {
+  return Question.create({
+    type: 6,
+    creator: creatorId,
+    owner: creatorId,
+    courseId,
+    sessionId,
+    plainText: 'Slide item',
+    content: '<p>Slide item</p>',
+    sessionOptions: {
+      points,
+    },
+  });
+}
+
 describe('Grading routes', () => {
   it('blocks recalculation and manual mark edits until the session is ended', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
@@ -336,6 +351,67 @@ describe('Grading routes', () => {
     });
     expect(sessionGrades.statusCode).toBe(200);
     expect(sessionGrades.json().grades[0].marks[0].needsGrading).toBe(false);
+  });
+
+  it('ignores slide items when calculating grade and participation denominators', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 1,
+      prefix: 'slide-denominator',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Slide denominator session' });
+    const slide = await createSlideQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 5,
+    });
+    const question = await createMcQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 1,
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        reviewable: true,
+        joined: [students[0]._id],
+        questions: [slide._id, question._id],
+      },
+    });
+
+    await Response.create({
+      attempt: 1,
+      questionId: question._id,
+      studentUserId: students[0]._id,
+      answer: '0',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const recalc = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/grades/recalculate`, {
+      token: profToken,
+      payload: { missingOnly: false },
+    });
+
+    expect(recalc.statusCode).toBe(200);
+
+    const grade = await Grade.findOne({
+      sessionId: session._id,
+      courseId: course._id,
+      userId: students[0]._id,
+    }).lean();
+
+    expect(grade.marks).toHaveLength(1);
+    expect(grade.marks[0].questionId).toBe(question._id);
+    expect(grade.outOf).toBe(1);
+    expect(grade.numQuestions).toBe(1);
+    expect(grade.numQuestionsTotal).toBe(1);
+    expect(grade.participation).toBe(100);
   });
 
   it('ignores stale blank-response grading flags in session review and course summaries', async (ctx) => {
@@ -575,6 +651,100 @@ describe('Grading routes', () => {
         sessionId: session._id,
       })
     );
+  });
+
+  it('bulk-updates selected marks without overwriting untouched points or feedback', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'bulk-mark-update',
+    });
+
+    const session = await createSessionInCourse(profToken, course._id, { name: 'Bulk grading session' });
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        status: 'done',
+        joined: students.map((student) => student._id),
+      },
+    });
+    const question = await createSaQuestion({
+      creatorId: students[0]._id,
+      sessionId: session._id,
+      courseId: course._id,
+      points: 2,
+    });
+
+    const [gradeA, gradeB] = await Grade.create([
+      {
+        userId: students[0]._id,
+        courseId: course._id,
+        sessionId: session._id,
+        name: session.name,
+        joined: true,
+        automatic: false,
+        outOf: 2,
+        visibleToStudents: true,
+        marks: [{
+          questionId: question._id,
+          points: 1,
+          outOf: 2,
+          automatic: false,
+          needsGrading: false,
+          feedback: 'Keep points',
+          responseId: new mongoose.Types.ObjectId().toString(),
+          attempt: 1,
+        }],
+      },
+      {
+        userId: students[1]._id,
+        courseId: course._id,
+        sessionId: session._id,
+        name: session.name,
+        joined: true,
+        automatic: false,
+        outOf: 2,
+        visibleToStudents: true,
+        marks: [{
+          questionId: question._id,
+          points: 0,
+          outOf: 2,
+          automatic: false,
+          needsGrading: true,
+          feedback: 'Keep points',
+          responseId: new mongoose.Types.ObjectId().toString(),
+          attempt: 1,
+        }],
+      },
+    ]);
+
+    const feedbackOnly = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/grades/marks/${question._id}`, {
+      token: profToken,
+      payload: {
+        gradeIds: [gradeA._id, gradeB._id],
+        feedback: 'Shared feedback',
+      },
+    });
+
+    expect(feedbackOnly.statusCode).toBe(200);
+    expect(feedbackOnly.json().updatedCount).toBe(2);
+    expect(feedbackOnly.json().grades.every((grade) => grade.marks[0].feedback === 'Shared feedback')).toBe(true);
+    expect(feedbackOnly.json().grades.find((grade) => grade._id === gradeA._id).marks[0].points).toBe(1);
+    expect(feedbackOnly.json().grades.find((grade) => grade._id === gradeB._id).marks[0].points).toBe(0);
+
+    const pointsOnly = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/grades/marks/${question._id}`, {
+      token: profToken,
+      payload: {
+        gradeIds: [gradeA._id, gradeB._id],
+        points: 2,
+      },
+    });
+
+    expect(pointsOnly.statusCode).toBe(200);
+    expect(pointsOnly.json().grades.every((grade) => grade.marks[0].points === 2)).toBe(true);
+    expect(pointsOnly.json().grades.every((grade) => grade.marks[0].feedback === 'Shared feedback')).toBe(true);
+    expect(pointsOnly.json().grades.every((grade) => grade.value === 100)).toBe(true);
+    expect(pointsOnly.json().grades.every((grade) => grade.participation === 100)).toBe(true);
   });
 
   it('recomputes aggregate grade and participation when a mark is edited', async (ctx) => {

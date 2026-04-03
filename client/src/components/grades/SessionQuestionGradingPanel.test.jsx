@@ -537,9 +537,12 @@ describe('SessionQuestionGradingPanel', () => {
         ],
       },
     });
-    apiClient.patch
-      .mockResolvedValueOnce({ data: { grade: { _id: 'grade-1', userId: 'student-a', marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }] } } })
-      .mockResolvedValueOnce({ data: { grade: { _id: 'grade-2', userId: 'student-b', marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }] } } });
+    apiClient.patch.mockResolvedValueOnce({
+      data: {
+        updatedCount: 1,
+        grades: [{ _id: 'grade-1', userId: 'student-a', marks: [{ questionId: 'q-manual', points: 4, outOf: 5, needsGrading: false, feedback: '' }] }],
+      },
+    });
 
     render(
       <SessionQuestionGradingPanel
@@ -591,8 +594,8 @@ describe('SessionQuestionGradingPanel', () => {
     await waitFor(() => {
       expect(apiClient.patch).toHaveBeenCalledTimes(1);
       expect(apiClient.patch).toHaveBeenCalledWith(
-        '/grades/grade-1/marks/q-manual',
-        { points: 4 }
+        '/sessions/session-1/grades/marks/q-manual',
+        { gradeIds: ['grade-1'], points: 4 }
       );
     });
   });

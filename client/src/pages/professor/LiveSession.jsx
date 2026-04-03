@@ -134,6 +134,26 @@ function normalizeValue(value) {
   return String(value).trim();
 }
 
+function buildReviewableWarningMessage(t, warning) {
+  const manualCount = Number(warning?.nonAutoGradeableCount) || 0;
+  const noResponseCount = Number(warning?.noResponseCount) || 0;
+
+  if (manualCount > 0 && noResponseCount > 0) {
+    return t('professor.liveSession.reviewableWarningCombined', {
+      manualCount,
+      noResponseCount,
+    });
+  }
+  if (manualCount > 0) {
+    return t('professor.liveSession.reviewableWarningManualOnly', {
+      count: manualCount,
+    });
+  }
+  return t('professor.liveSession.reviewableWarningNoResponsesOnly', {
+    count: noResponseCount,
+  });
+}
+
 function applyCurrentQuestionUpdate(prev, payload) {
   if (!prev) return prev;
 
@@ -1842,9 +1862,7 @@ function LiveSessionContent() {
           {nonAutoGradeableWarning && makeReviewable && (
             <Alert severity="warning" sx={{ mt: 2 }}>
               <Typography variant="body2" sx={{ mb: 1 }}>
-                {t('professor.liveSession.nonAutoGradeableWarning', {
-                  count: nonAutoGradeableWarning.questionCount,
-                })}
+                {buildReviewableWarningMessage(t, nonAutoGradeableWarning)}
               </Typography>
               <FormControl sx={{ mt: 1 }}>
                 <FormLabel>{t('professor.liveSession.nonAutoGradeableChoose')}</FormLabel>
