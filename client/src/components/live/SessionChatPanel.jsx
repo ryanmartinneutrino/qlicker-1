@@ -297,7 +297,7 @@ function CommentThread({
               {t('sessionChat.commentsDisabledNotice')}
             </Alert>
           ) : null}
-          {canComment && (
+          {commentFormEnabled && (
             <Paper variant="outlined" sx={{ p: 1.25 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                 {t('sessionChat.addComment')}
@@ -686,7 +686,7 @@ export default function SessionChatPanel({
         </Paper>
       ) : null}
 
-      {canCompose ? (
+      {canCompose && resolvedRichTextChatEnabled ? (
         <Paper variant="outlined" sx={{ p: 1.5 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', mb: composerOpen ? 1.25 : 0 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>

@@ -274,7 +274,7 @@ describe('SessionChatPanel', () => {
     expect(screen.queryByText('Student One')).not.toBeInTheDocument();
   });
 
-  it('disables rich text posting and commenting while keeping quick posts available', async () => {
+  it('hides rich text post and comment inputs while keeping quick posts available', async () => {
     apiClient.get.mockResolvedValue({
       data: {
         richTextChatEnabled: false,
@@ -325,15 +325,45 @@ describe('SessionChatPanel', () => {
 
     expect(await screen.findByText('Rich text chat is off. Only quick posts are available right now.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Request explanation' })).toBeEnabled();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Write a post' }));
-    expect(screen.getByLabelText('Session chat post editor')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Post' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Write a post' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Session chat post editor')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Post' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
     expect(await screen.findByText('Commenting is disabled while rich text chat is off.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Session chat comment editor')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Comment' })).toBeDisabled();
+    expect(screen.queryByLabelText('Session chat comment editor')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Comment' })).not.toBeInTheDocument();
+  });
+
+  it('hides the professor post composer when rich text chat is off during live sessions', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        richTextChatEnabled: false,
+        canPost: true,
+        canVote: false,
+        canDeleteOwnPost: false,
+        canDeleteOwnComment: true,
+        canDeleteAnyComment: true,
+        canDismiss: true,
+        canComment: true,
+        canViewNames: true,
+        quickPostOptions: [],
+        posts: [],
+      },
+    });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="professor"
+      />
+    );
+
+    expect(await screen.findByText('Rich text chat is off. Quick posts still work for students.')).toBeInTheDocument();
+    expect(screen.queryByText('New post')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Session chat post editor')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Post' })).not.toBeInTheDocument();
   });
 
   it('shows delete only for a student-owned non-quick post and calls the delete endpoint', async () => {
