@@ -219,7 +219,7 @@ fi
 
 mongo_eval() {
   if [ "$RUNTIME" = "host" ]; then
-    docker exec "$MONGO_CONTAINER" mongosh --quiet --eval "$1"
+    docker exec "$MONGO_CONTAINER" mongosh "$MONGO_URI" --quiet --eval "$1"
   else
     mongosh "$MONGO_URI" --quiet --eval "$1"
   fi
