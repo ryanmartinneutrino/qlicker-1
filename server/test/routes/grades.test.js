@@ -264,6 +264,85 @@ describe('Grading routes', () => {
     expect(Array.isArray(res.json().grades)).toBe(true);
   });
 
+  it('filters course grades to a requested student and includes joined and quiz completion metadata', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+
+    const { profToken, course, students } = await setupCourseWithStudents({
+      studentCount: 2,
+      prefix: 'course-student-modal',
+    });
+
+    const interactiveSession = await createSessionInCourse(profToken, course._id, {
+      name: 'Interactive Session',
+    });
+    const quizSession = await createSessionInCourse(profToken, course._id, {
+      name: 'Quiz Session',
+      quiz: true,
+    });
+
+    await Session.findByIdAndUpdate(interactiveSession._id, {
+      $set: {
+        status: 'done',
+        joined: [students[0]._id, students[1]._id],
+      },
+    });
+    await Session.findByIdAndUpdate(quizSession._id, {
+      $set: {
+        status: 'done',
+        quiz: true,
+        joined: [students[0]._id, students[1]._id],
+        submittedQuiz: [students[0]._id],
+      },
+    });
+
+    await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: interactiveSession._id,
+      name: interactiveSession.name,
+      joined: true,
+      participation: 75,
+      value: 80,
+    });
+    await Grade.create({
+      userId: students[0]._id,
+      courseId: course._id,
+      sessionId: quizSession._id,
+      name: quizSession.name,
+      joined: true,
+      participation: 0,
+      value: 90,
+    });
+
+    const res = await authenticatedRequest(
+      app,
+      'GET',
+      `/api/v1/courses/${course._id}/grades?studentId=${students[0]._id}`,
+      { token: profToken }
+    );
+
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload.rows).toHaveLength(1);
+    expect(payload.rows[0].student.studentId).toBe(students[0]._id);
+    expect(payload.sessions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          _id: interactiveSession._id,
+          joinedCount: 2,
+        }),
+        expect.objectContaining({
+          _id: quizSession._id,
+          joinedCount: 2,
+        }),
+      ])
+    );
+    const interactiveGrade = payload.rows[0].grades.find((grade) => grade.sessionId === interactiveSession._id);
+    const quizGrade = payload.rows[0].grades.find((grade) => grade.sessionId === quizSession._id);
+    expect(interactiveGrade).toMatchObject({ joined: true, submitted: false });
+    expect(quizGrade).toMatchObject({ joined: true, submitted: true });
+  });
+
   it('backfills a missing session msScoringMethod to the default during grade recalculation', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
