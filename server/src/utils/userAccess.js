@@ -11,6 +11,14 @@ function getUserRoles(userOrId) {
   return Array.isArray(userOrId.profile?.roles) ? userOrId.profile.roles : [];
 }
 
+function getUserCourseIds(userOrId) {
+  if (!userOrId || typeof userOrId === 'string') return [];
+  if (!Array.isArray(userOrId.profile?.courses)) return [];
+  return userOrId.profile.courses
+    .map((courseId) => String(courseId || '').trim())
+    .filter(Boolean);
+}
+
 /*
  * Short-lived in-memory cache for the instructor flag.
  * Avoids a Course.exists() DB roundtrip on every GET /me and every
@@ -39,11 +47,17 @@ export function invalidateAccessCache(userId) {
   if (id) instructorCache.delete(id);
 }
 
-export async function getUserAccessFlags(userOrId) {
+export async function getUserAccessFlags(userOrId, options = {}) {
   const userId = normalizeUserId(userOrId);
   const roles = getUserRoles(userOrId);
+  const courseIds = getUserCourseIds(userOrId);
   const canAccessProfessorDashboard = roles.includes('professor');
-  const mayNeedInstructorCourseLookup = roles.includes('professor') || roles.includes('admin');
+  const forceInstructorLookup = options.forceInstructorLookup === true;
+  const mayNeedInstructorCourseLookup = forceInstructorLookup
+    || roles.includes('professor')
+    || roles.includes('admin')
+    || courseIds.length > 0;
+
   if (!userId) {
     return {
       hasInstructorCourses: false,
@@ -66,7 +80,12 @@ export async function getUserAccessFlags(userOrId) {
     };
   }
 
-  const hasInstructorCourses = !!(await Course.exists({ instructors: userId }));
+  const instructorFilter = { instructors: userId };
+  if (!forceInstructorLookup && courseIds.length > 0) {
+    instructorFilter._id = { $in: courseIds };
+  }
+
+  const hasInstructorCourses = !!(await Course.exists(instructorFilter));
   setCachedFlag(userId, hasInstructorCourses);
   return {
     hasInstructorCourses,
