@@ -14,11 +14,12 @@ vi.mock('../../api/client', () => ({
 }));
 
 vi.mock('../questions/StudentRichTextEditor', () => ({
-  default: ({ value, onChange, placeholder, ariaLabel }) => (
+  default: ({ value, onChange, placeholder, ariaLabel, disabled = false }) => (
     <textarea
       aria-label={ariaLabel}
       placeholder={placeholder}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange({ html: event.target.value })}
     />
   ),
@@ -162,6 +163,177 @@ describe('SessionChatPanel', () => {
     });
     expect(await screen.findByRole('button', { name: 'Undo request' })).toBeInTheDocument();
     expect(screen.getAllByText("I didn't understand question 3").length).toBeGreaterThan(0);
+  });
+
+  it('keeps presentation chat anonymous by refetching instead of applying named websocket deltas', async () => {
+    apiClient.get
+      .mockResolvedValueOnce({
+        data: {
+          richTextChatEnabled: true,
+          canPost: false,
+          canVote: false,
+          canDeleteOwnPost: false,
+          canDeleteOwnComment: false,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: false,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [
+            {
+              _id: 'post-1',
+              body: 'Anonymous post',
+              bodyWysiwyg: '',
+              createdAt: null,
+              updatedAt: null,
+              upvoteCount: 0,
+              viewerHasUpvoted: false,
+              isOwnPost: false,
+              isQuickPost: false,
+              dismissed: false,
+              authorRole: 'student',
+              authorName: null,
+              comments: [],
+            },
+          ],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          richTextChatEnabled: true,
+          canPost: false,
+          canVote: false,
+          canDeleteOwnPost: false,
+          canDeleteOwnComment: false,
+          canDeleteAnyComment: false,
+          canDismiss: false,
+          canComment: false,
+          canViewNames: false,
+          quickPosts: [],
+          posts: [
+            {
+              _id: 'post-1',
+              body: 'Anonymous post updated',
+              bodyWysiwyg: '',
+              createdAt: null,
+              updatedAt: null,
+              upvoteCount: 1,
+              viewerHasUpvoted: false,
+              isOwnPost: false,
+              isQuickPost: false,
+              dismissed: false,
+              authorRole: 'student',
+              authorName: null,
+              comments: [],
+            },
+          ],
+        },
+      });
+
+    const { rerender } = render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="presentation"
+        view="presentation"
+        chatEvent={null}
+      />
+    );
+
+    expect(await screen.findByText('Anonymous post')).toBeInTheDocument();
+    expect(screen.getByText('Anonymous student')).toBeInTheDocument();
+
+    rerender(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="presentation"
+        view="presentation"
+        chatEvent={{
+          id: 1,
+          postId: 'post-1',
+          post: {
+            _id: 'post-1',
+            body: 'Named update',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 1,
+            authorRole: 'student',
+            authorName: 'Student One',
+            comments: [],
+          },
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(apiClient.get).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText('Anonymous post updated')).toBeInTheDocument();
+    expect(screen.queryByText('Student One')).not.toBeInTheDocument();
+  });
+
+  it('disables rich text posting and commenting while keeping quick posts available', async () => {
+    apiClient.get.mockResolvedValue({
+      data: {
+        richTextChatEnabled: false,
+        canPost: true,
+        canVote: true,
+        canDeleteOwnPost: false,
+        canDeleteOwnComment: true,
+        canDeleteAnyComment: false,
+        canDismiss: false,
+        canComment: true,
+        canViewNames: false,
+        quickPostOptions: [
+          {
+            postId: 'quick-2',
+            questionNumber: 2,
+            label: "I didn't understand question 2",
+            upvoteCount: 1,
+            viewerHasUpvoted: false,
+          },
+        ],
+        posts: [
+          {
+            _id: 'post-1',
+            body: 'Existing post',
+            bodyWysiwyg: '',
+            createdAt: null,
+            updatedAt: null,
+            upvoteCount: 0,
+            viewerHasUpvoted: false,
+            isOwnPost: false,
+            isQuickPost: false,
+            dismissed: false,
+            authorRole: 'student',
+            authorName: null,
+            comments: [],
+          },
+        ],
+      },
+    });
+
+    render(
+      <SessionChatPanel
+        sessionId="session-1"
+        enabled
+        role="student"
+      />
+    );
+
+    expect(await screen.findByText('Rich text chat is off. Only quick posts are available right now.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Request explanation' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Write a post' }));
+    expect(screen.getByLabelText('Session chat post editor')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Post' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comments' }));
+    expect(await screen.findByText('Commenting is disabled while rich text chat is off.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Session chat comment editor')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Comment' })).toBeDisabled();
   });
 
   it('shows delete only for a student-owned non-quick post and calls the delete endpoint', async () => {

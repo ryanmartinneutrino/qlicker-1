@@ -350,6 +350,7 @@ function LiveSessionContent() {
           session: {
             ...prev.session,
             chatEnabled: data?.chatEnabled ?? prev.session?.chatEnabled,
+            richTextChatEnabled: data?.richTextChatEnabled ?? prev.session?.richTextChatEnabled,
           },
         } : prev);
         scheduleUiSyncMeasurement({
@@ -481,6 +482,7 @@ function LiveSessionContent() {
   const isJoined = liveData?.isJoined;
   const showStats = liveData?.showStats;
   const chatEnabled = !!session?.chatEnabled;
+  const richTextChatEnabled = session?.richTextChatEnabled !== false;
   const showResponseList = liveData?.showResponseList !== false;
   const showCorrect = liveData?.showCorrect;
   const questionHidden = liveData?.questionHidden;
@@ -880,6 +882,7 @@ function LiveSessionContent() {
           sessionId={sessionId}
           enabled={chatEnabled}
           role="student"
+          richTextChatEnabled={richTextChatEnabled}
           syncTransport={transport}
           refreshToken={chatRefreshToken}
           chatEvent={chatEvent}

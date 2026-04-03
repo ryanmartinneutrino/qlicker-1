@@ -479,11 +479,12 @@ export default function PresentationWindow() {
                 session: {
                   ...prev.session,
                   chatEnabled: d?.chatEnabled ?? prev.session?.chatEnabled,
+                  richTextChatEnabled: d?.richTextChatEnabled ?? prev.session?.richTextChatEnabled,
                 },
               } : prev);
               break;
             case 'session:chat-updated':
-              queueChatRefresh(d);
+              queueChatRefresh();
               break;
             default:
               break;
@@ -547,6 +548,7 @@ export default function PresentationWindow() {
   const showCorrect = !!currentQ?.sessionOptions?.correct;
   const showResponseList = currentQ?.sessionOptions?.responseListVisible !== false;
   const chatEnabled = !!session?.chatEnabled;
+  const richTextChatEnabled = session?.richTextChatEnabled !== false;
   const showShortAnswerStats = showStats && responseStats?.type === 'shortAnswer'
     && (!!showResponseList || !!wordCloudData?.wordFrequencies?.length);
   const questionIds = session?.questions || [];
@@ -765,6 +767,7 @@ export default function PresentationWindow() {
             sessionId={sessionId}
             enabled={chatEnabled}
             role="presentation"
+            richTextChatEnabled={richTextChatEnabled}
             view="presentation"
             syncTransport={liveTransport}
             refreshToken={chatRefreshToken}
@@ -809,6 +812,7 @@ export default function PresentationWindow() {
           sessionId={sessionId}
           enabled={chatEnabled}
           role="presentation"
+          richTextChatEnabled={richTextChatEnabled}
           view="presentation"
           syncTransport={liveTransport}
           refreshToken={chatRefreshToken}

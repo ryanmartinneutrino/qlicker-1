@@ -97,7 +97,6 @@ const SESSION_CHAT_TOGGLE_LABEL_SX = {
   '& .MuiFormControlLabel-label': {
     fontSize: { xs: '0.9rem', sm: '0.875rem' },
     lineHeight: 1.2,
-    fontWeight: 600,
     marginRight: 0,
     overflowWrap: 'anywhere',
   },
@@ -595,6 +594,7 @@ function LiveSessionContent() {
         setLiveData((prev) => prev ? mergeSessionUpdate(prev, {
           _id: prev.session?._id,
           chatEnabled: data?.chatEnabled ?? prev.session?.chatEnabled,
+          richTextChatEnabled: data?.richTextChatEnabled ?? prev.session?.richTextChatEnabled,
         }) : prev);
         scheduleUiSyncMeasurement({
           emittedAtMs: syncContext?.emittedAtMs,
@@ -917,6 +917,22 @@ function LiveSessionContent() {
     );
   }, [doAction, sessionId, t]);
 
+  const handleToggleRichTextChat = useCallback((enabled) => {
+    doAction(
+      () => apiClient.patch(`/sessions/${sessionId}/chat-settings`, { richTextChatEnabled: enabled }),
+      enabled ? t('sessionChat.enableRichTextChat') : t('sessionChat.disableRichTextChat'),
+      {
+        pendingKey: 'session-chat:rich-text',
+        refresh: false,
+        onSuccess: (response) => {
+          if (response?.data?.session) {
+            setLiveData((prev) => mergeSessionUpdate(prev, response.data.session));
+          }
+        },
+      }
+    );
+  }, [doAction, sessionId, t]);
+
   // Presentation window
   const presentationWindowRef = useRef(null);
 
@@ -992,6 +1008,7 @@ function LiveSessionContent() {
 
   const session = liveData?.session;
   const chatEnabled = !!session?.chatEnabled;
+  const richTextChatEnabled = session?.richTextChatEnabled !== false;
   const joinedStudentsLoaded = !!session?.joinedStudentsLoaded;
   const courseTitle = useMemo(() => (
     liveData?.course?._id ? buildCourseTitle(liveData.course, 'long') : ''
@@ -1230,19 +1247,36 @@ function LiveSessionContent() {
         </Box>
 
         <Paper variant="outlined" sx={{ p: { xs: 1, sm: 1.25 }, display: 'flex', justifyContent: 'flex-start' }}>
-          <FormControlLabel
-            labelPlacement="start"
-            sx={SESSION_CHAT_TOGGLE_LABEL_SX}
-            control={(
-              <Switch
-                checked={chatEnabled}
-                onChange={(event) => handleToggleSessionChat(event.target.checked)}
-                disabled={globalActionLoading || sessionChatBusy}
-                size={mobileControlSize}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%' }}>
+            <FormControlLabel
+              labelPlacement="start"
+              sx={SESSION_CHAT_TOGGLE_LABEL_SX}
+              control={(
+                <Switch
+                  checked={chatEnabled}
+                  onChange={(event) => handleToggleSessionChat(event.target.checked)}
+                  disabled={globalActionLoading || sessionChatBusy}
+                  size={mobileControlSize}
+                />
+              )}
+              label={t('sessionChat.enableSessionChat')}
+            />
+            {chatEnabled ? (
+              <FormControlLabel
+                labelPlacement="start"
+                sx={SESSION_CHAT_TOGGLE_LABEL_SX}
+                control={(
+                  <Switch
+                    checked={richTextChatEnabled}
+                    onChange={(event) => handleToggleRichTextChat(event.target.checked)}
+                    disabled={globalActionLoading || sessionChatBusy}
+                    size={mobileControlSize}
+                  />
+                )}
+                label={t('sessionChat.enableRichTextChat')}
               />
-            )}
-            label={t('sessionChat.enableSessionChat')}
-          />
+            ) : null}
+          </Box>
         </Paper>
 
         <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, width: '100%' }}>
@@ -1777,6 +1811,7 @@ function LiveSessionContent() {
             sessionId={sessionId}
             enabled={chatEnabled}
             role="professor"
+            richTextChatEnabled={richTextChatEnabled}
             syncTransport={transport}
             refreshToken={chatRefreshToken}
             chatEvent={chatEvent}

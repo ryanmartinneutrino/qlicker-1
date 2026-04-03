@@ -93,6 +93,7 @@ const updateSessionSchema = {
       date: { type: 'string', format: 'date-time' },
       joinCodeEnabled: { type: 'boolean' },
       chatEnabled: { type: 'boolean' },
+      richTextChatEnabled: { type: 'boolean' },
       joinCodeInterval: { type: 'number', minimum: 5, maximum: 120 },
       msScoringMethod: { type: 'string', enum: ['right-minus-wrong', 'all-or-nothing', 'correctness-ratio'] },
       tags: {
@@ -391,6 +392,7 @@ function sanitizeExportedSession(session, orderedQuestions = []) {
       reviewable: !!session?.reviewable,
       joinCodeEnabled: !!session?.joinCodeEnabled,
       chatEnabled: !!session?.chatEnabled,
+      richTextChatEnabled: session?.richTextChatEnabled !== false,
       joinCodeInterval: Number(session?.joinCodeInterval) || 10,
       msScoringMethod: session?.msScoringMethod || 'right-minus-wrong',
       tags: normalizeTags(session?.tags || []),
@@ -427,6 +429,7 @@ function buildImportedSessionPayload(sourceSession = {}, courseId = '') {
     questionResponseCounts: {},
     joinCodeEnabled: !!sourceSession?.joinCodeEnabled,
     chatEnabled: !!sourceSession?.chatEnabled,
+    richTextChatEnabled: sourceSession?.richTextChatEnabled !== false,
     joinCodeInterval: Number(sourceSession?.joinCodeInterval) || 10,
     msScoringMethod: sourceSession?.msScoringMethod || 'right-minus-wrong',
     tags: normalizeTags(sourceSession?.tags || []),
@@ -1068,6 +1071,10 @@ function getChatViewMode(request, isInstructorView) {
   return 'live';
 }
 
+function isRichTextChatEnabled(session) {
+  return session?.richTextChatEnabled !== false;
+}
+
 function getChatPermissionFlags({ session, course, request, viewMode }) {
   const isInstructorView = isInstructorOrAdmin(course, request.user);
   const userId = String(request.user?.userId || '');
@@ -1128,10 +1135,19 @@ function getChatAuthorDisplayName(authorMetadataMap, authorId) {
   return authorMetadataMap.get(authorId)?.displayName || null;
 }
 
-function shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap) {
+function shouldExposeChatAuthorName({
+  authorId,
+  authorRole,
+  includeNames,
+  viewerUserId,
+  authorMetadataMap,
+  allowRoleBasedExposure = true,
+}) {
   if (includeNames) return true;
   if (!authorId) return false;
   if (authorId === viewerUserId) return true;
+  if (!allowRoleBasedExposure) return false;
+  if (authorRole === 'student') return false;
   return !!authorMetadataMap.get(authorId)?.canExposeName;
 }
 
@@ -1182,6 +1198,7 @@ function serializeChatComment(comment, {
   includeNames = false,
   viewerUserId = '',
   authorMetadataMap = new Map(),
+  allowRoleBasedExposure = true,
 }) {
   const authorRole = normalizeAnswerValue(comment?.authorRole) || 'student';
   const authorId = normalizeAnswerValue(comment?.authorId);
@@ -1193,7 +1210,14 @@ function serializeChatComment(comment, {
     updatedAt: comment?.updatedAt || null,
     isOwnComment: authorId && authorId === viewerUserId,
     authorRole,
-    authorName: shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap)
+    authorName: shouldExposeChatAuthorName({
+      authorId,
+      authorRole,
+      includeNames,
+      viewerUserId,
+      authorMetadataMap,
+      allowRoleBasedExposure,
+    })
       ? getChatAuthorDisplayName(authorMetadataMap, authorId)
       : null,
   };
@@ -1204,6 +1228,7 @@ function serializeChatPost(post, {
   includeDismissed = false,
   viewerUserId = '',
   authorMetadataMap = new Map(),
+  allowRoleBasedExposure = true,
 }) {
   const upvoteUserIds = Array.isArray(post?.upvoteUserIds) ? post.upvoteUserIds.map((id) => String(id)) : [];
   const upvoteCount = Number(post?.upvoteCount);
@@ -1225,7 +1250,14 @@ function serializeChatPost(post, {
     dismissed: !!post?.dismissedAt,
     dismissedAt: includeDismissed ? (post?.dismissedAt || null) : null,
     authorRole,
-    authorName: shouldExposeChatAuthorName(authorId, includeNames, viewerUserId, authorMetadataMap)
+    authorName: shouldExposeChatAuthorName({
+      authorId,
+      authorRole,
+      includeNames,
+      viewerUserId,
+      authorMetadataMap,
+      allowRoleBasedExposure,
+    })
       ? getChatAuthorDisplayName(authorMetadataMap, authorId)
       : null,
     upvoterUserIds: includeNames ? upvoteUserIds : undefined,
@@ -1238,6 +1270,7 @@ function serializeChatPost(post, {
       includeNames,
       viewerUserId,
       authorMetadataMap,
+      allowRoleBasedExposure,
     })),
   };
 }
@@ -1258,6 +1291,7 @@ function buildChatEventDelta(post, {
   includeDismissed = false,
   currentQuestionNumber = null,
   authorMetadataMap = new Map(),
+  allowRoleBasedExposure = true,
 } = {}) {
   const delta = {};
 
@@ -1268,6 +1302,7 @@ function buildChatEventDelta(post, {
         includeDismissed,
         viewerUserId: '',
         authorMetadataMap,
+        allowRoleBasedExposure,
       });
       delete serializedPost.viewerHasUpvoted;
       delete serializedPost.isOwnPost;
@@ -1327,11 +1362,13 @@ async function loadSessionChatPayload({ session, course, request }) {
   });
   const currentQuestionNumber = questionMetadata.currentQuestionNumber;
   const viewerUserId = String(request.user?.userId || '');
+  const allowRoleBasedExposure = viewMode !== 'presentation';
   const serializedPosts = visiblePosts.map((post) => serializeChatPost(post, {
     includeNames: flags.canViewNames,
     includeDismissed,
     viewerUserId,
     authorMetadataMap,
+    allowRoleBasedExposure,
   }));
 
   const quickPosts = serializedPosts
@@ -1359,6 +1396,7 @@ async function loadSessionChatPayload({ session, course, request }) {
 
   return {
     enabled: !!session?.chatEnabled,
+    richTextChatEnabled: isRichTextChatEnabled(session),
     viewMode,
     currentQuestionNumber,
     canPost: flags.canWrite,
@@ -1377,7 +1415,7 @@ async function loadSessionChatPayload({ session, course, request }) {
 
 async function loadSessionChatContext(sessionId) {
   const session = await Session.findById(sessionId)
-    .select('courseId status joined questions currentQuestion chatEnabled')
+    .select('courseId status joined questions currentQuestion chatEnabled richTextChatEnabled')
     .lean();
   if (!session) return { session: null, course: null };
   const course = await Course.findById(session.courseId)
@@ -2704,11 +2742,13 @@ function notifyChatSettingsChanged(app, course, session) {
     courseId: String(course._id),
     sessionId: String(session._id),
     chatEnabled: !!session?.chatEnabled,
+    richTextChatEnabled: isRichTextChatEnabled(session),
   });
   sendToJoinedStudents(app, session, 'session:chat-settings-changed', {
     courseId: String(course._id),
     sessionId: String(session._id),
     chatEnabled: !!session?.chatEnabled,
+    richTextChatEnabled: isRichTextChatEnabled(session),
   });
 }
 
@@ -2744,6 +2784,7 @@ async function notifyChatUpdated(app, course, session, payload = {}) {
       includeDismissed: true,
       currentQuestionNumber,
       authorMetadataMap,
+      allowRoleBasedExposure: true,
     }),
   });
   sendToJoinedStudents(app, session, 'session:chat-updated', {
@@ -2753,6 +2794,7 @@ async function notifyChatUpdated(app, course, session, payload = {}) {
       includeDismissed: false,
       currentQuestionNumber,
       authorMetadataMap,
+      allowRoleBasedExposure: true,
     }),
   });
 }
@@ -2841,6 +2883,7 @@ export default async function sessionRoutes(app) {
         tags: normalizeTags(tags || []),
         hasResponses: false,
         questionResponseCounts: {},
+        richTextChatEnabled: true,
       });
 
       await Course.findByIdAndUpdate(course._id, {
@@ -3381,7 +3424,7 @@ export default async function sessionRoutes(app) {
 
       const allowed = isStudentOwner
         ? ['name', 'description']
-        : ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'chatEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
+        : ['name', 'description', 'quiz', 'practiceQuiz', 'quizStart', 'quizEnd', 'reviewable', 'status', 'date', 'joinCodeEnabled', 'chatEnabled', 'richTextChatEnabled', 'joinCodeInterval', 'msScoringMethod', 'tags'];
       const updates = {};
       for (const key of allowed) {
         if (request.body[key] !== undefined) {
@@ -5134,6 +5177,7 @@ export default async function sessionRoutes(app) {
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             chatEnabled: session.chatEnabled,
+            richTextChatEnabled: isRichTextChatEnabled(session),
             reviewable: session.reviewable,
           }
           : {
@@ -5143,6 +5187,7 @@ export default async function sessionRoutes(app) {
             joinCodeActive: session.joinCodeActive,
             joinCodeEnabled: session.joinCodeEnabled,
             chatEnabled: session.chatEnabled,
+            richTextChatEnabled: isRichTextChatEnabled(session),
           },
         currentQuestion: null,
         currentAttempt,
@@ -6189,9 +6234,9 @@ export default async function sessionRoutes(app) {
       schema: {
         body: {
           type: 'object',
-          required: ['chatEnabled'],
           properties: {
             chatEnabled: { type: 'boolean' },
+            richTextChatEnabled: { type: 'boolean' },
           },
           additionalProperties: false,
         },
@@ -6209,9 +6254,21 @@ export default async function sessionRoutes(app) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
       }
 
+      if (request.body?.chatEnabled === undefined && request.body?.richTextChatEnabled === undefined) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'At least one chat setting is required' });
+      }
+
+      const sessionUpdates = {};
+      if (request.body?.chatEnabled !== undefined) {
+        sessionUpdates.chatEnabled = !!request.body.chatEnabled;
+      }
+      if (request.body?.richTextChatEnabled !== undefined) {
+        sessionUpdates.richTextChatEnabled = !!request.body.richTextChatEnabled;
+      }
+
       const updated = await Session.findByIdAndUpdate(
         request.params.id,
-        { $set: { chatEnabled: !!request.body.chatEnabled } },
+        { $set: sessionUpdates },
         { returnDocument: 'after' }
       ).lean();
 
@@ -6225,6 +6282,7 @@ export default async function sessionRoutes(app) {
         session: {
           _id: updated?._id,
           chatEnabled: !!updated?.chatEnabled,
+          richTextChatEnabled: isRichTextChatEnabled(updated),
         },
       };
     }
@@ -6288,7 +6346,7 @@ export default async function sessionRoutes(app) {
 
       const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
       const flags = getChatPermissionFlags({ session, course, request, viewMode });
-      if (!flags.canWrite || !session.chatEnabled) {
+      if (!flags.canWrite || !session.chatEnabled || !isRichTextChatEnabled(session)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Session chat is not available' });
       }
 
@@ -6534,7 +6592,7 @@ export default async function sessionRoutes(app) {
 
       const viewMode = getChatViewMode(request, isInstructorOrAdmin(course, request.user));
       const flags = getChatPermissionFlags({ session, course, request, viewMode });
-      if (!flags.canWrite || !session.chatEnabled) {
+      if (!flags.canWrite || !session.chatEnabled || !isRichTextChatEnabled(session)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Comments are not available' });
       }
 
