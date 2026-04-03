@@ -26,6 +26,7 @@ function normalizePublicSettings(data = {}) {
     SSO_institutionName: String(data.SSO_institutionName || '').trim(),
     restrictDomain: !!data.restrictDomain,
     requireVerified: !!data.requireVerified,
+    registrationDisabled: !!data.registrationDisabled,
     Jitsi_Enabled: !!data.Jitsi_Enabled,
     timeFormat: data.timeFormat === '12h' ? '12h' : '24h',
     maxImageWidth: normalizeMaxImageWidth(data.maxImageWidth),

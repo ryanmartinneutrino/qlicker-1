@@ -414,22 +414,44 @@ function SettingsTab() {
     restrictDomain: false,
     allowedDomains: '',
     requireVerified: false,
+    registrationDisabled: false,
     adminEmail: '',
     tokenExpiryMinutes: 120,
     locale: 'en',
     dateFormat: 'DD-MMM-YYYY',
     timeFormat: '24h',
   });
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [emailDeliveryStatus, setEmailDeliveryStatus] = useState({
+    configured: true,
+    code: 'configured',
+    message: '',
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('idle');
   const [saveError, setSaveError] = useState('');
   const hasLoadedRef = useRef(false);
+  const parsedAllowedDomains = useMemo(() => (
+    settings.allowedDomains
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean)
+  ), [settings.allowedDomains]);
+  const hasAllowedDomains = parsedAllowedDomains.length > 0;
+  const effectiveRequireVerified = settings.requireVerified || hasAllowedDomains;
+  const effectiveRestrictDomain = !ssoEnabled && (settings.restrictDomain || hasAllowedDomains);
 
   useEffect(() => {
     let mounted = true;
     apiClient.get('/settings').then(({ data }) => {
       if (!mounted) return;
+      setSsoEnabled(data.SSO_enabled ?? false);
+      setEmailDeliveryStatus(data.emailDeliveryStatus ?? {
+        configured: true,
+        code: 'configured',
+        message: '',
+      });
       const loadedLocale = data.locale ?? 'en';
       const loadedDateFormat = data.dateFormat ?? 'DD-MMM-YYYY';
       const loadedTimeFormat = data.timeFormat ?? '24h';
@@ -439,6 +461,7 @@ function SettingsTab() {
           ? data.allowedDomains.join(', ')
           : data.allowedDomains ?? '',
         requireVerified: data.requireVerified ?? false,
+        registrationDisabled: data.registrationDisabled ?? false,
         adminEmail: data.resolvedAdminEmail ?? data.adminEmail ?? data.email ?? '',
         tokenExpiryMinutes: data.tokenExpiryMinutes ?? 120,
         locale: loadedLocale,
@@ -476,18 +499,24 @@ function SettingsTab() {
       setSaveStatus('saving');
       setSaveError('');
       try {
+        const allowedDomains = parsedAllowedDomains;
         const payload = {
           ...settings,
-          allowedDomains: settings.allowedDomains
-            .split(',')
-            .map((d) => d.trim())
-            .filter(Boolean),
+          allowedDomains,
+          restrictDomain: !ssoEnabled && (settings.restrictDomain || allowedDomains.length > 0),
+          requireVerified: settings.requireVerified || (!ssoEnabled && allowedDomains.length > 0),
           tokenExpiryMinutes: Math.max(5, parseInt(settings.tokenExpiryMinutes, 10) || 120),
           locale: settings.locale,
           dateFormat: settings.dateFormat,
           timeFormat: settings.timeFormat,
         };
-        await apiClient.patch('/settings', payload);
+        const { data } = await apiClient.patch('/settings', payload);
+        setEmailDeliveryStatus(data.emailDeliveryStatus ?? {
+          configured: true,
+          code: 'configured',
+          message: '',
+        });
+        clearPublicSettingsCache();
         setSaveStatus('success');
       } catch (err) {
         setSaveStatus('error');
@@ -499,26 +528,58 @@ function SettingsTab() {
     }, AUTO_SAVE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [settings, loading]);
+  }, [settings, loading, parsedAllowedDomains, ssoEnabled]);
 
   if (loading) return <CircularProgress />;
 
   return (
     <Box sx={{ maxWidth: 600, display: 'flex', flexDirection: 'column', gap: 2 }}>
       <AutoSaveStatus status={saving ? 'saving' : saveStatus} errorText={saveError} />
+      {ssoEnabled ? (
+        <Alert severity="info">
+          {t('admin.settings.allowedDomainsSsoIgnored')}
+        </Alert>
+      ) : null}
+      {hasAllowedDomains ? (
+        <Alert severity="info">
+          {t('admin.settings.allowedDomainsRequireVerified')}
+        </Alert>
+      ) : null}
+      {effectiveRequireVerified && emailDeliveryStatus.message ? (
+        <Alert severity={emailDeliveryStatus.configured ? 'info' : 'warning'}>
+          {emailDeliveryStatus.message}
+        </Alert>
+      ) : null}
       <FormControlLabel
-        control={<Checkbox checked={settings.restrictDomain} onChange={(e) => setSettings((s) => ({ ...s, restrictDomain: e.target.checked }))} />}
+        control={(
+          <Checkbox
+            checked={effectiveRestrictDomain}
+            disabled={ssoEnabled || hasAllowedDomains}
+            onChange={(e) => setSettings((s) => ({ ...s, restrictDomain: e.target.checked }))}
+          />
+        )}
         label={t('admin.settings.restrictDomain')}
       />
       <TextField
         label={t('admin.settings.allowedDomains')}
         value={settings.allowedDomains}
         onChange={(e) => setSettings((s) => ({ ...s, allowedDomains: e.target.value }))}
+        helperText={t('admin.settings.allowedDomainsHelp')}
         fullWidth
       />
       <FormControlLabel
-        control={<Checkbox checked={settings.requireVerified} onChange={(e) => setSettings((s) => ({ ...s, requireVerified: e.target.checked }))} />}
+        control={(
+          <Checkbox
+            checked={effectiveRequireVerified}
+            disabled={hasAllowedDomains}
+            onChange={(e) => setSettings((s) => ({ ...s, requireVerified: e.target.checked }))}
+          />
+        )}
         label={t('admin.settings.requireVerified')}
+      />
+      <FormControlLabel
+        control={<Checkbox checked={settings.registrationDisabled} onChange={(e) => setSettings((s) => ({ ...s, registrationDisabled: e.target.checked }))} />}
+        label={t('admin.settings.registrationDisabled')}
       />
       <TextField
         label={t('admin.settings.adminEmail')}

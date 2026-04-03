@@ -2,8 +2,14 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import {
+  isAdminUser,
   canUseEmailLogin,
   getSsoProviderRoutes,
+  isDomainRestrictionEnabled,
+  isSelfRegistrationDisabled,
+  isUserEmailVerified,
+  isVerifiedEmailRequired,
+  normalizeAllowedDomains,
   normalizeTokenExpiryMinutes,
 } from '../utils/authPolicy.js';
 import { generateMeteorId } from '../utils/meteorId.js';
@@ -173,6 +179,10 @@ function isUserDisabled(user) {
 
 function getDisabledAccountMessage() {
   return 'This account has been disabled. Please contact an administrator.';
+}
+
+function getEmailVerificationRequiredMessage() {
+  return 'You must verify your email address before logging in.';
 }
 
 function prepareLoginLockoutReset(user) {
@@ -516,11 +526,19 @@ export default async function authRoutes(app) {
     const { email, password, firstname, lastname } = request.body;
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check domain restrictions
     const settings = await getAuthSettings();
-    if (settings?.restrictDomain && settings.allowedDomains?.length > 0) {
+    if (isSelfRegistrationDisabled(settings)) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'SELF_REGISTRATION_DISABLED',
+        message: 'Self-registration is disabled. Please contact an administrator.',
+      });
+    }
+
+    if (isDomainRestrictionEnabled(settings)) {
+      const allowedDomains = normalizeAllowedDomains(settings.allowedDomains);
       const domain = normalizedEmail.split('@')[1];
-      if (!settings.allowedDomains.includes(domain)) {
+      if (allowedDomains.length > 0 && !allowedDomains.includes(domain)) {
         return reply.code(403).send({ error: 'Forbidden', message: 'Email domain not allowed' });
       }
     }
@@ -570,6 +588,16 @@ export default async function authRoutes(app) {
       await sendVerificationEmail(user, verificationToken);
     } catch (err) {
       request.log.error('Failed to send verification email:', err);
+    }
+
+    const requiresEmailVerification = !roles.includes('admin')
+      && isVerifiedEmailRequired(settings)
+      && !isUserEmailVerified(user);
+    if (requiresEmailVerification) {
+      return reply.code(201).send({
+        requiresEmailVerification: true,
+        message: getEmailVerificationRequiredMessage(),
+      });
     }
 
     const refreshSession = issueRefreshSession(user, getRefreshSessionMaxAgeMs(settings), requestIp);
@@ -652,6 +680,14 @@ export default async function authRoutes(app) {
         });
       }
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid email or password' });
+    }
+
+    if (!isAdminUser(user) && isVerifiedEmailRequired(settings) && !isUserEmailVerified(user)) {
+      return reply.code(403).send({
+        error: 'Forbidden',
+        code: 'EMAIL_NOT_VERIFIED',
+        message: getEmailVerificationRequiredMessage(),
+      });
     }
 
     prepareLoginLockoutReset(user);

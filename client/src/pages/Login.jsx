@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Divider, Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress,
 } from '@mui/material';
@@ -21,11 +21,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [ssoInstitutionName, setSsoInstitutionName] = useState('SSO');
+  const [registrationDisabled, setRegistrationDisabled] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotMsg, setForgotMsg] = useState(null);
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null);
   const {
     user,
     loading: authLoading,
@@ -40,12 +42,15 @@ export default function Login() {
       if (!active) return;
       const enabled = !!data.SSO_enabled;
       setSsoEnabled(enabled);
+      setRegistrationDisabled(!!data.registrationDisabled);
       const institution = (data.SSO_institutionName || '').trim();
       setSsoInstitutionName(institution || 'SSO');
       setShowEmailLogin(!enabled);
+      if (!!data.registrationDisabled) setTab(0);
     }).catch(() => {
       if (!active) return;
       setSsoEnabled(false);
+      setRegistrationDisabled(false);
       setSsoInstitutionName('SSO');
       setShowEmailLogin(true);
     });
@@ -59,6 +64,7 @@ export default function Login() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setStatusMessage(null);
     setLoading(true);
     try {
       const user = await login(email, password);
@@ -87,9 +93,17 @@ export default function Login() {
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
+    setStatusMessage(null);
     setLoading(true);
     try {
-      const user = await register(email, password, firstname, lastname);
+      const result = await register(email, password, firstname, lastname);
+      if (result?.requiresEmailVerification) {
+        setStatusMessage({ severity: 'success', text: result.message || t('auth.verifyBeforeLogin') });
+        setTab(0);
+        setPassword('');
+        return;
+      }
+      const user = result;
       navigate(getDashboardPath(user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
@@ -155,10 +169,23 @@ export default function Login() {
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="background.default">
       <Card sx={{ maxWidth: 450, width: '100%', mx: 2 }}>
         <CardContent>
-          <Box component="h1" sx={{ display: 'flex', justifyContent: 'center', m: 0, mb: 2, color: 'primary.main' }}>
+          <Box
+            component={Link}
+            to="/"
+            aria-label={t('auth.goToLandingPage')}
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              m: 0,
+              mb: 2,
+              color: 'primary.main',
+              textDecoration: 'none',
+            }}
+          >
             <QlickerWordmark height={42} title={t('common.appName')} />
           </Box>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {statusMessage && <Alert severity={statusMessage.severity} sx={{ mb: 2 }}>{statusMessage.text}</Alert>}
           {ssoEnabled ? (
             <>
               <Button
@@ -191,73 +218,88 @@ export default function Login() {
             </>
           ) : (
             <>
-              <ResponsiveTabsNavigation
-                value={tab}
-                onChange={(nextTab) => { setTab(nextTab); setError(''); }}
-                ariaLabel={t('auth.login')}
-                dropdownLabel={t('common.view')}
-                dropdownSx={{ mb: 2, width: '100%' }}
-                tabs={[
-                  { value: 0, label: t('auth.login') },
-                  { value: 1, label: t('auth.register') },
-                ]}
-                tabsProps={{ centered: true, sx: { mb: 2 } }}
-              />
-              {tab === 0 ? (
-                renderEmailLoginForm()
+              {registrationDisabled ? (
+                <>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    {t('auth.selfRegistrationDisabled')}
+                  </Alert>
+                  {renderEmailLoginForm()}
+                </>
               ) : (
-                <Box component="form" onSubmit={handleRegister} autoComplete="on" aria-label={t('auth.register')}>
-                  <TextField
-                    fullWidth
-                    id="register-firstname"
-                    name="firstname"
-                    label={t('auth.firstName')}
-                    autoComplete="given-name"
-                    value={firstname}
-                    onChange={(e) => setFirstname(e.target.value)}
-                    required
-                    margin="normal"
+                <>
+                  <ResponsiveTabsNavigation
+                    value={tab}
+                    onChange={(nextTab) => {
+                      setTab(nextTab);
+                      setError('');
+                      setStatusMessage(null);
+                    }}
+                    ariaLabel={t('auth.login')}
+                    dropdownLabel={t('common.view')}
+                    dropdownSx={{ mb: 2, width: '100%' }}
+                    tabs={[
+                      { value: 0, label: t('auth.login') },
+                      { value: 1, label: t('auth.register') },
+                    ]}
+                    tabsProps={{ centered: true, sx: { mb: 2 } }}
                   />
-                  <TextField
-                    fullWidth
-                    id="register-lastname"
-                    name="lastname"
-                    label={t('auth.lastName')}
-                    autoComplete="family-name"
-                    value={lastname}
-                    onChange={(e) => setLastname(e.target.value)}
-                    required
-                    margin="normal"
-                  />
-                  <TextField
-                    fullWidth
-                    id="register-email"
-                    name="email"
-                    label={t('auth.email')}
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    margin="normal"
-                    inputProps={{ inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: 'false' }}
-                  />
-                  <TextField
-                    fullWidth
-                    id="register-password"
-                    name="password"
-                    label={t('auth.password')}
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    margin="normal"
-                  />
-                  <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
-                    {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
-                  </Button>
-                </Box>
+                  {tab === 0 ? (
+                    renderEmailLoginForm()
+                  ) : (
+                    <Box component="form" onSubmit={handleRegister} autoComplete="on" aria-label={t('auth.register')}>
+                      <TextField
+                        fullWidth
+                        id="register-firstname"
+                        name="firstname"
+                        label={t('auth.firstName')}
+                        autoComplete="given-name"
+                        value={firstname}
+                        onChange={(e) => setFirstname(e.target.value)}
+                        required
+                        margin="normal"
+                      />
+                      <TextField
+                        fullWidth
+                        id="register-lastname"
+                        name="lastname"
+                        label={t('auth.lastName')}
+                        autoComplete="family-name"
+                        value={lastname}
+                        onChange={(e) => setLastname(e.target.value)}
+                        required
+                        margin="normal"
+                      />
+                      <TextField
+                        fullWidth
+                        id="register-email"
+                        name="email"
+                        label={t('auth.email')}
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        margin="normal"
+                        inputProps={{ inputMode: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: 'false' }}
+                      />
+                      <TextField
+                        fullWidth
+                        id="register-password"
+                        name="password"
+                        label={t('auth.password')}
+                        type="password"
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        margin="normal"
+                      />
+                      <Button fullWidth variant="contained" type="submit" disabled={loading} sx={{ mt: 2 }}>
+                        {loading ? t('auth.creatingAccount') : t('auth.createAccount')}
+                      </Button>
+                    </Box>
+                  )}
+                </>
               )}
             </>
           )}
