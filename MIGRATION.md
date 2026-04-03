@@ -14,7 +14,8 @@
 4. [Phase 8 — Remaining Work](#phase-8--remaining-work)
 5. [Production Deployment](#production-deployment)
 6. [Code Review Findings](#code-review-findings)
-7. [How to Resume Work](#how-to-resume-work)
+7. [Security Hardening](#security-hardening)
+8. [How to Resume Work](#how-to-resume-work)
 
 ---
 
@@ -330,6 +331,231 @@ The SSO implementation has been verified against the institutional IdP (Microsof
 | Storage backend | `local` on first boot | Runtime-controlled from Admin → Storage |
 | Max image upload width | 1920px | Normalized before upload |
 | Avatar thumbnail size | 512px | Runtime-controlled from Admin → Storage |
+
+---
+
+## Security Hardening
+
+> A full review of the `production_setup/` configuration against the **OWASP Application Security Verification Standard (ASVS) v4.0** and the **CIS Docker Benchmark v1.6** was performed on 2026-04-03. The sections below list what is already in place, what needs to be done before production, and additional recommendations.
+
+### What Is Already Secure
+
+| Area | Implementation | Reference |
+|------|---------------|-----------|
+| **TLS** | TLSv1.2/1.3 only, strong cipher suite, HSTS with preload (2 years), session tickets off | `production_setup/nginx/nginx.conf` lines 47–52 |
+| **JWT tokens** | 15-minute access token, configurable refresh token (default 120 min), dual secrets required in production | `server/src/app.js`, `server/src/config/index.js` |
+| **Cookie security** | `httpOnly: true`, `secure: true` (production), `sameSite: 'strict'` | `server/src/routes/auth.js` lines 151–158 |
+| **Password hashing** | Argon2id with OWASP baseline parameters (19 MiB memory, 2 iterations) | `server/src/utils/password.js` |
+| **CSRF protection** | All mutating requests require `X-Requested-With: XMLHttpRequest` header | `server/src/app.js` lines 109–125 |
+| **Rate limiting** | Per-route Fastify limits + nginx `limit_req` zones (login: 5 req/min, API: 30 req/s) | `server/src/routes/auth.js`, `production_setup/nginx/nginx.conf` lines 15–17 |
+| **Login lockout** | 5 failed attempts → 15-minute lockout | `server/src/routes/auth.js` lines 17–18 |
+| **Token rotation** | Refresh tokens rotate on each use; version tracking for invalidation | `server/src/routes/auth.js` lines 115–133 |
+| **CORS** | Restricted to `ROOT_URL` origin only, with credentials | `server/src/app.js` lines 42–46 |
+| **Helmet** | Enabled; suppresses `X-Powered-By`, sets security defaults | `server/src/app.js` line 49 |
+| **SSRF protection** | Profile image fetch blocks private/internal IP ranges (RFC 1918, link-local, metadata) | Code review finding — fixed |
+| **Container isolation** | Server runs as non-root (`appuser`, UID 1001); MongoDB and Redis not exposed to host (`expose`, not `ports`) | `server/Dockerfile`, `production_setup/docker-compose.yml` |
+| **File uploads** | 5 MB limit, image-only MIME whitelist (jpg/png/gif/webp), randomized filenames | `server/src/plugins/upload.js` |
+| **Error handling** | Generic error messages to client; stack traces logged server-side only | `server/src/app.js`, all route error handlers |
+| **Sensitive data logging** | JWT tokens and passwords are never logged; only generic identifiers on failed auth | Verified across `server/src/` |
+| **Secret management** | `.env`, certs, and backup directories are `.gitignore`-d; setup generates secrets with `openssl rand -hex 32` | `.gitignore`, `production_setup/setup.sh` |
+
+### Required — Do Before Production
+
+The following items are **required** security hardening steps. Each one addresses a gap that could be exploited or that fails a standard compliance check.
+
+#### 1. Enable MongoDB Authentication (CRITICAL — CIS Docker Benchmark 5.7, OWASP ASVS 2.10)
+
+MongoDB runs without authentication. If any container is compromised, the attacker has full database access.
+
+```bash
+# 1. Start mongo and create an admin user:
+docker exec -it <mongo-container> mongosh
+use admin
+db.createUser({
+  user: "qlickerAdmin",
+  pwd: passwordPrompt(),   // or a strong generated password
+  roles: [{ role: "readWrite", db: "qlicker" }]
+})
+
+# 2. Update the mongod command in production_setup/docker-compose.yml:
+command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "${MONGO_WIREDTIGER_CACHE_SIZE_GB:-0.25}"]
+
+# 3. Update MONGO_URI in production_setup/.env to include credentials:
+MONGO_URI=mongodb://qlickerAdmin:<password>@mongo:27017/qlicker?authSource=admin
+```
+
+#### 2. Enable Redis Authentication (CRITICAL — CIS Docker Benchmark 5.7)
+
+Redis runs without a password. Any container on the Docker network can connect and read/write session data.
+
+```bash
+# 1. Generate a strong password:
+openssl rand -hex 32
+
+# 2. Add to production_setup/.env:
+REDIS_PASSWORD=<generated-password>
+
+# 3. Update the Redis command in production_setup/docker-compose.yml:
+command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+
+# 4. Update REDIS_URL in production_setup/.env:
+REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+```
+
+#### 3. Add Content-Security-Policy Header (MEDIUM — OWASP ASVS 14.4)
+
+No CSP header is configured. CSP is the primary defense against XSS attacks.
+
+Add to `production_setup/nginx/nginx.conf` inside the HTTPS server block, after the existing security headers:
+
+```nginx
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://$DOMAIN; frame-ancestors 'none';" always;
+```
+
+> **Note:** The `'unsafe-inline'` for `style-src` is required by Material UI. Test thoroughly after adding; adjust as needed for third-party resources (e.g., KaTeX fonts).
+
+#### 4. Restrict or Protect the `/docs` Endpoint (MEDIUM — OWASP ASVS 14.3)
+
+Swagger UI at `/docs` is publicly accessible and exposes the full API surface. The nginx.conf already notes "remove in hardened deployments."
+
+**Option A — Remove entirely** (recommended for production):
+```nginx
+# Comment out or delete the /docs location block in production_setup/nginx/nginx.conf
+```
+
+**Option B — Add HTTP basic auth**:
+```nginx
+location /docs {
+    auth_basic "API Documentation";
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    proxy_pass http://server:3001;
+    # ... existing headers ...
+}
+```
+
+#### 5. Protect the `.env` File (MEDIUM — CIS Docker Benchmark 3.22)
+
+After running `setup.sh`, restrict file permissions:
+
+```bash
+chmod 600 production_setup/.env
+```
+
+This is already noted in the Code Review Findings but should be part of the standard setup procedure.
+
+#### 6. Add Docker Resource Limits (MEDIUM — CIS Docker Benchmark 5.11)
+
+Prevent a single container from consuming all host resources. Add to each service in `production_setup/docker-compose.yml`:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 512M      # Adjust per service
+      cpus: '1.0'
+    reservations:
+      memory: 128M
+```
+
+Suggested limits: mongo 1–2 GB, redis 300 MB, server 512 MB per replica, client 128 MB, nginx 128 MB.
+
+### Recommended — Additional Hardening
+
+These are best-practice recommendations that improve security posture but are not strict blockers.
+
+#### 7. Add Permissions-Policy Header (LOW — OWASP ASVS 14.4)
+
+Restricts browser features not used by the app. Add to nginx security headers:
+
+```nginx
+add_header Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()" always;
+```
+
+#### 8. Enable OCSP Stapling (LOW — TLS best practice)
+
+Improves TLS handshake performance and client privacy. Add to the HTTPS server block in `production_setup/nginx/nginx.conf`:
+
+```nginx
+ssl_stapling on;
+ssl_stapling_verify on;
+resolver 8.8.8.8 8.8.4.4 valid=300s;
+resolver_timeout 5s;
+```
+
+> Requires the full certificate chain in `fullchain.pem` (standard for Let's Encrypt).
+
+#### 9. Generate Custom Diffie-Hellman Parameters (LOW — TLS best practice for TLS 1.2)
+
+Strengthens key exchange for TLS 1.2 connections (TLS 1.3 does not use static DH groups):
+
+```bash
+openssl dhparam -out production_setup/certs/dhparam.pem 2048
+```
+
+Then add to nginx:
+
+```nginx
+ssl_dhparam /etc/nginx/ssl/dhparam.pem;
+```
+
+And mount the file in `docker-compose.yml`:
+
+```yaml
+- ${DH_PARAM_PATH:-./certs/dhparam.pem}:/etc/nginx/ssl/dhparam.pem:ro
+```
+
+#### 10. HTML-Escape User Data in Email Templates (LOW — OWASP ASVS 5.2)
+
+`server/src/services/email.js` embeds `user.profile.firstname` in HTML email templates via template literals without escaping. While email clients generally do not execute scripts, the value should be escaped:
+
+```javascript
+const escapeHtml = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// Then use: escapeHtml(user.profile?.firstname || '')
+```
+
+#### 11. Add Read-Only Filesystem to Containers (LOW — CIS Docker Benchmark 5.12)
+
+Where possible, run containers with a read-only root filesystem:
+
+```yaml
+server:
+  read_only: true
+  tmpfs:
+    - /tmp
+  volumes:
+    - uploads:/app/uploads
+```
+
+The `server` container only needs write access to `/app/uploads` and `/tmp`.
+
+#### 12. Implement Audit Logging (LOW — OWASP ASVS 7.1)
+
+Settings changes, role promotions, grade modifications, and admin actions are not currently audit-logged. This is already tracked in the Phase 8 checklist.
+
+### Applicable Security Standards Reference
+
+| Standard | Version | Relevance |
+|----------|---------|-----------|
+| **OWASP ASVS** | 4.0.3 | Application-level security verification; covers auth, sessions, input validation, HTTP headers, error handling |
+| **OWASP Top 10** | 2021 | High-level risk categories; A01 Broken Access Control, A02 Cryptographic Failures, A03 Injection, A05 Security Misconfiguration all apply |
+| **CIS Docker Benchmark** | 1.6.0 | Container and orchestration hardening; covers image security, runtime privileges, network isolation, resource limits |
+| **Mozilla Observatory** | — | Grades HTTP security headers (HSTS, CSP, X-Content-Type-Options, etc.); use [observatory.mozilla.org](https://observatory.mozilla.org) to test after deployment |
+| **SSL Labs** | — | Grades TLS configuration; use [ssllabs.com/ssltest](https://www.ssllabs.com/ssltest/) to verify after deployment; target grade A+ |
+| **NIST SP 800-63B** | Rev. 3 | Password and authenticator requirements; current Argon2id config meets or exceeds NIST recommendations |
+
+### Post-Deployment Verification Checklist
+
+After applying the hardening steps above, verify with:
+
+- [ ] `curl -I https://<domain>` — confirm HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Permissions-Policy headers present
+- [ ] [Mozilla Observatory](https://observatory.mozilla.org) — target grade A or A+
+- [ ] [SSL Labs](https://www.ssllabs.com/ssltest/) — target grade A+
+- [ ] `docker exec <mongo-container> mongosh --eval "db.runCommand({connectionStatus:1})"` — confirm authentication required
+- [ ] `docker exec <redis-container> redis-cli ping` — confirm `NOAUTH` error (authentication required)
+- [ ] `curl https://<domain>/docs` — confirm 401/403 or not found
+- [ ] `curl https://<domain>/api/v1/health` — confirm 200 OK
+- [ ] Review `docker compose ps` — all containers healthy
+- [ ] `docker stats --no-stream` — confirm resource limits enforced
 
 ---
 
