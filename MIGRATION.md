@@ -414,24 +414,10 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 
 > **Note:** The `'unsafe-inline'` for `style-src` is required by Material UI. Test thoroughly after adding; adjust as needed for third-party resources (e.g., KaTeX fonts).
 
-#### 4. Restrict or Protect the `/docs` Endpoint (MEDIUM — OWASP ASVS 14.3)
+#### 4. Restrict or Protect the `/docs` Endpoint (MEDIUM — OWASP ASVS 14.3) [Completed]
 
-Swagger UI at `/docs` is publicly accessible and exposes the full API surface. The nginx.conf already notes "remove in hardened deployments."
+Swagger UI at `/docs` was publicly accessible and exposed the full API surface.
 
-**Option A — Remove entirely** (recommended for production):
-```nginx
-# Comment out or delete the /docs location block in production_setup/nginx/nginx.conf
-```
-
-**Option B — Add HTTP basic auth**:
-```nginx
-location /docs {
-    auth_basic "API Documentation";
-    auth_basic_user_file /etc/nginx/.htpasswd;
-    proxy_pass http://server:3001;
-    # ... existing headers ...
-}
-```
 
 #### 5. Protect the `.env` File (MEDIUM — CIS Docker Benchmark 3.22)
 
