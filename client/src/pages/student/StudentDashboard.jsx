@@ -8,6 +8,7 @@ import {
 import { Add as AddIcon, School as SchoolIcon, PlayCircle as LiveIcon } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import apiClient, { getAccessToken } from '../../api/client';
+import { useAuth } from '../../contexts/AuthContext';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { fetchAllCourses } from '../../utils/fetchAllCourses';
 import {
@@ -48,6 +49,7 @@ function isInactiveCourseEnrollError(error) {
 export default function StudentDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [courses, setCourses] = useState([]);
   const [taCourses, setTaCourses] = useState([]);
   const [liveSessions, setLiveSessions] = useState([]);
@@ -78,13 +80,17 @@ export default function StudentDashboard() {
   }, [t]);
 
   const fetchTaCourses = useCallback(async () => {
+    if (!user?.hasInstructorCourses) {
+      setTaCourses([]);
+      return;
+    }
     try {
       const nextCourses = await fetchAllCourses(apiClient, { view: 'instructor' });
       setTaCourses(nextCourses);
     } catch {
       setTaCourses([]);
     }
-  }, []);
+  }, [user?.hasInstructorCourses]);
 
   useEffect(() => {
     let cancelled = false;
