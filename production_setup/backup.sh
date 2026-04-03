@@ -313,7 +313,7 @@ if [ "$RUNTIME" = "host" ]; then
   if [ -n "$HOST_UID" ] && [ -n "$HOST_GID" ]; then
     if run_with_error_capture "mongodump" \
       docker exec --user "$HOST_UID:$HOST_GID" "$MONGO_CONTAINER" mongodump \
-        --uri="mongodb://localhost:27017/qlicker" \
+        --uri="$MONGO_URI" \
         --out="/backups/$BACKUP_STEM" \
         --quiet; then
       :
@@ -325,7 +325,7 @@ if [ "$RUNTIME" = "host" ]; then
   else
     if run_with_error_capture "mongodump" \
       docker exec "$MONGO_CONTAINER" mongodump \
-        --uri="mongodb://localhost:27017/qlicker" \
+        --uri="$MONGO_URI" \
         --out="/backups/$BACKUP_STEM" \
         --quiet; then
       :

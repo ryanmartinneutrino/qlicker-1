@@ -441,7 +441,7 @@ if [ "$CONFIRM" != "yes" ]; then
 fi
 
 # ---- Create pre-init backup if data exists -----------------------------------
-COLLECTION_COUNT="$(docker exec "$MONGO_CONTAINER" mongosh "mongodb://localhost:27017/$TARGET_DB" --quiet --eval 'db.getCollectionNames().length' 2>/dev/null || echo 0)"
+COLLECTION_COUNT="$(docker exec "$MONGO_CONTAINER" mongosh "$MONGO_URI" --quiet --eval 'db.getCollectionNames().length' 2>/dev/null || echo 0)"
 if [ "$COLLECTION_COUNT" -gt 0 ]; then
   info "Creating backup of existing data before restore..."
   "$SCRIPT_DIR/backup.sh" || warn "Backup failed, continuing anyway."
@@ -471,7 +471,7 @@ for source_db in "${SOURCE_DB_NAMES[@]}"; do
   fi
   info "Restoring '$source_db' -> '$restore_db'..."
   docker exec "$MONGO_CONTAINER" mongorestore \
-    --uri="mongodb://localhost:27017" \
+    --uri="$MONGO_URI" \
     --db="$restore_db" \
     --drop \
     "$CONTAINER_TEMP/$source_db"

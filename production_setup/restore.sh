@@ -7,6 +7,7 @@
 # Usage:
 #   ./restore.sh                                    # Interactive: pick from list
 #   ./restore.sh backups/qlicker_backup_20260101_020000_daily.tar.gz  # Specific file
+#   ./restore.sh --yes backups/qlicker_backup_20260101_020000_daily.tar.gz
 # The selector still accepts older qlicker_backup_YYYYMMDD_HHmmss.tar.gz archives.
 # =============================================================================
 set -euo pipefail
@@ -34,8 +35,31 @@ if [ -z "$MONGO_CONTAINER" ]; then
   exit 1
 fi
 
+# ---- Parse args -------------------------------------------------------------
+AUTO_CONFIRM=false
+BACKUP_FILE=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --yes)
+      AUTO_CONFIRM=true
+      ;;
+    --help|-h)
+      echo "Usage: ./restore.sh [--yes] [backup-file]"
+      exit 0
+      ;;
+    *)
+      if [ -n "$BACKUP_FILE" ]; then
+        error "Unexpected argument: $1"
+        exit 1
+      fi
+      BACKUP_FILE="$1"
+      ;;
+  esac
+  shift
+done
+
 # ---- Select backup ----------------------------------------------------------
-BACKUP_FILE="${1:-}"
 
 if [ -z "$BACKUP_FILE" ]; then
   mapfile -t BACKUPS < <(find "$BACKUP_DIR" -name 'qlicker_backup_*.tar.gz' -type f 2>/dev/null | sort -r)
@@ -74,10 +98,14 @@ info "Selected: $BACKUP_BASENAME"
 # ---- Confirm ----------------------------------------------------------------
 echo ""
 warn "This will DROP the current 'qlicker' database and restore from backup."
-read -r -p "Are you sure? Type 'yes' to continue: " CONFIRM
-if [ "$CONFIRM" != "yes" ]; then
-  echo "Cancelled."
-  exit 0
+if [ "$AUTO_CONFIRM" = true ]; then
+  info "Auto-confirm enabled; continuing without interactive confirmation."
+else
+  read -r -p "Are you sure? Type 'yes' to continue: " CONFIRM
+  if [ "$CONFIRM" != "yes" ]; then
+    echo "Cancelled."
+    exit 0
+  fi
 fi
 
 # ---- Extract and restore ----------------------------------------------------
@@ -102,7 +130,7 @@ docker cp "$DUMP_DIR/." "$MONGO_CONTAINER:$CONTAINER_TEMP/"
 
 info "Restoring database..."
 if docker exec "$MONGO_CONTAINER" mongorestore \
-  --uri="mongodb://localhost:27017" \
+  --uri="$MONGO_URI" \
   --db=qlicker \
   --drop \
   "$CONTAINER_TEMP/qlicker" \
