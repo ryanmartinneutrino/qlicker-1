@@ -308,7 +308,6 @@ function CommentThread({
                 showMathHint={false}
                 placeholder={t('sessionChat.commentPlaceholder')}
                 ariaLabel={t('sessionChat.commentEditorAria')}
-                disabled={!shouldShowCommentForm}
               />
               <MathPreview html={commentDraft} showLabel={false} />
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
@@ -316,7 +315,7 @@ function CommentThread({
                   variant="contained"
                   size="small"
                   onClick={onSubmitComment}
-                  disabled={!shouldShowCommentForm || !hasCommentDraft || submitting}
+                  disabled={!hasCommentDraft || submitting}
                 >
                   {submitting ? t('sessionChat.sending') : t('sessionChat.comment')}
                 </Button>
