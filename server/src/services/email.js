@@ -3,7 +3,7 @@ import config from '../config/index.js';
 
 let transporter = null;
 
-function parseMailUrl(mailUrl) {
+export function parseMailUrl(mailUrl, { quiet = false } = {}) {
   if (!mailUrl) return null;
   try {
     const url = new URL(mailUrl);
@@ -16,20 +16,49 @@ function parseMailUrl(mailUrl) {
         : undefined,
     };
   } catch (err) {
-    console.error('Failed to parse MAIL_URL:', err.message);
-    console.error('  Expected format: smtp://user:password@smtp.example.com:587');
+    if (!quiet) {
+      console.error('Failed to parse MAIL_URL:', err.message);
+      console.error('  Expected format: smtp://user:password@smtp.example.com:587');
+    }
     return null;
   }
 }
 
+export function getMailConfigurationStatus() {
+  const mailUrl = String(config.mailUrl || '').trim();
+  if (!mailUrl) {
+    return {
+      configured: false,
+      code: 'missing',
+      message: 'MAIL_URL is not configured. Verified-email signups and password reset emails will not be delivered.',
+    };
+  }
+
+  const smtpConfig = parseMailUrl(mailUrl, { quiet: true });
+  if (!smtpConfig) {
+    return {
+      configured: false,
+      code: 'invalid',
+      message: 'MAIL_URL is invalid. Expected format: smtp://user:password@smtp.example.com:587',
+    };
+  }
+
+  return {
+    configured: true,
+    code: 'configured',
+    message: 'MAIL_URL is configured. You should still test email delivery after enabling verified-email signups.',
+  };
+}
+
 function getTransporter() {
   if (transporter) return transporter;
-  const smtpConfig = parseMailUrl(config.mailUrl);
-  if (!smtpConfig) {
-    console.warn('MAIL_URL not configured — emails will not be sent.');
-    console.warn('  Set MAIL_URL in .env to enable email verification and password reset.');
+  const mailStatus = getMailConfigurationStatus();
+  if (!mailStatus.configured) {
+    console.warn(`${mailStatus.message}`);
     return null;
   }
+
+  const smtpConfig = parseMailUrl(config.mailUrl);
   transporter = nodemailer.createTransport(smtpConfig);
   return transporter;
 }

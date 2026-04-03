@@ -19,6 +19,7 @@ const SettingsSchema = new mongoose.Schema(
     restrictDomain: { type: Boolean, default: false },
     allowedDomains: { type: [String], default: [] },
     requireVerified: { type: Boolean, default: false },
+    registrationDisabled: { type: Boolean, default: false },
     adminEmail: { type: String, default: '' },
     // Legacy field name (Meteor used 'email' instead of 'adminEmail')
     email: { type: String, default: '' },

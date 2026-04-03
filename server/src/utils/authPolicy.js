@@ -46,6 +46,20 @@ function normalizeString(value, fallback = '') {
   return normalized || fallback;
 }
 
+export function normalizeAllowedDomains(value) {
+  const rawDomains = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+
+  return [...new Set(
+    rawDomains
+      .map((entry) => String(entry || '').trim().toLowerCase())
+      .filter(Boolean)
+  )];
+}
+
 export function isAdminUser(user = {}) {
   const roles = user?.profile?.roles || [];
   return Array.isArray(roles) && roles.includes('admin');
@@ -53,6 +67,31 @@ export function isAdminUser(user = {}) {
 
 export function isSsoEnabled(settings = {}) {
   return settings?.SSO_enabled === true;
+}
+
+export function isSelfRegistrationDisabled(settings = {}) {
+  return settings?.registrationDisabled === true;
+}
+
+export function hasAllowedEmailDomains(settings = {}) {
+  return normalizeAllowedDomains(settings?.allowedDomains).length > 0;
+}
+
+export function isDomainRestrictionEnabled(settings = {}) {
+  return !isSsoEnabled(settings)
+    && (
+      settings?.restrictDomain === true
+      || hasAllowedEmailDomains(settings)
+    );
+}
+
+export function isVerifiedEmailRequired(settings = {}) {
+  return settings?.requireVerified === true
+    || (!isSsoEnabled(settings) && hasAllowedEmailDomains(settings));
+}
+
+export function isUserEmailVerified(user = {}) {
+  return Array.isArray(user?.emails) && user.emails.some((entry) => entry?.verified === true);
 }
 
 export function canUseEmailLogin(user = {}, settings = {}) {
@@ -197,8 +236,16 @@ export function getSsoProviderRoutes(settings = {}) {
 
 export function normalizeSettingsPayload(settings = {}) {
   const backupManagerHealth = getBackupManagerHealth(settings);
+  const allowedDomains = normalizeAllowedDomains(settings?.allowedDomains);
+  const ssoEnabled = isSsoEnabled(settings);
   return {
     ...settings,
+    allowedDomains,
+    restrictDomain: !ssoEnabled
+      && (normalizeBoolean(settings?.restrictDomain, false) || allowedDomains.length > 0),
+    requireVerified: normalizeBoolean(settings?.requireVerified, false)
+      || (!ssoEnabled && allowedDomains.length > 0),
+    registrationDisabled: normalizeBoolean(settings?.registrationDisabled, false),
     tokenExpiryMinutes: normalizeTokenExpiryMinutes(settings?.tokenExpiryMinutes),
     maxImageWidth: normalizeMaxImageWidth(settings?.maxImageWidth),
     avatarThumbnailSize: normalizeAvatarThumbnailSize(settings?.avatarThumbnailSize),

@@ -83,12 +83,15 @@ export function AuthProvider({ children }) {
 
   const register = async (email, password, firstname, lastname) => {
     const { data } = await apiClient.post('/auth/register', { email, password, firstname, lastname });
-    clearExplicitLogout();
-    setAccessToken(data.token);
-    setUser(data.user);
-    localStorage.setItem('qlicker_auth_event', 'login');
-    localStorage.removeItem('qlicker_auth_event');
-    return data.user;
+    if (data?.token && data?.user) {
+      clearExplicitLogout();
+      setAccessToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('qlicker_auth_event', 'login');
+      localStorage.removeItem('qlicker_auth_event');
+      return data.user;
+    }
+    return data;
   };
 
   const logout = async () => {
