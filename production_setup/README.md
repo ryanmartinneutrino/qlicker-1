@@ -125,9 +125,12 @@ It will prompt for:
 | Server replicas | Number of API server instances | `2` |
 | JWT secrets | Auto-generated cryptographic secrets | (generated) |
 | MAIL_URL | SMTP connection string | (none) |
-| MONGO_URI | MongoDB connection URI | `mongodb://mongo:27017/qlicker` |
+| MongoDB admin username | Built-in MongoDB admin user | `qlickerAdmin` |
+| MongoDB admin password | Built-in MongoDB admin password | (generated) |
+| MONGO_URI | MongoDB connection URI | derived from the MongoDB admin credentials |
 | Mongo cache size | WiredTiger cache in GB | `0.25` |
-| REDIS_URL | Redis connection URL | `redis://redis:6379` |
+| Redis password | Built-in Redis password | (generated) |
+| REDIS_URL | Redis connection URL | derived from `REDIS_PASSWORD` |
 | Storage type | `local`, `s3`, or `azure` | `local` |
 | Backup policy | Controlled in Admin -> Backup | `02:00` local, keep `7` daily / `4` weekly / `12` monthly |
 
@@ -150,7 +153,7 @@ When an existing config is found, the script prints a summary of imported values
 
 ### Re-running Setup
 
-Running `./setup.sh` again will detect the existing `.env` and offer to keep current values as defaults.
+Running `./setup.sh` again will detect the existing `.env` and offer to keep current values as defaults. The generated `.env` is also written with mode `600` so database and Redis credentials stay host-local by default.
 
 ---
 
@@ -470,7 +473,7 @@ They use the Docker volume mapping in `docker-compose.yml`:
 When you run `./backup.sh`, the script:
 1. Loads `production_setup/.env` for Docker access and backup-manager runtime settings
 2. Verifies the `mongo` container is running
-3. Runs `mongodump` against the live database into `/backups/qlicker_backup_<timestamp>_<label>`
+3. Runs `mongodump` against the live database using the configured `MONGO_URI` into `/backups/qlicker_backup_<timestamp>_<label>`
 4. Compresses that dump to `backups/qlicker_backup_<timestamp>_<label>.tar.gz`
 5. Deletes the uncompressed dump directory
 6. Prunes `.tar.gz` backups by label using the retention counts stored in Admin -> Backup
@@ -566,10 +569,10 @@ qlicker_backup_20260401_020000_monthly.tar.gz
 When you run `./restore.sh`, the script:
 1. Loads `.env` and verifies the `mongo` container is running
 2. Lets you choose a backup archive interactively (or accepts a file path argument)
-3. Requires an explicit `yes` confirmation
+3. Requires an explicit `yes` confirmation (or `--yes` for scripted maintenance)
 4. Extracts the backup archive into a temporary host directory
 5. Copies the dump into the MongoDB container
-6. Runs `mongorestore --drop --db=qlicker` to replace current data
+6. Runs `mongorestore` through the configured authenticated `MONGO_URI` to replace current data
 7. Cleans up temporary files
 
 ### Restore from Backup
@@ -580,6 +583,9 @@ When you run `./restore.sh`, the script:
 
 # Specific backup file
 ./restore.sh backups/qlicker_backup_20260321_020000_daily.tar.gz
+
+# Non-interactive confirmation for scripted maintenance
+./restore.sh --yes backups/qlicker_backup_20260321_020000_daily.tar.gz
 ```
 
 ⚠️ **Warning:** Restore will drop the current database. The script requires you to type `yes` to confirm.
@@ -616,10 +622,10 @@ The backend now blocks duplicate grade identities for the same `{ userId, course
 
 ```bash
 # Dry run
-node scripts/dedupe-grades.js --mongo-uri mongodb://localhost:27017/qlicker
+node scripts/dedupe-grades.js --mongo-uri "$MONGO_URI"
 
 # Apply deletions after reviewing the report
-node scripts/dedupe-grades.js --apply --mongo-uri mongodb://localhost:27017/qlicker
+node scripts/dedupe-grades.js --apply --mongo-uri "$MONGO_URI"
 ```
 
 Run it from a checkout of the same Qlicker revision that matches the deployment. Use `--skip-index` only if you intentionally do not want the script to recreate the unique grade index afterward.
@@ -639,6 +645,47 @@ This will:
 2. Pull latest images (or rebuild if using local builds)
 3. Restart services with zero downtime (rolling restart)
 4. Run a health check
+
+### Enabling MongoDB and Redis Authentication on an Existing Live Deployment
+
+After copying this updated `production_setup/` directory onto a server that is already running Qlicker, use the dedicated migration script:
+
+```bash
+chmod +x *.sh
+./enable-db-auth.sh
+```
+
+What the script does:
+
+1. Creates a fresh `manual` MongoDB backup with `./backup.sh --label manual`
+2. Stores safety copies of the current `.env` and `docker-compose.yml` under `backups/auth-migration-<timestamp>/`
+3. Prompts for the built-in MongoDB admin username (default `qlickerAdmin`)
+4. Reuses the existing MongoDB/Redis passwords if present, or generates strong new passwords with `openssl rand -hex 32`
+5. Rewrites `.env` with:
+   - `MONGO_INITDB_ROOT_USERNAME`
+   - `MONGO_INITDB_ROOT_PASSWORD`
+   - authenticated `MONGO_URI`
+   - `REDIS_PASSWORD`
+   - authenticated `REDIS_URL`
+6. Stops the stack, removes the old `mongo-data` and `redis-data` Docker volumes, and starts fresh authenticated `mongo` + `redis` containers
+7. Restores the backup into the new authenticated MongoDB volume
+8. Starts the full application stack again
+
+Recommended maintenance-window procedure:
+
+1. Copy the updated `production_setup/` files to the server.
+2. Review any local customizations in `.env` and `docker-compose.yml`.
+3. Run `./enable-db-auth.sh`.
+4. After it completes, confirm:
+   ```bash
+   docker compose ps
+   docker compose logs --tail=100 mongo redis server
+   curl -k https://your-domain.example/api/v1/health
+   docker exec "$(docker compose ps -q redis | head -1)" redis-cli ping    # should return NOAUTH
+   ```
+5. Keep the generated backup archive and the `backups/auth-migration-<timestamp>/` directory until you are satisfied with the migration.
+
+If the migration is interrupted, use the saved `.env` / `docker-compose.yml` snapshots plus the fresh backup archive noted by the script to recover manually.
 
 ### Force Rebuild from Source
 
@@ -681,6 +728,7 @@ production_setup/
 ├── .env.example            # Environment variable template
 ├── .env                    # Your configuration (generated by setup.sh)
 ├── setup.sh                # Interactive setup wizard
+├── enable-db-auth.sh       # Migrate a live deployment to authenticated MongoDB + Redis
 ├── init-from-legacy.sh     # Initialize from legacy MongoDB dump
 ├── sanitize-s3.js          # Self-contained DB rewrite + S3 ACL script
 ├── sanitize-s3.sh          # Host-side wrapper to run sanitize-s3.js in Docker
@@ -715,7 +763,9 @@ production_setup/
 | `SERVER_REPLICAS` | No | `2` | Number of API server replicas |
 | `JWT_SECRET` | Yes | — | JWT signing secret (32-byte hex) |
 | `JWT_REFRESH_SECRET` | Yes | — | JWT refresh token secret (32-byte hex) |
-| `MONGO_URI` | No | `mongodb://mongo:27017/qlicker` | MongoDB connection URI |
+| `MONGO_INITDB_ROOT_USERNAME` | Yes (bundled mongo) | `qlickerAdmin` | Built-in MongoDB admin username |
+| `MONGO_INITDB_ROOT_PASSWORD` | Yes (bundled mongo) | generated by `setup.sh` | Built-in MongoDB admin password |
+| `MONGO_URI` | Yes | generated by `setup.sh` | MongoDB connection URI used by app, restore, and backup tooling |
 | `MONGO_WIREDTIGER_CACHE_SIZE_GB` | No | `0.25` | MongoDB WiredTiger cache size in GB |
 | `MONGO_MAX_POOL_SIZE` | No | `25` | Per-server MongoDB connection pool ceiling |
 | `MONGO_MIN_POOL_SIZE` | No | `0` | Per-server MongoDB minimum pool size |
@@ -724,7 +774,8 @@ production_setup/
 | `MONGO_CONNECT_RETRIES` | No | `6` | MongoDB connect retry attempts |
 | `MONGO_CONNECT_RETRY_DELAY_MS` | No | `2000` | Base retry delay for MongoDB connects |
 | `MAIL_URL` | Recommended | — | SMTP connection string |
-| `REDIS_URL` | No | `redis://redis:6379` | Redis connection URL |
+| `REDIS_PASSWORD` | Yes (bundled redis) | generated by `setup.sh` | Built-in Redis password |
+| `REDIS_URL` | Yes | generated by `setup.sh` | Redis connection URL |
 | `API_PORT` | No | `3001` | Internal API port |
 | `BACKUP_CHECK_INTERVAL_SECONDS` | No | `60` | Backup manager polling interval |
 | `TZ` | No | `UTC` | Timezone used by the backup manager container |
