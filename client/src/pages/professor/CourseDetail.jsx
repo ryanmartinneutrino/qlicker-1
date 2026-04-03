@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Autocomplete, Box, Typography, Button, TextField, Paper, Chip, Stack,
   List, ListItem, ListItemAvatar, ListItemText, ListItemButton, ListItemSecondaryAction, IconButton,
-  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar,
+  Dialog, DialogTitle, DialogContent, DialogActions, Alert, Snackbar, Checkbox,
   CircularProgress, Divider, Switch, FormControlLabel, Tooltip, Avatar, MenuItem,
 } from '@mui/material';
 import {
@@ -322,6 +322,8 @@ export default function CourseDetail() {
   const [deleteSessionTarget, setDeleteSessionTarget] = useState(null);
   const [copySessionTarget, setCopySessionTarget] = useState(null);
   const [copySessionTargetCourseId, setCopySessionTargetCourseId] = useState(id);
+  const [copySessionPreservePoints, setCopySessionPreservePoints] = useState(false);
+  const [copySessionQuestionSummary, setCopySessionQuestionSummary] = useState(null);
   const [copyingSession, setCopyingSession] = useState(false);
   const [copySessionsDialogOpen, setCopySessionsDialogOpen] = useState(false);
   const [copySessionsSourceCourseId, setCopySessionsSourceCourseId] = useState(id);
@@ -588,6 +590,38 @@ export default function CourseDetail() {
       setMsg({ severity: 'error', text: t('professor.course.failedLoadCourses') });
     });
   }, [copySessionTarget, fetchInstructorCourses, t]);
+
+  useEffect(() => {
+    let active = true;
+    if (!copySessionTarget?._id) {
+      setCopySessionPreservePoints(false);
+      setCopySessionQuestionSummary(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setCopySessionPreservePoints(false);
+    setCopySessionQuestionSummary(null);
+    apiClient.get(`/sessions/${copySessionTarget._id}/export`).then(({ data }) => {
+      if (!active) return;
+      const questions = Array.isArray(data?.questions) ? data.questions : [];
+      const zeroPointCount = questions.filter(
+        (question) => Number(question?.sessionOptions?.points ?? 1) <= 0
+      ).length;
+      setCopySessionQuestionSummary({
+        questionCount: questions.length,
+        zeroPointCount,
+      });
+    }).catch(() => {
+      if (!active) return;
+      setCopySessionQuestionSummary({ questionCount: 0, zeroPointCount: 0 });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [copySessionTarget]);
 
   useEffect(() => {
     if (!copySessionsDialogOpen) return;
@@ -930,6 +964,7 @@ export default function CourseDetail() {
     try {
       await apiClient.post(`/sessions/${copySessionTarget._id}/copy`, {
         targetCourseId: copySessionTargetCourseId,
+        preservePoints: copySessionPreservePoints,
       });
       if (String(copySessionTargetCourseId) === String(id)) {
         await fetchSessions();
@@ -1046,6 +1081,7 @@ export default function CourseDetail() {
   const selectedCopyTargetCourse = instructorCourses.find((courseItem) => String(courseItem._id) === String(copySessionTargetCourseId))
     || instructorCourses.find((courseItem) => String(courseItem._id) === String(id))
     || null;
+  const copySessionHasZeroPointQuestions = Number(copySessionQuestionSummary?.zeroPointCount) > 0;
   const use24HourNotifications = (course?.quizTimeFormat && course.quizTimeFormat !== 'inherit'
     ? course.quizTimeFormat
     : adminTimeFormat) !== '12h';
@@ -2042,6 +2078,9 @@ export default function CourseDetail() {
           <Typography variant="body2" color="text.secondary">
             {copySessionTarget ? t('professor.course.copySessionConfirm', { name: copySessionTarget.name }) : ''}
           </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('professor.course.copySessionPointsHelp')}
+          </Typography>
           <Autocomplete
             options={instructorCourses}
             value={selectedCopyTargetCourse}
@@ -2055,6 +2094,22 @@ export default function CourseDetail() {
               />
             )}
           />
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={copySessionPreservePoints}
+                onChange={(event) => setCopySessionPreservePoints(event.target.checked)}
+              />
+            )}
+            label={t('professor.course.copySessionPreservePoints')}
+          />
+          {copySessionPreservePoints && copySessionHasZeroPointQuestions ? (
+            <Alert severity="warning">
+              {t('professor.course.copySessionPreservePointsWarning', {
+                count: copySessionQuestionSummary.zeroPointCount,
+              })}
+            </Alert>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCopySessionTarget(null)}>{t('common.cancel')}</Button>

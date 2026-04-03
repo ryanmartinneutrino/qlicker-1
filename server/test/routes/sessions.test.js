@@ -2116,6 +2116,7 @@ describe('POST /api/v1/sessions/:id/end', () => {
     expect(grades[0].marks).toHaveLength(1);
     expect(grades[0].marks[0].outOf).toBe(0);
   });
+
 });
 
 // ---------- Student quiz routes ----------
@@ -3807,6 +3808,53 @@ describe('POST /api/v1/sessions/:id/copy', () => {
       expect(copiedQuestion._id).not.toBe(sourceQuestionId);
     });
   });
+
+  it('defaults copied question points to 1 unless preservePoints is requested', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const prof = await createTestUser({ email: 'copy-points@example.com', roles: ['professor'] });
+    const profToken = await getAuthToken(app, prof);
+    const courseRes = await createCourseAsProf(profToken);
+    const course = courseRes.json().course;
+    const sessRes = await createSessionInCourse(profToken, course._id, { name: 'Points source session' });
+    const session = sessRes.json().session;
+
+    const questionRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
+      token: profToken,
+      payload: {
+        type: 2,
+        content: '<p>Question with custom points</p>',
+        plainText: 'Question with custom points',
+        sessionId: session._id,
+        courseId: course._id,
+        sessionOptions: {
+          points: 0,
+          maxAttempts: 2,
+        },
+      },
+    });
+    const sourceQuestion = questionRes.json().question;
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/questions`, {
+      token: profToken,
+      payload: { questionId: sourceQuestion._id },
+    });
+
+    const defaultCopyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+    });
+    expect(defaultCopyRes.statusCode).toBe(201);
+    const defaultCopyQuestion = await Question.findById(defaultCopyRes.json().session.questions[0]).lean();
+    expect(defaultCopyQuestion.sessionOptions.points).toBe(1);
+    expect(defaultCopyQuestion.sessionOptions.maxAttempts).toBe(2);
+
+    const preservedCopyRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/copy`, {
+      token: profToken,
+      payload: { preservePoints: true },
+    });
+    expect(preservedCopyRes.statusCode).toBe(201);
+    const preservedCopyQuestion = await Question.findById(preservedCopyRes.json().session.questions[0]).lean();
+    expect(preservedCopyQuestion.sessionOptions.points).toBe(0);
+  });
 });
 
 // ---------- GET /api/v1/sessions/:id/review ----------
@@ -4067,11 +4115,15 @@ describe('POST /api/v1/sessions/:id/review/feedback/dismiss', () => {
     const qRes = await authenticatedRequest(app, 'POST', '/api/v1/questions', {
       token: profToken,
       payload: {
-        type: 2,
-        content: '<p>Explain your answer.</p>',
-        plainText: 'Explain your answer.',
+        type: 0,
+        content: '<p>Pick the correct answer.</p>',
+        plainText: 'Pick the correct answer.',
         sessionId: session._id,
         courseId: course._id,
+        options: [
+          { answer: 'A', plainText: 'A', content: 'A', correct: true },
+          { answer: 'B', plainText: 'B', content: 'B', correct: false },
+        ],
       },
     });
     const question = qRes.json().question;

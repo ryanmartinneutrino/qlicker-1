@@ -2,15 +2,15 @@ import Question from '../models/Question.js';
 import Session from '../models/Session.js';
 import { buildSessionResponseTracking } from '../utils/sessionResponseTracking.js';
 
-function buildCopiedSessionOptions(sessionOptions) {
-  if (sessionOptions == null) return undefined;
-  if (typeof sessionOptions !== 'object') return undefined;
+function buildCopiedSessionOptions(sessionOptions, { preservePoints = false } = {}) {
+  const sourceOptions = sessionOptions && typeof sessionOptions === 'object' ? sessionOptions : {};
+  const next = {
+    points: 1,
+  };
 
-  const next = {};
-
-  if (sessionOptions.points !== undefined) next.points = sessionOptions.points;
-  if (sessionOptions.maxAttempts !== undefined) next.maxAttempts = sessionOptions.maxAttempts;
-  if (Array.isArray(sessionOptions.attemptWeights)) next.attemptWeights = [...sessionOptions.attemptWeights];
+  if (preservePoints && sourceOptions.points !== undefined) next.points = sourceOptions.points;
+  if (sourceOptions.maxAttempts !== undefined) next.maxAttempts = sourceOptions.maxAttempts;
+  if (Array.isArray(sourceOptions.attemptWeights)) next.attemptWeights = [...sourceOptions.attemptWeights];
 
   next.hidden = true;
   next.stats = false;
@@ -26,6 +26,7 @@ export async function copyQuestionToSession({
   targetCourseId,
   userId,
   addToSession = true,
+  preservePoints,
 }) {
   if (!sourceQuestion) {
     throw new Error('Source question is required');
@@ -40,7 +41,9 @@ export async function copyQuestionToSession({
   delete copiedPayload.__v;
   delete copiedPayload.updatedAt;
   delete copiedPayload.sessionProperties;
-  copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions);
+  copiedPayload.sessionOptions = buildCopiedSessionOptions(sourceObject.sessionOptions, {
+    preservePoints: preservePoints !== false,
+  });
 
   const copy = await Question.create({
     ...copiedPayload,

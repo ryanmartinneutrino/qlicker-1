@@ -166,6 +166,95 @@ const markUpdateSchema = {
   },
 };
 
+const bulkMarkUpdateSchema = {
+  body: {
+    type: 'object',
+    required: ['gradeIds'],
+    properties: {
+      gradeIds: {
+        type: 'array',
+        minItems: 1,
+        items: { type: 'string', minLength: 1 },
+      },
+      points: { type: 'number', minimum: 0 },
+      feedback: { type: 'string' },
+      needsGrading: { type: 'boolean' },
+    },
+    additionalProperties: false,
+  },
+};
+
+function buildGradeUpdateSet(nextGrade) {
+  return {
+    marks: nextGrade.marks,
+    points: nextGrade.points,
+    value: nextGrade.value,
+    automatic: nextGrade.automatic,
+    needsGrading: nextGrade.needsGrading,
+    participation: nextGrade.participation,
+    numAnswered: nextGrade.numAnswered,
+    numQuestions: nextGrade.numQuestions,
+    numAnsweredTotal: nextGrade.numAnsweredTotal,
+    numQuestionsTotal: nextGrade.numQuestionsTotal,
+  };
+}
+
+function applyMarkUpdateToGrade(grade, questionId, updates) {
+  const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark })) : [];
+  const markIndex = marks.findIndex((mark) => String(mark.questionId) === String(questionId));
+  if (markIndex === -1) {
+    return null;
+  }
+
+  const nextMark = { ...marks[markIndex] };
+  let feedbackStateChanged = false;
+  let scoreStateChanged = false;
+
+  if (updates.points !== undefined) {
+    nextMark.points = toFiniteNumber(updates.points, 0);
+    nextMark.automatic = false;
+    nextMark.needsGrading = updates.needsGrading !== undefined ? !!updates.needsGrading : false;
+    scoreStateChanged = true;
+  } else if (updates.needsGrading !== undefined) {
+    nextMark.needsGrading = !!updates.needsGrading;
+  }
+
+  if (updates.feedback !== undefined) {
+    const previousFeedback = nextMark.feedback || '';
+    const nextFeedback = updates.feedback || '';
+    const feedbackChanged = nextFeedback !== previousFeedback;
+    nextMark.feedback = nextFeedback;
+
+    if (hasNonEmptyFeedback(nextFeedback)) {
+      if (feedbackChanged || !nextMark.feedbackUpdatedAt) {
+        nextMark.feedbackUpdatedAt = new Date();
+        feedbackStateChanged = true;
+      }
+    } else {
+      if (hasNonEmptyFeedback(previousFeedback) || nextMark.feedbackUpdatedAt) {
+        feedbackStateChanged = true;
+      }
+      nextMark.feedbackUpdatedAt = null;
+    }
+  }
+
+  marks[markIndex] = nextMark;
+
+  const nextGrade = {
+    ...grade,
+    marks,
+  };
+  if (scoreStateChanged) {
+    nextGrade.automatic = true;
+  }
+  recomputeGradeAggregates(nextGrade);
+
+  return {
+    nextGrade,
+    feedbackStateChanged,
+  };
+}
+
 const gradeValueSchema = {
   body: {
     type: 'object',
@@ -314,6 +403,97 @@ export default async function gradeRoutes(app) {
   );
 
   app.patch(
+    '/sessions/:id/grades/marks/:questionId',
+    {
+      preHandler: authenticate,
+      schema: bulkMarkUpdateSchema,
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+      config: {
+        rateLimit: { max: 120, timeWindow: '1 minute' },
+      },
+    },
+    async (request, reply) => {
+      const session = await Session.findById(request.params.id).lean();
+      if (!session) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Session not found' });
+      }
+
+      const course = await Course.findById(session.courseId).lean();
+      if (!course) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Course not found' });
+      }
+
+      if (!isInstructorOrAdmin(course, request.user)) {
+        return reply.code(403).send({ error: 'Forbidden', message: 'Insufficient permissions' });
+      }
+
+      if (!ensureSessionEndedForGrading(session, reply)) {
+        return undefined;
+      }
+
+      const gradeIds = [...new Set(
+        (Array.isArray(request.body?.gradeIds) ? request.body.gradeIds : [])
+          .map((gradeId) => normalizeAnswerValue(gradeId))
+          .filter(Boolean)
+      )];
+      if (gradeIds.length === 0) {
+        return reply.code(400).send({ error: 'Bad Request', message: 'At least one grade is required' });
+      }
+
+      const grades = await Grade.find({
+        _id: { $in: gradeIds },
+        sessionId: session._id,
+        courseId: course._id,
+      }).lean();
+
+      if (grades.length !== gradeIds.length) {
+        return reply.code(404).send({ error: 'Not Found', message: 'One or more grades were not found' });
+      }
+
+      const questionId = String(request.params.questionId);
+      const nextGrades = [];
+      const feedbackChangedUserIds = new Set();
+
+      grades.forEach((grade) => {
+        const result = applyMarkUpdateToGrade(grade, questionId, request.body);
+        if (!result) {
+          return;
+        }
+        if (result.feedbackStateChanged) {
+          feedbackChangedUserIds.add(String(grade.userId));
+        }
+        nextGrades.push({
+          originalGrade: grade,
+          updatedGrade: result.nextGrade,
+        });
+      });
+
+      if (nextGrades.length !== gradeIds.length) {
+        return reply.code(404).send({ error: 'Not Found', message: 'Mark not found for one or more grades' });
+      }
+
+      await Grade.bulkWrite(nextGrades.map(({ originalGrade, updatedGrade }) => ({
+        updateMany: {
+          filter: getGradeIdentityFilter(originalGrade),
+          update: {
+            $set: buildGradeUpdateSet(updatedGrade),
+          },
+        },
+      })));
+
+      const updatedGrades = await Grade.find({ _id: { $in: gradeIds } }).lean();
+      feedbackChangedUserIds.forEach((userId) => {
+        notifyFeedbackUpdatedForUser(app, userId, course, session._id);
+      });
+
+      return {
+        updatedCount: updatedGrades.length,
+        grades: updatedGrades,
+      };
+    }
+  );
+
+  app.patch(
     '/grades/:gradeId/marks/:questionId',
     {
       preHandler: authenticate,
@@ -342,77 +522,20 @@ export default async function gradeRoutes(app) {
         return undefined;
       }
 
-      const questionId = String(request.params.questionId);
-      const marks = Array.isArray(grade.marks) ? grade.marks.map((mark) => ({ ...mark })) : [];
-      const markIndex = marks.findIndex((mark) => String(mark.questionId) === questionId);
-
-      if (markIndex === -1) {
+      const result = applyMarkUpdateToGrade(grade, request.params.questionId, request.body);
+      if (!result) {
         return reply.code(404).send({ error: 'Not Found', message: 'Mark not found for question' });
       }
-
-      const nextMark = { ...marks[markIndex] };
-      let feedbackStateChanged = false;
-      let scoreStateChanged = false;
-
-      if (request.body.points !== undefined) {
-        nextMark.points = toFiniteNumber(request.body.points, 0);
-        nextMark.automatic = false;
-        nextMark.needsGrading = request.body.needsGrading !== undefined ? !!request.body.needsGrading : false;
-        scoreStateChanged = true;
-      } else if (request.body.needsGrading !== undefined) {
-        nextMark.needsGrading = !!request.body.needsGrading;
-      }
-
-      if (request.body.feedback !== undefined) {
-        const previousFeedback = nextMark.feedback || '';
-        const nextFeedback = request.body.feedback || '';
-        const feedbackChanged = nextFeedback !== previousFeedback;
-        nextMark.feedback = nextFeedback;
-
-        if (hasNonEmptyFeedback(nextFeedback)) {
-          if (feedbackChanged || !nextMark.feedbackUpdatedAt) {
-            nextMark.feedbackUpdatedAt = new Date();
-            feedbackStateChanged = true;
-          }
-        } else {
-          if (hasNonEmptyFeedback(previousFeedback) || nextMark.feedbackUpdatedAt) {
-            feedbackStateChanged = true;
-          }
-          nextMark.feedbackUpdatedAt = null;
-        }
-      }
-
-      marks[markIndex] = nextMark;
-
-      const nextGrade = {
-        ...grade,
-        marks,
-      };
-      if (scoreStateChanged) {
-        nextGrade.automatic = true;
-      }
-      recomputeGradeAggregates(nextGrade);
 
       await Grade.updateMany(
         getGradeIdentityFilter(grade),
         {
-          $set: {
-            marks: nextGrade.marks,
-            points: nextGrade.points,
-            value: nextGrade.value,
-            automatic: nextGrade.automatic,
-            needsGrading: nextGrade.needsGrading,
-            participation: nextGrade.participation,
-            numAnswered: nextGrade.numAnswered,
-            numQuestions: nextGrade.numQuestions,
-            numAnsweredTotal: nextGrade.numAnsweredTotal,
-            numQuestionsTotal: nextGrade.numQuestionsTotal,
-          },
+          $set: buildGradeUpdateSet(result.nextGrade),
         }
       );
 
       const updated = await Grade.findOne(getGradeIdentityFilter(grade)).lean();
-      if (feedbackStateChanged) {
+      if (result.feedbackStateChanged) {
         notifyFeedbackUpdatedForUser(app, grade.userId, course, grade.sessionId);
       }
       return { grade: updated };

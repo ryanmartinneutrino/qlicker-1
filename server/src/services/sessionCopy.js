@@ -34,6 +34,7 @@ export async function copySessionToCourse({
   sourceSession,
   targetCourseId,
   userId,
+  preservePoints = false,
 }) {
   if (!sourceSession?._id) {
     throw new Error('Source session is required');
@@ -72,6 +73,7 @@ export async function copySessionToCourse({
           targetCourseId,
           userId,
           addToSession: false,
+          preservePoints,
         });
 
         createdQuestions.push(String(copiedQuestion._id));

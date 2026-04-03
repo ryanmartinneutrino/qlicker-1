@@ -587,12 +587,35 @@ async function getNonAutoGradeableQuestions(session) {
   ));
 }
 
-function buildNonAutoGradeableWarning(questionDocs = []) {
+async function getNoResponseQuestions(session) {
+  const questionIds = Array.isArray(session?.questions) ? session.questions : [];
+  if (questionIds.length === 0) return [];
+
+  const questionDocs = await Question.find({ _id: { $in: questionIds } }).lean();
+  const questionResponseCounts = getSessionQuestionResponseCounts(session);
+
+  return questionDocs.filter((question) => (
+    isQuestionResponseCollectionEnabled(question)
+      && getQuestionPoints(question) > 0
+      && !questionResponseCounts[String(question._id)]
+  ));
+}
+
+function buildReviewableWarning({ nonAutoGradeable = [], noResponses = [] } = {}) {
+  const questionMap = new Map();
+  [...nonAutoGradeable, ...noResponses].forEach((question) => {
+    const questionId = String(question?._id || '');
+    if (!questionId || questionMap.has(questionId)) return;
+    questionMap.set(questionId, question);
+  });
+
   return {
-    questionCount: questionDocs.length,
-    questionNames: questionDocs.map((question) => (
+    questionCount: questionMap.size,
+    questionNames: [...questionMap.values()].map((question) => (
       question?.plainText || question?.question || question?.name || 'Untitled'
     )),
+    nonAutoGradeableCount: nonAutoGradeable.length,
+    noResponseCount: noResponses.length,
   };
 }
 
@@ -3651,17 +3674,24 @@ export default async function sessionRoutes(app) {
           }
         }
 
-        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
-        if (nonAutoGradeable.length > 0 && !request.body?.acknowledgeNonAutoGradeable) {
+        const [nonAutoGradeable, noResponseQuestions] = await Promise.all([
+          getNonAutoGradeableQuestions(session),
+          getNoResponseQuestions(session),
+        ]);
+        const needsReviewableWarning = nonAutoGradeable.length > 0 || noResponseQuestions.length > 0;
+        if (needsReviewableWarning && !request.body?.acknowledgeNonAutoGradeable) {
           return {
             session,
             grading: null,
-            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+            nonAutoGradeableWarning: buildReviewableWarning({
+              nonAutoGradeable,
+              noResponses: noResponseQuestions,
+            }),
           };
         }
 
         if (request.body?.zeroNonAutoGradeable) {
-          await zeroQuestionPoints(nonAutoGradeable);
+          await zeroQuestionPoints([...nonAutoGradeable, ...noResponseQuestions]);
         }
       }
 
@@ -3793,17 +3823,24 @@ export default async function sessionRoutes(app) {
       }
 
       if (request.body.reviewable === true && !session.reviewable) {
-        const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
-        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+        const [nonAutoGradeable, noResponseQuestions] = await Promise.all([
+          getNonAutoGradeableQuestions(session),
+          getNoResponseQuestions(session),
+        ]);
+        const needsReviewableWarning = nonAutoGradeable.length > 0 || noResponseQuestions.length > 0;
+        if (needsReviewableWarning && !request.body.acknowledgeNonAutoGradeable) {
           return {
             session,
             grading: null,
-            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+            nonAutoGradeableWarning: buildReviewableWarning({
+              nonAutoGradeable,
+              noResponses: noResponseQuestions,
+            }),
           };
         }
 
         if (request.body.zeroNonAutoGradeable) {
-          await zeroQuestionPoints(nonAutoGradeable);
+          await zeroQuestionPoints([...nonAutoGradeable, ...noResponseQuestions]);
         }
       }
 
@@ -3961,6 +3998,7 @@ export default async function sessionRoutes(app) {
           sourceSession,
           targetCourseId: targetCourse._id,
           userId: request.user.userId,
+          preservePoints: request.body?.preservePoints === true,
         });
         copiedSessions.push(copiedSession);
       }
@@ -4008,6 +4046,7 @@ export default async function sessionRoutes(app) {
         sourceSession: session,
         targetCourseId: targetCourse._id,
         userId: request.user.userId,
+        preservePoints: request.body?.preservePoints === true,
       });
 
       return reply.code(201).send({

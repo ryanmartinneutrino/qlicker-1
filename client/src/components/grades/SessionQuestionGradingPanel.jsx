@@ -987,6 +987,17 @@ export default function SessionQuestionGradingPanel({
     }));
   }, []);
 
+  const applyUpdatedGrades = useCallback((updatedGrades = []) => {
+    const gradeEntries = (Array.isArray(updatedGrades) ? updatedGrades : [])
+      .filter((grade) => grade?.userId)
+      .map((grade) => [String(grade.userId), grade]);
+    if (gradeEntries.length === 0) return;
+    setGradesByStudentId((prev) => ({
+      ...prev,
+      ...Object.fromEntries(gradeEntries),
+    }));
+  }, []);
+
   const handleUpdateDraft = useCallback((studentId, updater) => {
     setDraftByStudentId((prev) => {
       const current = prev[studentId] || { points: '', feedback: '' };
@@ -1083,17 +1094,16 @@ export default function SessionQuestionGradingPanel({
     }
 
     setBulkApplying(true);
-    let updatedCount = 0;
     try {
-      for (const row of targetRows) {
-        // eslint-disable-next-line no-await-in-loop
-        const { data } = await apiClient.patch(
-          `/grades/${row.gradeId}/marks/${activeQuestionId}`,
-          { points: parsedPoints }
-        );
-        applyUpdatedGrade(data?.grade);
-        updatedCount += 1;
-      }
+      const { data } = await apiClient.patch(
+        `/sessions/${sessionId}/grades/marks/${activeQuestionId}`,
+        {
+          gradeIds: targetRows.map((row) => row.gradeId),
+          points: parsedPoints,
+        }
+      );
+      applyUpdatedGrades(data?.grades);
+      const updatedCount = Number(data?.updatedCount) || targetRows.length;
       setGlobalMessage(t('grades.questionPanel.updatedPoints', { count: updatedCount }));
       setGlobalMessageType('success');
     } catch (err) {
@@ -1102,7 +1112,7 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setBulkApplying(false);
     }
-  }, [activeQuestionId, applyUpdatedGrade, bulkPoints, filteredRows]);
+  }, [activeQuestionId, applyUpdatedGrades, bulkPoints, filteredRows, sessionId, t]);
 
   const handleBulkApplyFeedback = useCallback(async () => {
     if (!activeQuestionId) return;
@@ -1114,17 +1124,16 @@ export default function SessionQuestionGradingPanel({
     }
 
     setBulkApplying(true);
-    let updatedCount = 0;
     try {
-      for (const row of targetRows) {
-        // eslint-disable-next-line no-await-in-loop
-        const { data } = await apiClient.patch(
-          `/grades/${row.gradeId}/marks/${activeQuestionId}`,
-          { feedback: bulkFeedback || '' }
-        );
-        applyUpdatedGrade(data?.grade);
-        updatedCount += 1;
-      }
+      const { data } = await apiClient.patch(
+        `/sessions/${sessionId}/grades/marks/${activeQuestionId}`,
+        {
+          gradeIds: targetRows.map((row) => row.gradeId),
+          feedback: bulkFeedback || '',
+        }
+      );
+      applyUpdatedGrades(data?.grades);
+      const updatedCount = Number(data?.updatedCount) || targetRows.length;
       setGlobalMessage(t('grades.questionPanel.updatedFeedback', { count: updatedCount }));
       setGlobalMessageType('success');
     } catch (err) {
@@ -1133,7 +1142,7 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setBulkApplying(false);
     }
-  }, [activeQuestionId, applyUpdatedGrade, bulkFeedback, filteredRows]);
+  }, [activeQuestionId, applyUpdatedGrades, bulkFeedback, filteredRows, sessionId, t]);
 
   const handleBulkSave = useCallback(async () => {
     if (!activeQuestionId) return;
@@ -1159,20 +1168,18 @@ export default function SessionQuestionGradingPanel({
     }
 
     setBulkApplying(true);
-    let updatedCount = 0;
     try {
-      for (const row of targetRows) {
-        const payload = {};
-        if (hasPoints) payload.points = Number(bulkPoints);
-        if (hasFeedback) payload.feedback = bulkFeedback;
-        // eslint-disable-next-line no-await-in-loop
-        const { data } = await apiClient.patch(
-          `/grades/${row.gradeId}/marks/${activeQuestionId}`,
-          payload
-        );
-        applyUpdatedGrade(data?.grade);
-        updatedCount += 1;
-      }
+      const payload = {
+        gradeIds: targetRows.map((row) => row.gradeId),
+      };
+      if (hasPoints) payload.points = Number(bulkPoints);
+      if (hasFeedback) payload.feedback = bulkFeedback;
+      const { data } = await apiClient.patch(
+        `/sessions/${sessionId}/grades/marks/${activeQuestionId}`,
+        payload
+      );
+      applyUpdatedGrades(data?.grades);
+      const updatedCount = Number(data?.updatedCount) || targetRows.length;
       setGlobalMessage(t('grades.questionPanel.bulkSaveSuccess', { count: updatedCount }));
       setGlobalMessageType('success');
     } catch (err) {
@@ -1181,7 +1188,7 @@ export default function SessionQuestionGradingPanel({
     } finally {
       setBulkApplying(false);
     }
-  }, [activeQuestionId, applyUpdatedGrade, bulkPoints, bulkFeedback, filteredRows, selectedStudentIds]);
+  }, [activeQuestionId, applyUpdatedGrades, bulkPoints, bulkFeedback, filteredRows, selectedStudentIds, sessionId, t]);
 
   const handleToggleRowSelected = useCallback((studentId, checked) => {
     setSelectedStudentIds((prev) => {
