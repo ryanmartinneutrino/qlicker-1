@@ -4535,6 +4535,102 @@ describe('session chat quick posts', () => {
     expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
   });
 
+  it('supports quick-post-only mode when rich text chat is disabled', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { profToken, course, studentToken } = await setupCourseWithStudent();
+
+    const sessionRes = await createSessionInCourse(profToken, course._id, { name: 'Quick Post Only Session' });
+    const session = sessionRes.json().session;
+
+    const questionOne = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 1</p>',
+      plainText: 'Question 1',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+    const questionTwo = await createQuestionInSession(profToken, {
+      sessionId: session._id,
+      courseId: course._id,
+      type: 0,
+      content: '<p>Question 2</p>',
+      plainText: 'Question 2',
+      options: [
+        { answer: 'A', correct: true },
+        { answer: 'B', correct: false },
+      ],
+    });
+
+    const settingsRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/chat-settings`, {
+      token: profToken,
+      payload: { chatEnabled: true, richTextChatEnabled: false },
+    });
+    expect(settingsRes.statusCode).toBe(200);
+    expect(settingsRes.json().session).toEqual(expect.objectContaining({
+      chatEnabled: true,
+      richTextChatEnabled: false,
+    }));
+
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/start`, {
+      token: profToken,
+    });
+    await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/current`, {
+      token: profToken,
+      payload: { questionId: questionTwo._id },
+    });
+    await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/join`, {
+      token: studentToken,
+      payload: {},
+    });
+
+    const studentChatRes = await authenticatedRequest(app, 'GET', `/api/v1/sessions/${session._id}/chat`, {
+      token: studentToken,
+    });
+    expect(studentChatRes.statusCode).toBe(200);
+    expect(studentChatRes.json()).toEqual(expect.objectContaining({
+      richTextChatEnabled: false,
+      canPost: true,
+      canComment: true,
+    }));
+
+    const quickPostRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/quick-posts/1/toggle`, {
+      token: studentToken,
+    });
+    expect(quickPostRes.statusCode).toBe(200);
+
+    const richPostStudentRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/posts`, {
+      token: studentToken,
+      payload: { body: 'Student rich text post' },
+    });
+    expect(richPostStudentRes.statusCode).toBe(403);
+
+    const richPostProfRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/posts`, {
+      token: profToken,
+      payload: { body: 'Professor rich text post' },
+    });
+    expect(richPostProfRes.statusCode).toBe(403);
+
+    const quickPost = await Post.findOne({
+      scopeType: 'session',
+      sessionId: String(session._id),
+      isQuickPost: true,
+      quickPostQuestionNumber: 1,
+    }).lean();
+    expect(quickPost?._id).toBeTruthy();
+
+    const commentRes = await authenticatedRequest(app, 'POST', `/api/v1/sessions/${session._id}/chat/posts/${quickPost._id}/comments`, {
+      token: studentToken,
+      payload: { body: 'Disabled comment' },
+    });
+    expect(commentRes.statusCode).toBe(403);
+
+    expect(String(questionOne._id)).not.toBe(String(questionTwo._id));
+  });
+
   it('keeps mixed-role student instructor names private in presentation chat while preserving self-view names', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const { profToken, course } = await setupCourseWithStudent();

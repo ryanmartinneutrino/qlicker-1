@@ -63,6 +63,7 @@ const SessionSchema = new mongoose.Schema(
     joinCodeInterval: { type: Number, default: 10 },
     joinCodeExpiresAt: { type: Date },
     chatEnabled: { type: Boolean, default: false },
+    richTextChatEnabled: { type: Boolean, default: true },
   },
   {
     collection: 'sessions',

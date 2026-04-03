@@ -230,6 +230,7 @@ function CommentThread({
   expanded,
   onToggle,
   canComment,
+  richTextChatEnabled,
   canDeleteOwnComment,
   canDeleteAnyComment,
   canViewNames,
@@ -242,6 +243,7 @@ function CommentThread({
 }) {
   const { t } = useTranslation();
   const hasCommentDraft = normalizeDraftPlainText(commentDraft).length > 0 || (commentDraft || '').trim().length > 0;
+  const commentFormEnabled = canComment && richTextChatEnabled;
 
   return (
     <Box sx={{ mt: 1.5 }}>
@@ -290,6 +292,11 @@ function CommentThread({
               <RichContent html={comment.bodyWysiwyg} fallback={comment.body} />
             </Paper>
           ))}
+          {canComment && !richTextChatEnabled ? (
+            <Alert severity="info">
+              {t('sessionChat.commentsDisabledNotice')}
+            </Alert>
+          ) : null}
           {canComment && (
             <Paper variant="outlined" sx={{ p: 1.25 }}>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
@@ -301,6 +308,7 @@ function CommentThread({
                 showMathHint={false}
                 placeholder={t('sessionChat.commentPlaceholder')}
                 ariaLabel={t('sessionChat.commentEditorAria')}
+                disabled={!commentFormEnabled}
               />
               <MathPreview html={commentDraft} showLabel={false} />
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
@@ -308,7 +316,7 @@ function CommentThread({
                   variant="contained"
                   size="small"
                   onClick={onSubmitComment}
-                  disabled={!hasCommentDraft || submitting}
+                  disabled={!commentFormEnabled || !hasCommentDraft || submitting}
                 >
                   {submitting ? t('sessionChat.sending') : t('sessionChat.comment')}
                 </Button>
@@ -326,6 +334,7 @@ export default function SessionChatPanel({
   enabled,
   view = 'live',
   role = 'student',
+  richTextChatEnabled = undefined,
   syncTransport = 'unknown',
   refreshToken = 0,
   chatEvent = null,
@@ -414,6 +423,10 @@ export default function SessionChatPanel({
       void runFetchChat();
       return;
     }
+    if (view === 'presentation') {
+      void runFetchChat();
+      return;
+    }
 
     const nextData = applyChatEventData(chatDataRef.current, chatEvent);
     if (!nextData) {
@@ -426,6 +439,9 @@ export default function SessionChatPanel({
     setError(null);
   }, [chatEvent, enabled, runFetchChat]);
 
+  const resolvedRichTextChatEnabled = richTextChatEnabled !== undefined
+    ? richTextChatEnabled
+    : (chatData?.richTextChatEnabled !== false);
   const canCompose = !!chatData?.canPost && view === 'live';
   const canVote = !!chatData?.canVote && role === 'student';
   const canDismiss = !!chatData?.canDismiss && role === 'professor';
@@ -469,7 +485,7 @@ export default function SessionChatPanel({
   }, [quickPostOptions]);
 
   const handleSubmitPost = useCallback(async () => {
-    if (!draftHasContent || submittingPost) return;
+    if (!resolvedRichTextChatEnabled || !draftHasContent || submittingPost) return;
     setSubmittingPost(true);
     try {
       await apiClient.post(`/sessions/${sessionId}/chat/posts`, {
@@ -487,7 +503,7 @@ export default function SessionChatPanel({
     } finally {
       setSubmittingPost(false);
     }
-  }, [draftHasContent, draftHtml, fetchChat, role, sessionId, shouldRefetchAfterStudentMutation, submittingPost, t]);
+  }, [draftHasContent, draftHtml, fetchChat, resolvedRichTextChatEnabled, role, sessionId, shouldRefetchAfterStudentMutation, submittingPost, t]);
 
   const handleQuickPostToggle = useCallback(async (questionNumber) => {
     if (!questionNumber || submittingQuickPost) return;
@@ -543,7 +559,7 @@ export default function SessionChatPanel({
 
   const handleSubmitComment = useCallback(async (postId) => {
     const draft = commentDrafts[postId] || '';
-    if (!normalizeDraftPlainText(draft) && !draft.trim()) return;
+    if (!resolvedRichTextChatEnabled || (!normalizeDraftPlainText(draft) && !draft.trim())) return;
     setPendingCommentId(postId);
     try {
       await apiClient.post(`/sessions/${sessionId}/chat/posts/${postId}/comments`, {
@@ -561,7 +577,7 @@ export default function SessionChatPanel({
     } finally {
       setPendingCommentId('');
     }
-  }, [commentDrafts, fetchChat, sessionId, shouldRefetchAfterStudentMutation, t]);
+  }, [commentDrafts, fetchChat, resolvedRichTextChatEnabled, sessionId, shouldRefetchAfterStudentMutation, t]);
 
   const handleDeleteComment = useCallback(async (postId, commentId) => {
     setDeletingCommentId(commentId);
@@ -600,6 +616,13 @@ export default function SessionChatPanel({
       {role === 'student' && view === 'live' ? (
         <Alert severity="info">
           {t('sessionChat.studentNotice')}
+        </Alert>
+      ) : null}
+      {!resolvedRichTextChatEnabled && view === 'live' ? (
+        <Alert severity="info">
+          {role === 'student'
+            ? t('sessionChat.richTextDisabledStudentNotice')
+            : t('sessionChat.richTextDisabledInstructorNotice')}
         </Alert>
       ) : null}
 
@@ -684,13 +707,14 @@ export default function SessionChatPanel({
               placeholder={t('sessionChat.postPlaceholder')}
               ariaLabel={t('sessionChat.postEditorAria')}
               showMathHint
+              disabled={!resolvedRichTextChatEnabled}
             />
             <MathPreview html={draftHtml} showLabel={false} />
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
               <Button
                 variant="contained"
                 onClick={handleSubmitPost}
-                disabled={!draftHasContent || submittingPost}
+                disabled={!resolvedRichTextChatEnabled || !draftHasContent || submittingPost}
               >
                 {submittingPost ? t('sessionChat.sending') : t('sessionChat.post')}
               </Button>
@@ -793,6 +817,7 @@ export default function SessionChatPanel({
                   expanded={expanded}
                   onToggle={() => setExpandedPosts((prev) => ({ ...prev, [post._id]: !prev[post._id] }))}
                   canComment={canComment && !post.dismissed}
+                  richTextChatEnabled={resolvedRichTextChatEnabled}
                   canDeleteOwnComment={canDeleteOwnComment}
                   canDeleteAnyComment={canDeleteAnyComment}
                   canViewNames={canViewNames}
