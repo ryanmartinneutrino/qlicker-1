@@ -1006,7 +1006,9 @@ describe('Grading routes', () => {
     expect(recalcSummary.manualMarkConflicts[0].questionId).toBe(mcQuestion._id);
     expect(recalcSummary.manualMarkConflicts.some((conflict) => conflict.questionId === saQuestion._id)).toBe(false);
     expect(recalcSummary.ungradableQuestionIds).toContain(saQuestion._id);
-    expect(recalcSummary.warnings.join(' ')).toContain('cannot be auto-graded');
+    // After manual grading, the "cannot be auto-graded" warning should NOT appear
+    // because all marks have been graded (needsGrading is false for all marks)
+    expect(recalcSummary.warnings.join(' ')).not.toContain('cannot be auto-graded');
     expect(recalcSummary.warnings.join(' ')).toContain('manual mark overrides differ');
 
     const persistedStudentGrade = await Grade.findById(studentGrade._id).lean();

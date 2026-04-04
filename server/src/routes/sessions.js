@@ -588,6 +588,29 @@ async function getNonAutoGradeableQuestions(session) {
   ));
 }
 
+async function filterToActuallyUngradedQuestions(questions, sessionId) {
+  if (questions.length === 0) return [];
+
+  const grades = await Grade.find({ sessionId: String(sessionId) })
+    .select('marks')
+    .lean();
+
+  // If no grades exist yet, all questions potentially need grading
+  if (grades.length === 0) return questions;
+
+  const questionIds = new Set(questions.map((q) => String(q._id)));
+  const ungradedQuestionIds = new Set();
+  grades.forEach((grade) => {
+    (grade.marks || []).forEach((mark) => {
+      if (mark?.needsGrading && questionIds.has(String(mark.questionId))) {
+        ungradedQuestionIds.add(String(mark.questionId));
+      }
+    });
+  });
+
+  return questions.filter((q) => ungradedQuestionIds.has(String(q._id)));
+}
+
 async function getNoResponseQuestions(session) {
   const questionIds = Array.isArray(session?.questions) ? session.questions : [];
   if (questionIds.length === 0) return [];
@@ -3492,11 +3515,12 @@ export default async function sessionRoutes(app) {
 
       if (!isStudentOwner && updates.reviewable === true && !session.reviewable) {
         const nonAutoGradeable = await getNonAutoGradeableQuestions(session);
-        if (nonAutoGradeable.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
+        const ungradedNonAuto = await filterToActuallyUngradedQuestions(nonAutoGradeable, session._id);
+        if (ungradedNonAuto.length > 0 && !request.body.acknowledgeNonAutoGradeable) {
           return {
             session,
             grading: null,
-            nonAutoGradeableWarning: buildReviewableWarning({ nonAutoGradeable }),
+            nonAutoGradeableWarning: buildReviewableWarning({ nonAutoGradeable: ungradedNonAuto }),
           };
         }
 
@@ -3726,13 +3750,14 @@ export default async function sessionRoutes(app) {
           getNonAutoGradeableQuestions(session),
           getNoResponseQuestions(session),
         ]);
-        const needsReviewableWarning = nonAutoGradeable.length > 0 || noResponseQuestions.length > 0;
+        const ungradedNonAuto = await filterToActuallyUngradedQuestions(nonAutoGradeable, session._id);
+        const needsReviewableWarning = ungradedNonAuto.length > 0 || noResponseQuestions.length > 0;
         if (needsReviewableWarning && !request.body?.acknowledgeNonAutoGradeable) {
           return {
             session,
             grading: null,
             nonAutoGradeableWarning: buildReviewableWarning({
-              nonAutoGradeable,
+              nonAutoGradeable: ungradedNonAuto,
               noResponses: noResponseQuestions,
             }),
           };
