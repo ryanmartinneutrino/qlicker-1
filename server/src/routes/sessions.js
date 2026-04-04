@@ -138,8 +138,6 @@ const toggleReviewableSchema = {
     required: ['reviewable'],
     properties: {
       reviewable: { type: 'boolean' },
-      acknowledgeNonAutoGradeable: { type: 'boolean' },
-      zeroNonAutoGradeable: { type: 'boolean' },
     },
     additionalProperties: false,
   },
@@ -3869,28 +3867,6 @@ export default async function sessionRoutes(app) {
             error: 'Bad Request',
             message: 'Session cannot be made reviewable while quiz extensions are active',
           });
-        }
-      }
-
-      if (request.body.reviewable === true && !session.reviewable) {
-        const [nonAutoGradeable, noResponseQuestions] = await Promise.all([
-          getNonAutoGradeableQuestions(session),
-          getNoResponseQuestions(session),
-        ]);
-        const needsReviewableWarning = nonAutoGradeable.length > 0 || noResponseQuestions.length > 0;
-        if (needsReviewableWarning && !request.body.acknowledgeNonAutoGradeable) {
-          return {
-            session,
-            grading: null,
-            nonAutoGradeableWarning: buildReviewableWarning({
-              nonAutoGradeable,
-              noResponses: noResponseQuestions,
-            }),
-          };
-        }
-
-        if (request.body.zeroNonAutoGradeable) {
-          await zeroQuestionPoints([...nonAutoGradeable, ...noResponseQuestions]);
         }
       }
 

@@ -659,16 +659,11 @@ export default function SessionReview() {
   const handleToggleReviewable = useCallback(async (checked) => {
     setTogglingReviewable(true);
     try {
-      const { cancelled, data, warningMessage } = await toggleSessionReviewable({
+      const data = await toggleSessionReviewable({
         apiClient,
         sessionId,
         reviewable: checked,
-        t,
       });
-      if (cancelled) {
-        setReviewableWarning(warningMessage);
-        return;
-      }
       const updatedSession = data.session || data;
       const warnings = data.grading?.warnings || [];
       setSession((prev) => (prev ? { ...prev, ...updatedSession } : prev));

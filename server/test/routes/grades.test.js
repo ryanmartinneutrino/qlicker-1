@@ -1580,7 +1580,7 @@ describe('Grading routes', () => {
     expect(hiddenGrades.every((grade) => grade.visibleToStudents === false)).toBe(true);
   });
 
-  it('returns a non-mutating warning before making an ended session reviewable when manual grading is required', async (ctx) => {
+  it('makes an ended session reviewable immediately even when manual grading is required', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     const { profToken, course, students } = await setupCourseWithStudents({
@@ -1604,41 +1604,24 @@ describe('Grading routes', () => {
       },
     });
 
-    const warningRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+    const makeReviewableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
       token: profToken,
       payload: { reviewable: true },
     });
 
-    expect(warningRes.statusCode).toBe(200);
-    expect(warningRes.json().grading).toBeNull();
-    expect(warningRes.json().nonAutoGradeableWarning.questionCount).toBe(1);
-
-    const warnedSession = await Session.findById(session._id).lean();
-    expect(warnedSession.reviewable).toBe(false);
-    expect(await Grade.countDocuments({ sessionId: session._id, courseId: course._id })).toBe(0);
-
-    const confirmRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
-      token: profToken,
-      payload: {
-        reviewable: true,
-        acknowledgeNonAutoGradeable: true,
-        zeroNonAutoGradeable: true,
-      },
-    });
-
-    expect(confirmRes.statusCode).toBe(200);
-    expect(confirmRes.json().session.reviewable).toBe(true);
+    expect(makeReviewableRes.statusCode).toBe(200);
+    expect(makeReviewableRes.json().session.reviewable).toBe(true);
+    expect(makeReviewableRes.json().nonAutoGradeableWarning).toBeNull();
 
     const zeroedQuestion = await Question.findById(question._id).lean();
-    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+    expect(zeroedQuestion.sessionOptions.points).toBe(3);
 
     const grades = await Grade.find({ sessionId: session._id, courseId: course._id }).lean();
     expect(grades).toHaveLength(2);
     expect(grades.every((grade) => grade.visibleToStudents === true)).toBe(true);
-    expect(grades.every((grade) => grade.marks[0]?.outOf === 0)).toBe(true);
   });
 
-  it('warns about no-response questions before making an ended session reviewable and can zero them out', async (ctx) => {
+  it('makes an ended session reviewable immediately even when some questions have no responses', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
 
     const { profToken, course, students } = await setupCourseWithStudents({
@@ -1663,29 +1646,16 @@ describe('Grading routes', () => {
       },
     });
 
-    const warningRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
+    const makeReviewableRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
       token: profToken,
       payload: { reviewable: true },
     });
 
-    expect(warningRes.statusCode).toBe(200);
-    expect(warningRes.json().grading).toBeNull();
-    expect(warningRes.json().nonAutoGradeableWarning.noResponseCount).toBe(1);
-    expect(warningRes.json().nonAutoGradeableWarning.nonAutoGradeableCount).toBe(0);
-
-    const confirmRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}/reviewable`, {
-      token: profToken,
-      payload: {
-        reviewable: true,
-        acknowledgeNonAutoGradeable: true,
-        zeroNonAutoGradeable: true,
-      },
-    });
-
-    expect(confirmRes.statusCode).toBe(200);
-    expect(confirmRes.json().session.reviewable).toBe(true);
+    expect(makeReviewableRes.statusCode).toBe(200);
+    expect(makeReviewableRes.json().session.reviewable).toBe(true);
+    expect(makeReviewableRes.json().nonAutoGradeableWarning).toBeNull();
 
     const zeroedQuestion = await Question.findById(question._id).lean();
-    expect(zeroedQuestion.sessionOptions.points).toBe(0);
+    expect(zeroedQuestion.sessionOptions.points).toBe(3);
   });
 });
