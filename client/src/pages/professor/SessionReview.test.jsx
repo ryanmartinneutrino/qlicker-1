@@ -346,7 +346,7 @@ describe('SessionReview', () => {
     expect(screen.queryByText(/results will be available after the session ends/i)).not.toBeInTheDocument();
   });
 
-  it('confirms warning-driven reviewable toggles through the dedicated reviewable endpoint', async () => {
+  it('makes sessions reviewable through the dedicated reviewable endpoint without a confirm dialog', async () => {
     apiClient.get.mockImplementation(async (url) => {
       if (url === '/sessions/session-1/results') {
         return {
@@ -378,22 +378,11 @@ describe('SessionReview', () => {
     apiClient.patch
       .mockResolvedValueOnce({
         data: {
-          session: buildResultsPayload({ reviewable: false }).session,
-          grading: null,
-          nonAutoGradeableWarning: {
-            nonAutoGradeableCount: 1,
-            noResponseCount: 0,
-          },
-        },
-      })
-      .mockResolvedValueOnce({
-        data: {
           session: buildResultsPayload({ reviewable: true }).session,
           grading: null,
           nonAutoGradeableWarning: null,
         },
       });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderSessionReview();
 
@@ -403,14 +392,9 @@ describe('SessionReview', () => {
     fireEvent.click(toggle);
 
     await waitFor(() => {
-      expect(apiClient.patch).toHaveBeenNthCalledWith(1, '/sessions/session-1/reviewable', { reviewable: true });
-      expect(apiClient.patch).toHaveBeenNthCalledWith(2, '/sessions/session-1/reviewable', {
-        reviewable: true,
-        acknowledgeNonAutoGradeable: true,
-      });
+      expect(apiClient.patch).toHaveBeenCalledTimes(1);
+      expect(apiClient.patch).toHaveBeenCalledWith('/sessions/session-1/reviewable', { reviewable: true });
       expect(toggle).toBeChecked();
     });
-
-    confirmSpy.mockRestore();
   });
 });

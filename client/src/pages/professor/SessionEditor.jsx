@@ -364,17 +364,11 @@ export default function SessionEditor() {
     setSessionSaveStatus('saving');
     setSessionSaveError('');
     try {
-      const { cancelled, data, warningMessage } = await toggleSessionReviewable({
+      const data = await toggleSessionReviewable({
         apiClient,
         sessionId,
         reviewable: checked,
-        t,
       });
-      if (cancelled) {
-        setMsg({ severity: 'warning', text: warningMessage });
-        setSessionSaveStatus('success');
-        return;
-      }
       const updatedSession = data.session || data;
       setSession(updatedSession);
       setReviewable(!!updatedSession.reviewable);

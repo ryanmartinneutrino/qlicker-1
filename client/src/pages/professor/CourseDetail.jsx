@@ -1008,17 +1008,12 @@ export default function CourseDetail() {
       const toggleOnlyReviewable = Object.keys(updates).length === 1 && Object.prototype.hasOwnProperty.call(updates, 'reviewable');
       const result = toggleOnlyReviewable
         ? await toggleSessionReviewable({
-          apiClient,
-          sessionId,
-          reviewable: updates.reviewable,
-          t,
-        })
-        : { cancelled: false, data: (await apiClient.patch(`/sessions/${sessionId}`, updates)).data, warningMessage: '' };
-      if (result.cancelled) {
-        setMsg({ severity: 'warning', text: result.warningMessage });
-        return;
-      }
-      const { data } = result;
+            apiClient,
+            sessionId,
+            reviewable: updates.reviewable,
+          })
+        : (await apiClient.patch(`/sessions/${sessionId}`, updates)).data;
+      const data = result;
       const updated = data.session || data;
       setSessions((prev) => prev.map((session) => (session._id === sessionId ? { ...session, ...updated } : session)));
       const warnings = data.grading?.warnings || [];

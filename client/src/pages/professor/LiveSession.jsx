@@ -31,6 +31,7 @@ import { buildCourseTitle } from '../../utils/courseTitle';
 import { useTranslation } from 'react-i18next';
 import BackLinkButton from '../../components/common/BackLinkButton';
 import SessionChatPanel from '../../components/live/SessionChatPanel';
+import { buildReviewableWarningMessage } from '../../utils/reviewableToggle';
 import LiveSessionPanelNavigation from '../../components/live/LiveSessionPanelNavigation';
 import StudentIdentity from '../../components/common/StudentIdentity';
 import WordCloudPanel from '../../components/questions/WordCloudPanel';
@@ -131,26 +132,6 @@ function getOptionRichContentProps(option) {
 function normalizeValue(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
-}
-
-function buildReviewableWarningMessage(t, warning) {
-  const manualCount = Number(warning?.nonAutoGradeableCount) || 0;
-  const noResponseCount = Number(warning?.noResponseCount) || 0;
-
-  if (manualCount > 0 && noResponseCount > 0) {
-    return t('professor.liveSession.reviewableWarningCombined', {
-      manualCount,
-      noResponseCount,
-    });
-  }
-  if (manualCount > 0) {
-    return t('professor.liveSession.reviewableWarningManualOnly', {
-      count: manualCount,
-    });
-  }
-  return t('professor.liveSession.reviewableWarningNoResponsesOnly', {
-    count: noResponseCount,
-  });
 }
 
 function applyCurrentQuestionUpdate(prev, payload) {

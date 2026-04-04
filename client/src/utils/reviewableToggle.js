@@ -22,39 +22,7 @@ export async function toggleSessionReviewable({
   apiClient,
   sessionId,
   reviewable,
-  t,
 }) {
-  const sendToggle = (payload) => apiClient.patch(`/sessions/${sessionId}/reviewable`, payload);
-
-  let response = await sendToggle({ reviewable });
-  const warning = response?.data?.nonAutoGradeableWarning;
-
-  if (reviewable && warning) {
-    const warningMessage = buildReviewableWarningMessage(t, warning);
-    const confirmed = window.confirm(
-      t('professor.sessionReview.confirmReviewableWarning', {
-        warning: warningMessage,
-        defaultValue: '{{warning}} Make the session reviewable anyway?',
-      })
-    );
-
-    if (!confirmed) {
-      return {
-        cancelled: true,
-        data: response.data,
-        warningMessage,
-      };
-    }
-
-    response = await sendToggle({
-      reviewable,
-      acknowledgeNonAutoGradeable: true,
-    });
-  }
-
-  return {
-    cancelled: false,
-    data: response.data,
-    warningMessage: '',
-  };
+  const response = await apiClient.patch(`/sessions/${sessionId}/reviewable`, { reviewable });
+  return response.data;
 }
