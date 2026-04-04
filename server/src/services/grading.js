@@ -1123,7 +1123,7 @@ export async function recalculateSessionGrades({
   const needsGradingSummary = summarizeMarksNeedingGrading(persistedGrades);
 
   const warningMessages = [];
-  if (ungradableQuestionIds.size > 0) {
+  if (needsGradingSummary.marks > 0) {
     warningMessages.push('Some questions cannot be auto-graded and still need manual grading.');
   }
   if (manualMarkConflicts.length > 0) {
