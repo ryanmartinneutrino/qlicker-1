@@ -3498,7 +3498,7 @@ export default async function sessionRoutes(app) {
           return {
             session,
             grading: null,
-            nonAutoGradeableWarning: buildNonAutoGradeableWarning(nonAutoGradeable),
+            nonAutoGradeableWarning: buildReviewableWarning({ nonAutoGradeable }),
           };
         }
 
