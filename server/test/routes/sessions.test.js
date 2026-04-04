@@ -1157,6 +1157,50 @@ describe('PATCH /api/v1/sessions/:id', () => {
     expect(reviewableRes.json().message).toContain('quiz extensions are active');
   });
 
+  it('returns a warning before making an ended session reviewable with manual-grading questions', async (ctx) => {
+    if (mongoose.connection.readyState !== 1) ctx.skip();
+    const { prof, profToken, course } = await setupCourseWithStudent();
+    const session = (await createSessionInCourse(profToken, course._id)).json().session;
+
+    const question = await Question.create({
+      type: 2,
+      creator: prof._id,
+      owner: prof._id,
+      courseId: course._id,
+      sessionId: session._id,
+      plainText: 'Explain your answer',
+      content: '<p>Explain your answer</p>',
+      sessionOptions: {
+        points: 4,
+        maxAttempts: 1,
+        attempts: [{ number: 1, closed: false }],
+      },
+    });
+
+    await Session.findByIdAndUpdate(session._id, {
+      $set: {
+        questions: [question._id],
+        status: 'done',
+      },
+    });
+
+    const warningRes = await authenticatedRequest(app, 'PATCH', `/api/v1/sessions/${session._id}`, {
+      token: profToken,
+      payload: { reviewable: true },
+    });
+
+    expect(warningRes.statusCode).toBe(200);
+    const warningBody = warningRes.json();
+    expect(warningBody.grading).toBeNull();
+    expect(warningBody.nonAutoGradeableWarning.questionCount).toBe(1);
+    expect(warningBody.nonAutoGradeableWarning.nonAutoGradeableCount).toBe(1);
+    expect(warningBody.nonAutoGradeableWarning.noResponseCount).toBe(0);
+
+    const warnedSession = await Session.findById(session._id).lean();
+    expect(warnedSession.reviewable).toBe(false);
+    expect(await Grade.countDocuments({ sessionId: session._id, courseId: course._id })).toBe(0);
+  });
+
   it('rejects updates when quizEnd is not later than quizStart', async (ctx) => {
     if (mongoose.connection.readyState !== 1) ctx.skip();
     const prof = await createTestUser({ email: 'prof-quiz-window-update@example.com', roles: ['professor'] });
