@@ -9,6 +9,7 @@ This section collects the developer-facing documentation needed for phase 8.
 - [Development guide](development-guide.md)
 - [Grading developer notes](grading.md)
 - [API reference and OpenAPI workflow](../api-reference.md)
+- [LLM and MCP integration notes](llm-mcp-integration.md)
 
 ## Also important
 
