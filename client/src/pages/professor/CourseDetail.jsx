@@ -37,6 +37,7 @@ import GroupManagementPanel from '../../components/groups/GroupManagementPanel';
 import ManageNotificationsDialog from '../../components/notifications/ManageNotificationsDialog';
 import VideoChatPanel from '../../components/video/VideoChatPanel';
 import { useTranslation } from 'react-i18next';
+import { toggleSessionReviewable } from '../../utils/reviewableToggle';
 
 const QuestionLibraryPanel = lazy(() => import('../../components/questions/QuestionLibraryPanel'));
 
@@ -1004,7 +1005,20 @@ export default function CourseDetail() {
   const patchSessionFromList = async (sessionId, updates) => {
     setSessionUpdatesInFlight((prev) => ({ ...prev, [sessionId]: true }));
     try {
-      const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
+      const toggleOnlyReviewable = Object.keys(updates).length === 1 && Object.prototype.hasOwnProperty.call(updates, 'reviewable');
+      const result = toggleOnlyReviewable
+        ? await toggleSessionReviewable({
+          apiClient,
+          sessionId,
+          reviewable: updates.reviewable,
+          t,
+        })
+        : { cancelled: false, data: (await apiClient.patch(`/sessions/${sessionId}`, updates)).data, warningMessage: '' };
+      if (result.cancelled) {
+        setMsg({ severity: 'warning', text: result.warningMessage });
+        return;
+      }
+      const { data } = result;
       const updated = data.session || data;
       setSessions((prev) => prev.map((session) => (session._id === sessionId ? { ...session, ...updated } : session)));
       const warnings = data.grading?.warnings || [];

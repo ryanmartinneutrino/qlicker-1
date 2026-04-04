@@ -36,6 +36,7 @@ import StudentIdentity from '../../components/common/StudentIdentity';
 import ResponsiveTabsNavigation from '../../components/common/ResponsiveTabsNavigation';
 import { buildCourseTitle } from '../../utils/courseTitle';
 import { getLatestResponse, sortResponsesNewestFirst } from '../../utils/responses';
+import { toggleSessionReviewable } from '../../utils/reviewableToggle';
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -658,7 +659,16 @@ export default function SessionReview() {
   const handleToggleReviewable = useCallback(async (checked) => {
     setTogglingReviewable(true);
     try {
-      const { data } = await apiClient.patch(`/sessions/${sessionId}`, { reviewable: checked });
+      const { cancelled, data, warningMessage } = await toggleSessionReviewable({
+        apiClient,
+        sessionId,
+        reviewable: checked,
+        t,
+      });
+      if (cancelled) {
+        setReviewableWarning(warningMessage);
+        return;
+      }
       const updatedSession = data.session || data;
       const warnings = data.grading?.warnings || [];
       setSession((prev) => (prev ? { ...prev, ...updatedSession } : prev));

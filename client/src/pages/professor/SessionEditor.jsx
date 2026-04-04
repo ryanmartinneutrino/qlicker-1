@@ -34,6 +34,7 @@ import {
   downloadPdf,
   downloadJson,
 } from '../../utils/sessionExport';
+import { toggleSessionReviewable } from '../../utils/reviewableToggle';
 import { useTranslation } from 'react-i18next';
 
 const PAGE_SECTION_GAP = 1.5;
@@ -340,7 +341,9 @@ export default function SessionEditor() {
     setSessionSaveError('');
     try {
       const { data } = await apiClient.patch(`/sessions/${sessionId}`, updates);
-      setSession(data.session || data);
+      const updatedSession = data.session || data;
+      setSession(updatedSession);
+      setReviewable(!!updatedSession.reviewable);
       const warnings = data.grading?.warnings || [];
       if (warnings.length > 0) {
         setMsg({ severity: 'warning', text: warnings.join(' ') });
@@ -355,6 +358,40 @@ export default function SessionEditor() {
       setSavingSession(false);
     }
   };
+
+  const handleReviewableChange = useCallback(async (checked) => {
+    setSavingSession(true);
+    setSessionSaveStatus('saving');
+    setSessionSaveError('');
+    try {
+      const { cancelled, data, warningMessage } = await toggleSessionReviewable({
+        apiClient,
+        sessionId,
+        reviewable: checked,
+        t,
+      });
+      if (cancelled) {
+        setMsg({ severity: 'warning', text: warningMessage });
+        setSessionSaveStatus('success');
+        return;
+      }
+      const updatedSession = data.session || data;
+      setSession(updatedSession);
+      setReviewable(!!updatedSession.reviewable);
+      const warnings = data.grading?.warnings || [];
+      if (warnings.length > 0) {
+        setMsg({ severity: 'warning', text: warnings.join(' ') });
+      }
+      setSessionSaveStatus('success');
+    } catch (err) {
+      setSessionSaveStatus('error');
+      const message = err.response?.data?.message || t('professor.sessionEditor.failedUpdateSession');
+      setSessionSaveError(`${message} ${t('profile.lastChangeNotRecorded')}`);
+      fetchSession();
+    } finally {
+      setSavingSession(false);
+    }
+  }, [fetchSession, sessionId, t]);
 
   const persistQuizWindow = useCallback((nextStart, nextEnd, extraUpdates = {}) => {
     const validationMessage = validateQuizWindow(nextStart, nextEnd);
@@ -1410,9 +1447,7 @@ export default function SessionEditor() {
                 <Switch
                   checked={reviewable}
                   onChange={(e) => {
-                    const checked = e.target.checked;
-                    setReviewable(checked);
-                    saveSessionPatch({ reviewable: checked });
+                    handleReviewableChange(e.target.checked);
                   }}
                   disabled={savingSession}
                 />

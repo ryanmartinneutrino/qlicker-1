@@ -345,4 +345,72 @@ describe('SessionReview', () => {
     expect(await screen.findByText(/this grading interface is locked while the session is live/i)).toBeInTheDocument();
     expect(screen.queryByText(/results will be available after the session ends/i)).not.toBeInTheDocument();
   });
+
+  it('confirms warning-driven reviewable toggles through the dedicated reviewable endpoint', async () => {
+    apiClient.get.mockImplementation(async (url) => {
+      if (url === '/sessions/session-1/results') {
+        return {
+          data: buildResultsPayload({ reviewable: false }),
+        };
+      }
+      if (url === '/courses/course-1') {
+        return {
+          data: {
+            course: {
+              _id: 'course-1',
+              name: 'Discrete Math',
+              deptCode: 'MATH',
+              courseNumber: '200',
+              section: '001',
+              semester: 'Fall 2026',
+            },
+          },
+        };
+      }
+      if (url === '/sessions/session-1/grades') {
+        return { data: { grades: [] } };
+      }
+      if (url === '/courses/course-1/groups') {
+        return { data: { groupCategories: [] } };
+      }
+      throw new Error(`Unexpected GET ${url}`);
+    });
+    apiClient.patch
+      .mockResolvedValueOnce({
+        data: {
+          session: buildResultsPayload({ reviewable: false }).session,
+          grading: null,
+          nonAutoGradeableWarning: {
+            nonAutoGradeableCount: 1,
+            noResponseCount: 0,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          session: buildResultsPayload({ reviewable: true }).session,
+          grading: null,
+          nonAutoGradeableWarning: null,
+        },
+      });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderSessionReview();
+
+    const toggle = await screen.findByRole('switch', { name: /toggle student review access/i });
+    expect(toggle).not.toBeChecked();
+
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(apiClient.patch).toHaveBeenNthCalledWith(1, '/sessions/session-1/reviewable', { reviewable: true });
+      expect(apiClient.patch).toHaveBeenNthCalledWith(2, '/sessions/session-1/reviewable', {
+        reviewable: true,
+        acknowledgeNonAutoGradeable: true,
+      });
+      expect(toggle).toBeChecked();
+    });
+
+    confirmSpy.mockRestore();
+  });
 });
