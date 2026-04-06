@@ -24,7 +24,7 @@ services:
       - "27017"
     volumes:
       - mongo-data:/data/db
-      - ./backups:/backups
+      - ${BACKUP_HOST_PATH:-./backups}:/backups
     # Keep the cache conservative by default so smaller deployments survive burst load.
     command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "${MONGO_WIREDTIGER_CACHE_SIZE_GB:-0.25}"]
     healthcheck:
@@ -49,11 +49,11 @@ services:
     environment:
       - MONGO_URI=${MONGO_URI:?Set MONGO_URI in .env}
       - BACKUP_DIR=/backups
-      - BACKUP_HOST_PATH=./backups
+      - BACKUP_HOST_PATH=${BACKUP_HOST_PATH:-./backups}
       - BACKUP_CHECK_INTERVAL_SECONDS=${BACKUP_CHECK_INTERVAL_SECONDS:-60}
       - TZ=${TZ:-UTC}
     volumes:
-      - ./backups:/backups
+      - ${BACKUP_HOST_PATH:-./backups}:/backups
       - ./backup.sh:/scripts/backup.sh:ro
       - ./backup-manager.sh:/scripts/backup-manager.sh:ro
     command: ["/bin/sh", "/scripts/backup-manager.sh"]

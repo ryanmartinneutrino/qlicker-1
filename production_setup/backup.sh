@@ -3,7 +3,8 @@
 # Qlicker Production — MongoDB Backup Script
 # =============================================================================
 # Creates a timestamped mongodump of the Qlicker database.
-# Backups are stored in ./backups/ and old backups are pruned automatically.
+# Backups are stored in BACKUP_HOST_PATH (default ./backups/) and old backups
+# are pruned automatically.
 #
 # Assumptions:
 # - The backup label is one of daily, weekly, or monthly.
@@ -286,7 +287,7 @@ prune_backups_for_label() {
   label_glob="$BACKUP_DIR/qlicker_backup_*_${label}.tar.gz"
   pruned=0
   index=0
-  for file in $(find "$BACKUP_DIR" -maxdepth 1 -type f -name "qlicker_backup_*_${label}.tar.gz" 2>/dev/null | sort -r); do
+  for file in $(find -L "$BACKUP_DIR" -maxdepth 1 -type f -name "qlicker_backup_*_${label}.tar.gz" 2>/dev/null | sort -r); do
     index=$((index + 1))
     if [ "$index" -gt "$keep_count" ]; then
       rm -f "$file"
@@ -389,5 +390,5 @@ read_retention_counts | {
   prune_backups_for_label monthly "${RETENTION_MONTHLY:-12}"
 }
 
-TOTAL_BACKUPS="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'qlicker_backup_*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')"
+TOTAL_BACKUPS="$(find -L "$BACKUP_DIR" -maxdepth 1 -type f -name 'qlicker_backup_*.tar.gz' 2>/dev/null | wc -l | tr -d ' ')"
 log "Backup complete. Total backups: $TOTAL_BACKUPS"

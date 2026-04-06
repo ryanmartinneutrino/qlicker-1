@@ -109,9 +109,13 @@ pull_required_images() {
 }
 
 ensure_backup_directory_permissions() {
-  local backup_dir="$SCRIPT_DIR/backups"
+  local configured_backup_path="${1:-./backups}"
+  local backup_dir compose_backup_dir
   local preferred_user="${SUDO_USER:-${USER:-}}"
   local owner_uid owner_gid
+
+  compose_backup_dir="$SCRIPT_DIR/backups"
+  backup_dir="$(resolve_host_path "$configured_backup_path")"
 
   if ! mkdir -p "$backup_dir"; then
     warn "Could not create $backup_dir. Create it manually before running backups."
@@ -128,6 +132,45 @@ ensure_backup_directory_permissions() {
 
   if ! chmod 770 "$backup_dir" 2>/dev/null; then
     warn "Could not set permissions to 770 on $backup_dir."
+  fi
+
+  # Keep ./backups as a convenience path for scripts/operators while allowing
+  # archives to live on another disk.
+  if [ "$backup_dir" = "$compose_backup_dir" ]; then
+    if [ -L "$compose_backup_dir" ]; then
+      if rm -f "$compose_backup_dir" 2>/dev/null && mkdir -p "$compose_backup_dir" 2>/dev/null; then
+        info "Using local backup directory at $compose_backup_dir."
+      else
+        warn "Could not replace symlink at $compose_backup_dir with a directory."
+      fi
+    fi
+    return 0
+  fi
+
+  if [ -L "$compose_backup_dir" ]; then
+    if ! rm -f "$compose_backup_dir" 2>/dev/null; then
+      warn "Could not replace existing symlink at $compose_backup_dir."
+      return 0
+    fi
+  elif [ -d "$compose_backup_dir" ]; then
+    if [ -n "$(find "$compose_backup_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+      warn "Cannot create symlink at $compose_backup_dir because that directory is not empty."
+      warn "Move existing backup files first, then run: ln -sfn \"$backup_dir\" \"$compose_backup_dir\""
+      return 0
+    fi
+    if ! rmdir "$compose_backup_dir" 2>/dev/null; then
+      warn "Could not remove empty directory at $compose_backup_dir to create symlink."
+      return 0
+    fi
+  elif [ -e "$compose_backup_dir" ]; then
+    warn "Cannot create symlink at $compose_backup_dir because a file already exists there."
+    return 0
+  fi
+
+  if ln -s "$backup_dir" "$compose_backup_dir" 2>/dev/null; then
+    info "Linked $compose_backup_dir -> $backup_dir"
+  else
+    warn "Could not create symlink: $compose_backup_dir -> $backup_dir"
   fi
 }
 
@@ -419,6 +462,7 @@ if [ -n "$LOADED_FROM" ]; then
   [ -n "${SERVER_IMAGE:-}" ] && echo "    SERVER_IMAGE=$SERVER_IMAGE"
   [ -n "${CLIENT_IMAGE:-}" ] && echo "    CLIENT_IMAGE=$CLIENT_IMAGE"
   [ -n "${MAIL_URL:-}" ]     && echo "    MAIL_URL=$MAIL_URL"
+  [ -n "${BACKUP_HOST_PATH:-}" ] && echo "    BACKUP_HOST_PATH=$BACKUP_HOST_PATH"
   [ -n "${JWT_SECRET:-}" ]   && echo "    JWT_SECRET=(set)"
   [ -n "${SERVER_REPLICAS:-}" ] && echo "    SERVER_REPLICAS=$SERVER_REPLICAS"
   [ -n "${CERTBOT_AUTORENEW:-}" ] && echo "    CERTBOT_AUTORENEW=$CERTBOT_AUTORENEW"
@@ -629,10 +673,23 @@ echo "  Switch to S3 or Azure later from Admin -> Storage after signing in."
 
 # ---- Backup manager ---------------------------------------------------------
 echo ""
+echo "--- Backup Storage ---"
+DEFAULT_BACKUP_HOST_PATH="${BACKUP_HOST_PATH:-./backups}"
+read -r -p "Backup host directory [$DEFAULT_BACKUP_HOST_PATH]: " BACKUP_HOST_PATH_INPUT
+BACKUP_HOST_PATH="${BACKUP_HOST_PATH_INPUT:-$DEFAULT_BACKUP_HOST_PATH}"
+if [ -z "$BACKUP_HOST_PATH" ]; then
+  BACKUP_HOST_PATH="./backups"
+fi
+if [[ "$BACKUP_HOST_PATH" == *[[:space:]]* ]]; then
+  warn "Backup host path contains whitespace. Docker Compose path parsing may fail."
+fi
+BACKUP_HOST_PATH_RESOLVED="$(resolve_host_path "$BACKUP_HOST_PATH")"
+info "Backup archives will be stored on host at: $BACKUP_HOST_PATH_RESOLVED"
+
 BACKUP_CHECK_INTERVAL_SECONDS="${BACKUP_CHECK_INTERVAL_SECONDS:-60}"
 TZ="${TZ:-UTC}"
 info "Ensuring backup directory exists with writable permissions..."
-ensure_backup_directory_permissions
+ensure_backup_directory_permissions "$BACKUP_HOST_PATH"
 
 # ---- Write .env file --------------------------------------------------------
 echo ""
@@ -685,6 +742,7 @@ REDIS_URL=$REDIS_URL
 API_PORT=3001
 NODE_ENV=production
 ROOT_URL=https://$DOMAIN
+BACKUP_HOST_PATH=$BACKUP_HOST_PATH
 BACKUP_CHECK_INTERVAL_SECONDS=$BACKUP_CHECK_INTERVAL_SECONDS
 TZ=$TZ
 EOF
@@ -732,6 +790,7 @@ echo "  Replicas:    $SERVER_REPLICAS API servers"
 echo "  Domain:      $DOMAIN"
 echo "  TLS cert:    $TLS_CERT_PATH"
 echo "  Auto-renew:  $CERTBOT_AUTORENEW"
+echo "  Backups:     $BACKUP_HOST_PATH"
 echo ""
 echo "  Next steps:"
 echo "    1. Review and edit .env if needed"
