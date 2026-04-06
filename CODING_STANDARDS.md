@@ -78,7 +78,7 @@ cd /home/runner/work/qlicker-1/qlicker-1/client && npm run test:e2e
 ## 10. Documentation to keep aligned
 
 - Product and setup overview: [README.md](README.md)
-- Remaining migration items: [MIGRATION.md](MIGRATION.md)
-- Completed migration archive: [MIGRATION_COMPLETED.md](MIGRATION_COMPLETED.md)
-- Legacy schema details: [LEGACY_DB.md](LEGACY_DB.md)
+- Remaining migration items: [meteorjs_migration/MIGRATION.md](meteorjs_migration/MIGRATION.md)
+- Completed migration archive: [meteorjs_migration/MIGRATION_COMPLETED.md](meteorjs_migration/MIGRATION_COMPLETED.md)
+- Legacy schema details: [meteorjs_migration/LEGACY_DB.md](meteorjs_migration/LEGACY_DB.md)
 - Production operations: [production_setup/README.md](production_setup/README.md)

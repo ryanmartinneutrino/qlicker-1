@@ -40,9 +40,8 @@ qlicker-1/
 ├── production_setup/      # Production deployment and operations scripts
 ├── scripts/               # Dev setup, local control, and seed helpers
 ├── ssoserver/             # Local SimpleSAMLphp smoke-test environment
-├── MIGRATION.md           # Migration status and phase checklist
-├── CODING_STANDARDS.md    # Coding conventions and API patterns
-└── LEGACY_DB.md           # Legacy database notes
+├── meteorjs_migration/    # Migration archive, status, and legacy DB notes
+└── CODING_STANDARDS.md    # Coding conventions and API patterns
 ```
 
 ## Frontend structure

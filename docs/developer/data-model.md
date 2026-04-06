@@ -119,4 +119,4 @@ These matter because student dashboards, instructor course lookups, and live-ses
 
 ## Legacy compatibility
 
-Legacy compatibility requirements are documented in [`../../LEGACY_DB.md`](../../LEGACY_DB.md). Use that document when a change risks reshaping existing MongoDB fields.
+Legacy compatibility requirements are documented in [`../../meteorjs_migration/LEGACY_DB.md`](../../meteorjs_migration/LEGACY_DB.md). Use that document when a change risks reshaping existing MongoDB fields.

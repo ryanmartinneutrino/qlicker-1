@@ -21,9 +21,9 @@ This directory contains the documentation needed to operate, use, and develop th
 ## Operations and deployment
 
 - [Production deployment guide](../production_setup/README.md)
-- [Migration status and phase checklist](../MIGRATION.md)
+- [Migration status and phase checklist](../meteorjs_migration/MIGRATION.md)
 - [Coding standards](../CODING_STANDARDS.md)
-- [Legacy database compatibility notes](../LEGACY_DB.md)
+- [Legacy database compatibility notes](../meteorjs_migration/LEGACY_DB.md)
 
 ## Screenshot assets
 

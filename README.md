@@ -2,7 +2,7 @@
 
 Qlicker is an open-source classroom response system for higher education. It gives instructors a mobile-friendly alternative to hardware clickers for live participation, quizzes, grading, course management, and classroom discussion.
 
-This repository contains the current **Fastify + React** version of Qlicker. The original MeteorJS implementation is still included under [`meteorjs_version/`](meteorjs_version/) as a reference while the repository is being transitioned.
+This repository contains the current **Fastify + React** version of Qlicker. Migration and legacy-reference documentation now lives under [`meteorjs_migration/`](meteorjs_migration/).
 
 ## What Qlicker includes
 
@@ -22,10 +22,8 @@ This repository contains the current **Fastify + React** version of Qlicker. The
 - [`production_setup/`](production_setup/) - production Docker deployment package
 - [`docs/`](docs/) - user, developer, and API documentation
 - [`load-testing/`](load-testing/) - k6-based load-testing suite
-- [`MIGRATION.md`](MIGRATION.md) - short list of remaining migration items
-- [`MIGRATION_COMPLETED.md`](MIGRATION_COMPLETED.md) - completed migration archive
+- [`meteorjs_migration/`](meteorjs_migration/) - migration status, completed archive, legacy DB notes, and original migration requirements
 - [`CODING_STANDARDS.md`](CODING_STANDARDS.md) - future-work conventions
-- [`LEGACY_DB.md`](LEGACY_DB.md) - legacy MongoDB compatibility notes
 
 ## Quick start
 
@@ -149,7 +147,7 @@ Use the sanitize flow only when you are ready to move legacy public S3 image ref
 
 See:
 
-- [`LEGACY_DB.md`](LEGACY_DB.md)
+- [`meteorjs_migration/LEGACY_DB.md`](meteorjs_migration/LEGACY_DB.md)
 - [`production_setup/README.md`](production_setup/README.md#initializing-from-legacy-database)
 - [`production_setup/README.md`](production_setup/README.md#s3-private-bucket-migration)
 
@@ -184,8 +182,4 @@ See [`load-testing/README.md`](load-testing/README.md) for the full workflow and
 - User and developer docs: [`docs/`](docs/)
 - Production deployment guide: [`production_setup/README.md`](production_setup/README.md)
 - Coding conventions for future work: [`CODING_STANDARDS.md`](CODING_STANDARDS.md)
-- Remaining migration items: [`MIGRATION.md`](MIGRATION.md)
-
-## Legacy reference
-
-The old MeteorJS codebase is kept in [`meteorjs_version/`](meteorjs_version/) for comparison during the repository transition. It is not the active application stack.
+- Migration archive and remaining items: [`meteorjs_migration/`](meteorjs_migration/)
