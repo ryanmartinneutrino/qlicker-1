@@ -62,7 +62,7 @@ done
 # ---- Select backup ----------------------------------------------------------
 
 if [ -z "$BACKUP_FILE" ]; then
-  mapfile -t BACKUPS < <(find "$BACKUP_DIR" -name 'qlicker_backup_*.tar.gz' -type f 2>/dev/null | sort -r)
+  mapfile -t BACKUPS < <(find -L "$BACKUP_DIR" -name 'qlicker_backup_*.tar.gz' -type f 2>/dev/null | sort -r)
 
   if [ "${#BACKUPS[@]}" -eq 0 ]; then
     error "No backups found in $BACKUP_DIR"

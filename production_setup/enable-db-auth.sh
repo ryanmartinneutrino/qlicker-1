@@ -128,7 +128,7 @@ wait_for_service_healthy() {
 
 latest_backup_for_pattern() {
   local pattern="$1"
-  find "$BACKUP_DIR" -maxdepth 1 -type f -name "$pattern" 2>/dev/null | sort -r | head -1
+  find -L "$BACKUP_DIR" -maxdepth 1 -type f -name "$pattern" 2>/dev/null | sort -r | head -1
 }
 
 on_error() {
