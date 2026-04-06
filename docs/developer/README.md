@@ -1,6 +1,6 @@
 # Developer Documentation
 
-This section collects the developer-facing documentation needed for phase 8.
+This section collects the developer-facing documentation for the current Fastify + React version of Qlicker.
 
 ## Core guides
 
@@ -9,7 +9,6 @@ This section collects the developer-facing documentation needed for phase 8.
 - [Development guide](development-guide.md)
 - [Grading developer notes](grading.md)
 - [API reference and OpenAPI workflow](../api-reference.md)
-- [LLM and MCP integration notes](llm-mcp-integration.md)
 
 ## Also important
 

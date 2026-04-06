@@ -394,4 +394,4 @@ cd scripts
 | Missing array fields in `.lean()` | Undefined instead of `[]` | `|| []` fallbacks throughout |
 | Legacy question types (`type=5`, string types) | Rendering errors | Migration script + runtime normalization |
 | `meteor_accounts_loginServiceConfiguration` | Empty collection, no model | Ignored — not needed |
-| Legacy `services.password.reset.*` path | Differs from new `services.resetPassword` path | Decision pending: transform or ignore pending legacy tokens |
+| Legacy `services.password.reset.*` path | Differs from new `services.resetPassword` path | Not migrated; issue a fresh reset token after cutover if needed |
