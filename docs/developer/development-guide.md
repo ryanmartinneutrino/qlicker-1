@@ -47,7 +47,7 @@ cd client && npm run test:e2e
 
 ## How to approach a change
 
-1. Read `MIGRATION.md` if the work touches migration-phase promises.
+1. Read `meteorjs_migration/MIGRATION.md` if the work touches migration-phase promises.
 2. Read `CODING_STANDARDS.md` for project conventions.
 3. Find the user role and route area the change belongs to.
 4. Identify the server route, service, and model impact.
@@ -124,6 +124,7 @@ Two current implementation details are easy to miss:
 
 - [`../../README.md`](../../README.md)
 - [`../../CODING_STANDARDS.md`](../../CODING_STANDARDS.md)
-- [`../../MIGRATION.md`](../../MIGRATION.md)
+- [`../../meteorjs_migration/MIGRATION.md`](../../meteorjs_migration/MIGRATION.md)
+- [`../../meteorjs_migration/LEGACY_DB.md`](../../meteorjs_migration/LEGACY_DB.md)
 - [`../../production_setup/README.md`](../../production_setup/README.md)
 - [`../api-reference.md`](../api-reference.md)

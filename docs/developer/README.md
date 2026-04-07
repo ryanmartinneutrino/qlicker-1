@@ -1,6 +1,6 @@
 # Developer Documentation
 
-This section collects the developer-facing documentation needed for phase 8.
+This section collects the developer-facing documentation for the current Fastify + React version of Qlicker.
 
 ## Core guides
 
@@ -9,14 +9,13 @@ This section collects the developer-facing documentation needed for phase 8.
 - [Development guide](development-guide.md)
 - [Grading developer notes](grading.md)
 - [API reference and OpenAPI workflow](../api-reference.md)
-- [LLM and MCP integration notes](llm-mcp-integration.md)
 
 ## Also important
 
 - [Repository README](../../README.md)
 - [Coding standards](../../CODING_STANDARDS.md)
-- [Migration plan and phase checklist](../../MIGRATION.md)
-- [Legacy DB compatibility notes](../../LEGACY_DB.md)
+- [Migration plan and phase checklist](../../meteorjs_migration/MIGRATION.md)
+- [Legacy DB compatibility notes](../../meteorjs_migration/LEGACY_DB.md)
 - [Production deployment guide](../../production_setup/README.md)
 
 ## Verified build and test commands
